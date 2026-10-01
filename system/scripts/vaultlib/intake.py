@@ -307,9 +307,125 @@ class Intake:
             self.alert(f"ingest of raw/inbox/{path.name} failed (exit {rc}); will retry")
         return True
 
-    # -- digests (Task 9) --------------------------------------------------
+    # -- digests ---------------------------------------------------------
+    def _solo(self) -> set:
+        try:
+            return set(json.loads((self.logs / "intake_solo.json").read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError, TypeError):
+            return set()
+
+    def _save_solo(self, shas: set) -> None:
+        self.logs.mkdir(parents=True, exist_ok=True)
+        (self.logs / "intake_solo.json").write_text(json.dumps(sorted(shas)), encoding="utf-8")
+
+    def _pending_digests(self, notes: Path, attempted: set) -> dict:
+        """Eligible, not-yet-attempted digests in mtime order, mapped to their hashes."""
+        found = []
+        for p in notes.iterdir():
+            if p.suffix != ".md" or p in attempted or not self.eligible(p):
+                continue
+            try:
+                found.append((p.stat().st_mtime, p.name, p, sha256_file(p)))
+            except OSError as exc:
+                attempted.add(p)
+                self.alert(f"skipped {p.relative_to(self.vault).as_posix()}: {exc.__class__.__name__}: {exc}")
+        return {p: sha for _, _, p, sha in sorted(found, key=lambda t: t[:2])}
+
     def process_digests(self) -> bool:
+        attempted: set = set()
+        progress = True
+        while progress:
+            progress = False
+            for partition in schemamod.PARTITIONS:
+                if self.runs >= self.max_runs:
+                    return True
+                notes = self.vault / "raw" / partition / "notes"
+                if not notes.is_dir():
+                    continue
+                shas = self._pending_digests(notes, attempted)
+                if not shas:
+                    continue
+                solo = self._solo()
+                pending = list(shas)
+                first = pending[0]
+                batch = [first] if shas[first] in solo else [p for p in pending if shas[p] not in solo][:DIGEST_BATCH]
+                attempted.update(batch)
+                progress = True
+                rc = self.headless([p.relative_to(self.vault).as_posix() for p in batch], [shas[p] for p in batch])
+                if rc == 0:
+                    self._archive_batch(partition, batch, shas, solo)
+                elif rc in (CAP_EXIT, SETTINGS_EXIT):
+                    return False  # cap or invalid settings: every later run would fail too
+                elif len(batch) > 1:
+                    # includes rc 2: one bad name must not poison its batch-mates
+                    self._save_solo(solo | {shas[p] for p in batch})
+                    self.alert(f"digest batch in {partition} failed (exit {rc}); retrying one at a time")
+                else:
+                    self._solo_failure(partition, first, shas[first], rc)
         return True
+
+    def _archive_batch(self, partition: str, batch, shas: dict, solo: set) -> None:
+        archive = self.vault / "raw" / partition / "archive"
+        done = set()
+        for p in batch:
+            try:
+                archive.mkdir(parents=True, exist_ok=True)
+                p.rename(unique(archive / p.name))
+                done.add(shas[p])
+            except OSError as exc:
+                self.alert(f"could not archive raw/{partition}/notes/{p.name}: {exc.__class__.__name__}: {exc}")
+        self._save_solo(solo - done)
+
+    def _solo_failure(self, partition: str, path: Path, sha: str, rc: int) -> None:
+        origin = f"raw/{partition}/notes/{path.name}"
+        try:
+            if rc == INVALID_INPUT_EXIT:
+                # run_headless.sh rejects before any ledger line, so attempts would never advance
+                self.poison(path, origin, sha, reason="immediately, rejected as invalid input (exit 2)")
+            elif self.failures_since_retry(sha) >= MAX_ATTEMPTS:
+                self.poison(path, origin, sha)
+            else:
+                self.alert(f"digest {origin} failed (exit {rc}); will retry")
+        except OSError as exc:
+            self.alert(f"skipped {origin}: {exc.__class__.__name__}: {exc}")
+
+    # -- retry -----------------------------------------------------------
+    def retry(self, run_id=None) -> list:
+        poisoned = self.vault / "system" / "quarantine" / "poisoned"
+        if not poisoned.is_dir():
+            return []
+        wanted = None
+        if run_id is not None:
+            wanted = set()
+            for record in self._ledgers():
+                if record.get("run_id") == run_id and isinstance(record.get("input_sha256"), list):
+                    wanted.update(record["input_sha256"])
+        restored, shas = [], []
+        for sidecar in sorted(poisoned.glob("*.origin.json")):
+            try:
+                info = json.loads(sidecar.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(info, dict) or (wanted is not None and info.get("sha256") not in wanted):
+                continue
+            item = poisoned / sidecar.name[: -len(".origin.json")]
+            origin = info.get("origin", "")
+            if (not item.is_file() or not isinstance(origin, str)
+                    or not re.match(r"^raw/(inbox|work/notes|personal/notes|shared/notes)/[^/]+$", origin)):
+                continue
+            dest = unique(self.vault / origin)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(item), str(dest))
+            sidecar.unlink()
+            restored.append(dest.relative_to(self.vault).as_posix())
+            shas.append(info.get("sha256"))
+        if restored:
+            self._save_solo(self._solo() - set(shas))
+            _append_jsonl(self.logs / f"runs-{self.dt().strftime('%Y-%m')}.jsonl",
+                          {"run_id": f"retry-{int(time.time())}", "command": "retry",
+                           "started_at": self.dt().isoformat(),
+                           "inputs": restored, "input_sha256": shas, "exit": 0})
+        return restored
 
     def run(self) -> None:
         try:
