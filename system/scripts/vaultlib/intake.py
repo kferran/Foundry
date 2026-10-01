@@ -23,7 +23,8 @@ START, END = "#wiki-ingest-start", "#wiki-ingest-end"
 CAP_EXIT = 4
 INVALID_INPUT_EXIT = 2
 SETTINGS_EXIT = 3
-NOT_INPUT_FAULT = (0, SETTINGS_EXIT, CAP_EXIT, 6)  # 6 = busy lock
+SIGNAL_EXITS = (129, 130, 143)  # SIGHUP/SIGINT/SIGTERM: a stop or shutdown, not the input
+NOT_INPUT_FAULT = (0, SETTINGS_EXIT, CAP_EXIT, 6, *SIGNAL_EXITS)  # 6 = busy lock
 
 
 def _append_jsonl(path, record) -> None:
@@ -291,9 +292,10 @@ class Intake:
         finally:
             copy.unlink(missing_ok=True)
         if rc == 0:
+            # manifest first: if the archive rename then fails, the next run archives it as a dup
+            self.manifest_add(sha, path.name)
             archive.mkdir(parents=True, exist_ok=True)
             path.rename(unique(archive / path.name))
-            self.manifest_add(sha, path.name)
             return True
         if rc in (CAP_EXIT, SETTINGS_EXIT):
             return False  # cap or invalid settings: every later run would fail too

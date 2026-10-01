@@ -346,3 +346,37 @@ def test_unreadable_inbox_file_does_not_stop_intake(iv):
     assert (iv / "raw/archive/b.md").exists()
     assert (iv / "raw/inbox/a.md").exists()
     assert "a.md" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
+
+
+def test_signal_exits_are_not_input_failures(iv, monkeypatch):
+    import hashlib
+    sha = hashlib.sha256(b"a").hexdigest()
+    for rc in (143, 143, 143, 129, 130):
+        ledger_line(iv, command="ingest", input_sha256=[sha], exit=rc)
+    assert Intake(iv).failures_since_retry(sha) == 0
+    write(iv, "raw/inbox/a.md", "a")
+    monkeypatch.setenv("STUB_RC", "143")
+    for _ in range(3):
+        Intake(iv, now=later()).run()
+    assert (iv / "raw/inbox/a.md").exists()
+    assert not (iv / "system/quarantine/poisoned").exists()
+
+
+def test_archive_rename_failure_does_not_double_ingest(iv, monkeypatch):
+    import pathlib
+    write(iv, "raw/inbox/a.md", "a")
+    real, failed = pathlib.Path.rename, []
+
+    def flaky(self, target):
+        if not failed and pathlib.Path(target).parent == iv / "raw/archive":
+            failed.append(target)
+            raise OSError("simulated EIO on archive")
+        return real(self, target)
+
+    monkeypatch.setattr(pathlib.Path, "rename", flaky)
+    Intake(iv, now=later()).run()
+    assert failed and (iv / "raw/inbox/a.md").exists()
+    Intake(iv, now=later()).run()
+    assert len(calls(iv)) == 1
+    assert not (iv / "raw/inbox/a.md").exists()
+    assert any(p.name.startswith("a-dup-") for p in (iv / "raw/archive").iterdir())
