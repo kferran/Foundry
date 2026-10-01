@@ -61,7 +61,7 @@ def test_deep_nesting_does_not_raise():
 def test_crlf_line_numbers():
     note = frontmatter.parse("---\r\na: [x\r\n---\r\nb")
     assert note.body_line == 4
-    assert note.error_line == 3
+    assert note.error_line == 2
 
 
 def test_dot_terminator():
