@@ -128,12 +128,57 @@ def test_list_valued_type_commit_is_rejected_not_a_traceback(run):
     assert publish.commit_run(run, RID, now=LATER)["status"] == "rejected"
 
 
-def test_journal_written_atomically(run):
+def test_journal_written_atomically(run, monkeypatch):
     write(run, f"wiki/.staging/{RID}/wiki/work/concepts/A.md", concept("work", "A"))
     decide(run, rec("wiki/work/concepts/A.md"))
-    publish.commit_run(run, RID, now=LATER)
+    real = publish.os.replace
+
+    def dying_replace(src, dst):
+        if str(dst).endswith("publish.journal"):
+            raise KeyboardInterrupt("crash while moving the journal into place")
+        real(src, dst)
+
+    monkeypatch.setattr(publish.os, "replace", dying_replace)
+    with pytest.raises(KeyboardInterrupt):
+        publish.commit_run(run, RID, now=LATER)
+    monkeypatch.setattr(publish.os, "replace", real)
     rd = run / "system/logs/runs" / RID
-    assert (rd / "publish.journal").is_file() and not (rd / "publish.journal.tmp").exists()
+    assert not (rd / "publish.journal").exists()
+    assert not (run / "wiki/work/concepts/A.md").exists()
+    result = publish.recover(run)
+    assert result["aborted"] == [RID] and result["recovered"] == []
+    assert not (run / "wiki/work/concepts/A.md").exists()
+    assert (run / "system/quarantine" / RID / "staged/wiki/work/concepts/A.md").is_file()
+
+
+def test_recover_does_not_report_held_back_conflict_as_published(run, monkeypatch):
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/A.md", concept("work", "A"))
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/B.md", concept("work", "B"))
+    decide(run, rec("wiki/work/concepts/A.md"), rec("wiki/work/concepts/B.md"))
+    real_read, real_rename = publish._read_journal, publish._rename
+
+    def read_then_user_writes_a(journal):
+        entries = real_read(journal)
+        write(run, "wiki/work/concepts/A.md", concept("work", "A", "user wrote this"))
+        return entries
+
+    def crash(src, dst):
+        raise KeyboardInterrupt("simulated crash")
+
+    monkeypatch.setattr(publish, "_read_journal", read_then_user_writes_a)
+    monkeypatch.setattr(publish, "_rename", crash)
+    with pytest.raises(KeyboardInterrupt):
+        publish.commit_run(run, RID, now=LATER)
+    monkeypatch.setattr(publish, "_read_journal", real_read)
+    monkeypatch.setattr(publish, "_rename", real_rename)
+    assert publish.recover(run)["recovered"] == [RID]
+    report = json.loads((run / "system/logs/runs" / RID / "publish.json").read_text())
+    assert report["conflicts"] == ["wiki/work/concepts/A.md"]
+    assert "wiki/work/concepts/A.md" not in report["published"]
+    assert report["published"] == ["wiki/work/concepts/B.md"]
+    assert report["status"] == "conflict"
+    assert "user wrote this" in (run / "wiki/work/concepts/A.md").read_text()
+    assert (run / "wiki/work/concepts/B.md").is_file()
 
 
 def test_recover_survives_torn_journal_and_continues(run, monkeypatch):

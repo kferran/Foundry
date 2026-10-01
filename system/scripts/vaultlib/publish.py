@@ -400,7 +400,11 @@ def _apply(vault: Path, journal: Path):
             continue
         staged, target = vault / entry["staged"], vault / entry["target"]
         if not staged.exists():
-            published.append(entry["target"])  # renamed before a crash
+            held = vault / "system" / "quarantine" / run_id / "staged" / entry["target"]
+            if held.exists():
+                conflicts.append(entry["target"])  # held back before a crash
+            else:
+                published.append(entry["target"])  # renamed before a crash
             continue
         current = sha256_file(target) if target.is_file() else None
         if current != entry["expected"]:
@@ -500,7 +504,8 @@ def recover(vault) -> dict:
                 failed.append(rd.name)
                 continue
             shutil.rmtree(staging_dir(vault, rd.name), ignore_errors=True)
-            _report(vault, rd.name, "recovered", published=published, conflicts=conflicts)
+            _report(vault, rd.name, "conflict" if conflicts else "recovered",
+                    published=published, conflicts=conflicts)
             recovered.append(rd.name)
     root = vault / "wiki" / ".staging"
     if root.is_dir():
