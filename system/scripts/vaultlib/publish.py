@@ -114,7 +114,15 @@ def load_snapshot(vault, run_id) -> dict:
     path = run_dir(vault, run_id) / "snapshot.json"
     if not path.is_file():
         raise PublishError(f"unknown run: {run_id}")
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        snap = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+        raise PublishError(f"corrupt snapshot: {exc}")
+    if (not isinstance(snap, dict) or not isinstance(snap.get("targets"), list)
+            or not all(isinstance(t, str) for t in snap["targets"])
+            or not isinstance(snap.get("files"), dict) or not isinstance(snap.get("staged"), dict)):
+        raise PublishError("corrupt snapshot: unexpected structure")
+    return snap
 
 
 def record_stage(vault, run_id, target) -> Path:
@@ -128,6 +136,8 @@ def record_stage(vault, run_id, target) -> Path:
     src = vault / target
     if src.is_symlink() or not src.is_file():
         raise PublishError(f"no such note to stage: {target}")
+    if target not in snap["files"]:
+        raise PublishError(f"target was created during the run: {target}")
     dst = staging_dir(vault, run_id) / target
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(src, dst)
@@ -163,7 +173,8 @@ def read_decisions(vault, run_id):
         except json.JSONDecodeError as exc:
             problems.append(Problem(DECISIONS, f"line {n}: invalid JSON: {exc.msg}"))
             continue
-        if (not isinstance(record, dict) or record.get("decision") not in DECISION_KINDS
+        if (not isinstance(record, dict) or not isinstance(record.get("decision"), str)
+                or record["decision"] not in DECISION_KINDS
                 or any(not isinstance(record.get(k), str) for k in ("item", "source", "reason"))
                 or not (record.get("target") is None or isinstance(record.get("target"), str))):
             problems.append(Problem(DECISIONS, f"line {n}: invalid decision record"))
@@ -238,7 +249,8 @@ def _walls(vault, target, note, schemas, resolver) -> list:
         return []
     src_part = schemamod.path_partition(target)
     body_links, _ = linkmod.extract(note.body, note.body_line)
-    fm_links = Index(vault)._frontmatter_links(schemas.get((note.data or {}).get("type")), note)
+    ntype = (note.data or {}).get("type")
+    fm_links = Index(vault)._frontmatter_links(schemas.get(ntype) if isinstance(ntype, str) else None, note)
     out = []
     for link in body_links + fm_links:
         hit, _ = resolver.resolve(link.target, target, "md" if link.kind == "md" else "wiki", lambda c: (len(c), c))
@@ -306,7 +318,10 @@ def validate_run(vault, run_id, now=None):
     files = {rel for rel, _, _ in Index(vault).walk()} | set(staged)
     resolver = linkmod.Resolver(files, name_exclude=NAME_EXCLUDED)
     for target in staged:
-        problems += _check(vault, run_id, target, snap, decided, command, schemas, ctx, resolver, now)
+        try:
+            problems += _check(vault, run_id, target, snap, decided, command, schemas, ctx, resolver, now)
+        except Exception as exc:  # model-written input must never crash validation
+            problems.append(Problem(target, f"internal error: {exc!r}"))
     return staged, decisions or [], problems
 
 
@@ -349,14 +364,37 @@ def _quarantine(vault: Path, run_id) -> None:
     shutil.move(str(src), str(dst))
 
 
+def _read_journal(journal: Path) -> list:
+    """Parse every journal line; raise ValueError on any torn or malformed entry."""
+    try:
+        entries = [json.loads(ln) for ln in journal.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+        raise ValueError(str(exc))
+    for entry in entries:
+        if entry == {"committed": True}:
+            continue
+        if (not isinstance(entry, dict) or not isinstance(entry.get("staged"), str)
+                or not isinstance(entry.get("target"), str)
+                or not (entry.get("expected") is None or isinstance(entry.get("expected"), str))):
+            raise ValueError(f"malformed journal entry: {entry!r}")
+    return entries
+
+
 def _committed(journal: Path) -> bool:
-    lines = [ln for ln in journal.read_text(encoding="utf-8").splitlines() if ln.strip()]
-    return bool(lines) and json.loads(lines[-1]) == {"committed": True}
+    entries = _read_journal(journal)
+    return bool(entries) and entries[-1] == {"committed": True}
+
+
+def _hold_back(vault: Path, run_id, staged: Path, target: str) -> None:
+    dst = vault / "system" / "quarantine" / run_id / "staged" / target
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(staged), str(dst))
 
 
 def _apply(vault: Path, journal: Path):
     published, conflicts = [], []
-    entries = [json.loads(ln) for ln in journal.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    entries = _read_journal(journal)
+    run_id = journal.parent.name
     for entry in entries:
         if "target" not in entry:
             continue
@@ -367,6 +405,7 @@ def _apply(vault: Path, journal: Path):
         current = sha256_file(target) if target.is_file() else None
         if current != entry["expected"]:
             conflicts.append(entry["target"])
+            _hold_back(vault, run_id, staged, entry["target"])
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         _rename(str(staged), str(target))
@@ -414,15 +453,22 @@ def commit_run(vault, run_id, now=None) -> dict:
         entries.append({"staged": path.relative_to(vault).as_posix(), "target": target,
                         "expected": _expected(snap, target)})
     journal = rd / "publish.journal"
-    with open(journal, "w", encoding="utf-8") as handle:
+    tmp_journal = rd / "publish.journal.tmp"
+    with open(tmp_journal, "w", encoding="utf-8") as handle:
         for entry in entries:
             handle.write(json.dumps(entry) + "\n")
         handle.flush()
         os.fsync(handle.fileno())
+    os.replace(tmp_journal, journal)
+    dir_fd = os.open(rd, os.O_RDONLY)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
     published, conflicts = _apply(vault, journal)
     shutil.rmtree(sd, ignore_errors=True)
     _refresh_index(vault)
-    status = "published" if published else "conflict"
+    status = "conflict" if conflicts else "published"
     return _report(vault, run_id, status, published=published, conflicts=conflicts)
 
 
@@ -436,16 +482,26 @@ def abort_run(vault, run_id) -> dict:
 def recover(vault) -> dict:
     """Roll forward interrupted publishes; quarantine aborted staging trees. Caller holds run.lock."""
     vault = Path(vault)
-    recovered, aborted = [], []
+    recovered, aborted, failed = [], [], []
     runs = vault / "system" / "logs" / "runs"
     if runs.is_dir():
         for rd in sorted(runs.iterdir()):
             journal = rd / "publish.journal"
-            if RUN_ID.match(rd.name) and journal.is_file() and not _committed(journal):
+            if not (RUN_ID.match(rd.name) and journal.is_file()):
+                continue
+            try:
+                if _committed(journal):
+                    continue
                 published, conflicts = _apply(vault, journal)
-                shutil.rmtree(staging_dir(vault, rd.name), ignore_errors=True)
-                _report(vault, rd.name, "recovered", published=published, conflicts=conflicts)
-                recovered.append(rd.name)
+            except ValueError as exc:
+                _quarantine(vault, rd.name)
+                _report(vault, rd.name, "recovery_failed",
+                        problems=[Problem("publish.journal", f"unreadable journal: {exc}")])
+                failed.append(rd.name)
+                continue
+            shutil.rmtree(staging_dir(vault, rd.name), ignore_errors=True)
+            _report(vault, rd.name, "recovered", published=published, conflicts=conflicts)
+            recovered.append(rd.name)
     root = vault / "wiki" / ".staging"
     if root.is_dir():
         for sd in sorted(root.iterdir()):
@@ -459,4 +515,4 @@ def recover(vault) -> dict:
             aborted.append(sd.name)
     if recovered:
         _refresh_index(vault)
-    return {"recovered": recovered, "aborted": aborted}
+    return {"recovered": recovered, "aborted": aborted, "failed": failed}

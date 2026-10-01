@@ -35,3 +35,15 @@ def test_publish_cli_exit_codes(vault):
     assert empty.returncode == 5 and json.loads(empty.stdout)["status"] == "rejected"
     bad = subprocess.run([sys.executable, str(script), "commit", "nope"], cwd=vault, capture_output=True, text=True)
     assert bad.returncode == 2
+
+
+def test_publish_cli_corrupt_snapshot_exits_2(vault):
+    import shutil
+    from helpers import REPO
+    shutil.copytree(REPO / "system/scripts", vault / "system/scripts", dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    script = vault / "system/scripts/publish_staged.py"
+    publish.snapshot(vault, RID, ["wiki/work/**"])
+    (vault / "system/logs/runs" / RID / "snapshot.json").write_text("{bad")
+    res = subprocess.run([sys.executable, str(script), "commit", RID], cwd=vault, capture_output=True, text=True)
+    assert res.returncode == 2, res.stderr

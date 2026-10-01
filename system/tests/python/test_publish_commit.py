@@ -79,7 +79,10 @@ def test_target_changed_between_validation_and_rename_is_held_back(run, monkeypa
     monkeypatch.setattr(publish, "_rename", racing_rename)
     report = publish.commit_run(run, RID, now=LATER)
     assert report["published"] == ["wiki/work/concepts/A.md"] and report["conflicts"] == ["wiki/work/concepts/B.md"]
+    assert report["status"] == "conflict"
     assert "user wrote this" in (run / "wiki/work/concepts/B.md").read_text()
+    held = run / "system/quarantine" / RID / "staged/wiki/work/concepts/B.md"
+    assert held.is_file() and "user wrote this" not in held.read_text()
 
 
 @pytest.mark.parametrize("crash_after", [0, 1])
@@ -117,3 +120,65 @@ def test_abort_run(run):
     write(run, f"wiki/.staging/{RID}/wiki/work/concepts/A.md", concept("work", "A"))
     assert publish.abort_run(run, RID)["status"] == "aborted"
     assert not (run / "wiki/.staging" / RID).exists()
+
+
+def test_list_valued_type_commit_is_rejected_not_a_traceback(run):
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/New.md", "---\ntype: [concept]\npartition: work\n---\n# New\n")
+    decide(run, rec("wiki/work/concepts/New.md"))
+    assert publish.commit_run(run, RID, now=LATER)["status"] == "rejected"
+
+
+def test_journal_written_atomically(run):
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/A.md", concept("work", "A"))
+    decide(run, rec("wiki/work/concepts/A.md"))
+    publish.commit_run(run, RID, now=LATER)
+    rd = run / "system/logs/runs" / RID
+    assert (rd / "publish.journal").is_file() and not (rd / "publish.journal.tmp").exists()
+
+
+def test_recover_survives_torn_journal_and_continues(run, monkeypatch):
+    bad = "20261001T120000-ingest-0001"
+    publish.snapshot(run, bad, ["wiki/work/**"])
+    write(run, f"wiki/.staging/{bad}/wiki/work/concepts/T.md", concept("work", "T"))
+    write(run, f"system/logs/runs/{bad}/publish.journal", '{"staged": "wiki/.st')
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/A.md", concept("work", "A"))
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/B.md", concept("work", "B"))
+    decide(run, rec("wiki/work/concepts/A.md"), rec("wiki/work/concepts/B.md"))
+    real = publish._rename
+
+    def crash(src, dst):
+        raise KeyboardInterrupt("simulated crash")
+
+    monkeypatch.setattr(publish, "_rename", crash)
+    with pytest.raises(KeyboardInterrupt):
+        publish.commit_run(run, RID, now=LATER)
+    monkeypatch.setattr(publish, "_rename", real)
+    result = publish.recover(run)
+    assert result["failed"] == [bad] and result["recovered"] == [RID]
+    assert (run / "wiki/work/concepts/A.md").is_file() and (run / "wiki/work/concepts/B.md").is_file()
+    report = json.loads((run / "system/logs/runs" / bad / "publish.json").read_text())
+    assert report["status"] == "recovery_failed" and "unreadable journal" in report["problems"][0]["reason"]
+    assert (run / "system/quarantine" / bad / "staged/wiki/work/concepts/T.md").is_file()
+    assert not (run / "wiki/.staging" / bad).exists()
+
+
+def test_recover_quarantines_conflicted_entries(run, monkeypatch):
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/A.md", concept("work", "A"))
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/B.md", concept("work", "B"))
+    decide(run, rec("wiki/work/concepts/A.md"), rec("wiki/work/concepts/B.md"))
+    real, calls = publish._rename, []
+
+    def crash_second(src, dst):
+        if calls:
+            raise KeyboardInterrupt("simulated crash")
+        calls.append(dst)
+        real(src, dst)
+
+    monkeypatch.setattr(publish, "_rename", crash_second)
+    with pytest.raises(KeyboardInterrupt):
+        publish.commit_run(run, RID, now=LATER)
+    monkeypatch.setattr(publish, "_rename", real)
+    write(run, "wiki/work/concepts/B.md", concept("work", "B", "user wrote this"))
+    publish.recover(run)
+    assert "user wrote this" in (run / "wiki/work/concepts/B.md").read_text()
+    assert (run / "system/quarantine" / RID / "staged/wiki/work/concepts/B.md").is_file()

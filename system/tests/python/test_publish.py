@@ -156,3 +156,59 @@ def test_record_stage_refuses_non_targets_and_unknown_runs(run):
         publish.record_stage(run, "20261001T120000-ingest-ffff", "wiki/work/concepts/Kafka.md")
     with pytest.raises(publish.PublishError):
         publish.record_stage(run, RID, "../outside.md")
+
+
+def test_list_valued_decision_is_invalid_record_not_crash(run):
+    stage_new(run, "wiki/work/concepts/New.md", concept("work", "New"))
+    decide(run, rec("wiki/work/concepts/New.md", ["create"]))
+    assert any("invalid decision record" in r for r in reasons(publish.validate_run(run, RID, now=LATER)[2]))
+
+
+def test_non_string_decision_fields_are_invalid_records(run):
+    bad = [{"item": "i", "decision": "create", "target": ["t"], "source": "s", "reason": "r"},
+           {"item": "i", "decision": {"a": 1}, "target": "wiki/work/concepts/N.md", "source": "s", "reason": "r"}]
+    decide(run, *bad)
+    rs = reasons(publish.validate_run(run, RID, now=LATER)[2])
+    assert sum("invalid decision record" in r for r in rs) == 2
+
+
+def test_list_valued_type_is_a_problem_not_a_crash(run):
+    stage_new(run, "wiki/work/concepts/New.md", "---\ntype: [concept]\npartition: work\n---\n# New\n")
+    decide(run, rec("wiki/work/concepts/New.md"))
+    assert publish.validate_run(run, RID, now=LATER)[2]
+
+
+def test_unexpected_check_exception_becomes_problem(run, monkeypatch):
+    stage_new(run, "wiki/work/concepts/New.md", concept("work", "New"))
+    decide(run, rec("wiki/work/concepts/New.md"))
+
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(publish, "_walls", boom)
+    assert any(r.startswith("internal error:") for r in reasons(publish.validate_run(run, RID, now=LATER)[2]))
+
+
+def test_cannot_stage_note_created_during_the_run(run):
+    write(run, "wiki/work/concepts/Late.md", concept("work", "Late", "long body " * 50 + "\n## Section\n"))
+    with pytest.raises(publish.PublishError, match="created during the run"):
+        publish.record_stage(run, RID, "wiki/work/concepts/Late.md")
+
+
+def test_fresh_staging_over_note_created_during_run_is_conflict(run):
+    late = write(run, "wiki/work/concepts/Late.md", concept("work", "Late", "long body " * 50))
+    before = late.read_text()
+    stage_new(run, "wiki/work/concepts/Late.md", concept("work", "Late", "x"))
+    decide(run, rec("wiki/work/concepts/Late.md"))
+    assert any("created during the run" in r for r in reasons(publish.validate_run(run, RID, now=LATER)[2]))
+    assert late.read_text() == before
+
+
+@pytest.mark.parametrize("content", ["{bad", '{"targets": "x", "files": {}, "staged": {}}',
+                                     '{"targets": [], "files": [], "staged": {}}', "[]"])
+def test_corrupt_snapshot_is_publish_error(run, content):
+    (run / "system/logs/runs" / RID / "snapshot.json").write_text(content)
+    with pytest.raises(publish.PublishError, match="corrupt snapshot"):
+        publish.load_snapshot(run, RID)
+    with pytest.raises(publish.PublishError):
+        publish.validate_run(run, RID, now=LATER)
