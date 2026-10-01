@@ -1,0 +1,18 @@
+{
+  "timestamp": "{{timestamp}}",
+  "branch": "{{git_branch}}",
+  "target_feature_slice": "{{vertical_slice_name}}",
+  "artifacts": {
+    "files_mutated": [],
+    "tests_discovered": 0
+  },
+  "verification_gates": {
+    "test_suite_passed": false,
+    "linter_passed": false,
+    "test_coverage_delta": "+0.00%"
+  },
+  "system_telemetry": {
+    "build_duration_ms": 0,
+    "warnings_generated": 0
+  }
+}

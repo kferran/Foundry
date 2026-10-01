@@ -1,0 +1,9 @@
+[Unit]
+Description=Second Brain: evening debrief at 17:00
+
+[Timer]
+OnCalendar=*-*-* 17:00:00 America/Denver
+Persistent=true
+
+[Install]
+WantedBy=timers.target

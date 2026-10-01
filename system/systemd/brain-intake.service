@@ -1,0 +1,8 @@
+[Unit]
+Description=Second Brain: compile raw/ into wiki/
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/fe/Work/Jarvis
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/fe/Work/Jarvis/system/scripts/intake_daemon.sh

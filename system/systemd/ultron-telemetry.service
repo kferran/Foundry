@@ -1,0 +1,8 @@
+[Unit]
+Description=Ultron: context-driven telemetry enricher
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/fe/Work/Jarvis
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/fe/Work/Jarvis/system/scripts/telemetry_enricher.sh
