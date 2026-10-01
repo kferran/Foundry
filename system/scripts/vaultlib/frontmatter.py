@@ -31,9 +31,14 @@ def parse(text: str) -> Note:
             body_line = i + 2
             try:
                 data = yamlload.load(fm_text)
+            except RecursionError:
+                return Note(None, fm_text, body, body_line, "malformed frontmatter: nested too deeply", 2)
             except yaml.YAMLError as exc:
                 mark = getattr(exc, "problem_mark", None)
-                line = mark.line + 2 if mark is not None else 1
+                if mark is not None:
+                    line = mark.line + 3 if "\n" not in fm_text else mark.line + 2
+                else:
+                    line = 1
                 problem = getattr(exc, "problem", None) or str(exc)
                 return Note(None, fm_text, body, body_line, f"malformed frontmatter: {problem}", line)
             if data is None:

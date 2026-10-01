@@ -22,7 +22,7 @@ def test_malformed_yaml_reports_line():
     note = frontmatter.parse("---\ntype: concept\ntags: [a\n---\nbody")
     assert note.data is None
     assert note.error.startswith("malformed frontmatter")
-    assert note.error_line >= 2
+    assert note.error_line == 3
 
 
 def test_non_mapping_frontmatter():
@@ -49,3 +49,29 @@ def test_key_line():
     note = frontmatter.parse("---\ntype: concept\ntags: []\n---\n")
     assert frontmatter.key_line(note, "tags") == 3
     assert frontmatter.key_line(note, "missing") == 2
+
+
+def test_deep_nesting_does_not_raise():
+    note = frontmatter.parse("---\n" + "[" * 5000 + "\n---\nb")
+    assert note.data is None
+    assert note.error == "malformed frontmatter: nested too deeply"
+    assert note.error_line == 2
+
+
+def test_crlf_line_numbers():
+    note = frontmatter.parse("---\r\na: [x\r\n---\r\nb")
+    assert note.body_line == 4
+    assert note.error_line == 3
+
+
+def test_dot_terminator():
+    note = frontmatter.parse("---\na: 1\n...\nb")
+    assert note.data == {"a": "1"}
+    assert note.body == "b"
+    assert note.body_line == 4
+
+
+def test_unterminated_body_line():
+    note = frontmatter.parse("---\ntype: concept\nbody")
+    assert note.body_line == 1
+    assert note.body == "---\ntype: concept\nbody"
