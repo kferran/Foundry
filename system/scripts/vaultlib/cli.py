@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import frontmatter, guard, retrieve, schema as schemamod, scope as scopemod
+from . import frontmatter, guard, publish, retrieve, schema as schemamod, scope as scopemod
 from .index import Index
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
@@ -342,6 +342,16 @@ def cmd_set(args, vault, sc):
     return EXIT_OK
 
 
+def cmd_stage(args, vault, sc):
+    require_vault_scope(sc)
+    try:
+        dst = publish.record_stage(vault, args.run_id, args.target)
+    except publish.PublishError as exc:
+        raise UsageError(str(exc))
+    print(rel(vault, dst))
+    return EXIT_OK
+
+
 def cmd_rebuild(args, vault, sc):
     require_vault_scope(sc)
     Index(vault).refresh(full=True)
@@ -386,6 +396,9 @@ def build_parser():
     p.add_argument("file")
     p.add_argument("key")
     p.add_argument("value")
+    p = add("stage", cmd_stage, "copy a publishable note into a run's staging tree (headless runs)")
+    p.add_argument("target")
+    p.add_argument("run_id")
     add("rebuild", cmd_rebuild, "drop and rebuild the index")
     return parser
 

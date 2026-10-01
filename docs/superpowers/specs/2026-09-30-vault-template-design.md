@@ -461,15 +461,17 @@ Reads stdin, writes redacted text to stdout and the redaction count to stderr. P
 - `--dry-run` prints a unified diff and writes nothing (used by `/setup`). `--uninstall` removes only owned entries and the owned command file.
 - These absolute-path forms are the one exception to the §6 invocation rule: inside the vault, scripts are invoked relatively; from codebase sessions, only these installed absolute forms are used.
 
-### 6.20 `publish_staged.py <run_id> --targets <path…>` (Ultra Magnus: staged, conflict-safe publish)
+### 6.20 publish_staged.py snapshot <run_id> --targets <path…> | commit <run_id> | abort <run_id> | recover (Ultra Magnus: staged, conflict-safe publish)
 
 Implemented in `vaultlib/publish.py`; the only path by which headless output reaches the vault.
+
+`run_headless.sh` calls `snapshot` before invoking claude (writing `system/logs/runs/<run_id>/snapshot.json` and creating the staging directory), `commit` after a successful run, `abort` after a failed or timed-out one (staging → quarantine), and `recover` at start under `run.lock`.
 
 **Staging contract**
 - New files: the model writes the complete file at `wiki/.staging/<run_id>/<vault-relative target path>`.
 - Existing files: the model must first run `system/scripts/vault_index.py stage <target> <run_id>`, which copies the current target into its staged path and records the copied `sha256` in the run snapshot; the model then makes targeted `Edit` changes to that copy. A staged file whose target already exists but has no `stage` record is rejected. This avoids full-file rewrites that silently drop content.
 - Deletion is impossible; notes are retired with lifecycle fields (§6.15).
-- **Decisions:** `wiki/.staging/<run_id>/_decisions.jsonl`, one JSON object per line: `{"item": str, "decision": "noop|patch|create|deprecate|supersede", "target": str|null, "source": str, "reason": str}`. Schema-validated by publish. Every staged file must be the `target` of a non-noop decision; every `noop` must cite an existing note. Never published; copied to `system/logs/runs/<run_id>/`.
+- **Decisions:** `wiki/.staging/<run_id>/_decisions.jsonl`, one JSON object per line: `{"item": str, "decision": "noop|patch|create|deprecate|supersede", "target": str|null, "source": str, "reason": str}`. Schema-validated by publish. Every staged file must be the `target` of a non-noop decision (ingest runs; `brief`/`debrief` publish their single exact target without a decisions file); every `noop` must cite an existing note. Never published; copied to `system/logs/runs/<run_id>/`.
 
 **Validation phase (all-or-nothing).** For every staged file:
 1. **Target:** the path must be one of `--targets` (exact paths for `brief`/`debrief`, partition folders for `ingest`).
