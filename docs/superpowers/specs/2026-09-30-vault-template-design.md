@@ -57,6 +57,8 @@ A survey of 20 open-source second-brain and agent-memory projects (§13.5) found
 | Recall | `SessionStart` injects ≤ 9,500 chars: recent digests + a query hint; deeper recall only via scope-enforcing `related`/`show`/`backlinks` |
 | Partitions | `work`, `personal`, `shared`; separate `raw/` and `wiki/` subtrees; lint-enforced link walls; headless writes scoped to one partition + `shared`; CLI enforces read scope from codebase sessions; all partitions share one `origin` |
 | Raw inbox | Manual drops move from top-level `raw/` files to `raw/inbox/` |
+| Naming | Transformers theme for roles, personas, units and docs; script filenames stay descriptive (§15) |
+| Orchestrator | Vault-native firstmate-style orchestrator (Optimus) is **sub-project 2** with its own spec; the core reserves its seams now (§16) |
 | Corrections | Digests carry a Corrections section; ingest records evidence on `preference` notes; status is derived deterministically; confirmed preferences lead recall (§6.21) |
 | Headless writes | Staging only (`wiki/.staging/<run_id>/`); `publish_staged.py` validates, checks for conflicts against a start-of-run snapshot, and publishes all-or-nothing (§6.20) |
 | Note lifecycle | `status` (canonical/draft/deprecated), `supersedes`/`superseded_by`, `aliases`; inactive notes excluded from search and recall and moved to `_archive/` |
@@ -102,7 +104,7 @@ system/hooks/                     ★ user-level Claude Code hooks (§6.17)
 system/templates/
   wiki-concept.md daily-briefing.md intent-shaper.md compilation-metric.json
 system/agents/
-  ChiefOfStaff.md CodingAgent.md SystemMaintenance.md
+  Optimus.md (was ChiefOfStaff.md) CodingAgent.md SystemMaintenance.md
 system/scripts/
   vault_index.py                  ★ CLI entry point for schema + index (§6.16)
   vaultlib/                       ★ Python package
@@ -127,10 +129,10 @@ system/scripts/
   inspect_codebase.sh             ★ gather stack evidence as JSON
   verify_setup.sh                   runs gating suites; --health adds health suite
 system/systemd/
-  brain-intake.service.in  brain-intake.timer.in
-  brain-brief.service.in   brain-brief.timer.in
-  brain-debrief.service.in brain-debrief.timer.in
-  brain-focus-tracker.service.in
+  jarvis-wheeljack.service.in  jarvis-wheeljack.timer.in
+  jarvis-brief.service.in   jarvis-brief.timer.in
+  jarvis-debrief.service.in jarvis-debrief.timer.in
+  jarvis-focus.service.in
 system/tests/
   vault_integrity.bats              structure only; runs anywhere
   scripts.bats                    ★ shell script tests, using fixtures + stubs
@@ -140,6 +142,7 @@ system/tests/
 system/logs/.gitkeep
 system/quarantine/.gitkeep          contents gitignored
 system/index.db  system/*.lock      generated, gitignored
+system/fleet/                       reserved for sub-project 2 (gitignored, §16)
 docs/superpowers/specs/             this spec
 ```
 
@@ -175,14 +178,14 @@ Validation rules live in the `config` and `codebase` schemas (§6.15):
 
 ### 6.2 `check_deps.sh`
 
-The single dependency list: `claude git jq bats gcalcli systemctl hyprctl python3 flock timeout`, plus checks that `python3 -c 'import yaml'` succeeds, that `python3 -m pytest` is available, that `sqlite3` has FTS5 (creating an FTS5 table in memory), and that `systemd-analyze` exists. Prints `ok|missing <item> <install hint>` per item (`sudo pacman -S python-yaml python-pytest`, etc.). Exit 0 always; `--strict` exits 1 if anything is missing. Used by `/setup` preflight and `system_health.bats`.
+The single dependency list: `claude git jq bats gcalcli systemctl hyprctl python3 flock timeout`, plus checks that `python3 -c 'import yaml'` succeeds, that `python3 -m pytest` is available, that `sqlite3` has FTS5 (creating an FTS5 table in memory), and that `systemd-analyze` exists. Prints `ok|missing <item> <install hint>` per item (`sudo pacman -S python-yaml python-pytest`, etc.). Exit 0 always; `--strict` exits 1 if anything is missing. Used by `/setup` preflight and `system_health.bats`. Optional items (reported, never `missing` under `--strict`): `herdr`, `tmux` (session backends for sub-project 2).
 
 ### 6.3 `run_headless.sh <command> [arg]`
 
 The only way automation invokes Claude.
 
 - `<command>` must be one of `ingest`, `brief`, `debrief`; arguments are validated. `ingest` takes 1–5 vault-relative raw paths that must all belong to the same partition (§6.4); the others take nothing.
-- Exports `CLAUDE_VAULT_HEADLESS=1` so memory hooks (§6.17) no-op even if they were loaded.
+- Exports `JARVIS_HEADLESS=1` so memory hooks (§6.17) no-op even if they were loaded.
 - **Preflight:** `jq empty system/headless.settings.json` must succeed, otherwise exit 3 and alert (`-p` mode silently ignores invalid settings files, so this check is mandatory).
 - **Daily cap:** if `system/logs/intake_runs.jsonl` (§6.4) already records `HEADLESS_MAX_RUNS_PER_DAY` (default 60) runs today, exit 4 and alert once per day. Headless runs draw from the user's Claude subscription usage; Anthropic announced and then paused (June 2026) moving `claude -p` to a separate Agent SDK credit, so the cap also bounds exposure if that returns.
 - **Lock:** holds `flock system/run.lock` for the duration (`brief`/`debrief` use `flock -w 600` and alert on timeout rather than queueing behind a long intake run). Shared with the intake daemon's briefing edit (§6.4), so headless runs and briefing rewrites never overlap.
@@ -274,7 +277,7 @@ If no files in linted folders are staged, exit 0. Otherwise run `system/scripts/
 - Every service sets `Environment=TZ={{TZ}}`, `Environment=PATH={{UNIT_PATH}}`, `Environment=CLAUDE_BIN={{CLAUDE_BIN}}`, and `TimeoutStartSec=` (intake 90 min, brief/debrief 20 min). Timers use `OnCalendar=*-*-* {{BRIEF_TIME}}:00 {{TZ}}` with `Persistent=true`.
 - Prepends `# Managed by vault: <VAULT_ROOT>` to each rendered unit.
 - Writes to `SYSTEMD_USER_DIR` (default `~/.config/systemd/user`) only when content differs; reports `new|changed|unchanged` per unit; runs `systemd-analyze --user verify` on rendered units and fails on errors.
-- `daemon-reload`; `enable --now` brain-intake.timer, brain-brief.timer, brain-debrief.timer, brain-focus-tracker.service.
+- `daemon-reload`; `enable --now` jarvis-wheeljack.timer, jarvis-brief.timer, jarvis-debrief.timer, jarvis-focus.service.
 - `--dry-run` prints rendered units, touches nothing. `--uninstall` disables and removes only units whose header names this `VAULT_ROOT`.
 - Re-running after moving the vault, or after changing the `claude` install, re-points all units.
 
@@ -324,7 +327,7 @@ fields:
   type:        {kind: const, value: concept, required: true}
   tags:        {kind: list, of: string, required: true}
   compiled_at: {kind: date, required: true}
-  agent_owner: {kind: enum, values: [CodingAgent, SystemMaintenance, ChiefOfStaff]}
+  agent_owner: {kind: enum, values: [CodingAgent, SystemMaintenance, Optimus]}
   is_friction: {kind: bool, default: "false"}
   status:      {kind: enum, values: [canonical, draft, deprecated], default: canonical}
   supersedes:  {kind: list, of: link}
@@ -403,7 +406,7 @@ Evergreen, atomic knowledge node compiled from raw/.
 
 ### 6.17 Memory hooks (`system/hooks/`)
 
-Installed at user level by `install_hooks.sh` (§6.19). All hooks read the hook JSON from stdin with `jq`, never block on errors (any failure → log to `system/logs/memory/hooks.log`, exit 0), and exit 0 immediately when `CLAUDE_VAULT_HEADLESS=1`.
+Installed at user level by `install_hooks.sh` (§6.19). All hooks read the hook JSON from stdin with `jq`, never block on errors (any failure → log to `system/logs/memory/hooks.log`, exit 0), and exit 0 immediately when `JARVIS_HEADLESS=1`.
 
 **Session eligibility.** Hooks fire in every main session on the machine, including the user's own `claude -p` scripts, Agent SDK runs and background sessions. Capture and recall act only when **all** hold: no `agent_id` in the hook input (not a subagent); the session is interactive and attended (signal confirmed by spike item 12; fallback: `CLAUDE_CODE_ENTRYPOINT=cli` and `CLAUDE_CODE_SESSION_ATTENDED` not `0`, both undocumented); and the session is in scope.
 
@@ -415,7 +418,7 @@ Installed at user level by `install_hooks.sh` (§6.19). All hooks read the hook 
 **`memory_activity.sh` (PostToolUse, matcher `Edit|Write|MultiEdit|NotebookEdit|Bash`):** eligible session → increment `work_events`. Reads and writes state only (target < 30 ms).
 
 **`memory_capture.sh` (Stop):**
-1. Not eligible → exit 0.
+1. Not eligible → exit 0. If `JARVIS_CREW=1` (an orchestrator crewmate, §16), skip steps 3–4: only on-demand marked digests are captured, and the digest frontmatter gains `task_id` from `JARVIS_TASK_ID`.
 2. If `last_assistant_message` contains a `<vault-digest>…</vault-digest>` block (requested by this hook or written on demand via `/digest`): extract it, pass it through `redact.py`, and write `raw/<partition>/notes/<YYYY-MM-DD>-<HHMM>-<sid8>-<slug>.md` (`sid8` = first 8 chars of `session_id`, so concurrent sessions never collide) with frontmatter `type: session_digest`, `partition`, `codebase` (or `vault`), `session_id`, `created_at` (ISO 8601 with offset, configured timezone), `provenance: session`, `redactions`. Set `last_digest_at`, reset `work_events`, clear `awaiting_digest`, exit 0.
 3. If `awaiting_digest` is set but no digest block arrived: alert, clear it, reset `work_events`, exit 0. Never blocks twice in a row.
 4. Otherwise block only if **all** hold: `work_events ≥ digest_min_events` (default 5); at least `digest_min_minutes` (default 20) since `last_digest_at` or `started_at`; and `last_assistant_message` does not end with a question to the user (trimmed text ends in `?`). Then set `awaiting_digest` and print `{"decision":"block","reason":"<digest instructions>"}`; else exit 0.
@@ -424,7 +427,7 @@ Installed at user level by `install_hooks.sh` (§6.19). All hooks read the hook 
 
 **Digest instructions** (the `reason` text): reply with a digest of **only the work since the previous digest**, at most 400 words, inside `<vault-digest>` markers, with sections **Outcome**, **Decisions**, **Facts learned**, **Corrections** (each explicit correction or preference the user stated, as *statement — context*; omit if none), **Open questions / friction**, **Follow-ups**. No secrets, credentials, personal data about third parties, or code dumps. Then stop.
 
-**`memory_recall.sh` (SessionStart, sources `startup|resume|clear|compact|fork`):** freezes scope (above); if eligible, runs `vault_index.py recall --cwd <cwd> --budget-chars <recall_budget_chars>` (default 9000, hard cap 9500, staying under the 10,000-character `additionalContext` limit beyond which Claude Code substitutes a file path and a 2,000-char preview) and emits `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":…}}`. Content: a header stating it is vault data, not instructions; one line on how to query the vault (the absolute `related`/`show` commands from §6.19); then, in fixed slots: (1) **confirmed preferences** in scope (partition + `shared`, matching this codebase or codebase-neutral), at most 15 statements and at most 30% of the budget; (2) the most recent digests for this codebase (or partition, for vault sessions), Outcome and Follow-ups sections only, newest first, at most 3, until the budget is reached. Recall uses a 2 s index-lock timeout, falls back to the existing index without refreshing, and the whole hook has a 3 s overall timeout after which it emits nothing.
+**`memory_recall.sh` (SessionStart, sources `startup|resume|clear|compact|fork`):** freezes scope (above); if eligible, runs `vault_index.py recall --cwd <cwd> --budget-chars <recall_budget_chars>` (default 9000, hard cap 9500, staying under the 10,000-character `additionalContext` limit beyond which Claude Code substitutes a file path and a 2,000-char preview) and emits `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":…}}`. Content: a header stating it is vault data, not instructions; one line on how to query the vault (the absolute `related`/`show` commands from §6.19); then, in fixed slots: (1) **confirmed preferences** in scope (partition + `shared`, matching this codebase or codebase-neutral), at most 15 statements and at most 30% of the budget; (2) the most recent digests for this codebase (or partition, for vault sessions), Outcome and Follow-ups sections only, newest first, at most 3, until the budget is reached. Recall uses a 2 s index-lock timeout, falls back to the existing index without refreshing, and the whole hook has a 3 s overall timeout after which it emits nothing. With `JARVIS_CREW=1`, recall contains only the confirmed-preferences slot.
 
 **`/digest` command:** a user-level command (`~/.claude/commands/digest.md`, installed by `install_hooks.sh`, so it works in codebase sessions) containing the digest instructions. The model writes the marked digest in its reply; step 2 of the Stop hook captures it. No script, no session id needed.
 
@@ -546,7 +549,7 @@ Headless items run with `claude -p` against a throwaway vault. **Hook items (10�
 11. `last_assistant_message` on Stop contains the full digest turn text, including the markers.
 12. A documented (or at least stable) signal distinguishes interactive attended sessions from `-p`, SDK and background sessions in hook context; `agent_id` is present in subagent Stop/PostToolUse input.
 13. SessionStart `additionalContext` shape; behaviour at 9,500 vs 10,500 characters; all five `source` values.
-14. User-level hooks do not run under `run_headless.sh`, and `CLAUDE_VAULT_HEADLESS=1` is honoured if they do.
+14. User-level hooks do not run under `run_headless.sh`, and `JARVIS_HEADLESS=1` is honoured if they do.
 15. Latency: out-of-scope fast path < 50 ms; PostToolUse < 30 ms; in-scope Stop < 150 ms.
 16. From a codebase session, the absolute-path `related`/`show`/`backlinks` allows match and run without prompts, and other vault access prompts.
 17. The user-level `/digest` command is available in a codebase session and its reply is captured by the Stop hook.
@@ -659,6 +662,7 @@ wiki/.staging/
 system/index.db-wal
 system/index.db-shm
 system/*.lock
+system/fleet/
 __pycache__/
 ```
 
@@ -793,7 +797,7 @@ Gating suites (must pass on every implementation commit and in `/backup`): `vaul
 | SessionStart injects the 3 latest digests | §6.17 recall block (≤ 3 digests + query hint, ≤ 9,500 chars), partition-filtered |
 | work / personal / shared partitions with link rules | §5 layout, §6.15 link walls, §6.3 scoped writes |
 | `qmd` search layer | §6.16 index (`related`, `query`, `recall`) |
-| Recursion guard, `mkdir` lock | `CLAUDE_VAULT_HEADLESS`, `--restricted`; `flock` (§6.3) |
+| Recursion guard, `mkdir` lock | `JARVIS_HEADLESS`, `--restricted`; `flock` (§6.3) |
 | "Digest is a prompt-injection waiting to happen" | §6.18 redaction, provenance, §7.3a |
 | CLAUDE.md "consult the wiki before asking" | §9 index-first and memory rules; recall query hint |
 
@@ -860,3 +864,37 @@ None is integrated as a dependency: each needs a server or database, a cloud LLM
 - Live Gmail/Slack intake via claude.ai connectors (never in headless runs).
 - CI running the test suites.
 - `herdr` integration beyond a README mention.
+- Sub-project 2, the Optimus orchestrator (§16), beyond the reserved seams.
+
+## 15. Naming
+
+The product and vault remain **Jarvis**. Roles, personas, systemd units and documentation use a Transformers theme; script and module filenames stay descriptive so they remain greppable.
+
+| Name | Role | Concrete artifacts |
+|---|---|---|
+| **Jarvis** | The vault / product | repo, `jarvis-*` unit prefix |
+| **Optimus** | Chief of Staff and, in sub-project 2, the orchestrator and single liaison | `system/agents/Optimus.md` (renamed from `ChiefOfStaff.md`); `agent_owner: Optimus` |
+| **Autobots** | Crewmates doing ship tasks (sub-project 2); seeded from `CodingAgent.md` / `SystemMaintenance.md` | — |
+| **Bumblebee** | Scout crewmates producing investigation reports ("recon") | — |
+| **Teletraan** | Zero-token watcher that wakes Optimus (sub-project 2) | `jarvis-teletraan.service` (reserved) |
+| **Wheeljack** | Headless intake compiler | `jarvis-wheeljack.service` / `.timer`, `intake_daemon.sh`, `run_headless.sh ingest` |
+| **Ultra Magnus** | Publish gate: validate, conflict-check, publish | `publish_staged.py`, `vaultlib/publish.py` |
+| **Soundwave** | Memory capture and recall | `system/hooks/memory_*.sh`, `/digest`, `vault_index.py recall` |
+| **The Ark** | The index | `system/index.db`, `vault_index.py` |
+
+Other units keep plain names: `jarvis-brief`, `jarvis-debrief`, `jarvis-focus`. Environment variables use the `JARVIS_` prefix (`JARVIS_HEADLESS`, `JARVIS_CREW`, `JARVIS_TASK_ID`). Dispatching a crewmate is "roll out"; a scout report is a "recon". Names appear in unit descriptions, log headers (`[wheeljack]`, `[ultra-magnus]`), the README and `CLAUDE.md`.
+
+## 16. Sub-project 2: Optimus orchestrator (reserved seams)
+
+A vault-native orchestrator in the style of firstmate (https://github.com/kunchenguid/firstmate): the user talks only to **Optimus**, which stays free while **Autobots** (ship) and **Bumblebees** (scout) run as autonomous interactive sessions in herdr or tmux, each in a disposable git worktree of a registered codebase, supervised by **Teletraan**. It gets its own brainstorm, spec and plan after the core vault plan. The core reserves these seams so nothing needs rework:
+
+1. **Fleet state:** `system/fleet/` is reserved and gitignored for `tasks/<id>/{brief.md,status.json,report.md}`. The core neither creates nor reads it; `vault_integrity.bats` checks it is ignored.
+2. **Memory hooks:** crewmates are in scope (git common dir) and interactive. With `JARVIS_CREW=1` the periodic Stop gate is off and recall is preferences-only (§6.17); Optimus requests one marked digest at task end, captured with `task_id`.
+3. **Coexisting Stop hooks:** Soundwave's capture hook has no side effects unless its gate fires, never blocks twice in a row, and does not depend on `stop_hook_active`, so a Teletraan turn-end backstop can coexist. Ordering is defined in the sub-project 2 spec.
+4. **Recon intake:** scout reports land in `raw/inbox/` with `partition`, `codebase` and `task_id` frontmatter and are compiled by Wheeljack unchanged; a `fleet_report` schema is deferred to sub-project 2.
+5. **Budgets:** crewmate sessions are not `claude -p` runs; they don't consume `HEADLESS_MAX_RUNS_PER_DAY` or take `run.lock`. Sub-project 2 defines its own concurrency and budget limits.
+6. **Personas and backend:** `CodingAgent.md` and `SystemMaintenance.md` seed Autobot briefs; `check_deps.sh` reports `herdr`/`tmux` as optional; the README names herdr as the recommended backend once sub-project 2 ships.
+
+**Carried into sub-project 2 (from firstmate, not designed here):** single liaison; ship vs scout task shapes; disposable worktrees; zero-token bash watcher plus turn-end backstop; per-project merge modes (`local-only`, `direct-PR`); restart reconciliation from on-disk state; a bearings-style fleet digest folded into `/brief`; firstmate's `/stow` aligned with Soundwave digests.
+
+**Excluded:** auto-merge (`+yolo`), public Relay replies (X/Discord), remote secondmates.
