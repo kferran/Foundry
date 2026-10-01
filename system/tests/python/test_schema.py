@@ -136,3 +136,40 @@ def test_link_target():
     assert schema.link_target("[[A|alias]]") == "A|alias"
     assert schema.link_target([["A"]]) == "A"
     assert schema.link_target("A") is None
+
+
+def test_unhashable_kind_raises(tmp_path):
+    write(tmp_path, "system/schemas/bad.md", "---\ntype: schema\nschema_for: bad\nfolders: [\"x/\"]\nfields:\n  a: {kind: [x]}\n---\n")
+    with pytest.raises(schema.SchemaError):
+        schema.load_schemas(tmp_path)
+
+
+def test_unhashable_kind_in_list_raises(tmp_path):
+    write(tmp_path, "system/schemas/bad.md", "---\ntype: schema\nschema_for: bad\nfolders: [\"x/\"]\nfields:\n  a: {kind: list, of: {kind: [x]}}\n---\n")
+    with pytest.raises(schema.SchemaError):
+        schema.load_schemas(tmp_path)
+
+
+def test_non_utf8_schema_raises(tmp_path):
+    (tmp_path / "system" / "schemas").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "system" / "schemas" / "bad.md").write_bytes(b"---\xff\xfe\n")
+    with pytest.raises(schema.SchemaError):
+        schema.load_schemas(tmp_path)
+
+
+def test_values_not_list_raises(tmp_path):
+    write(tmp_path, "system/schemas/bad.md", "---\ntype: schema\nschema_for: bad\nfolders: [\"x/\"]\nfields:\n  a: {kind: enum, values: abc}\n---\n")
+    with pytest.raises(schema.SchemaError):
+        schema.load_schemas(tmp_path)
+
+
+def test_must_exist_invalid_raises(tmp_path):
+    write(tmp_path, "system/schemas/bad.md", "---\ntype: schema\nschema_for: bad\nfolders: [\"x/\"]\nfields:\n  a: {kind: path, must_exist: bogus}\n---\n")
+    with pytest.raises(schema.SchemaError):
+        schema.load_schemas(tmp_path)
+
+
+def test_const_value_not_string_raises(tmp_path):
+    write(tmp_path, "system/schemas/bad.md", "---\ntype: schema\nschema_for: bad\nfolders: [\"x/\"]\nfields:\n  a: {kind: const, value: [a]}\n---\n")
+    with pytest.raises(schema.SchemaError):
+        schema.load_schemas(tmp_path)

@@ -69,8 +69,18 @@ def parse_fieldspec(raw, where: str) -> FieldSpec:
     if not isinstance(raw, dict) or "kind" not in raw:
         raise SchemaError(f"{where}: field spec needs a kind")
     kind = raw["kind"]
+    if not isinstance(kind, str):
+        raise SchemaError(f"{where}: kind must be a string")
     if kind not in KINDS:
         raise SchemaError(f"{where}: unknown kind {kind!r}")
+    if "values" in raw and not isinstance(raw["values"], list):
+        raise SchemaError(f"{where}: values must be a list")
+    if "must_exist" in raw and raw["must_exist"] not in ("warn", "error"):
+        raise SchemaError(f"{where}: must_exist must be 'warn' or 'error'")
+    if "default" in raw and not isinstance(raw["default"], str):
+        raise SchemaError(f"{where}: default must be a string")
+    if kind == "const" and "value" in raw and not isinstance(raw["value"], str):
+        raise SchemaError(f"{where}: const value must be a string")
     spec = FieldSpec(
         kind=kind, required=_flag(raw, "required"), default=raw.get("default"),
         value=raw.get("value"), values=list(raw.get("values") or []),
@@ -98,7 +108,11 @@ def load_schemas(vault: Path) -> dict:
     schemas = {}
     for path in sorted((Path(vault) / "system" / "schemas").glob("*.md")):
         rel = path.relative_to(vault).as_posix()
-        note = frontmatter.parse(path.read_text(encoding="utf-8"))
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError) as exc:
+            raise SchemaError(f"{rel}: cannot read: {exc}")
+        note = frontmatter.parse(text)
         if note.data is None:
             raise SchemaError(f"{rel}: {note.error or 'no frontmatter'}")
         data = note.data
