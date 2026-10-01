@@ -415,6 +415,7 @@ Evergreen, atomic knowledge node compiled from raw/.
 - Connection: `file:system/index.db?mode=ro` URI, then `PRAGMA query_only = 1`, and `setlimit(SQLITE_LIMIT_ATTACHED, 0)` where available. These are the primary guard.
 - Authorizer (second layer): allow `SELECT`, `READ`, `FUNCTION`, `RECURSIVE`, and `PRAGMA` only when the pragma name is `data_version` or a read-only `table_info`/`table_xinfo` (needed by FTS5 and schema introspection); deny everything else (`ATTACH`, DML, DDL, other pragmas).
 - A progress handler aborts queries running longer than 2 s; results are capped at 200 rows (`--limit`).
+- The database URI is built with `Path.as_uri()` so `#`, `?` and `%` in the vault path cannot drop `mode=ro`. `SQLITE_LIMIT_LENGTH` is set to 1,000,000 and `SQLITE_LIMIT_COLUMN` to 64, and fetching stops with an error once the result exceeds 16 MB: single blob/string functions (`zeroblob`, `randomblob`, `printf`) run as one VM opcode and would otherwise escape both the timeout and memory bounds (Plan 1 Task 10 review).
 
 ### 6.17 Memory hooks (`system/hooks/`)
 
