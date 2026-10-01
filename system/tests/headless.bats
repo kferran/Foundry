@@ -11,6 +11,10 @@ setup() {
   LEDGER="system/logs/runs-$(TZ=America/Denver date +%Y-%m).jsonl"
 }
 
+teardown() {
+  pkill -f '^sleep 31\.4159$' 2>/dev/null || true
+}
+
 @test "usage errors exit 2" {
   run "$RH"; [ "$status" -eq 2 ]
   run "$RH" rm; [ "$status" -eq 2 ]
@@ -21,6 +25,14 @@ setup() {
   mkdir -p raw/personal/notes
   cp "$BATS_TEST_TMPDIR/p.md" raw/personal/notes/p.md
   run "$RH" ingest raw/work/notes/d1.md raw/personal/notes/p.md; [ "$status" -eq 2 ]
+  [ ! -e "$LEDGER" ]
+}
+
+@test "status 2 after validation is recorded and returned as 1" {
+  STUB_MODE=fail2 run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 1 ]
+  [ "$(wc -l < "$LEDGER")" -eq 1 ]
+  [ "$(jq -r .exit "$LEDGER")" = "1" ]
 }
 
 @test "unsafe input filename exits 2 without calling claude" {
@@ -214,4 +226,49 @@ setup() {
   wait "$pid" || rc=$?
   [ "$rc" -eq 143 ]
   [ "$(tail -n1 "$LEDGER" | jq -r .exit)" = "143" ]
+}
+
+@test "failed publish recovery alerts with the run id and the run continues" {
+  bad=20260930T010101-ingest-0001
+  mkdir -p "system/logs/runs/$bad"
+  printf '{"staged": "wiki/.st' > "system/logs/runs/$bad/publish.journal"
+  run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+  [ -f wiki/work/concepts/New.md ]
+  run grep -c "recovery.*$bad" system/logs/alerts_*.md
+  [ "$status" -eq 0 ]
+  [ "$output" -eq 1 ]
+}
+
+@test "a process claude leaves behind does not hold run.lock" {
+  STUB_MODE=leak run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+  run pgrep -f '^sleep 31\.4159$'
+  [ "$status" -eq 0 ]
+  run flock -n system/run.lock true
+  [ "$status" -eq 0 ]
+}
+
+@test "unreadable note fails the snapshot with exit 3 and claude is not called" {
+  [ "$(id -u)" -ne 0 ] || skip "root can read mode-000 files"
+  chmod 000 wiki/work/concepts/Kafka.md
+  run "$RH" ingest raw/work/notes/d1.md
+  chmod 644 wiki/work/concepts/Kafka.md
+  [ "$status" -eq 3 ]
+  [ ! -e "$STUB_ARGS" ]
+  run grep -c 'snapshot failed' system/logs/alerts_*.md
+  [ "$status" -eq 0 ]
+  [ "$(wc -l < "$LEDGER")" -eq 1 ]
+  [ "$(jq -r .exit "$LEDGER")" = "3" ]
+}
+
+@test "signal exits do not count as attempts" {
+  sha="$(sha256sum raw/work/notes/d1.md | cut -d' ' -f1)"
+  mkdir -p system/logs
+  for rc in 129 130 143; do
+    printf '{"run_id":"s%s","command":"ingest","started_at":"x","exit":%s,"input_sha256":["%s"]}\n' "$rc" "$rc" "$sha" >> "$LEDGER"
+  done
+  STUB_MODE=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 1 ]
+  [ "$(tail -n1 "$LEDGER" | jq -r .attempt)" = "1" ]
 }

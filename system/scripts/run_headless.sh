@@ -65,11 +65,14 @@ write_ledger() {
   trap - EXIT
   (( ledger_written )) && return 0
   ledger_written=1
+  # Exit 2 means "usage error, no ledger line" and the daemon poisons on it at once. This trap is
+  # armed only after validation, so a 2 here (claude, or a set -e failure in jq/awk) is a run failure.
+  (( rc == 2 )) && rc=1
   [[ -n "$started" ]] || started="$(date -Iseconds)"
   if (( ${#shas[@]} )); then
     prevname="system/logs/runs-$(date -d "$(date +%Y-%m-01) -1 day" +%Y-%m).jsonl"
     failures="$( { cat "$prevname" "$LEDGER" 2>/dev/null || true; } | jq -R --argjson s "$(json_list "${shas[@]}")" \
-      'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and ([0,3,4,6] | index($e) | not) and ([.input_sha256[]? | strings] | any(. as $x | $s | index($x)))) | 1' | wc -l)"
+      'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and ([0,3,4,6,129,130,143] | index($e) | not) and ([.input_sha256[]? | strings] | any(. as $x | $s | index($x)))) | 1' | wc -l)"
     attempt=$(( failures + 1 ))
   fi
   if [[ -n "$run_id" ]]; then
@@ -85,6 +88,7 @@ write_ledger() {
     '{run_id:(if $run_id == "" then null else $run_id end), command:$command, started_at:$started, finished_at:$finished, inputs:$inputs,
       input_sha256:$shas, partition:(if $partition == "" then null else $partition end), exit:$exit,
       publish:$publish, attempt:$attempt, warnings:{permission_denials:$denials}}' >> "$LEDGER"
+  exit "$rc"
 }
 cpid=""
 stop_child() { [[ -z "$cpid" ]] || kill -TERM "$cpid" 2>/dev/null || true; }
@@ -112,7 +116,18 @@ elif ! flock -w "$LOCK_WAIT" 9; then
   die 6 "run.lock busy"
 fi
 
-system/scripts/publish_staged.py recover >> "$LOG" 2>&1 || true
+set +e
+recovery="$(system/scripts/publish_staged.py recover 2>> "$LOG")"
+recovery_rc=$?
+set -e
+printf '%s\n' "$recovery" >> "$LOG"
+if (( recovery_rc != 0 )); then
+  alert "publish recovery failed (exit $recovery_rc); see $LOG"
+else
+  recovery_failed="$(jq -er '(.failed // []) | map(strings) | join(" ")' <<< "$recovery" 2>/dev/null)" \
+    || recovery_failed="(unreadable recover output)"
+  [[ -z "$recovery_failed" ]] || alert "publish recovery failed for run(s): $recovery_failed (see system/logs/runs/<run_id>/publish.json)"
+fi
 
 runs_today=0
 if [[ -f "$LEDGER" ]]; then
@@ -132,8 +147,8 @@ case "$cmd" in
 esac
 started="$(date -Iseconds)"
 if ! system/scripts/publish_staged.py snapshot "$run_id" --targets "${targets[@]}" >/dev/null 2>> "$LOG"; then
-  alert "$cmd $run_id: snapshot failed; claude not run"
-  exit 5
+  alert "$cmd $run_id: snapshot failed; claude not run (see $LOG)"
+  exit 3  # vault environment error: excluded from attempts and the cap, and stops the daemon
 fi
 
 body="$(awk 'NR==1 && $0=="---" {fm=1; next} fm && $0=="---" {fm=0; next} !fm' "$cmdfile")"
@@ -149,10 +164,11 @@ for sub in query related show backlinks orphans issues validate field stage; do 
 out="system/logs/runs/$run_id/claude.json"
 printf '\n===== %s %s %s\n' "$(date -Iseconds)" "$run_id" "${inputs[*]:-}" >> "$LOG"
 set +e
-timeout "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --append-system-prompt-file CLAUDE.md \
+# 9>&-: claude's process tree must not inherit run.lock, or a leaked child holds it forever
+timeout -k 30s "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --append-system-prompt-file CLAUDE.md \
   --restricted --settings system/headless.settings.json --strict-mcp-config --no-session-persistence \
   --permission-mode dontAsk --output-format json --tools "Read,Glob,Grep,Edit,Write,Bash" \
-  --allowedTools "${allow[@]}" < /dev/null > "$out" 2>> "$LOG" &
+  --allowedTools "${allow[@]}" < /dev/null > "$out" 2>> "$LOG" 9>&- &
 cpid=$!
 wait "$cpid"
 rc=$?

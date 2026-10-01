@@ -5,7 +5,7 @@ readlink /proc/self/fd/0 > "${STUB_STDIN:-/dev/null}"
 run_id="$(ls wiki/.staging | head -1)"
 s="wiki/.staging/$run_id"
 case "${STUB_MODE:-write}" in
-  write|write_delete_input)
+  write|write_delete_input|leak)
     mkdir -p "$s/wiki/work/concepts"
     printf -- '---\ntype: concept\ntags: []\ncompiled_at: "2026-09-30"\npartition: work\n---\n# New\nSee [[Kafka]].\n' > "$s/wiki/work/concepts/New.md"
     printf '{"item":"x","decision":"create","target":"wiki/work/concepts/New.md","source":"s","reason":"r"}\n' > "$s/_decisions.jsonl" ;;
@@ -16,8 +16,13 @@ case "${STUB_MODE:-write}" in
     printf -- '---\ntype: briefing\ndate: "%s"\n---\n# Brief\n' "$(date +%F)" > "$s/briefings/$(date +%F).md" ;;
   nothing) ;;
   fail) exit 1 ;;
+  fail2) exit 2 ;;
   sleep) sleep 5 ;;
 esac
+# leak: leave a detached grandchild behind, as a claude tool subprocess might
+if [ "${STUB_MODE:-}" = leak ]; then
+  setsid sleep 31.4159 >/dev/null 2>&1 < /dev/null &
+fi
 if [ "${STUB_MODE:-}" = write_delete_input ]; then
   rm -f -- "${STUB_RM:-$(printf '%s\n' "$@" | grep -o 'raw/[^ ]*\.md' | head -1)}"
 fi
