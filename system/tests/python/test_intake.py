@@ -276,3 +276,73 @@ def test_manifest_append_survives_torn_line(iv):
     import hashlib
     last = (iv / "system/logs" / f"intake_manifest-{datetime.now(TZ).year}.jsonl").read_text().splitlines()[-1]
     assert json.loads(last)["sha256"] == hashlib.sha256(b"a").hexdigest()
+
+
+# -- fix round 1 ---------------------------------------------------------------
+def test_briefing_edit_during_lock_wait_survives(iv):
+    import fcntl
+    text = "top\n#wiki-ingest-start\nidea\n#wiki-ingest-end\nbottom\n"
+    path = briefing(iv, text)
+    holder = open(iv / "system/run.lock", "a")
+    fcntl.flock(holder, fcntl.LOCK_EX)
+    t = threading.Thread(target=lambda: Intake(iv, now=later()).extract_briefing())
+    t.start()
+    time.sleep(0.5)
+    edited = text + "USER EDIT WHILE WAITING\n"
+    path.write_text(edited)
+    fcntl.flock(holder, fcntl.LOCK_UN)
+    holder.close()
+    t.join()
+    # the read happens under the lock, so it sees the edit: edit kept, block extracted once
+    assert path.read_text() == "top\nbottom\nUSER EDIT WHILE WAITING\n"
+    drops = list((iv / "raw/inbox").glob("daily_note_drop_*.md"))
+    assert len(drops) == 1 and drops[0].read_text() == "idea\n"
+
+
+def test_briefing_changed_before_replace_left_untouched(iv, monkeypatch):
+    path = briefing(iv, "top\n#wiki-ingest-start\nidea\n#wiki-ingest-end\nbottom\n")
+    # the edit must land before the re-check, so hook the drop-name step (runs before it)
+    import vaultlib.intake as mod
+    orig_unique = mod.unique
+
+    def edit_then_unique(p):
+        path.write_text("top\n#wiki-ingest-start\nidea\n#wiki-ingest-end\nbottom\nEDIT\n")
+        return orig_unique(p)
+    monkeypatch.setattr(mod, "unique", edit_then_unique)
+    Intake(iv, now=later()).extract_briefing()
+    assert "EDIT" in path.read_text() and "#wiki-ingest-start" in path.read_text()
+    assert not list((iv / "raw/inbox").glob("daily_note_drop_*.md"))
+    assert "changed during extraction" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
+
+
+def test_non_utf8_inbox_file_is_redacted(iv):
+    (iv / "raw/inbox/s.md").write_bytes(b"caf\xe9\npassword=hunter2\n")
+    Intake(iv, now=later()).run()
+    assert "hunter2" not in calls(iv)[0]["staged"]["raw/inbox/.staging/s.md"]
+    assert (iv / "raw/archive/s.md").read_bytes() == b"caf\xe9\npassword=hunter2\n"
+
+
+def test_non_utf8_briefing_does_not_stop_inbox(iv):
+    p = iv / f"briefings/{today()}.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b"caf\xe9\n#wiki-ingest-start\nx\n#wiki-ingest-end\n")
+    old = time.time() - 600
+    os.utime(p, (old, old))
+    write(iv, "raw/inbox/a.md", "a")
+    Intake(iv, now=later()).run()
+    assert (iv / "raw/archive/a.md").exists()
+    assert "briefing" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file modes")
+def test_unreadable_inbox_file_does_not_stop_intake(iv):
+    a = write(iv, "raw/inbox/a.md", "a")
+    write(iv, "raw/inbox/b.md", "b")
+    a.chmod(0)
+    try:
+        Intake(iv, now=later()).run()
+    finally:
+        a.chmod(0o644)
+    assert (iv / "raw/archive/b.md").exists()
+    assert (iv / "raw/inbox/a.md").exists()
+    assert "a.md" in next((iv / "system/logs").glob("alerts_*.md")).read_text()

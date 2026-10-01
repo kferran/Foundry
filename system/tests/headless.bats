@@ -49,6 +49,15 @@ setup() {
   [ ! -e "$STUB_ARGS" ]
 }
 
+@test "missing command file exits 3" {
+  rm .claude/commands/ingest.md
+  run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 3 ]
+  [ ! -e "$STUB_ARGS" ]
+  [ -z "$(ls -A wiki/.staging)" ]
+  grep -q 'ingest.md' system/logs/alerts_*.md
+}
+
 @test "exact invocation flags, inlined prompt and /dev/null stdin" {
   run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 0 ]

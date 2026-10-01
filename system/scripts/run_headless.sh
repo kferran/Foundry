@@ -98,6 +98,12 @@ if ! jq -se 'length == 1 and (.[0] | type) == "object"' system/headless.settings
   die 3 "invalid system/headless.settings.json"
 fi
 
+cmdfile=".claude/commands/$cmd.md"
+if [[ ! -f "$cmdfile" ]]; then
+  alert "missing $cmdfile; $cmd not run"
+  die 3 "missing $cmdfile"
+fi
+
 exec 9>system/run.lock
 if [[ "$cmd" == ingest ]]; then
   flock 9
@@ -130,8 +136,6 @@ if ! system/scripts/publish_staged.py snapshot "$run_id" --targets "${targets[@]
   exit 5
 fi
 
-cmdfile=".claude/commands/$cmd.md"
-[[ -f "$cmdfile" ]] || die 2 "missing $cmdfile"
 body="$(awk 'NR==1 && $0=="---" {fm=1; next} fm && $0=="---" {fm=0; next} !fm' "$cmdfile")"
 argstr="$run_id"
 (( ${#inputs[@]} )) && argstr="$run_id ${inputs[*]}"

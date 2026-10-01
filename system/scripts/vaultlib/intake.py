@@ -116,11 +116,14 @@ class Intake:
 
     def eligible(self, path: Path) -> bool:
         name = path.name
-        if path.is_symlink() or not path.is_file() or name.startswith(".") or name.endswith(SKIP_SUFFIXES):
-            return False
-        if ".sync-conflict" in name:
-            return False
-        return self.now() - path.stat().st_mtime >= FRESH_SECONDS
+        try:
+            if path.is_symlink() or not path.is_file() or name.startswith(".") or name.endswith(SKIP_SUFFIXES):
+                return False
+            if ".sync-conflict" in name:
+                return False
+            return self.now() - path.stat().st_mtime >= FRESH_SECONDS
+        except OSError:
+            return False  # vanished or unreadable
 
     def _jsonl(self, path: Path):
         if not path.is_file():
@@ -183,9 +186,23 @@ class Intake:
     # -- briefing extraction ---------------------------------------------
     def extract_briefing(self) -> None:
         path = self.vault / "briefings" / f"{self.today()}.md"
-        if not path.is_file() or self.now() - path.stat().st_mtime < FRESH_SECONDS:
+        try:
+            with self.lock("run.lock", timeout=600):
+                self._extract_locked(path)
+        except TimeoutError:
+            self.alert("briefing extraction skipped: run.lock busy")
+
+    def _extract_locked(self, path: Path) -> None:
+        try:
+            if not path.is_file():
+                return
+            before = path.stat()
+            if self.now() - before.st_mtime < FRESH_SECONDS:
+                return
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            self.alert(f"briefing {path.name} unreadable ({exc.__class__.__name__}); extraction skipped")
             return
-        text = path.read_text(encoding="utf-8")
         if START not in text:
             return
         kept, extracted, inside = [], [], False
@@ -205,27 +222,41 @@ class Intake:
             self.alert(f"briefing {path.name} has an unterminated #wiki-ingest-start; left untouched")
             return
         try:
-            with self.lock("run.lock", timeout=600):
-                inbox = self.vault / "raw" / "inbox"
-                inbox.mkdir(parents=True, exist_ok=True)
-                drop = unique(inbox / f"daily_note_drop_{int(time.time())}.md")
-                drop.write_text("\n".join(extracted) + "\n", encoding="utf-8")
-                tmp = path.with_name(f".{path.name}.tmp")
-                tmp.write_text("\n".join(kept), encoding="utf-8")
-                os.replace(tmp, path)
-        except TimeoutError:
-            self.alert("briefing extraction skipped: run.lock busy")
+            inbox = self.vault / "raw" / "inbox"
+            inbox.mkdir(parents=True, exist_ok=True)
+            drop = unique(inbox / f"daily_note_drop_{int(time.time())}.md")
+            tmp = path.with_name(f".{path.name}.tmp")
+            tmp.write_text("\n".join(kept), encoding="utf-8")
+            after = path.stat()
+            if (after.st_mtime_ns, after.st_size) != (before.st_mtime_ns, before.st_size):
+                tmp.unlink(missing_ok=True)
+                self.alert(f"briefing {path.name} changed during extraction; left untouched")
+                return
+            drop.write_text("\n".join(extracted) + "\n", encoding="utf-8")
+            os.replace(tmp, path)
+        except OSError as exc:
+            self.alert(f"briefing extraction failed ({exc.__class__.__name__}); left untouched")
 
     # -- inbox -----------------------------------------------------------
     def process_inbox(self) -> bool:
         inbox = self.vault / "raw" / "inbox"
         if not inbox.is_dir():
             return True
-        for path in sorted((p for p in inbox.iterdir() if self.eligible(p)), key=lambda p: p.stat().st_mtime):
+        ready = []
+        for p in inbox.iterdir():
+            if self.eligible(p):
+                try:
+                    ready.append((p.stat().st_mtime, p.name, p))
+                except OSError:
+                    continue
+        for _, _, path in sorted(ready):
             if self.runs >= self.max_runs:
                 return True
-            if not self._inbox_file(path):
-                return False
+            try:
+                if not self._inbox_file(path):
+                    return False
+            except OSError as exc:
+                self.alert(f"skipped raw/inbox/{path.name}: {exc.__class__.__name__}: {exc}")
         return True
 
     def _inbox_file(self, path: Path) -> bool:
@@ -253,11 +284,8 @@ class Intake:
         staging.mkdir(parents=True, exist_ok=True)
         copy = staging / path.name
         raw = path.read_bytes()
-        try:
-            text, count = redactmod.redact(raw.decode("utf-8"))
-            copy.write_text(text, encoding="utf-8")
-        except UnicodeDecodeError:
-            copy.write_bytes(raw)
+        text, _ = redactmod.redact(raw.decode("utf-8", errors="replace"))
+        copy.write_text(text, encoding="utf-8")
         try:
             rc = self.headless([copy.relative_to(self.vault).as_posix()], [sha])
         finally:
