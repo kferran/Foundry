@@ -1,4 +1,6 @@
+import shutil
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -52,11 +54,34 @@ def test_multiple_statements_rejected(db):
         guard.run_query(db, "SELECT 1; DELETE FROM notes")
 
 
-def test_runaway_query_times_out(db):
-    with pytest.raises(sqlite3.OperationalError):
-        guard.run_query(db, "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c) SELECT count(*) FROM c", timeout=0.2)
-
-
 def test_row_cap(db):
     _, rows, truncated = guard.run_query(db, "WITH RECURSIVE r(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM r WHERE x<500) SELECT x FROM r", limit=10)
     assert len(rows) == 10 and truncated is True
+
+
+def test_uri_escaping(tmp_path, vault):
+    """URI must escape special chars like # so mode=ro isn't silently dropped."""
+    hashed_vault = tmp_path / "ha#sh" / "vault"
+    shutil.copytree(vault, hashed_vault)
+    idx = Index(hashed_vault)
+    idx.refresh()
+    cols, rows, _ = guard.run_query(idx.db_path, "SELECT count(*) FROM notes")
+    assert rows[0][0] > 0, "Should return note count from database"
+    assert not (tmp_path / "ha").exists(), "SQLite should not create a file named 'ha' due to unescaped #"
+
+
+def test_large_value_rejected(db):
+    """Single large values should be rejected."""
+    with pytest.raises(sqlite3.DatabaseError):
+        guard.run_query(db, "SELECT zeroblob(2000000)")
+
+
+def test_result_byte_budget(db):
+    """Result set exceeding byte budget should be rejected."""
+    with pytest.raises(sqlite3.DatabaseError, match="result too large"):
+        guard.run_query(db, "WITH RECURSIVE r(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM r WHERE x<100) SELECT zeroblob(900000) FROM r", limit=200)
+
+
+def test_runaway_query_times_out(db):
+    with pytest.raises(sqlite3.OperationalError, match="interrupted"):
+        guard.run_query(db, "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c) SELECT count(*) FROM c", timeout=0.2)
