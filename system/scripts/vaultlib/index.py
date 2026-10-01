@@ -256,10 +256,10 @@ class Index:
         for src, raw, target_path, line, kind, ambiguous in conn.execute(
                 "SELECT src, target_raw, target_path, line, kind, ambiguous FROM links").fetchall():
             if target_path is None:
-                add(src, line, "warning", "dead-link", f"dead link {raw}")
+                add(src, line, "warning", "dead-link", f"dead link [[{raw}]]")
                 continue
             if ambiguous:
-                add(src, line, "warning", "ambiguous-link", f"ambiguous link {raw} resolved to {target_path}")
+                add(src, line, "warning", "ambiguous-link", f"ambiguous link [[{raw}]] resolved to {target_path}")
             source, target = notes.get(src), notes.get(target_path)
             if source and source[2] and target and not target[2] and target_path != src:
                 add(src, line, "warning", "link-to-inactive", f"links to inactive note {target_path}")

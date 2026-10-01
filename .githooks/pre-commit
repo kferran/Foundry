@@ -1,0 +1,14 @@
+#!/bin/bash
+# Jarvis pre-commit: run the deterministic linter on staged vault notes (spec §6.9).
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+lint="$root/system/scripts/lint_vault.sh"
+pattern='^(wiki/|briefings/|raw/telemetry/|raw/(work|personal|shared)/|system/schemas/|system/config|system/codebases/)'
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -qE "$pattern"; then
+  exit 0
+fi
+if [[ ! -x "$lint" ]]; then
+  echo "pre-commit: $lint is missing or not executable" >&2
+  exit 1
+fi
+exec "$lint" --staged
