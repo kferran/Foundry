@@ -7,6 +7,8 @@ _DROP = {
     "tag:yaml.org,2002:float",
     "tag:yaml.org,2002:null",
     "tag:yaml.org,2002:timestamp",
+    "tag:yaml.org,2002:merge",
+    "tag:yaml.org,2002:value",
 }
 
 
@@ -18,6 +20,12 @@ StringLoader.yaml_implicit_resolvers = {
     first: [(tag, rx) for tag, rx in resolvers if tag not in _DROP]
     for first, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
 }
+
+# Register string constructor for explicit tags that would normally type-convert.
+# PyYAML copies the constructor dict on first add_constructor for a subclass,
+# so this does not mutate SafeLoader's constructor table.
+for tag in {"tag:yaml.org,2002:bool", "tag:yaml.org,2002:int", "tag:yaml.org,2002:float", "tag:yaml.org,2002:null", "tag:yaml.org,2002:timestamp"}:
+    StringLoader.add_constructor(tag, yaml.constructor.SafeConstructor.construct_yaml_str)
 
 
 def load(text: str):

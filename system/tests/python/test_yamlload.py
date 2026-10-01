@@ -38,3 +38,20 @@ def test_unquoted_wikilink_is_nested_list():
 
 def test_empty_document_is_none():
     assert yamlload.load("") is None
+
+
+def test_equals_and_merge_markers_stay_strings():
+    assert yamlload.load("a: =") == {"a": "="}
+    assert yamlload.load("a: <<") == {"a": "<<"}
+    assert yamlload.load("a: {<<: x}") == {"a": {"<<": "x"}}
+
+
+def test_explicit_tags_stay_strings():
+    assert yamlload.load("a: !!int 5") == {"a": "5"}
+    assert yamlload.load("a: !!bool yes") == {"a": "yes"}
+    assert yamlload.load("a: !!null ''") == {"a": ""}
+
+
+def test_safe_load_unaffected():
+    import yaml
+    assert yaml.safe_load("a: yes\nb: 17:00\nc: !!int 5") == {"a": True, "b": 1020, "c": 5}
