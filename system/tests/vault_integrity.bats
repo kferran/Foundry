@@ -1,71 +1,46 @@
 #!/usr/bin/env bats
+# Structural checks that run anywhere (spec §12). Live service checks live in system_health.bats.
 
 setup() {
   VAULT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
-  cd "$VAULT_ROOT" || exit 1
+  cd "$VAULT_ROOT"
 }
 
-@test "Verify required directory structural enclosures exist" {
-  [ -d "raw/archive" ]
-  [ -d "wiki" ]
-  [ -d "briefings" ]
-  [ -d "system/agents" ]
+@test "partition folders exist" {
+  for p in work personal shared; do
+    [ -d "wiki/$p/concepts" ]
+  done
+  [ -d raw/inbox ] && [ -d raw/archive ] && [ -d raw/telemetry ]
 }
 
-@test "Verify mandatory configuration manual blueprints are present" {
-  [ -f "CLAUDE.md" ]
-  [ -f "system/templates/wiki-concept.md" ]
-  [ -f "system/templates/daily-briefing.md" ]
+@test "Index note exists" {
+  [ -f wiki/Index.md ]
 }
 
-@test "Verify context-driven telemetry engine scripts are flagged as executable" {
-  [ -x "system/scripts/telemetry_enricher.sh" ]
+@test "vault scripts and hook are executable" {
+  [ -x system/scripts/vault_index.py ]
+  [ -x system/scripts/lint_vault.sh ]
+  [ -x .githooks/pre-commit ]
 }
 
-@test "Verify telemetry enricher runs cleanly and produces output files" {
-  rm -f raw/kusto_enriched_*.md
-  run system/scripts/telemetry_enricher.sh
-  [ "$status" -eq 0 ]
-  run bash -c "ls raw/kusto_enriched_*.md"
-  [ "$status" -eq 0 ]
-  rm -f raw/kusto_enriched_*.md
+@test "a schema note exists for every template type" {
+  for t in wiki-concept:concept daily-briefing:briefing daily-debrief:debrief intent-shaper:plan_gate; do
+    file="system/templates/${t%%:*}.md"
+    type="${t##*:}"
+    grep -q "^type: $type\$" "$file"
+    grep -q "^schema_for: $type\$" "system/schemas/$type.md"
+  done
 }
 
-@test "Verify active 15-minute systemd telemetry unit timer state" {
-  run systemctl --user is-active ultron-telemetry.timer
-  [ "$status" -eq 0 ]
-  [ "$output" = "active" ]
+@test "generated and per-user files are not tracked" {
+  ! git ls-files --error-unmatch system/index.db 2>/dev/null
+  ! git ls-files --error-unmatch system/config.md 2>/dev/null
 }
 
-@test "Verify underlying systemd telemetry background service unit loads cleanly" {
-  run systemctl --user list-units --type=service --all
-  [[ "$output" == *"ultron-telemetry.service"* ]]
-}
-
-@test "Verify 6am MT morning briefing systemd user timer is active" {
-  run systemctl --user is-active brain-brief.timer
-  [ "$status" -eq 0 ]
-  [ "$output" = "active" ]
-}
-
-@test "Verify 5pm MT evening debriefing systemd user timer is active" {
-  run systemctl --user is-active brain-debrief.timer
-  [ "$status" -eq 0 ]
-  [ "$output" = "active" ]
-}
-
-@test "Verify raw/ intake systemd user timer is active" {
-  run systemctl --user is-active brain-intake.timer
-  [ "$status" -eq 0 ]
-  [ "$output" = "active" ]
-}
-
-@test "Verify Obsidian focus tracker service is running" {
-  run systemctl --user is-active brain-focus-tracker.service
-  [ "$status" -eq 0 ]
-  [ "$output" = "active" ]
-}
-
-@test "Verify /setup onboarding config exists" {
-  [ -f "system/config.md" ]
+@test "generated paths are gitignored" {
+  git check-ignore -q system/index.db
+  git check-ignore -q wiki/.staging/run/x.md
+  git check-ignore -q system/fleet/tasks/x/status.json
+  git check-ignore -q raw/inbox/note.md
+  git check-ignore -q system/quarantine/x.md
 }
