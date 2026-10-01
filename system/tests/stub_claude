@@ -1,0 +1,21 @@
+#!/bin/bash
+# Test double for claude -p. Behaviour via STUB_MODE; records argv to $STUB_ARGS and stdin target to $STUB_STDIN.
+printf '%s\n' "$@" > "${STUB_ARGS:-/dev/null}"
+readlink /proc/self/fd/0 > "${STUB_STDIN:-/dev/null}"
+run_id="$(ls wiki/.staging | head -1)"
+s="wiki/.staging/$run_id"
+case "${STUB_MODE:-write}" in
+  write)
+    mkdir -p "$s/wiki/work/concepts"
+    printf -- '---\ntype: concept\ntags: []\ncompiled_at: "2026-09-30"\npartition: work\n---\n# New\nSee [[Kafka]].\n' > "$s/wiki/work/concepts/New.md"
+    printf '{"item":"x","decision":"create","target":"wiki/work/concepts/New.md","source":"s","reason":"r"}\n' > "$s/_decisions.jsonl" ;;
+  noop)
+    printf '{"item":"x","decision":"noop","target":"wiki/work/concepts/Kafka.md","source":"s","reason":"r"}\n' > "$s/_decisions.jsonl" ;;
+  brief)
+    mkdir -p "$s/briefings"
+    printf -- '---\ntype: briefing\ndate: "%s"\n---\n# Brief\n' "$(date +%F)" > "$s/briefings/$(date +%F).md" ;;
+  nothing) ;;
+  fail) exit 1 ;;
+  sleep) sleep 5 ;;
+esac
+printf '{"type":"result","subtype":"success","permission_denials":%s}\n' "${STUB_DENIALS:-[]}"
