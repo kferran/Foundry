@@ -43,3 +43,29 @@ setup() {
   git check-ignore -q raw/inbox/note.md
   git check-ignore -q system/quarantine/x.md
 }
+
+@test "settings files are valid JSON with the deny list and read fence" {
+  for f in .claude/settings.json system/headless.settings.json; do
+    jq empty "$f"
+    [ "$(jq '.permissions.blockReadsOutsideWorkingDirectories' "$f")" = "true" ]
+    for rule in 'Read(~/.ssh/**)' 'Read(~/.gnupg/**)' 'Read(~/.claude/.credentials.json)' 'Read(~/.claude.json)' 'Read(~/.claude/settings*.json)' 'Read(~/.config/gcalcli/**)' 'Read(//**/.env)' 'Read(//**/.env.*)'; do
+      jq -e --arg r "$rule" '.permissions.deny | index($r)' "$f" >/dev/null
+    done
+  done
+}
+
+@test "headless settings have no allows, no /-anchored rules, and a strict sandbox" {
+  f=system/headless.settings.json
+  [ "$(jq '.permissions.allow // [] | length' "$f")" = "0" ]
+  [ "$(jq '[.permissions.deny[] | select(test("^[A-Za-z]+\\(/[^/]"))] | length' "$f")" = "0" ]
+  [ "$(jq '.sandbox.enabled' "$f")" = "true" ]
+  [ "$(jq '.sandbox.autoAllowBashIfSandboxed' "$f")" = "false" ]
+}
+
+@test "interactive settings allow only staging-free vault edits and read-only index commands" {
+  f=.claude/settings.json
+  jq -e '.permissions.allow | index("Edit(/wiki/**)")' "$f" >/dev/null
+  jq -e '.permissions.allow | index("Edit(/briefings/**)")' "$f" >/dev/null
+  [ "$(jq '[.permissions.allow[] | select(test("vault_index.py set"))] | length' "$f")" = "0" ]
+  [ "$(jq '.hooks // {} | length' "$f")" = "0" ]
+}

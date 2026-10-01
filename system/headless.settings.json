@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "blockReadsOutsideWorkingDirectories": true,
+    "deny": [
+      "Read(~/.ssh/**)", "Read(~/.gnupg/**)",
+      "Read(~/.claude/.credentials.json)", "Read(~/.claude.json)", "Read(~/.claude/settings*.json)",
+      "Read(~/.config/gcalcli/**)", "Read(//**/.env)", "Read(//**/.env.*)"
+    ]
+  },
+  "sandbox": {"enabled": true, "autoAllowBashIfSandboxed": false}
+}

@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "blockReadsOutsideWorkingDirectories": true,
+    "allow": [
+      "Edit(/wiki/**)", "Edit(/briefings/**)",
+      "Bash(system/scripts/brief_prep.sh:*)",
+      "Bash(system/scripts/debrief_prep.sh:*)",
+      "Bash(system/scripts/lint_vault.sh:*)",
+      "Bash(system/scripts/vault_index.py query:*)",
+      "Bash(system/scripts/vault_index.py related:*)",
+      "Bash(system/scripts/vault_index.py show:*)",
+      "Bash(system/scripts/vault_index.py backlinks:*)",
+      "Bash(system/scripts/vault_index.py orphans:*)",
+      "Bash(system/scripts/vault_index.py issues:*)",
+      "Bash(system/scripts/vault_index.py validate:*)",
+      "Bash(system/scripts/vault_index.py field:*)",
+      "Bash(system/scripts/vault_index.py rebuild:*)",
+      "Bash(system/scripts/vault_index.py recall:*)"
+    ],
+    "deny": [
+      "Read(~/.ssh/**)", "Read(~/.gnupg/**)",
+      "Read(~/.claude/.credentials.json)", "Read(~/.claude.json)", "Read(~/.claude/settings*.json)",
+      "Read(~/.config/gcalcli/**)", "Read(//**/.env)", "Read(//**/.env.*)"
+    ]
+  }
+}
