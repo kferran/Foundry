@@ -1,3 +1,4 @@
+import time
 from vaultlib import links
 
 
@@ -65,3 +66,20 @@ def test_ambiguity_uses_prefer():
     r = links.Resolver(["wiki/work/X.md", "wiki/personal/X.md"])
     hit, amb = r.resolve("X", "wiki/personal/Y.md", "wiki", lambda p: (0 if "/personal/" in p else 1, p))
     assert (hit, amb) == ("wiki/personal/X.md", True)
+
+
+def test_no_quadratic_backtracking():
+    for s in ["[" * 100000, "[[" * 50000, "[[a" * 30000, "[a](" * 25000, "[x" * 50000]:
+        start = time.monotonic()
+        links.extract(s, 1)
+        assert time.monotonic() - start < 1.0
+
+
+def test_no_tags_from_links():
+    _, tags = links.extract("[[#Local]] [z](#top) (#paren) #real", 1)
+    assert tags == {"real"}
+
+
+def test_dotted_path_target():
+    r = links.Resolver(["wiki/2026.debrief.md"])
+    assert r.resolve("wiki/2026.debrief", "x.md", "wiki", prefer_none)[0] == "wiki/2026.debrief.md"

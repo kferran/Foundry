@@ -4,9 +4,9 @@ import re
 from dataclasses import dataclass
 
 WIKI = re.compile(r"(!?)\[\[([^\[\]\n]+?)\]\]")
-MD = re.compile(r"(?<![!\]])\[[^\]\n]*\]\(([^)\s]+)\)")
+MD = re.compile(r"(?<![!\]])\[[^\[\]\n]*\]\(([^()\s]+)\)")
 SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:", re.I)
-TAG = re.compile(r"(?<![\w/&#\]])#([A-Za-z][\w/-]*)")
+TAG = re.compile(r"(?<![\w/&#(\]])#([A-Za-z][\w/-]*)")
 FENCE = re.compile(r"^\s*(```|~~~)")
 INLINE = re.compile(r"`[^`\n]*`")
 
@@ -51,7 +51,9 @@ def extract(body: str, body_line: int):
             if SCHEME.match(href) or href.startswith("#"):
                 continue
             found.append(Link(href, href.split("#", 1)[0] or None, lineno, "md"))
-        for m in TAG.finditer(line):
+        # Remove link syntax before matching tags to prevent tag leakage
+        line_for_tags = MD.sub(" ", WIKI.sub(" ", line))
+        for m in TAG.finditer(line_for_tags):
             tags.add(m.group(1))
     return found, tags
 
@@ -77,7 +79,8 @@ class Resolver:
             return self.by_lower.get(joined.lower()), False
         name = target.strip().lstrip("/")
         if "/" in name:
-            candidates = [name] if posixpath.splitext(name)[1] else [name + ".md", name]
+            ext = posixpath.splitext(name)[1]
+            candidates = [name] if ext == ".md" else [name + ".md", name]
             for candidate in candidates:
                 hit = self.by_lower.get(candidate.lower())
                 if hit:
