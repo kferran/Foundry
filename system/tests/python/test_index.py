@@ -80,13 +80,48 @@ def test_new_file_resolves_previously_dead_link(vault):
     assert rows(idx, "SELECT target_path FROM links WHERE src='wiki/work/concepts/A.md'") == [("wiki/work/concepts/Later.md",)]
 
 
-def test_schema_change_triggers_full_rebuild(vault):
+def test_schema_change_triggers_full_rebuild(vault, monkeypatch):
     idx = Index(vault)
     idx.refresh()
+    originals = {p for (p,) in rows(idx, "SELECT path FROM notes")}
+    assert len(originals) >= 4
+    calls = []
+    original = Index._index_note
+    monkeypatch.setattr(Index, "_index_note", lambda self, conn, schemas, rel, *a: calls.append(rel) or original(self, conn, schemas, rel, *a))
     schema_file = vault / "system/schemas/index.md"
     schema_file.write_text(schema_file.read_text() + "\nedited\n")
     idx.refresh()
-    assert rows(idx, "SELECT count(*) FROM notes")[0][0] >= 4
+    assert originals <= set(calls)
+
+
+def test_typed_yaml_values_do_not_crash(vault):
+    write(vault, "wiki/work/concepts/Typed.md",
+          "---\ntype: concept\nx: !!binary aGk=\ny: !!set {a, b}\n---\n# Typed\nbody\n")
+    idx = Index(vault)
+    idx.refresh()
+    assert rows(idx, "SELECT count(*) FROM notes WHERE path='wiki/work/concepts/Typed.md'") == [(1,)]
+
+
+def test_vanished_file_does_not_crash(vault, monkeypatch):
+    import pathlib
+    real = pathlib.Path.read_bytes
+
+    def fake(self):
+        if self.as_posix().endswith("wiki/work/concepts/Kafka.md"):
+            raise FileNotFoundError("gone")
+        return real(self)
+
+    monkeypatch.setattr(pathlib.Path, "read_bytes", fake)
+    idx = Index(vault)
+    idx.refresh()
+    assert rows(idx, "SELECT code FROM issues WHERE path='wiki/work/concepts/Kafka.md'") == [("unreadable",)]
+    assert rows(idx, "SELECT count(*) FROM notes WHERE path='wiki/Index.md'") == [(1,)]
+
+
+def test_meta_version_stored(vault):
+    idx = Index(vault)
+    idx.refresh()
+    assert rows(idx, "SELECT value FROM meta WHERE key='version'") == [("1",)]
 
 
 def test_corrupt_db_is_rebuilt(vault):

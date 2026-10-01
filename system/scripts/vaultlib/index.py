@@ -146,6 +146,7 @@ class Index:
         self._global_issues(conn, schemas)
         self._views(conn, schemas)
         conn.execute("INSERT OR REPLACE INTO meta VALUES('schema_hash', ?)", (shash,))
+        conn.execute("INSERT OR REPLACE INTO meta VALUES('version', ?)", (INDEX_VERSION,))
         conn.execute("INSERT OR REPLACE INTO meta VALUES('built_at', ?)", (str(time.time()),))
 
     def _drop_note(self, conn, rel):
@@ -155,7 +156,13 @@ class Index:
             conn.execute(sql, (rel,))
 
     def _index_note(self, conn, schemas, rel, path, st):
-        data = path.read_bytes()
+        try:
+            data = path.read_bytes()
+        except OSError as exc:
+            self._drop_note(conn, rel)
+            conn.execute("INSERT INTO issues VALUES(?,?,?,?,?,'note')",
+                         (rel, 1, "error", "unreadable", f"cannot read note: {exc}"))
+            return
         sha = hashlib.sha256(data).hexdigest()
         prev = conn.execute("SELECT sha256 FROM notes WHERE path=?", (rel,)).fetchone()
         if prev and prev[0] == sha:
@@ -176,7 +183,7 @@ class Index:
                       st.st_mtime, st.st_size, sha, valid, 0 if inactive else 1, note.body_line))
         for key, value in fm.items():
             conn.execute("INSERT INTO fields VALUES(?,?,?)",
-                         (rel, str(key), value if isinstance(value, str) else json.dumps(value)))
+                         (rel, str(key), value if isinstance(value, str) else json.dumps(value, default=str)))
         body_links, tags = linkmod.extract(note.body, note.body_line)
         for link in body_links + self._frontmatter_links(schemas.get(ntype), note):
             conn.execute("INSERT INTO links VALUES(?,?,?,?,?,?,?)",
