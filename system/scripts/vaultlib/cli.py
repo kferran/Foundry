@@ -198,6 +198,22 @@ def cmd_query(args, vault, sc):
     return EXIT_OK
 
 
+def _is_path_ref(ref: str) -> bool:
+    return "/" in ref or ref.endswith(".md")
+
+
+def _vault_relative(vault: Path, ref: str):
+    """Resolve a path-style reference from the caller's cwd; None if outside the vault."""
+    path = Path(ref.strip())
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    resolved = Path(os.path.realpath(path))
+    root = Path(os.path.realpath(vault))
+    if resolved == root or root not in resolved.parents:
+        return None
+    return resolved.relative_to(root).as_posix()
+
+
 def _open(vault):
     idx = Index(vault)
     idx.refresh()
@@ -212,8 +228,12 @@ def cmd_related(args, vault, sc):
     if allowed is not None and args.partition:
         partitions = [p for p in args.partition if p in allowed]
     conn = _open(vault)
-    note = (retrieve.find_note(conn, vault, args.target, allowed)
-            if args.target.endswith(".md") or "/" in args.target else None)
+    note = None
+    if _is_path_ref(args.target):
+        note = _resolve_scoped(conn, vault, sc, args.target)
+        if note is None:
+            conn.close()
+            raise UsageError(f"not an indexed note: {args.target}")
     terms = retrieve.terms_for_note(conn, note) if note else retrieve.terms_for_text(args.target)
     hits = retrieve.related(conn, terms, limit=args.limit, partitions=partitions, codebase=args.codebase,
                             ntype=args.type, per_source=args.per_source,
@@ -228,7 +248,13 @@ def cmd_related(args, vault, sc):
 
 
 def _resolve_scoped(conn, vault, sc, ref):
-    return retrieve.find_note(conn, vault, ref, scopemod.allowed_partitions(sc))
+    allowed = scopemod.allowed_partitions(sc)
+    if _is_path_ref(ref):
+        relpath = _vault_relative(vault, ref)
+        if relpath is None:
+            return None
+        return retrieve.find_note(conn, vault, relpath, allowed, exact=True)
+    return retrieve.find_note(conn, vault, ref, allowed)
 
 
 def cmd_show(args, vault, sc):
@@ -299,6 +325,10 @@ def cmd_set(args, vault, sc):
         if str(exc).startswith("invalid key"):
             raise
         print(f"set failed: {exc}", file=sys.stderr)
+        return EXIT_FAIL
+    if frontmatter.parse(new_text).data is None or frontmatter.parse(new_text).data.get(args.key) != args.value:
+        print(f"set failed: {args.key} would not read back as the new value (duplicate or malformed frontmatter?)",
+              file=sys.stderr)
         return EXIT_FAIL
     schemas = schemamod.load_schemas(vault)
     _, issues = schemamod.validate_note(schemas, rel(vault, path), frontmatter.parse(new_text),

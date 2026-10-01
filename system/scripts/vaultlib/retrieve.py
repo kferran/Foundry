@@ -91,7 +91,7 @@ def orphans(conn) -> list:
     return [p for (p,) in conn.execute("SELECT path FROM issues WHERE code='orphan' ORDER BY path")]
 
 
-def find_note(conn, vault, ref: str, partitions=None) -> str | None:
+def find_note(conn, vault, ref: str, partitions=None, exact: bool = False) -> str | None:
     ref = ref.strip()
     candidate = Path(ref)
     if candidate.is_absolute():
@@ -108,6 +108,8 @@ def find_note(conn, vault, ref: str, partitions=None) -> str | None:
                            ','.join('?' * len(partitions))), (ref, ref + ".md") + tuple(partitions)).fetchone()
     if row:
         return row[0]
+    if exact:
+        return None
     # Try basename match with filtering
     name = ref.lower().removesuffix(".md")
     if partitions is None:

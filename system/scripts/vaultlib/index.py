@@ -15,6 +15,8 @@ INDEX_VERSION = "1"
 PRUNE = {".git", ".obsidian"}
 NOT_INDEXED = ("system/logs/", "system/quarantine/", "system/fleet/", "system/templates/",
                "system/tests/", "docs/", "raw/inbox/", "raw/archive/")
+# Walked but never indexed: reachable by explicit path, never by bare [[Name]].
+NAME_EXCLUDED = ("system/tests/", "system/templates/", "docs/")
 SKIP_FILES = ("system/index.db", "system/index.lock")
 TABLES = ("files", "notes", "fields", "links", "tags", "issues", "notes_fts")
 
@@ -230,7 +232,7 @@ class Index:
 
     def _resolve_links(self, conn, files):
         meta = {p: (part, act) for p, part, act in conn.execute("SELECT path, partition, active FROM notes")}
-        resolver = linkmod.Resolver(files)
+        resolver = linkmod.Resolver(files, name_exclude=NAME_EXCLUDED)
         for rowid, src, target, kind in conn.execute("SELECT rowid, src, target, kind FROM links").fetchall():
             src_part = schemamod.path_partition(src)
             src_dir = posixpath.dirname(src)

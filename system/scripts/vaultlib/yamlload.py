@@ -28,6 +28,25 @@ for tag in {"tag:yaml.org,2002:bool", "tag:yaml.org,2002:int", "tag:yaml.org,200
     StringLoader.add_constructor(tag, yaml.constructor.SafeConstructor.construct_yaml_str)
 
 
+def _construct_mapping(loader, node, deep=False):
+    seen = set()
+    for key_node, _ in node.value:
+        key = loader.construct_object(key_node, deep=True)
+        try:
+            dup = key in seen
+        except TypeError:
+            continue
+        if dup:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping", node.start_mark,
+                f"duplicate key {key!r}", key_node.start_mark)
+        seen.add(key)
+    return yaml.SafeLoader.construct_mapping(loader, node, deep=deep)
+
+
+StringLoader.construct_mapping = _construct_mapping
+
+
 def load(text: str):
     """Parse YAML text. Scalars are always str; an empty document returns None."""
     return yaml.load(text, Loader=StringLoader)

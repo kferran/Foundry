@@ -178,3 +178,49 @@ def test_vault_root_env_ignored(cli, vault, tmp_path):
     kafka = vault / "wiki/work/concepts/Kafka.md"
     res = cli("field", str(kafka), "partition", cwd=repo, env={"VAULT_ROOT": str(tmp_path)})
     assert res.returncode == 2
+
+
+def test_set_duplicate_key_exits_1_and_leaves_file(cli, vault):
+    text = "---\ntype: concept\nstatus: active\nstatus: stale\ntags: []\ncompiled_at: \"2026-09-01\"\npartition: work\n---\n# D\n"
+    path = write(vault, "wiki/work/concepts/Dup.md", text)
+    res = cli("set", "wiki/work/concepts/Dup.md", "status", "deprecated")
+    assert res.returncode == 1
+    assert path.read_text() == text
+
+
+def test_set_nested_duplicate_key_rejected(cli, vault):
+    text = "---\ntype: concept\nmeta:\n  a: 1\n  a: 2\ntags: []\ncompiled_at: \"2026-09-01\"\npartition: work\n---\n# D\n"
+    path = write(vault, "wiki/work/concepts/Dup2.md", text)
+    assert cli("set", "wiki/work/concepts/Dup2.md", "partition", "work").returncode == 1
+    assert path.read_text() == text
+
+
+def test_links_ignore_unindexed_trees(cli, vault):
+    write(vault, "system/tests/fixtures/x/wiki/Index.md", (vault / "wiki/Index.md").read_text())
+    write(vault, "system/templates/Kafka.md", (vault / "wiki/work/concepts/Kafka.md").read_text())
+    write(vault, "system/templates/wiki-concept.md", "---\ntype: concept\n---\n# T\n")
+    write(vault, "wiki/work/concepts/Linker.md",
+          concept("work", "Linker", "[[Index]] [[Kafka]] [[wiki-concept]]"))
+    res = cli("query", "SELECT target_raw, target_path, ambiguous FROM links WHERE src='wiki/work/concepts/Linker.md' ORDER BY target_raw", "--json")
+    rows = {r[0]: r[1:] for r in json.loads(res.stdout)["rows"]}
+    assert rows["Index"][0] == "wiki/Index.md"  # system/schemas/index.md is a real, indexed collision
+    assert rows["Kafka"] == ["wiki/work/concepts/Kafka.md", 0]
+    assert rows["wiki-concept"][0] is None
+    # explicit paths into excluded trees still resolve
+    write(vault, "wiki/work/concepts/Linker2.md", concept("work", "Linker2", "[[system/templates/Kafka]]"))
+    res = cli("query", "SELECT target_path FROM links WHERE src='wiki/work/concepts/Linker2.md'", "--json")
+    assert json.loads(res.stdout)["rows"] == [["system/templates/Kafka.md"]]
+
+
+def test_path_refs_resolve_from_cwd(cli, vault):
+    cwd = vault / "wiki" / "work"
+    res = cli("show", "concepts/Kafka.md", cwd=cwd)
+    assert res.returncode == 0 and "# Kafka" in res.stdout
+    res = cli("related", "concepts/Kafka.md", "--json", cwd=cwd)
+    assert res.returncode == 0
+    assert all(h["path"] != "wiki/work/concepts/Kafka.md" for h in json.loads(res.stdout))
+    assert cli("show", "concepts/Nope.md", cwd=cwd).returncode == 1
+    assert cli("backlinks", "concepts/Nope.md", cwd=cwd).returncode == 1
+    res = cli("related", "wiki/nonexistent/foo.md")
+    assert res.returncode == 2 and "not an indexed note: wiki/nonexistent/foo.md" in res.stderr
+    assert cli("related", "distributed commit log").returncode == 0

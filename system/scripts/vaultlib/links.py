@@ -61,11 +61,14 @@ def extract(body: str, body_line: int):
 class Resolver:
     """Resolve link targets against the set of vault files, Obsidian-style."""
 
-    def __init__(self, files):
+    def __init__(self, files, name_exclude=()):
+        """name_exclude: path prefixes still reachable by explicit path but never by bare name."""
         self.by_lower = {}
         self.by_name = {}
         for path in files:
             self.by_lower.setdefault(path.lower(), path)
+            if path.startswith(tuple(name_exclude)):
+                continue
             base = posixpath.basename(path).lower()
             self.by_name.setdefault(base, []).append(path)
             if base.endswith(".md"):

@@ -55,3 +55,18 @@ def test_explicit_tags_stay_strings():
 def test_safe_load_unaffected():
     import yaml
     assert yaml.safe_load("a: yes\nb: 17:00\nc: !!int 5") == {"a": True, "b": 1020, "c": 5}
+
+
+def test_duplicate_key_rejected():
+    import yaml
+    with pytest.raises(yaml.YAMLError):
+        yamlload.load("a: 1\na: 2")
+    with pytest.raises(yaml.YAMLError):
+        yamlload.load("m:\n  b: 1\n  b: 2")
+    assert yamlload.load("a: 1\nb: 2") == {"a": "1", "b": "2"}
+
+
+def test_frontmatter_duplicate_key_is_malformed():
+    from vaultlib import frontmatter
+    note = frontmatter.parse("---\nstatus: a\nstatus: b\n---\nbody")
+    assert note.data is None and "malformed frontmatter" in note.error
