@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -59,3 +60,30 @@ def test_cli_round_trip():
                          input="password=abc\n", capture_output=True, text=True)
     assert res.returncode == 0
     assert res.stdout == "password=[REDACTED:assignment]\n" and res.stderr.strip() == "redactions: 1"
+
+
+def test_cli_non_utf8_round_trip():
+    res = subprocess.run([sys.executable, str(REPO / "system/scripts/redact.py")],
+                         input=b"\xff\xfe bad \x80 password=abc\n", capture_output=True)
+    assert res.returncode == 0
+    assert res.stdout == b"\xff\xfe bad \x80 password=[REDACTED:assignment]\n" and res.stderr.strip() == b"redactions: 1"
+
+
+def test_pem_many_unterminated_headers_is_linear():
+    text = "-----BEGIN RSA PRIVATE KEY-----\n" * 20000
+    start = time.perf_counter()
+    result_text, count = redact(text)
+    elapsed = time.perf_counter() - start
+    assert elapsed < 1.0, f"Took {elapsed:.2f}s, expected < 1.0s (quadratic blowup detected)"
+    assert count == 0
+    assert result_text == text
+
+
+def test_pem_two_blocks():
+    pem1 = "-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END RSA PRIVATE KEY-----"
+    pem2 = "-----BEGIN EC PRIVATE KEY-----\nxyz\n-----END EC PRIVATE KEY-----"
+    text = f"prefix {pem1} middle {pem2} suffix"
+    result_text, count = redact(text)
+    assert count == 2
+    assert result_text == "prefix [REDACTED:pem] middle [REDACTED:pem] suffix"
+    assert pem1 not in result_text and pem2 not in result_text

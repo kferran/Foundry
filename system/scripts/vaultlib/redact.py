@@ -4,8 +4,9 @@ import re
 from collections import Counter
 
 PRIVATE = re.compile(r"<private>.*?</private>", re.IGNORECASE | re.DOTALL)
+PEM_BEGIN = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
+PEM_END = re.compile(r"-----END [A-Z0-9 ]*PRIVATE KEY-----")
 PATTERNS = [
-    ("pem", re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----", re.DOTALL)),
     ("aws_key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
     ("github_token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,})\b")),
     ("gitlab_token", re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}")),
@@ -33,6 +34,36 @@ def _high_entropy(match: re.Match) -> str:
     return "[REDACTED:high_entropy]"
 
 
+def _scan_pem(text: str) -> tuple[str, int]:
+    """Scan for PEM blocks linearly: find BEGIN, search for END, replace and continue.
+
+    Returns (redacted_text, count).
+    If a BEGIN is found but no END, stop scanning (no later BEGIN can have an END).
+    """
+    result = []
+    count = 0
+    pos = 0
+
+    while pos < len(text):
+        begin_match = PEM_BEGIN.search(text, pos)
+        if not begin_match:
+            result.append(text[pos:])
+            break
+
+        result.append(text[pos:begin_match.start()])
+        end_match = PEM_END.search(text, begin_match.end())
+        if end_match:
+            result.append("[REDACTED:pem]")
+            count += 1
+            pos = end_match.end()
+        else:
+            # No END found; stop scanning
+            result.append(text[begin_match.start():])
+            break
+
+    return "".join(result), count
+
+
 def redact(text: str) -> tuple:
     """Return (redacted_text, redaction_count)."""
     count = 0
@@ -44,6 +75,9 @@ def redact(text: str) -> tuple:
         return new
 
     text = sub(PRIVATE, "[PRIVATE]", text)
+    # PEM scanning (linear, not regex)
+    text, pem_count = _scan_pem(text)
+    count += pem_count
     for kind, pattern in PATTERNS:
         text = sub(pattern, f"[REDACTED:{kind}]", text)
     text = sub(BEARER, r"\1[REDACTED:bearer]", text)
