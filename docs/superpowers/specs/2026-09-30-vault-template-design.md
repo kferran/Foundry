@@ -152,7 +152,7 @@ docs/superpowers/specs/             this spec
 
 **Shell scripts:** `#!/bin/bash`, `set -euo pipefail`, locate the vault as `VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"`, and respect a `VAULT_ROOT` env override for tests. External tools (`claude`, `systemctl`, `gcalcli`, `git`, `loginctl`) are called by name (or via `CLAUDE_BIN`) so tests can stub them; `install_units.sh` additionally honours `SYSTEMCTL` and `SYSTEMD_USER_DIR`.
 
-**Python:** `#!/usr/bin/env python3`, stdlib plus PyYAML only, no network. Same `VAULT_ROOT` resolution and override. Never crashes on bad input notes: parse failures become `issues` rows.
+**Python:** `#!/usr/bin/env python3`, stdlib plus PyYAML only, no network. The vault root is derived **only** from the script's own location (`system/scripts/…` → vault root); Python ignores any `VAULT_ROOT` environment variable, because an override would let a caller widen its own scope (Plan 1 Task 12 review). Tests run a copy of `system/scripts/` placed inside the temporary vault. Never crashes on bad input notes: parse failures become `issues` rows.
 
 **Invocation form (pinned):** every script is executable and is invoked as `system/scripts/<name> …` from `VAULT_ROOT`, never via `python3 …`, `./…` or an absolute path. Permission rules (§7), `CLAUDE.md` and the commands all use this one form. The only exception is the absolute-path forms installed for codebase sessions (§6.19).
 
