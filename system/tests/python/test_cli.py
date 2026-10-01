@@ -203,13 +203,13 @@ def test_links_ignore_unindexed_trees(cli, vault):
           concept("work", "Linker", "[[Index]] [[Kafka]] [[wiki-concept]]"))
     res = cli("query", "SELECT target_raw, target_path, ambiguous FROM links WHERE src='wiki/work/concepts/Linker.md' ORDER BY target_raw", "--json")
     rows = {r[0]: r[1:] for r in json.loads(res.stdout)["rows"]}
-    assert rows["Index"][0] == "wiki/Index.md"  # system/schemas/index.md is a real, indexed collision
+    assert rows["Index"] == ["wiki/Index.md", 0]
     assert rows["Kafka"] == ["wiki/work/concepts/Kafka.md", 0]
     assert rows["wiki-concept"][0] is None
     # explicit paths into excluded trees still resolve
-    write(vault, "wiki/work/concepts/Linker2.md", concept("work", "Linker2", "[[system/templates/Kafka]]"))
-    res = cli("query", "SELECT target_path FROM links WHERE src='wiki/work/concepts/Linker2.md'", "--json")
-    assert json.loads(res.stdout)["rows"] == [["system/templates/Kafka.md"]]
+    write(vault, "wiki/work/concepts/Linker2.md", concept("work", "Linker2", "[[system/templates/Kafka]] [[system/schemas/index]]"))
+    res = cli("query", "SELECT target_path FROM links WHERE src='wiki/work/concepts/Linker2.md' ORDER BY target_path", "--json")
+    assert json.loads(res.stdout)["rows"] == [["system/schemas/index.md"], ["system/templates/Kafka.md"]]
 
 
 def test_path_refs_resolve_from_cwd(cli, vault):
