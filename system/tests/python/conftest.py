@@ -28,13 +28,16 @@ def vault(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def cli(vault: Path):
-    script = REPO / "system" / "scripts" / "vault_index.py"
+    shutil.copytree(REPO / "system" / "scripts", vault / "system" / "scripts", dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    script = vault / "system" / "scripts" / "vault_index.py"
 
-    def run(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
-        env = dict(os.environ, VAULT_ROOT=str(vault))
+    def run(*args: str, cwd: Path | None = None, env: dict | None = None) -> subprocess.CompletedProcess:
+        full_env = {k: v for k, v in os.environ.items() if k != "VAULT_ROOT"}
+        full_env.update(env or {})
         return subprocess.run(
             [sys.executable, str(script), *args],
-            cwd=cwd or vault, env=env, capture_output=True, text=True,
+            cwd=cwd or vault, env=full_env, capture_output=True, text=True,
         )
 
     return run

@@ -6,6 +6,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from . import frontmatter, guard, retrieve, schema as schemamod, scope as scopemod
@@ -19,8 +20,8 @@ class UsageError(Exception):
 
 
 def vault_root() -> Path:
-    env = os.environ.get("VAULT_ROOT")
-    return Path(env).resolve() if env else Path(__file__).resolve().parents[3]
+    # Deliberately ignores the environment: the vault is where this script lives (spec 6.16).
+    return Path(__file__).resolve().parents[3]
 
 
 def inside_vault(vault: Path, arg: str) -> Path:
@@ -30,6 +31,10 @@ def inside_vault(vault: Path, arg: str) -> Path:
     path = path.resolve()
     if path != vault and vault not in path.parents:
         raise UsageError(f"path is outside the vault: {arg}")
+    if not path.exists():
+        raise UsageError(f"no such file: {arg}")
+    if not path.is_file():
+        raise UsageError(f"not a regular file: {arg}")
     return path
 
 
@@ -81,9 +86,14 @@ def _trailing_comment(rest: str) -> str:
     return f"  {tail}" if tail.startswith("#") else ""
 
 
-def set_scalar(path: Path, key: str, value: str) -> None:
-    """Replace or insert a top-level scalar, double-quoted; preserves comments and order."""
-    lines = path.read_text(encoding="utf-8").split("\n")
+KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
+
+
+def set_scalar_text(text: str, key: str, value: str) -> str:
+    """Return text with a top-level scalar replaced or inserted, double-quoted; keeps comments and order."""
+    if not KEY_RE.match(key):
+        raise UsageError(f"invalid key: {key!r}")
+    lines = text.split("\n")
     if not lines or lines[0].rstrip("\r") != "---":
         raise UsageError("file has no frontmatter")
     end = next((i for i in range(1, len(lines)) if lines[i].rstrip("\r") in ("---", "...")), None)
@@ -103,9 +113,18 @@ def set_scalar(path: Path, key: str, value: str) -> None:
         break
     else:
         lines.insert(end, f"{key}: {quoted}")
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text("\n".join(lines), encoding="utf-8")
-    os.replace(tmp, path)
+    return "\n".join(lines)
+
+
+def write_atomic(path: Path, text: str) -> None:
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, prefix=".tmp-", delete=False) as tmp:
+        tmp.write(text)
+    os.chmod(tmp.name, path.stat().st_mode & 0o7777)
+    os.replace(tmp.name, path)
+
+
+def set_scalar(path: Path, key: str, value: str) -> None:
+    write_atomic(path, set_scalar_text(path.read_text(encoding="utf-8"), key, value))
 
 
 def print_issues(rows, as_json):
@@ -122,9 +141,14 @@ def print_issues(rows, as_json):
 
 
 def staged_paths(vault: Path) -> set:
-    out = subprocess.run(["git", "-C", str(vault), "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
-                         capture_output=True, text=True)
-    return set(out.stdout.split()) if out.returncode == 0 else set()
+    try:
+        out = subprocess.run(["git", "-C", str(vault), "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+                             capture_output=True, text=True)
+    except OSError as exc:
+        raise UsageError(f"git diff --cached failed: {exc}")
+    if out.returncode != 0:
+        raise UsageError(f"git diff --cached failed: {out.stderr.strip()}")
+    return set(out.stdout.split())
 
 
 def cmd_issues(args, vault, sc):
@@ -213,10 +237,19 @@ def cmd_show(args, vault, sc):
     conn = _open(vault)
     path = _resolve_scoped(conn, vault, sc, args.note)
     conn.close()
+    if path is not None:
+        resolved = (vault / path).resolve()
+        if vault.resolve() not in resolved.parents:
+            path = None
+        else:
+            allowed = scopemod.allowed_partitions(sc)
+            part = schemamod.path_partition(resolved.relative_to(vault.resolve()).as_posix())
+            if allowed is not None and part not in allowed:
+                path = None
     if path is None:
         print(f"not found: {args.note}", file=sys.stderr)
         return EXIT_FAIL
-    sys.stdout.write((vault / path).read_text(encoding="utf-8"))
+    sys.stdout.write(resolved.read_text(encoding="utf-8"))
     return EXIT_OK
 
 
@@ -258,21 +291,24 @@ def cmd_field(args, vault, sc):
 def cmd_set(args, vault, sc):
     require_vault_scope(sc)
     path = inside_vault(vault, args.file)
-    original = path.read_text(encoding="utf-8")
+    if not KEY_RE.match(args.key):
+        raise UsageError(f"invalid key: {args.key!r}")
     try:
-        set_scalar(path, args.key, args.value)
+        new_text = set_scalar_text(path.read_text(encoding="utf-8"), args.key, args.value)
     except UsageError as exc:
+        if str(exc).startswith("invalid key"):
+            raise
         print(f"set failed: {exc}", file=sys.stderr)
         return EXIT_FAIL
     schemas = schemamod.load_schemas(vault)
-    _, issues = schemamod.validate_note(schemas, rel(vault, path), frontmatter.parse(path.read_text(encoding="utf-8")),
+    _, issues = schemamod.validate_note(schemas, rel(vault, path), frontmatter.parse(new_text),
                                         schemamod.Context(vault))
     errors = [i for i in issues if i.severity == "error"]
     if errors:
-        path.write_text(original, encoding="utf-8")
         for issue in errors:
             print(f"{issue.path}:{issue.line}: error: {issue.message}", file=sys.stderr)
         return EXIT_FAIL
+    write_atomic(path, new_text)
     return EXIT_OK
 
 
@@ -336,6 +372,6 @@ def main(argv=None) -> int:
     except schemamod.SchemaError as exc:
         print(f"schema error: {exc}", file=sys.stderr)
         return EXIT_FAIL
-    except TimeoutError as exc:
+    except (TimeoutError, OSError, UnicodeDecodeError, sqlite3.Error) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_FAIL

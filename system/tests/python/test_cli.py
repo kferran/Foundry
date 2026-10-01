@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 
 from helpers import concept, write
@@ -111,3 +112,69 @@ def test_codebase_scope_limits_partitions(cli, vault, tmp_path):
 
 def test_rebuild(cli):
     assert cli("rebuild").returncode == 0
+
+
+def _work_codebase(vault, tmp_path):
+    repo = tmp_path / "code"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    write(vault, "system/codebases/code.md",
+          f'---\ntype: codebase\nname: code\npath: "{repo}"\npartition: work\nsearch_globs: ["*"]\n---\n')
+    return repo
+
+
+def test_show_refuses_symlink_outside_vault(cli, vault, tmp_path):
+    repo = _work_codebase(vault, tmp_path)
+    secret = tmp_path / "secret.md"
+    secret.write_text(concept("work", "Secret"))
+    os.symlink(secret, vault / "wiki/work/concepts/Leak.md")
+    res = cli("show", "Leak", cwd=repo)
+    assert res.returncode == 1 and "Secret" not in res.stdout
+    assert cli("show", "Leak").returncode == 1
+
+
+def test_show_refuses_symlink_to_other_partition(cli, vault, tmp_path):
+    repo = _work_codebase(vault, tmp_path)
+    target = write(vault, "wiki/personal/concepts/Priv.md", concept("personal", "Priv"))
+    os.symlink(target, vault / "wiki/work/concepts/PLeak.md")
+    res = cli("show", "PLeak", cwd=repo)
+    assert res.returncode == 1 and "Priv" not in res.stdout
+    assert cli("show", "PLeak").returncode == 1
+
+
+def test_set_rejects_bad_key(cli, vault):
+    path = vault / "wiki/work/concepts/Kafka.md"
+    original = path.read_text()
+    for key in ('aliases: ["x"]\ntitle', "a:b", "a b", ""):
+        assert cli("set", "wiki/work/concepts/Kafka.md", key, "v").returncode == 2
+    assert path.read_text() == original
+
+
+def test_set_validation_failure_leaves_file_untouched(cli, vault):
+    path = vault / "wiki/work/concepts/Kafka.md"
+    original, mtime = path.read_text(), path.stat().st_mtime_ns
+    assert cli("set", "wiki/work/concepts/Kafka.md", "partition", "personal").returncode == 1
+    assert path.read_text() == original and path.stat().st_mtime_ns == mtime
+    assert not list(path.parent.glob("*.tmp")) and not list(path.parent.glob("tmp*"))
+
+
+def test_missing_and_directory_arguments(cli):
+    for args in (("field", "nope.md", "partition"), ("field", "wiki", "partition"), ("validate", "nope.md")):
+        res = cli(*args)
+        assert res.returncode == 2 and "Traceback" not in res.stderr
+
+
+def test_binary_file_argument(cli, vault):
+    (vault / "wiki/work/concepts/Bin.md").write_bytes(b"\xff\xfe")
+    res = cli("field", "wiki/work/concepts/Bin.md", "partition")
+    assert res.returncode == 1 and "Traceback" not in res.stderr
+
+
+def test_issues_staged_outside_git(cli):
+    assert cli("issues", "--staged").returncode == 2
+
+
+def test_vault_root_env_ignored(cli, vault, tmp_path):
+    repo = _work_codebase(vault, tmp_path)
+    kafka = vault / "wiki/work/concepts/Kafka.md"
+    res = cli("field", str(kafka), "partition", cwd=repo, env={"VAULT_ROOT": str(tmp_path)})
+    assert res.returncode == 2

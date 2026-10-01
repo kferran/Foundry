@@ -108,6 +108,8 @@ class Index:
                 if name.startswith("."):
                     continue
                 path = Path(root) / name
+                if path.is_symlink():
+                    continue
                 rel = path.relative_to(self.vault).as_posix()
                 if rel.startswith(SKIP_FILES):
                     continue
