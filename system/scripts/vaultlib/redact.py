@@ -3,7 +3,8 @@ import math
 import re
 from collections import Counter
 
-PRIVATE = re.compile(r"<private>.*?</private>", re.IGNORECASE | re.DOTALL)
+PRIVATE_OPEN = re.compile(r"<private>", re.IGNORECASE)
+PRIVATE_CLOSE = re.compile(r"</private>", re.IGNORECASE)
 PEM_BEGIN = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
 PEM_END = re.compile(r"-----END [A-Z0-9 ]*PRIVATE KEY-----")
 PATTERNS = [
@@ -32,6 +33,27 @@ def _high_entropy(match: re.Match) -> str:
     if "REDACTED" in s or (HEX.fullmatch(s) and len(s) in (40, 64)) or _entropy(s) < ENTROPY_BITS:
         return s
     return "[REDACTED:high_entropy]"
+
+
+def _scan_private(text: str) -> tuple[str, int]:
+    """Replace each <private>...</private> span (any case, multi-line) with [PRIVATE], linearly.
+
+    An unterminated <private> redacts to the end of the text: a forgotten closing tag fails closed.
+    """
+    result, count, pos = [], 0, 0
+    while True:
+        opened = PRIVATE_OPEN.search(text, pos)
+        if not opened:
+            result.append(text[pos:])
+            break
+        result.append(text[pos:opened.start()])
+        result.append("[PRIVATE]")
+        count += 1
+        closed = PRIVATE_CLOSE.search(text, opened.end())
+        if not closed:
+            break
+        pos = closed.end()
+    return "".join(result), count
 
 
 def _scan_pem(text: str) -> tuple[str, int]:
@@ -74,7 +96,8 @@ def redact(text: str) -> tuple:
         count += n
         return new
 
-    text = sub(PRIVATE, "[PRIVATE]", text)
+    text, private_count = _scan_private(text)
+    count += private_count
     # PEM scanning (linear, not regex)
     text, pem_count = _scan_pem(text)
     count += pem_count

@@ -87,3 +87,14 @@ def test_pem_two_blocks():
     assert count == 2
     assert result_text == "prefix [REDACTED:pem] middle [REDACTED:pem] suffix"
     assert pem1 not in result_text and pem2 not in result_text
+
+
+def test_private_scan_is_linear():
+    start = time.perf_counter()
+    text, count = redact("<private>x" * 40000)
+    assert time.perf_counter() - start < 1.0
+    assert text == "[PRIVATE]" and count == 1
+
+
+def test_unterminated_private_redacts_to_end():
+    assert redact("a <private>secret") == ("a [PRIVATE]", 1)
