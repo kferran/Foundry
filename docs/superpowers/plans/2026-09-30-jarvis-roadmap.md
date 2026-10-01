@@ -15,4 +15,6 @@ The spec covers several subsystems that depend on each other in a strict order (
 | **5. Preferences phase** | §6.21 derivation, `/brief` acceptance, recall slot | `v_preference.status`, acceptance flow, quoted recall rendering, `preferences_enabled` switch | After the core has run for a few weeks |
 | **Sub-project 2** | §16 | Separate brainstorm → spec → plan (Optimus orchestrator) | After Plan 4 |
 
+**Gate:** do not install or enable any `system/systemd/*` unit until Plan 2b rewrites the units and Plan 4 rewrites the commands. The current units and `.claude/commands/{ingest,brief,debrief}.md` predate the headless pipeline: `brain-intake.service` would feed the legacy `ingest.md` and poison every input, and `brain-brief.service` calls `claude -p` directly, bypassing `run_headless.sh`.
+
 **Gating suites** (green at the end of every task once they exist): `python3 -m pytest system/tests/python -q`, `bats system/tests/vault_integrity.bats system/tests/scripts.bats` (Plan 2a adds `lib.bats` and `headless.bats`).
