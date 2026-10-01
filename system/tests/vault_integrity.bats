@@ -33,8 +33,7 @@ setup() {
 }
 
 @test "generated and per-user files are not tracked" {
-  ! git ls-files --error-unmatch system/index.db 2>/dev/null
-  ! git ls-files --error-unmatch system/config.md 2>/dev/null
+  [ -z "$(git ls-files system/index.db system/config.md)" ]
 }
 
 @test "generated paths are gitignored" {
