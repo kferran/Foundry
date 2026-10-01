@@ -212,3 +212,51 @@ def test_corrupt_snapshot_is_publish_error(run, content):
         publish.load_snapshot(run, RID)
     with pytest.raises(publish.PublishError):
         publish.validate_run(run, RID, now=LATER)
+
+
+# -- F3: snapshot environment faults --------------------------------------
+
+def test_snapshot_skips_a_file_that_vanishes_mid_walk(vault, monkeypatch):
+    real = publish.sha256_file
+
+    def vanishing(path):
+        if str(path).endswith("wiki/work/concepts/Kafka.md"):
+            raise FileNotFoundError(path)
+        return real(path)
+
+    monkeypatch.setattr(publish, "sha256_file", vanishing)
+    publish.snapshot(vault, RID, ["wiki/work/**", "wiki/shared/**"])
+    snap = json.loads((vault / "system/logs/runs" / RID / "snapshot.json").read_text())
+    assert "wiki/work/concepts/Kafka.md" not in snap["files"]
+    assert "wiki/shared/concepts/Git.md" in snap["files"]
+
+
+def test_snapshot_other_oserror_is_a_publish_error(vault, monkeypatch):
+    def unreadable(path):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(publish, "sha256_file", unreadable)
+    with pytest.raises(publish.PublishError, match="snapshot failed"):
+        publish.snapshot(vault, RID, ["wiki/work/**"])
+
+
+# -- F10/F11: target guards ------------------------------------------------
+
+def test_non_markdown_target_rejected(run):
+    stage_new(run, "wiki/work/x.sh", concept("work", "X"))
+    decide(run, rec("wiki/work/x.sh"))
+    assert "not a markdown note" in reasons(publish.validate_run(run, RID, now=LATER)[2])
+    assert publish.commit_run(run, RID, now=LATER)["status"] == "rejected"
+    assert not (run / "wiki/work/x.sh").exists()
+
+
+def test_existing_non_utf8_target_rejected(vault):
+    (vault / "wiki/work/concepts/Bin.md").write_bytes(
+        b'---\ntype: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work\n'
+        b'accepted_at: "2026-09-01"\n---\n# Bin\n\xff\xfe body\n')
+    publish.snapshot(vault, RID, ["wiki/work/**", "wiki/shared/**"])
+    dst = publish.record_stage(vault, RID, "wiki/work/concepts/Bin.md")
+    dst.write_text(concept("work", "Bin", "patched"))
+    decide(vault, rec("wiki/work/concepts/Bin.md", "patch"))
+    rs = reasons(publish.validate_run(vault, RID, now=LATER)[2])
+    assert "existing note unreadable" in rs

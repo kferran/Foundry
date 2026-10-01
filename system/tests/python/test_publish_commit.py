@@ -227,3 +227,112 @@ def test_recover_quarantines_conflicted_entries(run, monkeypatch):
     publish.recover(run)
     assert "user wrote this" in (run / "wiki/work/concepts/B.md").read_text()
     assert (run / "system/quarantine" / RID / "staged/wiki/work/concepts/B.md").is_file()
+
+
+# -- F1: model-staged paths that cannot be published -----------------------
+
+def test_stage_under_an_existing_file_is_rejected_not_a_traceback(run):
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/Kafka.md/bar.md", concept("work", "Bar"))
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/a/A.md", concept("work", "A"))
+    decide(run, rec("wiki/work/concepts/Kafka.md/bar.md"), rec("wiki/work/concepts/a/A.md"))
+    report = publish.commit_run(run, RID, now=LATER)
+    assert report["status"] == "rejected"
+    assert any(p["path"] == "wiki/work/concepts/Kafka.md/bar.md" and "not a file path" in p["reason"]
+               for p in report["problems"])
+    assert not any("internal error" in p["reason"] for p in report["problems"])
+    assert not (run / "wiki/work/concepts/a/A.md").exists()
+    assert (run / "wiki/work/concepts/Kafka.md").is_file()
+
+
+def test_stage_onto_an_existing_directory_is_rejected(run):
+    (run / "wiki/work/concepts/Dir.md").mkdir(parents=True)
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/Dir.md", concept("work", "Dir"))
+    decide(run, rec("wiki/work/concepts/Dir.md"))
+    report = publish.commit_run(run, RID, now=LATER)
+    assert report["status"] == "rejected"
+    assert any("not a file path" in p["reason"] for p in report["problems"])
+
+
+def test_apply_oserror_holds_entry_back_and_journal_commits(run, monkeypatch):
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/A.md", concept("work", "A"))
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/B.md", concept("work", "B"))
+    decide(run, rec("wiki/work/concepts/A.md"), rec("wiki/work/concepts/B.md"))
+    real = publish._rename
+
+    def failing(src, dst):
+        if dst.endswith("B.md"):
+            raise OSError("simulated EIO")
+        real(src, dst)
+
+    monkeypatch.setattr(publish, "_rename", failing)
+    report = publish.commit_run(run, RID, now=LATER)
+    assert report["status"] == "conflict"
+    assert report["published"] == ["wiki/work/concepts/A.md"]
+    assert report["conflicts"] == ["wiki/work/concepts/B.md"]
+    assert (run / "wiki/work/concepts/A.md").is_file()
+    assert not (run / "wiki/work/concepts/B.md").exists()
+    assert (run / "system/quarantine" / RID / "staged/wiki/work/concepts/B.md").is_file()
+    journal = (run / "system/logs/runs" / RID / "publish.journal").read_text().splitlines()
+    assert json.loads(journal[-1]) == {"committed": True}
+
+
+def test_recover_isolates_a_run_whose_apply_raises(run, monkeypatch):
+    bad = "20261001T110000-ingest-0002"
+    publish.snapshot(run, bad, ["wiki/work/**"])
+    write(run, f"wiki/.staging/{bad}/wiki/work/concepts/T.md", concept("work", "T"))
+    write(run, f"system/logs/runs/{bad}/publish.journal",
+          json.dumps({"staged": f"wiki/.staging/{bad}/wiki/work/concepts/T.md",
+                      "target": "wiki/work/concepts/T.md", "expected": None}) + "\n")
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/A.md", concept("work", "A"))
+    decide(run, rec("wiki/work/concepts/A.md"))
+    real_rename, real_apply = publish._rename, publish._apply
+
+    def crash(src, dst):
+        raise KeyboardInterrupt("simulated crash")
+
+    monkeypatch.setattr(publish, "_rename", crash)
+    with pytest.raises(KeyboardInterrupt):
+        publish.commit_run(run, RID, now=LATER)
+    monkeypatch.setattr(publish, "_rename", real_rename)
+
+    def apply(vault, journal):
+        if journal.parent.name == bad:
+            raise RuntimeError("boom")
+        return real_apply(vault, journal)
+
+    monkeypatch.setattr(publish, "_apply", apply)
+    result = publish.recover(run)
+    assert result["failed"] == [bad] and result["recovered"] == [RID]
+    assert (run / "wiki/work/concepts/A.md").is_file()
+    report = json.loads((run / "system/logs/runs" / bad / "publish.json").read_text())
+    assert report["status"] == "recovery_failed" and "boom" in report["problems"][0]["reason"]
+    assert (run / "system/quarantine" / bad / "staged/wiki/work/concepts/T.md").is_file()
+
+
+def test_recover_lets_keyboard_interrupt_propagate(run, monkeypatch):
+    write(run, f"system/logs/runs/{RID}/publish.journal",
+          json.dumps({"staged": "wiki/.staging/x", "target": "wiki/work/concepts/T.md", "expected": None}) + "\n")
+
+    def apply(vault, journal):
+        raise KeyboardInterrupt("stop")
+
+    monkeypatch.setattr(publish, "_apply", apply)
+    with pytest.raises(KeyboardInterrupt):
+        publish.recover(run)
+
+
+def test_recover_staging_loop_is_guarded_per_dir(run, monkeypatch):
+    other = "20261001T110000-ingest-0003"
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/A.md", concept("work", "A"))
+    write(run, f"wiki/.staging/{other}/wiki/work/concepts/B.md", concept("work", "B"))
+    real = publish._quarantine
+
+    def quarantine(vault, run_id):
+        if run_id == RID:
+            raise OSError("simulated EIO")
+        return real(vault, run_id)
+
+    monkeypatch.setattr(publish, "_quarantine", quarantine)
+    result = publish.recover(run)
+    assert RID in result["failed"] and result["aborted"] == [other]
+    assert (run / "system/quarantine" / other / "staged/wiki/work/concepts/B.md").is_file()

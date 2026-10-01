@@ -103,9 +103,17 @@ def snapshot(vault, run_id, targets) -> Path:
     rd = run_dir(vault, run_id)
     if rd.exists() or staging_dir(vault, run_id).exists():
         raise PublishError(f"run already exists: {run_id}")
-    files = {rel: sha256_file(vault / rel) for rel in _target_files(vault, targets)}
-    _write_json(rd / "snapshot.json", {"targets": list(targets), "files": files, "staged": {}})
-    staging_dir(vault, run_id).mkdir(parents=True)
+    files = {}
+    try:
+        for rel in _target_files(vault, targets):
+            try:
+                files[rel] = sha256_file(vault / rel)
+            except FileNotFoundError:
+                continue  # removed during the walk: not part of the pre-run state
+        _write_json(rd / "snapshot.json", {"targets": list(targets), "files": files, "staged": {}})
+        staging_dir(vault, run_id).mkdir(parents=True)
+    except OSError as exc:  # an environment fault, not an input fault
+        raise PublishError(f"snapshot failed: {exc}")
     return rd / "snapshot.json"
 
 
@@ -260,6 +268,15 @@ def _walls(vault, target, note, schemas, resolver) -> list:
     return out
 
 
+def _is_file_path(vault: Path, target: str) -> bool:
+    """False if any ancestor of target exists as a non-directory, or target itself is a directory."""
+    for parent in reversed(Path(target).parents[:-1]):
+        path = vault / parent
+        if os.path.lexists(path) and not path.is_dir():
+            return False
+    return not (vault / target).is_dir()
+
+
 def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, resolver, now) -> list:
     try:
         safe_rel(target)
@@ -267,6 +284,10 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
         return [Problem(target, str(exc))]
     if not target_matches(target, snap["targets"]):
         return [Problem(target, "not a publishable target")]
+    if Path(target).suffix != ".md":
+        return [Problem(target, "not a markdown note")]
+    if not _is_file_path(vault, target):
+        return [Problem(target, "not a file path: an ancestor is a file, or the target is a directory")]
     try:
         new_text = (staging_dir(vault, run_id) / target).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
@@ -286,7 +307,8 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
         try:
             old = frontmatter.parse(target_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError):
-            old = None
+            old = None  # the protected-field and shrink guards cannot run, so fail closed
+            out.append(Problem(target, "existing note unreadable"))
         if old is not None:
             out += _protected(old, new, target)
             if decision not in SHRINK_EXEMPT:
@@ -406,14 +428,24 @@ def _apply(vault: Path, journal: Path):
             else:
                 published.append(entry["target"])  # renamed before a crash
             continue
-        current = sha256_file(target) if target.is_file() else None
-        if current != entry["expected"]:
-            conflicts.append(entry["target"])
-            _hold_back(vault, run_id, staged, entry["target"])
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        _rename(str(staged), str(target))
-        published.append(entry["target"])
+        try:
+            current = sha256_file(target) if target.is_file() else None
+            if current != entry["expected"]:
+                conflicts.append(entry["target"])
+                _hold_back(vault, run_id, staged, entry["target"])
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            _rename(str(staged), str(target))
+            published.append(entry["target"])
+        except OSError:
+            # one unpublishable entry is held back; the journal must still reach committed
+            if entry["target"] not in conflicts:
+                conflicts.append(entry["target"])
+            try:
+                if staged.exists():
+                    _hold_back(vault, run_id, staged, entry["target"])
+            except OSError:
+                pass  # left in staging; quarantined with the rest of the run
     with open(journal, "a", encoding="utf-8") as handle:
         handle.write(json.dumps({"committed": True}) + "\n")
         handle.flush()
@@ -484,40 +516,58 @@ def abort_run(vault, run_id) -> dict:
 
 
 def recover(vault) -> dict:
-    """Roll forward interrupted publishes; quarantine aborted staging trees. Caller holds run.lock."""
+    """Roll forward interrupted publishes; quarantine aborted staging trees. Caller holds run.lock.
+
+    Each run is isolated: one that cannot be recovered is recorded as recovery_failed and the
+    others still proceed. KeyboardInterrupt and SystemExit are not Exceptions and propagate.
+    """
     vault = Path(vault)
     recovered, aborted, failed = [], [], []
+
+    def fail(run_id, reason) -> None:
+        try:
+            _quarantine(vault, run_id)
+        except Exception:  # noqa: BLE001 - the failure is still recorded below
+            pass
+        try:
+            _report(vault, run_id, "recovery_failed", problems=[Problem("publish.journal", reason)])
+        except Exception:  # noqa: BLE001
+            pass
+        if run_id not in failed:
+            failed.append(run_id)
+
     runs = vault / "system" / "logs" / "runs"
     if runs.is_dir():
         for rd in sorted(runs.iterdir()):
             journal = rd / "publish.journal"
-            if not (RUN_ID.match(rd.name) and journal.is_file()):
-                continue
             try:
+                if not (RUN_ID.match(rd.name) and journal.is_file()):
+                    continue
                 if _committed(journal):
                     continue
                 published, conflicts = _apply(vault, journal)
+                shutil.rmtree(staging_dir(vault, rd.name), ignore_errors=True)
+                _report(vault, rd.name, "conflict" if conflicts else "recovered",
+                        published=published, conflicts=conflicts)
+                recovered.append(rd.name)
             except ValueError as exc:
-                _quarantine(vault, rd.name)
-                _report(vault, rd.name, "recovery_failed",
-                        problems=[Problem("publish.journal", f"unreadable journal: {exc}")])
-                failed.append(rd.name)
-                continue
-            shutil.rmtree(staging_dir(vault, rd.name), ignore_errors=True)
-            _report(vault, rd.name, "conflict" if conflicts else "recovered",
-                    published=published, conflicts=conflicts)
-            recovered.append(rd.name)
+                fail(rd.name, f"unreadable journal: {exc}")
+            except Exception as exc:  # noqa: BLE001 - one bad run must not block the others
+                fail(rd.name, f"recovery error: {exc!r}")
     root = vault / "wiki" / ".staging"
     if root.is_dir():
         for sd in sorted(root.iterdir()):
-            if not sd.is_dir() or not RUN_ID.match(sd.name):
-                continue
-            if (run_dir(vault, sd.name) / "publish.journal").is_file():
-                shutil.rmtree(sd, ignore_errors=True)
-                continue
-            _quarantine(vault, sd.name)
-            _report(vault, sd.name, "aborted")
-            aborted.append(sd.name)
+            try:
+                if not sd.is_dir() or not RUN_ID.match(sd.name):
+                    continue
+                if (run_dir(vault, sd.name) / "publish.journal").is_file():
+                    shutil.rmtree(sd, ignore_errors=True)
+                    continue
+                _quarantine(vault, sd.name)
+                _report(vault, sd.name, "aborted")
+                aborted.append(sd.name)
+            except Exception as exc:  # noqa: BLE001
+                fail(sd.name, f"could not quarantine aborted staging: {exc!r}")
     if recovered:
         _refresh_index(vault)
     return {"recovered": recovered, "aborted": aborted, "failed": failed}
