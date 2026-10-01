@@ -1,0 +1,135 @@
+import sqlite3
+
+from helpers import concept, write
+from vaultlib.index import Index, wall_blocked
+
+
+def build(vault):
+    idx = Index(vault)
+    idx.refresh()
+    return idx
+
+
+def issues(idx, code=None):
+    conn = sqlite3.connect(idx.db_path)
+    try:
+        sql = "SELECT path, severity, code FROM issues"
+        rows = conn.execute(sql + (" WHERE code=?" if code else ""), ((code,) if code else ())).fetchall()
+        return sorted(rows)
+    finally:
+        conn.close()
+
+
+def query(idx, sql):
+    conn = sqlite3.connect(idx.db_path)
+    try:
+        return conn.execute(sql).fetchall()
+    finally:
+        conn.close()
+
+
+def test_fixture_vault_is_clean(vault):
+    assert [i for i in issues(build(vault)) if i[1] == "error"] == []
+
+
+def test_dead_link_is_warning(vault):
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", "[[Nowhere]] [[Index]]"))
+    assert issues(build(vault), "dead-link") == [("wiki/work/concepts/A.md", "warning", "dead-link")]
+
+
+def test_wall_matrix():
+    assert wall_blocked("work", "personal") and wall_blocked("personal", "work")
+    assert wall_blocked("shared", "work") and wall_blocked("shared", "personal")
+    assert not wall_blocked("work", "shared") and not wall_blocked("personal", "shared")
+    assert not wall_blocked("work", "work")
+
+
+def test_partition_walls(vault):
+    write(vault, "wiki/work/concepts/W.md", concept("work", "W", "[[Gardening]]"))
+    write(vault, "wiki/shared/concepts/S.md", concept("shared", "S", "[[Kafka]]"))
+    write(vault, "wiki/personal/concepts/P.md", concept("personal", "P", "[[Git]]"))
+    found = issues(build(vault), "partition-wall")
+    assert found == [("wiki/shared/concepts/S.md", "error", "partition-wall"),
+                     ("wiki/work/concepts/W.md", "error", "partition-wall")]
+
+
+def test_index_and_briefings_exempt_from_walls(vault):
+    write(vault, "briefings/2026-09-30.md", '---\ntype: briefing\ndate: "2026-09-30"\n---\n[[Kafka]] [[Gardening]]')
+    assert issues(build(vault), "partition-wall") == []
+
+
+def test_ambiguous_link_prefers_partition(vault):
+    write(vault, "wiki/work/concepts/Dup.md", concept("work", "Dup"))
+    write(vault, "wiki/personal/concepts/Dup.md", concept("personal", "Dup"))
+    write(vault, "wiki/personal/concepts/User.md", concept("personal", "User", "[[Dup]]"))
+    idx = build(vault)
+    assert query(idx, "SELECT target_path, ambiguous FROM links WHERE src='wiki/personal/concepts/User.md'") == [("wiki/personal/concepts/Dup.md", 1)]
+    assert issues(idx, "partition-wall") == []
+
+
+def test_ambiguous_link_prefers_active(vault):
+    write(vault, "wiki/work/a/Topic.md", concept("work", "Topic", status="deprecated"))
+    write(vault, "wiki/work/concepts/Topic.md", concept("work", "Topic"))
+    write(vault, "wiki/work/concepts/Ref.md", concept("work", "Ref", "[[Topic]]"))
+    assert query(build(vault), "SELECT target_path FROM links WHERE src='wiki/work/concepts/Ref.md'") == [("wiki/work/concepts/Topic.md",)]
+
+
+def test_link_to_inactive_warns(vault):
+    write(vault, "wiki/work/concepts/Old.md", concept("work", "Old", status="deprecated"))
+    write(vault, "wiki/work/concepts/New.md", concept("work", "New", "[[Old]]"))
+    assert ("wiki/work/concepts/New.md", "warning", "link-to-inactive") in issues(build(vault))
+
+
+def test_supersession_pair_ok(vault):
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", superseded_by='"[[B]]"'))
+    write(vault, "wiki/work/concepts/B.md", concept("work", "B", supersedes='["[[A]]"]'))
+    idx = build(vault)
+    assert [i for i in issues(idx) if i[2].startswith("supersession")] == []
+    assert query(idx, "SELECT active FROM notes WHERE path='wiki/work/concepts/A.md'") == [(0,)]
+
+
+def test_supersession_pair_missing(vault):
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", superseded_by='"[[B]]"'))
+    write(vault, "wiki/work/concepts/B.md", concept("work", "B"))
+    assert issues(build(vault), "supersession-pair") == [("wiki/work/concepts/A.md", "error", "supersession-pair")]
+
+
+def test_supersession_dangling(vault):
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", superseded_by='"[[Ghost]]"'))
+    assert issues(build(vault), "supersession-dangling") == [("wiki/work/concepts/A.md", "error", "supersession-dangling")]
+
+
+def test_supersession_cross_partition(vault):
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", superseded_by='"[[B]]"'))
+    write(vault, "wiki/shared/concepts/B.md", concept("shared", "B", supersedes='["[[A]]"]'))
+    assert issues(build(vault), "supersession-partition") == [("wiki/work/concepts/A.md", "error", "supersession-partition")]
+
+
+def test_supersession_cycles(vault):
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", superseded_by='"[[B]]"', supersedes='["[[C]]"]'))
+    write(vault, "wiki/work/concepts/B.md", concept("work", "B", superseded_by='"[[C]]"', supersedes='["[[A]]"]'))
+    write(vault, "wiki/work/concepts/C.md", concept("work", "C", superseded_by='"[[A]]"', supersedes='["[[B]]"]'))
+    found = {p for p, _, _ in issues(build(vault), "supersession-cycle")}
+    assert found == {"wiki/work/concepts/A.md", "wiki/work/concepts/B.md", "wiki/work/concepts/C.md"}
+
+
+def test_unique_true(vault):
+    body = '---\ntype: codebase\nname: {n}\npath: "/tmp"\npartition: work\ndefault: "true"\nsearch_globs: ["*.py"]\n---\n'
+    write(vault, "system/codebases/a.md", body.format(n="a"))
+    write(vault, "system/codebases/b.md", body.format(n="b"))
+    assert len(issues(build(vault), "unique-true")) == 2
+
+
+def test_orphans(vault):
+    write(vault, "wiki/work/concepts/Lonely.md", concept("work", "Lonely"))
+    assert issues(build(vault), "orphan") == [("wiki/work/concepts/Lonely.md", "warning", "orphan")]
+
+
+def test_views_typed_with_defaults(vault):
+    write(vault, "wiki/work/concepts/F.md", concept("work", "F", "[[Index]]", is_friction='"true"'))
+    write(vault, "wiki/work/concepts/Old.md", concept("work", "Old", status="deprecated"))
+    idx = build(vault)
+    assert query(idx, "SELECT is_friction, status FROM v_concept WHERE path='wiki/work/concepts/F.md'") == [(1, "canonical")]
+    assert query(idx, "SELECT is_friction FROM v_concept WHERE path='wiki/work/concepts/Kafka.md'") == [(0,)]
+    assert query(idx, "SELECT count(*) FROM v_concept WHERE path='wiki/work/concepts/Old.md'") == [(0,)]
+    assert query(idx, "SELECT active FROM v_concept_all WHERE path='wiki/work/concepts/Old.md'") == [(0,)]

@@ -43,6 +43,13 @@ def first_heading(body: str) -> str | None:
     return None
 
 
+WALLS = {("work", "personal"), ("personal", "work"), ("shared", "work"), ("shared", "personal")}
+
+
+def wall_blocked(src_partition: str, target_partition: str) -> bool:
+    return (src_partition, target_partition) in WALLS
+
+
 class Index:
     def __init__(self, vault, db_path=None):
         self.vault = Path(vault)
@@ -237,8 +244,87 @@ class Index:
                          (hit, 1 if ambiguous else 0, rowid))
 
     def _global_issues(self, conn, schemas):
-        """Implemented in Task 9."""
         conn.execute("DELETE FROM issues WHERE scope='global'")
 
+        def add(path, line, severity, code, message):
+            conn.execute("INSERT INTO issues VALUES(?,?,?,?,?,'global')", (path, line, severity, code, message))
+
+        notes = {p: (t, part, act) for p, t, part, act in
+                 conn.execute("SELECT path, type, partition, active FROM notes")}
+        for src, raw, target_path, line, kind, ambiguous in conn.execute(
+                "SELECT src, target_raw, target_path, line, kind, ambiguous FROM links").fetchall():
+            if target_path is None:
+                add(src, line, "warning", "dead-link", f"dead link {raw}")
+                continue
+            if ambiguous:
+                add(src, line, "warning", "ambiguous-link", f"ambiguous link {raw} resolved to {target_path}")
+            source, target = notes.get(src), notes.get(target_path)
+            if source and source[2] and target and not target[2] and target_path != src:
+                add(src, line, "warning", "link-to-inactive", f"links to inactive note {target_path}")
+            if src.startswith("wiki/") and source and source[0] != "index":
+                p, q = schemamod.path_partition(src), schemamod.path_partition(target_path)
+                if p and q and wall_blocked(p, q):
+                    add(src, line, "error", "partition-wall", f"{p} note links to {q} note {target_path}")
+        for sch in schemas.values():
+            for fname, spec in sch.fields.items():
+                if not spec.unique_true:
+                    continue
+                hits = conn.execute(
+                    "SELECT f.path FROM fields f JOIN notes n ON n.path=f.path "
+                    "WHERE n.type=? AND f.key=? AND lower(f.value)='true'", (sch.name, fname)).fetchall()
+                if len(hits) > 1:
+                    for (path,) in hits:
+                        add(path, 1, "error", "unique-true",
+                            f"{fname} is true in {len(hits)} {sch.name} notes; at most one is allowed")
+        self._supersession_issues(conn, add)
+        for (path,) in conn.execute(
+                "SELECT n.path FROM notes n WHERE n.path LIKE 'wiki/%' AND n.active=1 "
+                "AND coalesce(n.type,'') != 'index' AND NOT EXISTS "
+                "(SELECT 1 FROM links l WHERE l.target_path=n.path AND l.src != n.path)").fetchall():
+            add(path, 1, "warning", "orphan", "no other note links here")
+
+    def _supersession_issues(self, conn, add):
+        edges = {}
+        for src, target_path, line in conn.execute(
+                "SELECT src, target_path, line FROM links WHERE kind='frontmatter:superseded_by'").fetchall():
+            if target_path is None:
+                add(src, line, "error", "supersession-dangling", "superseded_by target does not exist")
+                continue
+            edges[src] = (target_path, line)
+            if schemamod.path_partition(src) != schemamod.path_partition(target_path):
+                add(src, line, "error", "supersession-partition", "superseded_by crosses partitions")
+            back = conn.execute("SELECT 1 FROM links WHERE src=? AND kind='frontmatter:supersedes' AND target_path=?",
+                                (target_path, src)).fetchone()
+            if not back:
+                add(src, line, "error", "supersession-pair", f"{target_path} does not list this note in supersedes")
+        for start, (_, line) in edges.items():
+            seen, current = {start}, edges[start][0]
+            while current in edges:
+                if current == start:
+                    add(start, line, "error", "supersession-cycle", "superseded_by forms a cycle")
+                    break
+                if current in seen:
+                    break
+                seen.add(current)
+                current = edges[current][0]
+
     def _views(self, conn, schemas):
-        """Implemented in Task 9."""
+        for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='view'").fetchall():
+            conn.execute(f'DROP VIEW IF EXISTS "{name}"')
+        for sch in schemas.values():
+            cols = ["n.path AS path", "n.title AS title", "n.partition AS partition"]
+            for fname, spec in sch.fields.items():
+                if fname in ("path", "title", "partition"):
+                    continue
+                value = f"(SELECT value FROM fields f WHERE f.path=n.path AND f.key='{fname}')"
+                if spec.default is not None:
+                    default = str(spec.default).replace("'", "''")
+                    value = f"COALESCE({value}, '{default}')"
+                if spec.kind == "bool":
+                    value = f"CASE lower({value}) WHEN 'true' THEN 1 WHEN 'false' THEN 0 END"
+                elif spec.kind == "int":
+                    value = f"CAST({value} AS INTEGER)"
+                cols.append(f'{value} AS "{fname}"')
+            conn.execute(f'CREATE VIEW "v_{sch.name}_all" AS SELECT {", ".join(cols)}, n.active AS active '
+                         f"FROM notes n WHERE n.type='{sch.name}'")
+            conn.execute(f'CREATE VIEW "v_{sch.name}" AS SELECT * FROM "v_{sch.name}_all" WHERE active=1')
