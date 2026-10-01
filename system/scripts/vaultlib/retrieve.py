@@ -19,6 +19,8 @@ def terms_for_note(conn, path: str) -> list:
         return []
     title, aliases, body = row
     tags = [t for (t,) in conn.execute("SELECT tag FROM tags WHERE path=?", (path,))]
+    # Filter tags through WORD to remove nul and other invalid characters
+    tags = [tag for tag_str in tags for tag in WORD.findall(tag_str)]
     counts = collections.Counter(w.lower() for w in WORD.findall(body) if w.lower() not in STOP)
     return WORD.findall(title) + WORD.findall(aliases) + tags + [w for w, _ in counts.most_common(10)]
 
@@ -26,7 +28,7 @@ def terms_for_note(conn, path: str) -> list:
 def fts_query(terms) -> str:
     unique = []
     for term in terms:
-        term = term.lower().replace('"', "")
+        term = term.lower().replace('"', "").replace("\x00", "")
         if term and term not in STOP and term not in unique:
             unique.append(term)
     return " OR ".join(f'"{t}"' for t in unique[:30])
@@ -75,6 +77,11 @@ def related(conn, terms, *, limit=10, partitions=None, codebase=None, ntype=None
 
 
 def backlinks(conn, path, partitions=None) -> list:
+    # If partitions restriction, check target note's partition first
+    if partitions is not None:
+        target_row = conn.execute("SELECT partition FROM notes WHERE path=?", (path,)).fetchone()
+        if not target_row or target_row[0] not in partitions:
+            return []
     rows = conn.execute("SELECT DISTINCT l.src, n.partition FROM links l JOIN notes n ON n.path=l.src "
                         "WHERE l.target_path=? AND l.src != ? ORDER BY l.src", (path, path)).fetchall()
     return [src for src, part in rows if partitions is None or part in partitions]
@@ -84,7 +91,7 @@ def orphans(conn) -> list:
     return [p for (p,) in conn.execute("SELECT path FROM issues WHERE code='orphan' ORDER BY path")]
 
 
-def find_note(conn, vault, ref: str) -> str | None:
+def find_note(conn, vault, ref: str, partitions=None) -> str | None:
     ref = ref.strip()
     candidate = Path(ref)
     if candidate.is_absolute():
@@ -92,11 +99,21 @@ def find_note(conn, vault, ref: str) -> str | None:
             ref = candidate.resolve().relative_to(Path(vault).resolve()).as_posix()
         except ValueError:
             return None
-    row = conn.execute("SELECT path FROM notes WHERE lower(path)=lower(?) OR lower(path)=lower(?)",
-                       (ref, ref + ".md")).fetchone()
+    # Try exact path match
+    if partitions is None:
+        row = conn.execute("SELECT path FROM notes WHERE lower(path)=lower(?) OR lower(path)=lower(?)",
+                           (ref, ref + ".md")).fetchone()
+    else:
+        row = conn.execute("SELECT path FROM notes WHERE (lower(path)=lower(?) OR lower(path)=lower(?)) AND partition IN ({})".format(
+                           ','.join('?' * len(partitions))), (ref, ref + ".md") + tuple(partitions)).fetchone()
     if row:
         return row[0]
+    # Try basename match with filtering
     name = ref.lower().removesuffix(".md")
-    rows = conn.execute("SELECT path, active FROM notes").fetchall()
+    if partitions is None:
+        rows = conn.execute("SELECT path, active FROM notes").fetchall()
+    else:
+        rows = conn.execute("SELECT path, active FROM notes WHERE partition IN ({})".format(
+                           ','.join('?' * len(partitions))), partitions).fetchall()
     matches = sorted((0 if act else 1, len(p), p) for p, act in rows if Path(p).stem.lower() == name)
     return matches[0][2] if matches else None
