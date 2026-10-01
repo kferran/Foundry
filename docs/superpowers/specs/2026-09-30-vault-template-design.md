@@ -150,7 +150,7 @@ docs/superpowers/specs/             this spec
 
 ## 6. Components
 
-**Shell scripts:** `#!/bin/bash`, `set -euo pipefail`, locate the vault as `VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"`, and respect a `VAULT_ROOT` env override for tests. External tools (`claude`, `systemctl`, `gcalcli`, `git`, `loginctl`) are called by name (or via `CLAUDE_BIN`) so tests can stub them; `install_units.sh` additionally honours `SYSTEMCTL` and `SYSTEMD_USER_DIR`.
+**Shell scripts:** `#!/bin/bash`, `set -euo pipefail`, locate the vault as `VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"` and never read `VAULT_ROOT` from the environment (tests copy `system/scripts/` into the temporary vault). External tools (`claude`, `systemctl`, `gcalcli`, `git`, `loginctl`) are called by name (or via `CLAUDE_BIN`) so tests can stub them; `install_units.sh` additionally honours `SYSTEMCTL` and `SYSTEMD_USER_DIR`.
 
 **Python:** `#!/usr/bin/env python3`, stdlib plus PyYAML only, no network. The vault root is derived **only** from the script's own location (`system/scripts/…` → vault root); Python ignores any `VAULT_ROOT` environment variable, because an override would let a caller widen its own scope (Plan 1 Task 12 review). Tests run a copy of `system/scripts/` placed inside the temporary vault. Never crashes on bad input notes: parse failures become `issues` rows.
 
@@ -216,7 +216,7 @@ The only way automation invokes Claude.
 
 - **After claude exits:** run `system/scripts/publish_staged.py <run_id> --targets <publishable targets>` (§6.20). The run succeeds only if claude exited 0 **and** publish succeeded with at least one published file (or, for `ingest`, a `_decisions.jsonl` that parses and contains only `noop` entries). Allowed Bash for every command also includes `vault_index.py stage`.
 - **Logging:** timestamped header plus all output to `system/logs/headless/<command>_<YYYY-MM-DD>.log` (command name only, no leading `/`); the run's decisions file and publish report are kept in `system/logs/runs/<run_id>/`.
-- **Exit code:** 0 success; claude's non-zero exit code; 124 timeout; 3 invalid settings; 4 daily cap (inputs untouched); 5 publish rejected (validation error or conflict).
+- **Exit code:** 0 success; claude's non-zero exit code; 124 timeout; 3 invalid settings; 4 daily cap (inputs untouched); 5 publish rejected (validation error or conflict); 6 `run.lock` wait timed out (`brief`/`debrief`).
 
 ### 6.4 `intake_daemon.sh [--retry <run_id> | --retry-all]`
 
