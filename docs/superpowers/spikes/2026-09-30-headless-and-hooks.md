@@ -27,5 +27,13 @@
 
 User settings restored afterwards: `sha256sum -c` → `/home/fe/.claude/settings.json: OK`; test `digest.md` removed (none existed before).
 
-## Required spec edits
-- (none yet)
+## Required spec edits (approved and applied 2026-09-30)
+1. §6.3 — headless invocation is `--restricted` only; the command body is inlined as the `-p` prompt and `CLAUDE.md` passed with `--append-system-prompt-file`; `--setting-sources project` forbidden; stdin from `/dev/null`; `--output-format json` with `permission_denials` recorded as a warning; headless commands don't rely on `@`-imports (items 2, 3, 8).
+2. §7.2 — `headless.settings.json` enables `sandbox`; no network allowance needed because prep scripts run as `ExecStartPre` (item 9).
+3. §7.1/§7.3 — trust dialog lists project pre-approvals, keep them minimal; read-only built-ins may chain after an allowed Bash command (items 5, 6, 8).
+4. §6.17 — eligibility = no `agent_id` + `CLAUDE_CODE_ENTRYPOINT=cli` + `CLAUDE_CODE_SESSION_ATTENDED=1`, flagged undocumented, version tracked by `system_health.bats` (item 12).
+5. §6.17 — digest reason reads well under the "Stop hook error:" label; PostToolUse fast path is bash-only (items 10, 15).
+6. §6.19 — generated absolute Read/Edit rules use `//` (item 16).
+7. §7.4 — every item marked with its result.
+
+Carried to Plan 3: SessionStart `resume`/`fork` sources (item 13) and latency of the real hooks (item 15).
