@@ -133,3 +133,11 @@ def test_views_typed_with_defaults(vault):
     assert query(idx, "SELECT is_friction FROM v_concept WHERE path='wiki/work/concepts/Kafka.md'") == [(0,)]
     assert query(idx, "SELECT count(*) FROM v_concept WHERE path='wiki/work/concepts/Old.md'") == [(0,)]
     assert query(idx, "SELECT active FROM v_concept_all WHERE path='wiki/work/concepts/Old.md'") == [(0,)]
+
+
+def test_codebase_view_exposes_frontmatter_path_and_partition(vault):
+    write(vault, "system/codebases/a.md",
+          '---\ntype: codebase\nname: a\npath: "/srv/repo"\npartition: work\nsearch_globs: ["*"]\n---\n')
+    idx = build(vault)
+    assert query(idx, "SELECT path, fm_path, partition FROM v_codebase") == [("system/codebases/a.md", "/srv/repo", "work")]
+    assert query(idx, "SELECT partition FROM v_concept WHERE path='wiki/work/concepts/Kafka.md'") == [("work",)]

@@ -312,10 +312,11 @@ class Index:
         for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='view'").fetchall():
             conn.execute(f'DROP VIEW IF EXISTS "{name}"')
         for sch in schemas.values():
-            cols = ["n.path AS path", "n.title AS title", "n.partition AS partition"]
+            cols = ["n.path AS path", "n.title AS title", "COALESCE((SELECT value FROM fields f WHERE f.path=n.path AND f.key='partition'), n.partition) AS partition"]
             for fname, spec in sch.fields.items():
-                if fname in ("path", "title", "partition"):
+                if fname == "partition":
                     continue
+                column = f"fm_{fname}" if fname in ("path", "title") else fname
                 value = f"(SELECT value FROM fields f WHERE f.path=n.path AND f.key='{fname}')"
                 if spec.default is not None:
                     default = str(spec.default).replace("'", "''")
@@ -324,7 +325,7 @@ class Index:
                     value = f"CASE lower({value}) WHEN 'true' THEN 1 WHEN 'false' THEN 0 END"
                 elif spec.kind == "int":
                     value = f"CAST({value} AS INTEGER)"
-                cols.append(f'{value} AS "{fname}"')
+                cols.append(f'{value} AS "{column}"')
             conn.execute(f'CREATE VIEW "v_{sch.name}_all" AS SELECT {", ".join(cols)}, n.active AS active '
                          f"FROM notes n WHERE n.type='{sch.name}'")
             conn.execute(f'CREATE VIEW "v_{sch.name}" AS SELECT * FROM "v_{sch.name}_all" WHERE active=1')
