@@ -1,8 +1,13 @@
 ---
 type: concept
 tags: []
-compiled_at: {{date}}
-agent_owner: {{agent_name}}
+compiled_at: "{{date}}"
+partition: "{{partition}}"
+codebase: "{{codebase}}"
+agent_owner: "{{agent_name}}"
+status: draft
+sources:
+  - "[[{{source_stem}}]]"
 ---
 
 # {{title}}
@@ -12,7 +17,7 @@ agent_owner: {{agent_name}}
 ## Core Architecture & Context
 
 ## Interlinked Concepts
-- [[IndexNote]]
+- [[Index]]
 
 ## Audit Trail
-- Source Material: [[raw/{{source_file}}]]
+- Source Material: [[{{source_stem}}]]

@@ -1,12 +1,12 @@
 ---
 type: briefing
-date: {{date}}
-status: {{status}}
+date: "{{date}}"
+status: "{{status}}"
 ---
 
 # Daily Briefing & Operational Ledger: {{date}}
 
-## 🌅 Morning Alignment (08:00)
+## 🌅 Morning Alignment ({{brief_time}})
 
 ### 1. Active Objectives & Context Boundaries
 
@@ -15,8 +15,6 @@ status: {{status}}
 - **Focus Drift Analysis**:
 - **Communication Debt**:
 
-## 🌌 Evening Debriefing (17:00)
+## 🌌 Evening Debriefing ({{debrief_time}})
 
-### 1. Execution Logs & Results
-
-### 2. System State Deltas
+![[{{date}}.debrief]]
