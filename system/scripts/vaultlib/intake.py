@@ -413,14 +413,25 @@ class Intake:
             if (not item.is_file() or not isinstance(origin, str)
                     or not re.match(r"^raw/(inbox|work/notes|personal/notes|shared/notes)/[^/]+$", origin)):
                 continue
-            dest = unique(self.vault / origin)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(item), str(dest))
-            sidecar.unlink()
+            try:
+                dest = unique(self.vault / origin)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(item), str(dest))
+            except OSError as exc:
+                self.alert(f"retry skipped {origin}: {exc.__class__.__name__}: {exc}")
+                continue
             restored.append(dest.relative_to(self.vault).as_posix())
             shas.append(info.get("sha256"))
+            try:
+                sidecar.unlink()
+            except OSError as exc:
+                self.alert(f"retry restored {origin} but its sidecar {sidecar.name} remains: "
+                           f"{exc.__class__.__name__}: {exc}")
         if restored:
-            self._save_solo(self._solo() - set(shas))
+            try:
+                self._save_solo(self._solo() - set(shas))
+            except OSError as exc:
+                self.alert(f"retry could not update the solo list: {exc.__class__.__name__}: {exc}")
             _append_jsonl(self.logs / f"runs-{self.dt().strftime('%Y-%m')}.jsonl",
                           {"run_id": f"retry-{int(time.time())}", "command": "retry",
                            "started_at": self.dt().isoformat(),

@@ -130,3 +130,32 @@ def test_retry_after_torn_ledger_line_is_parseable(iv, monkeypatch):
     assert Intake(iv, now=later()).retry(None) == ["raw/inbox/bad.md"]
     last = ledger.read_text().splitlines()[-1]
     assert json.loads(last)["command"] == "retry"
+
+
+def test_retry_midway_oserror_still_records_ledger(iv, monkeypatch):
+    import hashlib
+    import shutil as shutil_mod
+    write(iv, "raw/inbox/a.md", "a")
+    write(iv, "raw/inbox/b.md", "b")
+    monkeypatch.setenv("STUB_RC", "5")
+    for _ in range(3):
+        Intake(iv, now=later()).run()
+    real_move = shutil_mod.move
+
+    def flaky(src, dst, *a, **k):
+        if str(src).endswith("b.md"):
+            raise PermissionError("denied")
+        return real_move(src, dst, *a, **k)
+
+    monkeypatch.setattr("vaultlib.intake.shutil.move", flaky)
+    assert Intake(iv, now=later()).retry(None) == ["raw/inbox/a.md"]
+    monkeypatch.undo()
+    ledger = iv / "system/logs" / f"runs-{ledger_month()}.jsonl"
+    last = json.loads(ledger.read_text().splitlines()[-1])
+    assert last["command"] == "retry" and hashlib.sha256(b"a").hexdigest() in last["input_sha256"]
+    assert (iv / "system/quarantine/poisoned/b.md").is_file()
+    assert (iv / "system/quarantine/poisoned/b.md.origin.json").is_file()
+    assert "b.md" in alerts(iv)
+    monkeypatch.setenv("STUB_RC", "5")
+    Intake(iv, now=later()).run()
+    assert (iv / "raw/inbox/a.md").exists()  # one failure since retry, not poisoned
