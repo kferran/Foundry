@@ -53,6 +53,18 @@ bad_note() {
   git -C "$V" add wiki/work/concepts/Bad.md
   run git -C "$V" commit -qm bad
   [ "$status" -ne 0 ]
+  [[ "$output" == *"missing required field tags"* ]]
+  ! git -C "$V" rev-parse --verify HEAD
+}
+
+@test "hook blocks a bad note with a space and non-ASCII in its name" {
+  mkdir -p "$V/wiki/work/concepts"
+  printf -- '---\ntype: concept\n---\n# Bad\n' > "$V/wiki/work/concepts/Café Note.md"
+  git -C "$V" add "wiki/work/concepts/Café Note.md"
+  run git -C "$V" commit -qm cafe
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"missing required field tags"* ]]
+  ! git -C "$V" rev-parse --verify HEAD
 }
 
 @test "hook allows a commit with nothing lintable staged" {

@@ -20,6 +20,17 @@ def issues(idx, code=None):
         conn.close()
 
 
+def issue_messages(idx, code=None):
+    """Return (path, severity, code, message) tuples for all issues."""
+    conn = sqlite3.connect(idx.db_path)
+    try:
+        sql = "SELECT path, severity, code, message FROM issues"
+        rows = conn.execute(sql + (" WHERE code=?" if code else ""), ((code,) if code else ())).fetchall()
+        return sorted(rows)
+    finally:
+        conn.close()
+
+
 def query(idx, sql):
     conn = sqlite3.connect(idx.db_path)
     try:
@@ -141,3 +152,20 @@ def test_codebase_view_exposes_frontmatter_path_and_partition(vault):
     idx = build(vault)
     assert query(idx, "SELECT path, fm_path, partition FROM v_codebase") == [("system/codebases/a.md", "/srv/repo", "work")]
     assert query(idx, "SELECT partition FROM v_concept WHERE path='wiki/work/concepts/Kafka.md'") == [("work",)]
+
+
+def test_dead_link_messages_by_kind(vault):
+    """Test that dead link messages are formatted correctly by link kind."""
+    # Wikilink in body: [[Nowhere]]
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", "[[Nowhere]]"))
+    # Frontmatter wikilink: sources: ["[[Ghost]]"]
+    write(vault, "wiki/work/concepts/B.md", concept("work", "B", sources='["[[Ghost]]"]'))
+    # Markdown link: [x](missing.md)
+    write(vault, "wiki/work/concepts/C.md", concept("work", "C", "[x](missing.md)"))
+    idx = build(vault)
+    messages = issue_messages(idx, "dead-link")
+    assert messages == [
+        ("wiki/work/concepts/A.md", "warning", "dead-link", "dead link [[Nowhere]]"),
+        ("wiki/work/concepts/B.md", "warning", "dead-link", "dead link [[Ghost]]"),
+        ("wiki/work/concepts/C.md", "warning", "dead-link", "dead link missing.md"),
+    ]

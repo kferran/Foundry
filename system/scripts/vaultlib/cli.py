@@ -142,13 +142,13 @@ def print_issues(rows, as_json):
 
 def staged_paths(vault: Path) -> set:
     try:
-        out = subprocess.run(["git", "-C", str(vault), "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+        out = subprocess.run(["git", "-C", str(vault), "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"],
                              capture_output=True, text=True)
     except OSError as exc:
         raise UsageError(f"git diff --cached failed: {exc}")
     if out.returncode != 0:
         raise UsageError(f"git diff --cached failed: {out.stderr.strip()}")
-    return set(out.stdout.split())
+    return set(p for p in out.stdout.split("\0") if p)
 
 
 def cmd_issues(args, vault, sc):

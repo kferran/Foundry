@@ -245,6 +245,20 @@ class Index:
             conn.execute("UPDATE links SET target_path=?, ambiguous=? WHERE rowid=?",
                          (hit, 1 if ambiguous else 0, rowid))
 
+    def _display(self, raw: str, kind: str) -> str:
+        """Format a link target for display based on link kind.
+
+        - Wikilinks (link, embed): wrap in [[…]]
+        - Frontmatter wikilinks: raw already contains [[…]]
+        - Markdown links: use as-is
+        """
+        if kind in ("link", "embed"):
+            return f"[[{raw}]]"
+        elif kind.startswith("frontmatter:"):
+            return raw
+        else:  # kind == "md"
+            return raw
+
     def _global_issues(self, conn, schemas):
         conn.execute("DELETE FROM issues WHERE scope='global'")
 
@@ -256,10 +270,10 @@ class Index:
         for src, raw, target_path, line, kind, ambiguous in conn.execute(
                 "SELECT src, target_raw, target_path, line, kind, ambiguous FROM links").fetchall():
             if target_path is None:
-                add(src, line, "warning", "dead-link", f"dead link [[{raw}]]")
+                add(src, line, "warning", "dead-link", f"dead link {self._display(raw, kind)}")
                 continue
             if ambiguous:
-                add(src, line, "warning", "ambiguous-link", f"ambiguous link [[{raw}]] resolved to {target_path}")
+                add(src, line, "warning", "ambiguous-link", f"ambiguous link {self._display(raw, kind)} resolved to {target_path}")
             source, target = notes.get(src), notes.get(target_path)
             if source and source[2] and target and not target[2] and target_path != src:
                 add(src, line, "warning", "link-to-inactive", f"links to inactive note {target_path}")

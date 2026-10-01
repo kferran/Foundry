@@ -4,7 +4,16 @@ set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
 lint="$root/system/scripts/lint_vault.sh"
 pattern='^(wiki/|briefings/|raw/telemetry/|raw/(work|personal|shared)/|system/schemas/|system/config|system/codebases/)'
-if ! git diff --cached --name-only --diff-filter=ACMR | grep -qE "$pattern"; then
+# Safely handle staged filenames with spaces and non-ASCII characters using -z.
+mapfile -d '' -t staged < <(git diff --cached --name-only -z --diff-filter=ACMR)
+found=0
+for f in "${staged[@]}"; do
+  if [[ $f =~ $pattern ]]; then
+    found=1
+    break
+  fi
+done
+if [[ $found -eq 0 ]]; then
   exit 0
 fi
 if [[ ! -x "$lint" ]]; then
