@@ -23,8 +23,27 @@ setup() {
   run "$RH" ingest raw/work/notes/d1.md raw/personal/notes/p.md; [ "$status" -eq 2 ]
 }
 
+@test "unsafe input filename exits 2 without calling claude" {
+  cp raw/work/notes/d1.md 'raw/work/notes/bad&name.md'
+  run "$RH" ingest 'raw/work/notes/bad&name.md'
+  [ "$status" -eq 2 ]
+  [ ! -e "$STUB_ARGS" ]
+}
+
 @test "invalid settings exit 3 without calling claude" {
   echo '{' > system/headless.settings.json
+  run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 3 ]
+  [ ! -e "$STUB_ARGS" ]
+  [ "$(wc -l < "$LEDGER")" -eq 1 ]
+  [ "$(jq -r .exit "$LEDGER")" = "3" ]
+  : > system/headless.settings.json
+  run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 3 ]
+  echo '[]' > system/headless.settings.json
+  run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 3 ]
+  printf '{}\n{}\n' > system/headless.settings.json
   run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 3 ]
   [ ! -e "$STUB_ARGS" ]
@@ -90,15 +109,62 @@ setup() {
   HEADLESS_MAX_RUNS_PER_DAY=2 run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 4 ]
   [ "$(grep -c 'daily headless cap' system/logs/alerts_*.md)" -eq 1 ]
+  [ "$(jq -s 'map(select(.exit == 4)) | length' "$LEDGER")" -eq 2 ]
   [ ! -e "$STUB_ARGS" ]
 }
 
 @test "malformed ledger line is ignored" {
   mkdir -p system/logs
   printf '{"run_id":"r1","command":"ingest","started_at":"%sT01:0' "$(TZ=America/Denver date +%F)" > "$LEDGER"
-  printf '\n' >> "$LEDGER"
   run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 0 ]
+  run bash -c 'tail -n1 "$1" | jq -e .run_id' _ "$LEDGER"
+  [ "$status" -eq 0 ]
+}
+
+@test "ledger with non-object and mistyped lines" {
+  mkdir -p system/logs
+  printf '%s\n' '{"command":"ingest","started_at":"x","input_sha256":[5,{"a":1}],"exit":1}' '5' '"str"' '{"started_at":123}' '[1]' > "$LEDGER"
+  run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+  run bash -c 'tail -n1 "$1" | jq -e .run_id' _ "$LEDGER"
+  [ "$status" -eq 0 ]
+}
+
+@test "input vanishing during the run still records the pre-run hash" {
+  sha="$(sha256sum raw/work/notes/d1.md | cut -d' ' -f1)"
+  STUB_MODE=write_delete_input STUB_RM=raw/work/notes/d1.md run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+  [ ! -e raw/work/notes/d1.md ]
+  [ "$(jq -r '.input_sha256[0]' "$LEDGER")" = "$sha" ]
+  [ -f wiki/work/concepts/New.md ]
+}
+
+@test "attempt counts consecutive failures of the same input" {
+  for i in 1 2 3; do
+    STUB_MODE=fail run "$RH" ingest raw/work/notes/d1.md
+    [ "$status" -eq 1 ]
+  done
+  [ "$(jq -s 'map(.attempt) | join(",")' "$LEDGER")" = '"1,2,3"' ]
+}
+
+@test "JARVIS_ORIGINAL_SHA256 overrides recorded hashes and must match input count" {
+  h="$(printf 'a%.0s' $(seq 64))"
+  JARVIS_ORIGINAL_SHA256="$h" run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.input_sha256[0]' "$LEDGER")" = "$h" ]
+  JARVIS_ORIGINAL_SHA256="$h $h" run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 2 ]
+}
+
+@test "attempt looks back into the previous month's ledger" {
+  sha="$(sha256sum raw/work/notes/d1.md | cut -d' ' -f1)"
+  prev="system/logs/runs-$(TZ=America/Denver date -d "$(TZ=America/Denver date +%Y-%m-01) -1 day" +%Y-%m).jsonl"
+  mkdir -p system/logs
+  printf '{"run_id":"p","command":"ingest","started_at":"x","exit":1,"input_sha256":["%s"]}\n' "$sha" > "$prev"
+  STUB_MODE=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 1 ]
+  [ "$(jq -r .attempt "$LEDGER")" = "2" ]
 }
 
 @test "brief gives up on a busy run.lock with exit 6" {
@@ -107,6 +173,8 @@ setup() {
   sleep 0.5
   HEADLESS_LOCK_WAIT=1 STUB_MODE=brief run "$RH" brief
   [ "$status" -eq 6 ]
+  [ "$(wc -l < "$LEDGER")" -eq 1 ]
+  [ "$(jq -r .exit "$LEDGER")" = "6" ]
   wait
 }
 

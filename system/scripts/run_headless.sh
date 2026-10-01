@@ -34,11 +34,12 @@ cmd="${1:-}"
 case "$cmd" in ingest|brief|debrief) ;; *) die 2 "unknown command: ${cmd:-<none>}" ;; esac
 LOG="system/logs/headless/${cmd}_${TODAY}.log"
 
-inputs=() partition=""
+inputs=() shas=() partition=""
 if [[ "$cmd" == ingest ]]; then
   (( $# >= 1 && $# <= 5 )) || die 2 "ingest takes 1-5 raw paths"
   for arg in "$@"; do
     relpath="$(args_vault_path "$arg")" || die 2 "not a file inside the vault: $arg"
+    args_raw_filename "${relpath##*/}" || die 2 "unsafe input filename: $relpath"
     case "$relpath" in
       raw/inbox/.staging/*) p="$(input_partition "$relpath")" ;;
       raw/work/notes/*|raw/personal/notes/*|raw/shared/notes/*) p="${relpath#raw/}"; p="${p%%/*}" ;;
@@ -47,12 +48,47 @@ if [[ "$cmd" == ingest ]]; then
     [[ -z "$partition" || "$partition" == "$p" ]] || die 2 "inputs span partitions ($partition, $p)"
     partition="$p"
     inputs+=("$relpath")
+    shas+=("$(sha256sum -- "$relpath" | cut -d' ' -f1)")
   done
+  if [[ -n "${JARVIS_ORIGINAL_SHA256:-}" ]]; then
+    read -r -a shas <<< "$JARVIS_ORIGINAL_SHA256"
+    (( ${#shas[@]} == ${#inputs[@]} )) || die 2 "JARVIS_ORIGINAL_SHA256 has ${#shas[@]} entries for ${#inputs[@]} inputs"
+  fi
 else
   (( $# == 0 )) || die 2 "$cmd takes no arguments"
 fi
 
-if ! jq empty system/headless.settings.json 2>/dev/null; then
+run_id="" started="" denials=0 ledger_written=0
+write_ledger() {
+  local rc=$? failures attempt=1 prevname pubsum='{}'
+  set +e
+  trap - EXIT
+  (( ledger_written )) && return 0
+  ledger_written=1
+  [[ -n "$started" ]] || started="$(date -Iseconds)"
+  if (( ${#shas[@]} )); then
+    prevname="system/logs/runs-$(date -d "$(date +%Y-%m-01) -1 day" +%Y-%m).jsonl"
+    failures="$( { cat "$prevname" "$LEDGER" 2>/dev/null || true; } | jq -R --argjson s "$(json_list "${shas[@]}")" \
+      'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and ([0,3,4,6] | index($e) | not) and ([.input_sha256[]? | strings] | any(. as $x | $s | index($x)))) | 1' | wc -l)"
+    attempt=$(( failures + 1 ))
+  fi
+  if [[ -n "$run_id" ]]; then
+    pubsum="$(jq -c '{status, published: (.published // []), rejected: ([(.problems // [])[].path] | unique), conflicts: (.conflicts // [])}' \
+      "system/logs/runs/$run_id/publish.json" 2>/dev/null)"
+    [[ -n "$pubsum" ]] || pubsum='{}'
+  fi
+  if [[ -s "$LEDGER" && -n "$(tail -c1 "$LEDGER")" ]]; then echo >> "$LEDGER"; fi
+  jq -cn --arg run_id "$run_id" --arg command "$cmd" --arg started "$started" --arg finished "$(date -Iseconds)" \
+    --argjson inputs "$(json_list "${inputs[@]}")" --argjson shas "$(json_list "${shas[@]}")" \
+    --arg partition "$partition" --argjson exit "$rc" --argjson publish "$pubsum" \
+    --argjson attempt "$attempt" --argjson denials "$denials" \
+    '{run_id:(if $run_id == "" then null else $run_id end), command:$command, started_at:$started, finished_at:$finished, inputs:$inputs,
+      input_sha256:$shas, partition:(if $partition == "" then null else $partition end), exit:$exit,
+      publish:$publish, attempt:$attempt, warnings:{permission_denials:$denials}}' >> "$LEDGER"
+}
+trap write_ledger EXIT
+
+if ! jq -se 'length == 1 and (.[0] | type) == "object"' system/headless.settings.json >/dev/null 2>&1; then
   alert "system/headless.settings.json is missing or invalid; $cmd not run"
   die 3 "invalid system/headless.settings.json"
 fi
@@ -69,7 +105,7 @@ system/scripts/publish_staged.py recover >> "$LOG" 2>&1 || true
 
 runs_today=0
 if [[ -f "$LEDGER" ]]; then
-  runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | select(.command != "retry" and ((.started_at // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
+  runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and ([2,3,4,6] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
 fi
 if (( runs_today >= MAX_PER_DAY )); then
   marker="system/logs/.cap-alerted-$TODAY"
@@ -84,13 +120,17 @@ case "$cmd" in
   debrief) targets=("briefings/$TODAY.debrief.md") ;;
 esac
 started="$(date -Iseconds)"
-system/scripts/publish_staged.py snapshot "$run_id" --targets "${targets[@]}" >/dev/null
+if ! system/scripts/publish_staged.py snapshot "$run_id" --targets "${targets[@]}" >/dev/null 2>> "$LOG"; then
+  alert "$cmd $run_id: snapshot failed; claude not run"
+  exit 5
+fi
 
 cmdfile=".claude/commands/$cmd.md"
 [[ -f "$cmdfile" ]] || die 2 "missing $cmdfile"
 body="$(awk 'NR==1 && $0=="---" {fm=1; next} fm && $0=="---" {fm=0; next} !fm' "$cmdfile")"
 argstr="$run_id"
 (( ${#inputs[@]} )) && argstr="$run_id ${inputs[*]}"
+shopt -u patsub_replacement 2>/dev/null || true
 prompt="${body//\$ARGUMENTS/$argstr}"
 
 vi="system/scripts/vault_index.py"
@@ -123,26 +163,4 @@ else
   alert "$cmd $run_id failed (exit $rc)"
 fi
 
-shas=()
-if [[ -n "${JARVIS_ORIGINAL_SHA256:-}" ]]; then
-  read -r -a shas <<< "$JARVIS_ORIGINAL_SHA256"
-else
-  for f in "${inputs[@]}"; do shas+=("$(sha256sum -- "$f" | cut -d' ' -f1)"); done
-fi
-attempt=1
-if (( ${#shas[@]} )); then
-  prev="system/logs/runs-$(date -d "$(date +%Y-%m-01) -1 day" +%Y-%m).jsonl"
-  failures="$( { cat "$prev" "$LEDGER" 2>/dev/null || true; } | jq -R --argjson s "$(json_list "${shas[@]}")" \
-    'fromjson? | select(.command != "retry" and (.exit // 0) != 0 and (.exit // 0) != 4 and ([.input_sha256[]?] | any(. as $x | $s | index($x)))) | 1' | wc -l)"
-  attempt=$(( failures + 1 ))
-fi
-pubsum="$(jq -c '{status, published: (.published // []), rejected: ([(.problems // [])[].path] | unique), conflicts: (.conflicts // [])}' \
-  "system/logs/runs/$run_id/publish.json" 2>/dev/null || echo '{}')"
-jq -cn --arg run_id "$run_id" --arg command "$cmd" --arg started "$started" --arg finished "$(date -Iseconds)" \
-  --argjson inputs "$(json_list "${inputs[@]}")" --argjson shas "$(json_list "${shas[@]}")" \
-  --arg partition "$partition" --argjson exit "$rc" --argjson publish "$pubsum" \
-  --argjson attempt "$attempt" --argjson denials "$denials" \
-  '{run_id:$run_id, command:$command, started_at:$started, finished_at:$finished, inputs:$inputs,
-    input_sha256:$shas, partition:(if $partition == "" then null else $partition end), exit:$exit,
-    publish:$publish, attempt:$attempt, warnings:{permission_denials:$denials}}' >> "$LEDGER"
 exit "$rc"

@@ -5,7 +5,7 @@ readlink /proc/self/fd/0 > "${STUB_STDIN:-/dev/null}"
 run_id="$(ls wiki/.staging | head -1)"
 s="wiki/.staging/$run_id"
 case "${STUB_MODE:-write}" in
-  write)
+  write|write_delete_input)
     mkdir -p "$s/wiki/work/concepts"
     printf -- '---\ntype: concept\ntags: []\ncompiled_at: "2026-09-30"\npartition: work\n---\n# New\nSee [[Kafka]].\n' > "$s/wiki/work/concepts/New.md"
     printf '{"item":"x","decision":"create","target":"wiki/work/concepts/New.md","source":"s","reason":"r"}\n' > "$s/_decisions.jsonl" ;;
@@ -18,4 +18,7 @@ case "${STUB_MODE:-write}" in
   fail) exit 1 ;;
   sleep) sleep 5 ;;
 esac
+if [ "${STUB_MODE:-}" = write_delete_input ]; then
+  rm -f -- "${STUB_RM:-$(printf '%s\n' "$@" | grep -o 'raw/[^ ]*\.md' | head -1)}"
+fi
 printf '{"type":"result","subtype":"success","permission_denials":%s}\n' "${STUB_DENIALS:-[]}"
