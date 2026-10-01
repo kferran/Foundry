@@ -2,7 +2,7 @@
 
 An Obsidian + Claude Code "second brain" vault template.
 
-> **Design stage.** The design is complete, but implementation has not started. The Plan 0 spike is in progress and Plans 1–5 are pending. None of the features described below work yet. Setup and usage steps describe the **intended** experience. The only code in the repo today is the old generator, [`scaffold.sh`](scaffold.sh), which Plan 1 removes.
+> **Design stage.** The design is complete, but implementation has not started. The Plan 0 spike is complete (its findings are folded into the spec) and Plans 1–5 are pending. None of the features described below work yet. Setup and usage steps describe the **intended** experience. The only code in the repo today is the old generator, [`scaffold.sh`](scaffold.sh), which Plan 1 removes.
 
 ## What Jarvis is
 
@@ -16,7 +16,7 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 
 | Plan | Scope | Status |
 |---|---|---|
-| 0. Spike gate | Check headless isolation and hook behaviour against the real `claude` binary (spec §7.4) | In progress: [plan](docs/superpowers/plans/2026-09-30-plan-0-spike.md), [results](docs/superpowers/spikes/2026-09-30-headless-and-hooks.md) |
+| 0. Spike gate | Check headless isolation and hook behaviour against the real `claude` binary (spec §7.4) | Complete: [plan](docs/superpowers/plans/2026-09-30-plan-0-spike.md), [results](docs/superpowers/spikes/2026-09-30-headless-and-hooks.md) |
 | 1. Foundation | Baseline commit, `vaultlib`, schemas, linter, pre-commit hook, index | Plan written: [plan](docs/superpowers/plans/2026-09-30-plan-1-foundation.md) |
 | 2. Headless pipeline | Staged publish, `run_headless.sh`, intake, prep scripts, systemd units, remotes | Pending |
 | 3. Memory (Soundwave) | Capture/recall hooks, redaction, hook installer, `/digest` | Pending |
@@ -33,7 +33,7 @@ Each plan is written only after the previous one is finished, because results ca
 
 The intended loop is **capture → compile → index → recall → correct**:
 
-1. **Capture.** Files you drop in go to `raw/inbox/`. In the vault and in registered codebases, a `Stop` hook asks for a short session digest once enough work has happened (default: 5 tool events and 20 minutes). The hook writes the digest, redacted, to `raw/<partition>/notes/`. `/digest` writes one on demand.
+1. **Capture.** Files you drop in go to `raw/inbox/`. In the vault and in registered codebases, a `Stop` hook asks for a short session digest once enough work has happened (default: 5 tool events and 20 minutes). The hook writes the digest, redacted, to `raw/<partition>/notes/`. `/digest` writes one on demand. Claude Code shows a Stop hook's request under the label "Stop hook error:"; for Jarvis that line starts with "Jarvis memory (not an error)" and simply asks for the digest.
 2. **Compile.** The intake timer batches up to 5 inputs from one partition into an isolated headless `/ingest` run. For each fact, the run records an explicit noop, patch or create decision and writes its output to `wiki/.staging/<run_id>/`.
 3. **Publish.** The publish gate validates schemas and partition walls and rejects changes that shrink existing notes. It also checks each target against a snapshot taken at the start of the run. If every check passes, it publishes everything at once. If any check fails, it publishes nothing and the run is quarantined. If you edited a note while the run was going, your edit is kept.
 4. **Index.** Markdown is the source of truth. `system/index.db` is a gitignored SQLite FTS5 index that can be rebuilt at any time. Agents run `related`, `query`, `show` and `backlinks` against it before reading any notes.
@@ -128,11 +128,12 @@ claude
 
 ## Security model
 
-- **Headless isolation.** `run_headless.sh` is the only way automation calls `claude`. It runs in restricted mode with a dedicated settings file, no user settings, no user hooks, no MCP servers, no session persistence, a tool list per command, a timeout and a daily run cap. Reads are limited to the vault, and writes are limited to the run's staging directory.
+- **Headless isolation.** `run_headless.sh` is the only way automation calls `claude`. It runs in restricted mode with a dedicated settings file, no user settings, no user hooks, no MCP servers, no session persistence, a tool list per command, a timeout and a daily run cap. Reads are limited to the vault, writes are limited to the run's staging directory, and Bash runs in Claude Code's sandbox (no network) with sandbox auto-allow turned off, so only allowlisted commands run.
 - **Staged publish.** Headless output reaches the wiki only through Ultra Magnus, which checks targets, schemas, partition walls, protected fields, shrinkage and conflicts. Every headless-written note gets `headless` added to its `provenance`.
 - **Partition walls.** Links from `work` to `personal` (and the other way) are lint errors. A headless run writes to one partition plus `shared`. From a codebase session, the index CLI returns only that codebase's partition plus `shared`, and those sessions get no general read access to the vault. Walls control links and recall, not storage: all partitions are pushed to the same private `origin`.
 - **Data, not instructions.** `CLAUDE.md` tells agents to treat note bodies, raw files, recall blocks and tool output as data. Digests and inbox copies are passed through `redact.py`, and `<private>…</private>` spans are removed.
 - **User-level changes.** `install_hooks.sh` changes only its own entries in `~/.claude/settings.json` and `~/.claude/commands/digest.md`. It takes a backup first, shows a diff during `/setup`, applies nothing without confirmation, and can be fully reversed with `--uninstall`.
+- **Trust dialog.** The first time you open the vault, Claude Code asks whether to trust the folder and lists the permissions `.claude/settings.json` pre-approves (wiki and briefing edits and the read-only `vault_index.py` commands). Those apply to your interactive sessions only; headless runs ignore project settings entirely.
 - **Gitignored.** `raw/**` contents, `system/quarantine/*`, `system/logs/*`, `system/config.md`, `system/codebases/*.md` (except `example.md`), `.claude/settings.local.json`, `system/index.db*`, `wiki/.staging/`, `system/fleet/` and Obsidian workspace files.
 
 ## Updating and uninstalling (planned)

@@ -36,4 +36,6 @@ User settings restored afterwards: `sha256sum -c` → `/home/fe/.claude/settings
 6. §6.19 — generated absolute Read/Edit rules use `//` (item 16).
 7. §7.4 — every item marked with its result.
 
+**Final-review re-test (2026-09-30):** `sandbox.enabled: true` with the default `autoAllowBashIfSandboxed` let a restricted `-p` run execute an unlisted `touch wiki/work/x.md` and create the file ("ALLOWED. The command ran once inside the sandbox"); with `autoAllowBashIfSandboxed: false` the same command was "DENIED … don't ask mode" and no file was created, while an allowlisted `echo` still ran. Spec §7.2 now requires `false`.
+
 Carried to Plan 3: SessionStart `resume`/`fork` sources (item 13) and latency of the real hooks (item 15).
