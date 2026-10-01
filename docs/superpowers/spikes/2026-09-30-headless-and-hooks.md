@@ -39,3 +39,21 @@ User settings restored afterwards: `sha256sum -c` → `/home/fe/.claude/settings
 **Final-review re-test (2026-09-30):** `sandbox.enabled: true` with the default `autoAllowBashIfSandboxed` let a restricted `-p` run execute an unlisted `touch wiki/work/x.md` and create the file ("ALLOWED. The command ran once inside the sandbox"); with `autoAllowBashIfSandboxed: false` the same command was "DENIED … don't ask mode" and no file was created, while an allowlisted `echo` still ran. Spec §7.2 now requires `false`.
 
 Carried to Plan 3: SessionStart `resume`/`fork` sources (item 13) and latency of the real hooks (item 15).
+
+## Final-form gate (Plan 2a Task 1, 2026-10-01)
+
+Invocation: §6.3 final form (restricted, inlined prompt, `--append-system-prompt-file CLAUDE.md`, sandbox with `autoAllowBashIfSandboxed: false`).
+
+| Check | Observed (excerpt) | Result |
+|---|---|---|
+| CLAUDE.md appended | "The line from my system instructions that contains the marker is: > GATE-CLAUDE-MD-MARKER" (seen in a `--output-format stream-json` re-run of the identical invocation; the `json`-format run's final `.result` doesn't restate it after turn 1) | PASS |
+| Staging write allowed | "ACTION 1: ALLOWED. I created `wiki/.staging/20261001T000000-ingest-abcd/wiki/work/concepts/New.md`..."; file confirmed on disk | PASS |
+| wiki/personal write denied | "ACTION 2: DENIED. Writing `wiki/personal/Leak.md` was refused because Claude Code is in \"don't ask\" mode."; `wiki/personal/` empty on disk | PASS |
+| Allowlisted Bash runs | "ACTION 3: ALLOWED. Running `system/scripts/vault_index.py` directly printed `STUB ['query', 'SELECT 1']`" | PASS |
+| `python3 …` form denied | "ACTION 4: DENIED. The same query run as `python3 system/scripts/vault_index.py ...` was refused (\"don't ask\" mode)." | PASS |
+| Unlisted `touch` denied under sandbox | "ACTION 5: DENIED. `touch wiki/work/x.md` was refused (\"don't ask\" mode)."; `ls wiki/work/x.md` → "no x.md" | PASS |
+| `stage` → Edit on staged copy | "ACTION 6: ALLOWED... The staged `Existing.md` already contained `old`, and the edit to replace it with `new` worked."; staged file on disk reads `new` | PASS |
+| Out-of-vault read denied | "ACTION 7: DENIED. `../outside.txt` is outside the vault directory, and the `--restricted` setting keeps the file tools inside it." | PASS |
+| permission_denials count | `jq '.permission_denials \| length'` → `4` (Write Leak.md, Bash python3 form, Bash touch, Read outside.txt) | PASS (≥ 4) |
+
+9/9 rows PASS. `exit=0`, `subtype: success`, `is_error: false`, `num_turns: 10`. `find wiki -type f`: only `wiki/work/concepts/Existing.md` (original, untouched: still reads `old`) and the two staged files under `wiki/.staging/20261001T000000-ingest-abcd/`. Note: `--output-format json` returns only the final assistant message as `.result`, which does not re-quote turn-1 content (the CLAUDE.md marker) by the time of the last turn; a same-invocation `--output-format stream-json --verbose` re-run (otherwise byte-identical flags) was used solely to confirm the marker-quote excerpt and cross-checked the other 8 rows, which matched the primary `json`-format run exactly (ACTION lines, `permission_denials: 4`, `subtype: success`).
