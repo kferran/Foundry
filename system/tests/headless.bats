@@ -191,3 +191,18 @@ setup() {
   [ "$status" -eq 0 ]
   [ -f system/quarantine/20260930T010101-ingest-0000/staged/wiki/work/concepts/Old.md ]
 }
+
+@test "SIGTERM during the claude run is recorded as exit 143" {
+  STUB_MODE=sleep "$RH" ingest raw/work/notes/d1.md &
+  pid=$!
+  for _ in $(seq 50); do
+    [ -s "$STUB_ARGS" ] && break
+    sleep 0.1
+  done
+  [ -s "$STUB_ARGS" ]
+  kill -TERM "$pid"
+  rc=0
+  wait "$pid" || rc=$?
+  [ "$rc" -eq 143 ]
+  [ "$(tail -n1 "$LEDGER" | jq -r .exit)" = "143" ]
+}

@@ -86,6 +86,11 @@ write_ledger() {
       input_sha256:$shas, partition:(if $partition == "" then null else $partition end), exit:$exit,
       publish:$publish, attempt:$attempt, warnings:{permission_denials:$denials}}' >> "$LEDGER"
 }
+cpid=""
+stop_child() { [[ -z "$cpid" ]] || kill -TERM "$cpid" 2>/dev/null || true; }
+trap 'stop_child; exit 129' HUP
+trap 'stop_child; exit 130' INT
+trap 'stop_child; exit 143' TERM
 trap write_ledger EXIT
 
 if ! jq -se 'length == 1 and (.[0] | type) == "object"' system/headless.settings.json >/dev/null 2>&1; then
@@ -143,8 +148,11 @@ set +e
 timeout "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --append-system-prompt-file CLAUDE.md \
   --restricted --settings system/headless.settings.json --strict-mcp-config --no-session-persistence \
   --permission-mode dontAsk --output-format json --tools "Read,Glob,Grep,Edit,Write,Bash" \
-  --allowedTools "${allow[@]}" < /dev/null > "$out" 2>> "$LOG"
+  --allowedTools "${allow[@]}" < /dev/null > "$out" 2>> "$LOG" &
+cpid=$!
+wait "$cpid"
 rc=$?
+cpid=""
 set -e
 denials="$(jq -r '(.permission_denials // []) | length' "$out" 2>/dev/null || true)"
 [[ "$denials" =~ ^[0-9]+$ ]] || denials=0
