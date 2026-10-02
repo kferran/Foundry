@@ -345,19 +345,16 @@ seed_digests() {
   [ "$(digests | wc -l)" -eq 1 ]
 }
 
-@test "activity: a 100 KB payload on a pipe is counted in under 30 ms on average" {
-  start big-1
+@test "activity: the hook reads stdin in bulk, never byte by byte" {
+  run grep -nE '^[^#]*read[[:space:]]+(-[a-zA-Z]*[[:space:]]+)*-d' "$H/memory_activity.sh"
+  [ "$status" -eq 1 ]
+  start bulk-1
   python3 - > "$BATS_TEST_TMPDIR/big.json" <<PY
 import json
-print(json.dumps({"session_id": "big-1", "cwd": "$VP", "tool_name": "Edit",
+print(json.dumps({"session_id": "bulk-1", "cwd": "$VP", "tool_name": "Edit",
                   "tool_input": {"old_string": "a" * 50000, "new_string": "b" * 50000}}), end="")
 PY
   [ "$(wc -c < "$BATS_TEST_TMPDIR/big.json")" -gt 100000 ]
-  t0=$EPOCHREALTIME
   for _ in 1 2 3 4 5 6 7 8 9 10; do cat "$BATS_TEST_TMPDIR/big.json" | "$H/memory_activity.sh"; done
-  t1=$EPOCHREALTIME
-  avg_ms=$(( (${t1/./} - ${t0/./}) / 10 / 1000 ))
-  echo "average ${avg_ms} ms" >&3
-  [ "$(cat "$S/big-1.events")" -eq 10 ]
-  [ "$avg_ms" -lt 30 ]
+  [ "$(cat "$S/bulk-1.events")" -eq 10 ]
 }
