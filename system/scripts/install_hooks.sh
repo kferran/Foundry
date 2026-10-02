@@ -21,18 +21,34 @@ case "${1:-}" in
   *) usage ;;
 esac
 
-# Hook commands and Bash allow rules are matched as plain strings, so the vault path must not need quoting.
-[[ "$VAULT_ROOT" =~ ^/[A-Za-z0-9._/@+-]+$ ]] \
-  || die 1 "the vault path must not contain spaces or shell metacharacters: $VAULT_ROOT"
-for h in memory_recall.sh memory_capture.sh memory_activity.sh; do
-  [[ -x "system/hooks/$h" ]] || die 1 "missing or not executable: system/hooks/$h"
-done
+# --uninstall is the escape hatch: it needs only jq and the settings file, never the hooks or a plain path.
+if [[ "$mode" != uninstall ]]; then
+  # Hook commands and Bash allow rules are matched as plain strings, so the vault path must not need quoting.
+  [[ "$VAULT_ROOT" =~ ^/[A-Za-z0-9._/@+-]+$ ]] \
+    || die 1 "the vault path must not contain spaces or shell metacharacters: $VAULT_ROOT"
+  for h in memory_recall.sh memory_capture.sh memory_activity.sh; do
+    [[ -x "system/hooks/$h" ]] || die 1 "missing or not executable: system/hooks/$h"
+  done
+fi
 
+refuse() { die 1 "$SETTINGS $1; fix it by hand first (nothing was changed)"; }
 current='{}'
 if [[ -e "$SETTINGS" ]]; then
   current="$(cat -- "$SETTINGS")"
-  jq -e 'type == "object"' <<< "$current" > /dev/null 2>&1 \
-    || die 1 "$SETTINGS is not a JSON object; fix it by hand first (nothing was changed)"
+  # Slurped, so "{} {}" (two documents) is refused instead of passing a per-document check.
+  jq -s -e 'length == 1 and (.[0] | type) == "object"' <<< "$current" > /dev/null 2>&1 \
+    || refuse "is not a single JSON object"
+fi
+
+# The merge writes into these four containers; anything else in their place is refused up front.
+SHAPE='
+  [ ([["hooks"], "object"], [["hooks", "SessionStart"], "array"], [["hooks", "Stop"], "array"],
+     [["hooks", "PostToolUse"], "array"], [["permissions"], "object"], [["permissions", "allow"], "array"]) as [$p, $t]
+    | (try getpath($p) catch null) as $x
+    | select($x != null and ($x | type) != $t) | $p | join(".") ] | join(", ")'
+if [[ "$mode" != uninstall ]]; then
+  bad="$(jq -r "$SHAPE" <<< "$current")"
+  [[ -z "$bad" ]] || refuse "has an unexpected shape at: $bad (hooks and permissions must be objects, hook events and allow arrays)"
 fi
 
 # Owned = ours from any vault location, so moving the vault re-points the entries instead of duplicating them.
@@ -68,9 +84,9 @@ ADD='
       "Bash(" + $v + "/system/scripts/vault_index.py show:*)",
       "Bash(" + $v + "/system/scripts/vault_index.py backlinks:*)"])'
 if [[ "$mode" == uninstall ]]; then
-  new="$(jq "$STRIP" <<< "$current")"
+  new="$(jq "$STRIP" <<< "$current" 2> /dev/null)" || refuse "could not be read for the uninstall"
 else
-  new="$(jq --arg v "$VAULT_ROOT" "$STRIP | $ADD" <<< "$current")"
+  new="$(jq --arg v "$VAULT_ROOT" "$STRIP | $ADD" <<< "$current" 2> /dev/null)" || refuse "could not be merged"
 fi
 jq -e 'type == "object"' <<< "$new" > /dev/null || die 1 "the merged settings did not parse; nothing was changed"
 
@@ -107,7 +123,15 @@ fi
 
 if [[ "$settings_action" == changed ]]; then
   mkdir -p -- "$CONFIG_DIR"
-  [[ -e "$SETTINGS" ]] && cp -p -- "$SETTINGS" "$SETTINGS.bak.$(date +%s)"
+  if [[ -e "$SETTINGS" ]]; then
+    # Never overwrite an earlier backup: an install and an uninstall can land in the same second.
+    stamp="$(date +%s)"
+    bak="$SETTINGS.bak.$stamp"
+    n=1
+    while [[ -e "$bak" ]]; do bak="$SETTINGS.bak.$stamp.$n"; n=$((n + 1)); done
+    cp -p -- "$SETTINGS" "$bak"
+    echo "backup: $bak"
+  fi
   if [[ -L "$SETTINGS" ]]; then
     jq . <<< "$new" > "$SETTINGS"  # write through a symlink (dotfile managers), keeping the link
   else
