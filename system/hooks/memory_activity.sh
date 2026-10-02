@@ -3,7 +3,7 @@
 # Fast path: pure bash, no jq or Python (spike item 15: one jq call alone costs ~44 ms).
 [[ "${JARVIS_HEADLESS:-}" != 1 && "${CLAUDE_CODE_ENTRYPOINT:-}" == cli ]] || exit 0
 [[ "${JARVIS_CREW:-}" == 1 || "${CLAUDE_CODE_SESSION_ATTENDED:-}" == 1 ]] || exit 0
-IFS= read -r -d '' input || true
+input="$(cat)"  # one bulk read: `read -d ''` on a pipe goes byte by byte (1 MB ~ 900 ms)
 [[ "$input" == *'"agent_id"'* ]] && exit 0  # subagent
 [[ "$input" =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9-]+)\" ]] || exit 0
 sid="${BASH_REMATCH[1]}"
