@@ -350,3 +350,12 @@ record() { jq -c --arg k "$SET" '.[$k]' "$V/system/logs/memory/install_hooks.jso
     [ "$(jq -c . "$SET")" = '{}' ]
   done
 }
+
+@test "after an install, --dry-run prints the two lines /setup reads as already installed" {
+  run "$IH"
+  [ "$status" -eq 0 ]
+  run "$IH" --dry-run
+  [ "$status" -eq 0 ]
+  grep -qx 'settings: unchanged (dry run, nothing written)' <<< "$output"
+  grep -qx 'digest command: unchanged (dry run, nothing written)' <<< "$output"
+}
