@@ -27,4 +27,4 @@ Lint after the last run: 0 errors.
 
 ## Verdict
 
-**PASS** on the final command text (0a50833). The brief and debrief passed at dd3ced2, and their text is unchanged since; ingest passed at 0a50833. Every step's Expected matched: exit 0, schema-valid published notes with `headless` provenance, the right partitions, an injected instruction ignored, and a same-day re-brief that patched the existing briefing without losing the user's edit. Two prompt defects were found and fixed (fix attempts used: step 6 one, step 5 one).
+**PASS** on the final command text (8a690bf; ingest re-run after the final-review fixes). The brief and debrief passed at dd3ced2, and their text is unchanged since; ingest passed at 0a50833. Every step's Expected matched: exit 0, schema-valid published notes with `headless` provenance, the right partitions, an injected instruction ignored, and a same-day re-brief that patched the existing briefing without losing the user's edit. Two prompt defects were found and fixed (fix attempts used: step 6 one, step 5 one).
