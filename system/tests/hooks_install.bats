@@ -169,3 +169,18 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
   [ "$status" -eq 0 ]
   [ "$(stat -c %a "$SET")" = 600 ]
 }
+
+@test "foreign empty containers survive install and uninstall untouched" {
+  printf '%s' '{"permissions":{"allow":[],"deny":[]},"hooks":{"Notification":[],"Stop":[{"matcher":"","hooks":[]}]}}' > "$SET"
+  jq -S . "$SET" > "$BATS_TEST_TMPDIR/fixture.json"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.hooks.Notification' "$SET")" = '[]' ]
+  [ "$(jq -c '.hooks.Stop[0]' "$SET")" = '{"matcher":"","hooks":[]}' ]
+  [ "$(jq -c '.permissions.deny' "$SET")" = '[]' ]
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  jq -S . "$SET" > "$BATS_TEST_TMPDIR/after.json"
+  run diff "$BATS_TEST_TMPDIR/fixture.json" "$BATS_TEST_TMPDIR/after.json"
+  [ "$status" -eq 0 ]
+}

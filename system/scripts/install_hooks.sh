@@ -37,21 +37,26 @@ fi
 
 # Owned = ours from any vault location, so moving the vault re-points the entries instead of duplicating them.
 STRIP='
-  def owned_cmd: (. // "") | test("/system/hooks/memory_(recall|capture|activity)\\.sh$");
-  def owned_allow: test("^Bash\\(/.*/system/scripts/vault_index\\.py (related|show|backlinks):\\*\\)$");
+  def owned_cmd: type == "string" and test("/system/hooks/memory_(recall|capture|activity)\\.sh$");
+  def owned_allow: type == "string" and test("^Bash\\(/.*/system/scripts/vault_index\\.py (related|show|backlinks):\\*\\)$");
+  def has_owned: type == "object" and (.hooks | type) == "array" and any(.hooks[]; type == "object" and (.command | owned_cmd));
+  # Only containers that held an owned element are pruned; foreign empty ones are left as found.
   (if (.hooks | type) == "object" then
-     .hooks |= with_entries(
-       if (.value | type) == "array" then
-         .value |= (map(if (.hooks | type) == "array" then .hooks |= map(select(.command | owned_cmd | not)) else . end)
-                    | map(select((.hooks | type) != "array" or (.hooks | length) > 0)))
-       else . end)
-     | .hooks |= with_entries(select((.value | type) != "array" or (.value | length) > 0))
-     | if .hooks == {} then del(.hooks) else . end
+     ([.hooks[] | select(type == "array") | .[] | select(has_owned)] | length > 0) as $had
+     | .hooks |= with_entries(
+         if (.value | type) == "array" then
+           (.value | any(.[]; has_owned)) as $held
+           | .value |= map(if has_owned then (.hooks |= map(select((type == "object" and (.command | owned_cmd)) | not))) | select((.hooks | length) > 0) else . end)
+           | select(($held | not) or (.value | length) > 0)
+         else . end)
+     | if $had and .hooks == {} then del(.hooks) else . end
    else . end)
-  | (if (.permissions.allow | type) == "array" then
-       .permissions.allow |= map(select(type != "string" or (owned_allow | not)))
-       | if .permissions.allow == [] then del(.permissions.allow) else . end
-       | if .permissions == {} then del(.permissions) else . end
+  | (if (.permissions | type) == "object" and (.permissions.allow | type) == "array" then
+       (.permissions.allow | any(.[]; owned_allow)) as $held
+       | .permissions.allow |= map(select(owned_allow | not))
+       # An emptied allow array is indistinguishable from a foreign empty one, so it is dropped only
+       # when it was the sole permissions key (the shape a fresh install creates); otherwise it stays.
+       | if $held and .permissions.allow == [] and (.permissions | keys) == ["allow"] then del(.permissions) else . end
      else . end)'
 ADD='
   .hooks.SessionStart = ((.hooks.SessionStart // []) + [{hooks: [{type: "command", command: ($v + "/system/hooks/memory_recall.sh"), timeout: 5}]}])
