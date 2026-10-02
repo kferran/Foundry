@@ -174,3 +174,26 @@ setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } o
   run grep -rniE 'ultron|kusto|\bvue\b|\.net\b' CLAUDE.md .claude/commands system/agents system/templates
   [ "$status" -eq 1 ]
 }
+
+@test "/setup creates config.md from the example's frontmatter only, and never over an existing one" {
+  cmd="$(grep -oE '`\[ -f system/config\.md \][^`]*`' .claude/commands/setup.md | tr -d '`')"
+  [ -n "$cmd" ]
+  d="$BATS_TEST_TMPDIR/v"
+  mkdir -p "$d/system"
+  cp system/config.example.md "$d/system/"
+  (cd "$d" && eval "$cmd")
+  n="$(awk 'NR > 1 && /^---$/ { print NR; exit }' system/config.example.md)"
+  [ "$(head -n "$n" "$d/system/config.md")" = "$(head -n "$n" system/config.example.md)" ]
+  [ "$(tail -n +"$((n + 1))" "$d/system/config.md")" = "$(printf '# Config\n\nWritten by /setup. Re-run /setup to change it.')" ]
+  printf 'mine\n' > "$d/system/config.md"
+  (cd "$d" && eval "$cmd")
+  [ "$(cat "$d/system/config.md")" = mine ]
+}
+
+@test "/setup offers the current remote_mode as the default before asking" {
+  sec="$(setup_section '4. Remote')"
+  [[ "$sec" == *'showing the current mode as the default'* ]]
+  before_read="${sec%%system/scripts/vault_index.py field system/config.md remote_mode*}"
+  before_ask="${sec%%Then ask*}"
+  [ "${#before_read}" -lt "${#before_ask}" ]
+}

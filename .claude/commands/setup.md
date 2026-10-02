@@ -8,7 +8,7 @@ You are running Jarvis setup. Every phase is idempotent: show what exists and ed
 Run `system/scripts/check_deps.sh`. List every `missing` line with its install hint, and every `optional` line as optional. If `pyyaml` is missing, stop: setup cannot continue without it. Otherwise continue, noting which features are off (no `gcalcli`: no calendar in the brief; no `hyprctl`: no focus tracking).
 
 ## 1. Existing config
-If `system/config.md` exists, show its values and ask which to change. Otherwise copy `system/config.example.md` to `system/config.md` and use its values as the defaults below.
+If `system/config.md` exists, show its values and ask which to change. Otherwise create it from the example's frontmatter, without the example's body text, by running exactly this: `[ -f system/config.md ] || { awk '{ print } NR > 1 && /^---$/ { exit }' system/config.example.md; printf '# Config\n\nWritten by /setup. Re-run /setup to change it.\n'; } > system/config.md`. Use its values as the defaults below.
 
 ## 2. Interview
 Ask, in order: timezone (default from config; must exist under `/usr/share/zoneinfo`), brief time (`HH:MM`), debrief time (`HH:MM`), superpowers (strategic anchors, one per line), default partition for vault sessions and inbox files (`personal`, `work` or `shared`; default `personal`), digest thresholds (default 5 work events and 20 minutes), recall budget (default 9000 characters, at most 9500).
@@ -26,7 +26,7 @@ Write each scalar with `system/scripts/vault_index.py set system/config.md <key>
 5. Add every registered codebase path (expanded, absolute) to `permissions.additionalDirectories` in `.claude/settings.local.json`, keeping everything else in that file and the existing order. Run exactly this, with the paths in place of `<paths…>`: `[ -f .claude/settings.local.json ] || echo '{}' > .claude/settings.local.json; jq '.permissions.additionalDirectories = ((.permissions.additionalDirectories // []) + ($ARGS.positional - (.permissions.additionalDirectories // [])))' .claude/settings.local.json --args <paths…> > .claude/settings.local.json.tmp && jq -e 'type == "object"' .claude/settings.local.json.tmp > /dev/null && mv .claude/settings.local.json.tmp .claude/settings.local.json`
 
 ## 4. Remote
-Run `system/scripts/setup_remote.sh --detect` and report what it found. Then ask: a private URL for your vault (`private`), no remote (`none`), or keep the remotes as they are (`keep`, for template maintainers; choose this when `origin` is the template and you maintain it). Run `system/scripts/setup_remote.sh <url>`, `--none` or `--keep` and report its output.
+Run `system/scripts/setup_remote.sh --detect` and report what it found. Read the current mode with `system/scripts/vault_index.py field system/config.md remote_mode`. Then ask, showing the current mode as the default: a private URL for your vault (`private`), no remote (`none`), or keep the remotes as they are (`keep`, for template maintainers; choose this when `origin` is the template and you maintain it). If the current mode is `private`, show the current `origin` URL (`git remote get-url origin`) as the default URL. Run `system/scripts/setup_remote.sh <url>`, `--none` or `--keep` and report its output.
 
 ## 5. Units
 Run `system/scripts/install_units.sh --dry-run` and summarize the units: `jarvis-intake` (every 5 minutes), `jarvis-brief` and `jarvis-debrief` (at the configured times), `jarvis-focus` (the focus tracker). Ask before installing; on yes run `system/scripts/install_units.sh` and report each `new|changed|unchanged` line.
