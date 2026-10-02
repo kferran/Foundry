@@ -83,3 +83,8 @@ setup() {
   run grep -rl '/home/' system/systemd
   [ "$status" -eq 1 ]
 }
+
+@test "system/template_source is one URL" {
+  [ "$(wc -l < system/template_source)" -eq 1 ]
+  grep -qE '^(https://|ssh://|git@)[^[:space:]]+$' system/template_source
+}
