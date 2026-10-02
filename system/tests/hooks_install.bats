@@ -152,3 +152,20 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
   run "$IH" --bogus
   [ "$status" -eq 2 ]
 }
+
+@test "a mode-600 settings.json stays 600 through install and uninstall" {
+  chmod 600 "$SET"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  [ "$(stat -c %a "$SET")" = 600 ]
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(stat -c %a "$SET")" = 600 ]
+}
+
+@test "a newly created settings.json is mode 600" {
+  rm "$SET"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  [ "$(stat -c %a "$SET")" = 600 ]
+}

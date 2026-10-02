@@ -102,8 +102,10 @@ if [[ "$settings_action" == changed ]]; then
   if [[ -L "$SETTINGS" ]]; then
     jq . <<< "$new" > "$SETTINGS"  # write through a symlink (dotfile managers), keeping the link
   else
-    jq . <<< "$new" > "$SETTINGS.tmp.$$"
-    mv -f -- "$SETTINGS.tmp.$$" "$SETTINGS"
+    tmp="$SETTINGS.tmp.$$"
+    ( umask 077; jq . <<< "$new" > "$tmp" )  # settings often hold env secrets: never wider than the original
+    [[ -e "$SETTINGS" ]] && chmod --reference="$SETTINGS" -- "$tmp"
+    mv -f -- "$tmp" "$SETTINGS"
   fi
 fi
 echo "settings: $settings_action"
