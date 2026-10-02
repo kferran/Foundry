@@ -56,9 +56,13 @@ main() {
   msg="$(jq -r '.last_assistant_message // ""' <<< "$input")"
 
   # 1. A marked digest (requested by this hook, or written on demand with /digest).
-  if [[ "$msg" == *"<vault-digest>"*"</vault-digest>"* ]]; then
-    body="${msg#*<vault-digest>}"
-    body="${body%%</vault-digest>*}"
+  # The tags must sit on their own lines (as digest_instructions.md asks), so prose that merely
+  # mentions them is not a digest; a whitespace-only body is no digest either.
+  body="$(awk '{ l = $0; sub(/\r$/, "", l); gsub(/^[ \t]+|[ \t]+$/, "", l) }
+    !open && l == "<vault-digest>" { open = 1; next }
+    open && l == "</vault-digest>" { printf "%s", buf; exit }
+    open { buf = buf $0 "\n" }' <<< "$msg")"
+  if [[ "$body" =~ [^[:space:]] ]]; then
     write_digest "$sid" "$body" || { mem_log "Stop: digest write failed for ${sid:0:8}"; return 0; }
     mem_state_set "$sid" ".last_digest_at = $now | .awaiting_digest = false"
     printf '0\n' > "$MEM_SESSIONS/$sid.events"
@@ -76,14 +80,14 @@ main() {
 
   # 3. Ask only after substantive work, and never when the assistant just asked the user something.
   events="$(mem_events "$sid")"
-  since="$(jq -r 'if .last_digest_at > 0 then .last_digest_at else .started_at end' "$st")"
+  since="$(jq -r '[.last_digest_at, (.last_request_at // 0), .started_at] | max' "$st")"
   minutes=$(( (now - since) / 60 ))
   trimmed="${msg%"${msg##*[![:space:]]}"}"
   [[ "$trimmed" == *"?" ]] && return 0
   (( events >= $(jq -r .digest_min_events "$st") )) || return 0
   (( minutes >= $(jq -r .digest_min_minutes "$st") )) || return 0
   reason="$(< "$(dirname "${BASH_SOURCE[0]}")/digest_instructions.md")"
-  mem_state_set "$sid" '.awaiting_digest = true' || return 0
+  mem_state_set "$sid" ".awaiting_digest = true | .last_request_at = $now" || return 0
   jq -cn --arg r "$reason" '{decision: "block", reason: $r}'
 }
 

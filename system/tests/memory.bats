@@ -297,3 +297,50 @@ seed_digests() {
   [[ "$ctx" == *"Personal outcome."* ]]
   [[ "$ctx" != *"Work outcome."* ]]
 }
+
+@test "capture: a declined request is not re-asked until digest_min_minutes after the request" {
+  thresholds 5 20
+  start dc-1
+  jq '.started_at -= 1300' "$S/dc-1.json" > "$S/dc-1.json.new"
+  mv "$S/dc-1.json.new" "$S/dc-1.json"
+  tools dc-1 5
+  stop dc-1 "Done."
+  [ "$(jq -r .decision <<< "$output")" = block ]
+  stop dc-1 "I would rather not."
+  [ -z "$output" ]
+  tools dc-1 5
+  stop dc-1 "Done again."
+  [ -z "$output" ]
+  [ "$(jq -r .awaiting_digest "$S/dc-1.json")" = false ]
+  [ "$(cat system/logs/alerts_*.md | grep -c 'dc-1')" -eq 1 ]
+  jq '.last_request_at -= 1300' "$S/dc-1.json" > "$S/dc-1.json.new"
+  mv "$S/dc-1.json.new" "$S/dc-1.json"
+  stop dc-1 "Done once more."
+  [ "$(jq -r .decision <<< "$output")" = block ]
+}
+
+@test "capture: a message that only mentions the tags is not a digest" {
+  thresholds 1 0
+  start mt-1
+  tools mt-1 3
+  stop mt-1 'Reply with anything between `<vault-digest>` and `</vault-digest>` markers and I will save it.'
+  [ -z "$(digests)" ]
+  [ "$(cat "$S/mt-1.events")" -eq 3 ]
+  [ "$(jq -r .last_digest_at "$S/mt-1.json")" -eq 0 ]
+}
+
+@test "capture: an empty digest block writes nothing" {
+  start em-1
+  tools em-1 2
+  stop em-1 '<vault-digest></vault-digest>'
+  [ -z "$(digests)" ]
+  stop em-1 $'<vault-digest>\n  \n</vault-digest>'
+  [ -z "$(digests)" ]
+  [ "$(cat "$S/em-1.events")" -eq 2 ]
+}
+
+@test "capture: a block with the tags on their own lines is captured" {
+  start ol-1
+  stop ol-1 $'Here you go.\n<vault-digest>\n## Outcome\nOwn lines.\n</vault-digest>\nThanks.'
+  [ "$(digests | wc -l)" -eq 1 ]
+}
