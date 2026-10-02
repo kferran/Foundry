@@ -129,3 +129,84 @@ field() { system/scripts/vault_index.py field system/config.md "$1"; }
   run "$SR" --none
   [ "$status" -eq 1 ]
 }
+
+# A published template (UP) that this vault tracks as "template", and a working clone (W) of it.
+template_setup() {
+  cp -r "$REPO/system/systemd" system/systemd
+  printf 'base\n' > "my notes.txt"
+  git add -A
+  git commit -qm base
+  UP="$BATS_TEST_TMPDIR/up.git"
+  git clone -q --bare "$V" "$UP"
+  git remote add template "$UP"
+  W="$BATS_TEST_TMPDIR/work"
+  git clone -q "$UP" "$W"
+  git -C "$W" config user.email up@example.com
+  git -C "$W" config user.name up
+  STUBS="$BATS_TEST_TMPDIR/stubs"
+  mkdir -p "$STUBS"
+  ln -s "$REPO/system/tests/stub_claude" "$STUBS/claude"
+  printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$STUB_SYSTEMCTL_LOG"\n' > "$STUBS/systemctl"
+  chmod +x "$STUBS/systemctl"
+  export PATH="$STUBS:$PATH" SYSTEMCTL="$STUBS/systemctl" STUB_SYSTEMCTL_LOG="$BATS_TEST_TMPDIR/systemctl.log"
+  export SYSTEMD_USER_DIR="$BATS_TEST_TMPDIR/units" HOME="$BATS_TEST_TMPDIR/home"
+}
+
+upstream_commit() {  # <file> <text>
+  printf '%s\n' "$2" > "$W/$1"
+  git -C "$W" add -A
+  git -C "$W" commit -qm "upstream: $1"
+  git -C "$W" push -q
+}
+
+@test "update_template merges a clean update, then rebuilds the index and re-renders the units" {
+  template_setup
+  upstream_commit new.txt hello
+  run "$UT"
+  [ "$status" -eq 0 ]
+  [ "$(cat new.txt)" = hello ]
+  [ "$(git log -1 --format=%P | wc -w)" -eq 2 ]
+  [ -f system/index.db ]
+  [ -f "$SYSTEMD_USER_DIR/jarvis-brief.service" ]
+}
+
+@test "update_template refuses a dirty working tree before fetching" {
+  template_setup
+  upstream_commit new.txt hello
+  echo x > dirty.txt
+  run "$UT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not clean"* ]]
+  [ -z "$(git for-each-ref refs/remotes/template)" ]
+  [ ! -e new.txt ]
+}
+
+@test "update_template stops on a conflict, lists the files and leaves the merge to the user" {
+  template_setup
+  upstream_commit "my notes.txt" theirs
+  printf 'ours\n' > "my notes.txt"
+  git commit -qam ours
+  run "$UT"
+  [ "$status" -eq 1 ]
+  grep -qx '  my notes.txt' <<< "$output"
+  [ -f .git/MERGE_HEAD ]
+  [ ! -e "$SYSTEMD_USER_DIR" ]
+}
+
+@test "update_template refuses a template that shares no history with the vault" {
+  template_setup
+  O="$BATS_TEST_TMPDIR/other"
+  git init -q "$O"
+  git -C "$O" -c user.email=o@example.com -c user.name=o commit -q --allow-empty -m root
+  git remote set-url template "$O"
+  run "$UT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"shares no history"* ]]
+  [ ! -e .git/MERGE_HEAD ]
+}
+
+@test "update_template without a template remote points at setup_remote.sh" {
+  run "$UT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"setup_remote.sh"* ]]
+}
