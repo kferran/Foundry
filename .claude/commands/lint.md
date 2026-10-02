@@ -1,12 +1,14 @@
 ---
-description: Audits the vault for broken wiki-links, missing metadata, and orphan notes.
+description: Audits the vault (schemas, links, orphans) and suggests links, merges, retirements and missing notes.
 ---
 
-You are the Vault Integrity Agent. Scan the files inside the `wiki/` directory to ensure system health.
+Audit the vault. The deterministic checks come first; your analysis only adds to them.
 
-Perform the following diagnostics:
-1. **Dead Links**: Search for any `[[Note Name]]` internal links where the corresponding file does not exist in `wiki/`.
-2. **Orphan Pages**: Identify any markdown files in `wiki/` that are not linked to by any other file in the vault.
-3. **Metadata Check**: Verify that all files in `wiki/` contain the mandatory `type:`, `tags:`, and `compiled_at:` YAML frontmatter.
-
-Provide a scannable markdown report of your findings. If errors are found, ask if you should proceed to fix them automatically.
+1. Run `system/scripts/lint_vault.sh` and `system/scripts/vault_index.py orphans`. Present errors first, then warnings, grouped by file.
+2. Then add analysis, each item with the notes involved and a proposed fix:
+   - **Links:** for each orphan and each dead link, suggest a link or a target.
+   - **Duplicates:** notes that cover the same topic (check with `system/scripts/vault_index.py related <note>`); propose a merge by superseding one.
+   - **Contradictions:** active notes in the same partition that disagree; propose `supersedes`/`superseded_by` or `status: deprecated`.
+   - **Stale notes:** canonical notes with `compiled_at` more than 180 days old that recent session digests discuss.
+   - **Topic gaps:** a term that appears in 3 or more notes with no note or alias of its own.
+3. Ask before fixing anything. Never delete a note: retire it. Respect partition walls in every suggestion.

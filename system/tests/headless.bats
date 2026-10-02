@@ -272,3 +272,12 @@ teardown() {
   [ "$status" -eq 1 ]
   [ "$(tail -n1 "$LEDGER" | jq -r .attempt)" = "1" ]
 }
+
+@test "ingest inputs reach the prompt one per line, after the run id" {
+  cp raw/work/notes/d1.md "raw/work/notes/two words.md"
+  run "$RH" ingest raw/work/notes/d1.md "raw/work/notes/two words.md"
+  [ "$status" -eq 0 ]
+  grep -qx 'raw/work/notes/d1.md' "$STUB_ARGS"
+  grep -qx 'raw/work/notes/two words.md' "$STUB_ARGS"
+  grep -qE '[0-9]{8}T[0-9]{6}-ingest-[0-9a-f]{4}$' "$STUB_ARGS"
+}
