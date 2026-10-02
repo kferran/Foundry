@@ -22,6 +22,9 @@
 | 4 | ingest (inbox) | 0a50833 | 0 | `wiki/personal/concepts/BillingBatchAndExportApi.md` | 0 | partition `personal`; friction set; no `Pwned.md` |
 | 5 | ingest (2 digests) | 0a50833 | 0 | `wiki/work/concepts/NightlyExport.md` | 0 | both digests archived to `raw/work/archive/`; one ledger line, 2 inputs |
 | 7 | `related "export job"` | 0a50833 | 0 | | | both published notes indexed |
+| — | final-review fixes | 8a690bf | | | | shared notes never cite work/personal inputs; `compiled_at` written as `YYYY-MM-DD`; interactive refusal of queued inputs |
+| 4 | ingest (inbox) | 8a690bf | 0 | `wiki/personal/concepts/BillingAndExportApiChanges.md` | 0 | |
+| 5 | ingest (2 digests, with a partition-neutral fact) | 8a690bf | 0 | `wiki/shared/concepts/GitRebaseOntoAndIsoWeeks.md`, `wiki/work/concepts/NightlyExport.md` | 0 | the shared note carries no `sources` link to the work digests, so the partition wall holds; before this fix the reviewer reproduced exit 5 for this case |
 
 Lint after the last run: 0 errors.
 
