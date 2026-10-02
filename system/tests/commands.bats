@@ -40,3 +40,11 @@ headless_contract() {
   run grep -nE 'Anti-Refusal|Intent Gate Audit|Kusto Intake|Ultron' "$f"
   [ "$status" -eq 1 ]
 }
+
+@test "ingest: headless contract, allowlisted index calls, decisions file" {
+  f=.claude/commands/ingest.md
+  headless_contract "$f"
+  headless_allowlist "$f"
+  grep -qF '_decisions.jsonl' "$f"
+  grep -qF 'vault_index.py related "' "$f"
+}
