@@ -2,7 +2,7 @@
 
 An Obsidian + Claude Code "second brain" vault template.
 
-> **Status:** the core runs: index and linter, the headless pipeline (intake, brief, debrief) with staged publish, the prep scripts, the systemd units and `/setup`. Memory capture and recall (Plan 3) are not built yet; `/setup` skips that step for now.
+> **Status:** built and tested. The headless brief, debrief and intake pipeline passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md)); `/setup` and the installed systemd units have not yet been run end to end. Memory capture and recall (Plan 3) are not built yet; `/setup` skips that step for now.
 
 ## What Jarvis is
 

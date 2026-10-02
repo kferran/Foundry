@@ -51,6 +51,9 @@ headless_contract() {
   grep -qF '_decisions.jsonl' "$f"
   grep -qF 'vault_index.py related "' "$f"
   grep -qF '`agent_owner`: leave the key out' "$f"
+  grep -qF 'never add a `work` or `personal` input to its `sources`' "$f"
+  grep -qF 'refuse paths under `raw/inbox/` and `raw/<partition>/notes/`' "$f"
+  grep -qF '(headless: the run id'"'"'s first 8 digits written as `YYYY-MM-DD`)' "$f"
 }
 
 @test "brief: headless contract, allowlisted index calls, template sections" {
@@ -99,6 +102,7 @@ headless_contract() {
   grep -qF 'search_globs' .claude/commands/impact.md
   grep -qF 'system/scripts/verify_setup.sh' .claude/commands/backup.md
   grep -qF 'remote_mode' .claude/commands/backup.md
+  grep -qF 'commits not yet pushed' .claude/commands/backup.md
   grep -qF 'system/scripts/lint_vault.sh' .claude/commands/lint.md
 }
 
@@ -123,7 +127,27 @@ headless_contract() {
   grep -qF 'system/scripts/install_units.sh --dry-run' .claude/commands/setup.md
 }
 
+@test "/setup's additionalDirectories merge keeps every other key in settings.local.json" {
+  cmd="$(grep -oE '`\[ -f \.claude/settings\.local\.json \][^`]*`' .claude/commands/setup.md | tr -d '`')"
+  [ -n "$cmd" ]
+  d="$BATS_TEST_TMPDIR/v"
+  mkdir -p "$d/.claude"
+  printf '{"permissions": {"allow": ["Bash(x)"], "additionalDirectories": ["/z"]}, "other": 1}\n' > "$d/.claude/settings.local.json"
+  (cd "$d" && eval "${cmd//<paths…>/\/a \/b}")
+  f="$d/.claude/settings.local.json"
+  [ "$(jq -c .permissions.allow "$f")" = '["Bash(x)"]' ]
+  [ "$(jq .other "$f")" = 1 ]
+  [ "$(jq -c .permissions.additionalDirectories "$f")" = '["/z","/a","/b"]' ]
+  rm "$f"
+  (cd "$d" && eval "${cmd//<paths…>/\/a}")
+  [ "$(jq -c .permissions.additionalDirectories "$f")" = '["/a"]' ]
+}
+
 @test "prompts, personas and templates name no specific company or stack" {
+  # Template-only: a vault made from the template may name its own stack. The template repo is
+  # recognized by having no config yet, or remote_mode keep (maintainer mode).
+  mode="$(system/scripts/vault_index.py field system/config.md remote_mode 2>/dev/null || true)"
+  if [[ -n "$mode" && "$mode" != keep ]]; then skip "template-only check (remote_mode=$mode)"; fi
   run grep -rniE 'ultron|kusto|\bvue\b|\.net\b' CLAUDE.md .claude/commands system/agents system/templates
   [ "$status" -eq 1 ]
 }
