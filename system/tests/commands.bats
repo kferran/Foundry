@@ -48,3 +48,12 @@ headless_contract() {
   grep -qF '_decisions.jsonl' "$f"
   grep -qF 'vault_index.py related "' "$f"
 }
+
+@test "brief: headless contract, allowlisted index calls, template sections" {
+  f=.claude/commands/brief.md
+  headless_contract "$f"
+  headless_allowlist "$f"
+  grep -qF 'briefings/<date>.md' "$f"
+  grep -qx '### 2. Unavailable Sources' system/templates/daily-briefing.md
+  grep -qF '![[{{date}}.debrief]]' system/templates/daily-briefing.md
+}

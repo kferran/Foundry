@@ -10,6 +10,8 @@ status: "{{status}}"
 
 ### 1. Active Objectives & Context Boundaries
 
+### 2. Unavailable Sources
+
 ## 🛑 Real-Time Workflow Friction Matrix
 - **Systemic Blockers**:
 - **Focus Drift Analysis**:
