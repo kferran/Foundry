@@ -106,3 +106,20 @@ headless_contract() {
   run git check-ignore -q system/codebases/example.md
   [ "$status" -eq 1 ]
 }
+
+@test "/setup detects remotes before changing them and installs no memory hooks" {
+  text="$(cat .claude/commands/setup.md)"
+  [[ "$text" == *'setup_remote.sh --detect'* ]]
+  [[ "$text" == *'setup_remote.sh <url>'* ]]
+  before_detect="${text%%setup_remote.sh --detect*}"
+  before_act="${text%%setup_remote.sh <url>*}"
+  [ "${#before_detect}" -lt "${#before_act}" ]
+  run grep -n 'install_hooks' .claude/commands/setup.md
+  [ "$status" -eq 1 ]
+  grep -qF 'system/scripts/install_units.sh --dry-run' .claude/commands/setup.md
+}
+
+@test "prompts, personas and templates name no specific company or stack" {
+  run grep -rniE 'ultron|kusto|\bvue\b|\.net\b' CLAUDE.md .claude/commands system/agents system/templates
+  [ "$status" -eq 1 ]
+}
