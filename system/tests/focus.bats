@@ -92,3 +92,64 @@ sample() { printf '[%s] %s\n' "$1" "$2" >> "$L"; }
   [ "$status" -eq 0 ]
   grep -qxF '| Q3 - plan \| v2 | 1 | 0.5 |' <<< "$output"
 }
+
+# Track stubs: hyprctl answers only for the "new" instance; sleep ends the loop after STUB_SLEEP_MAX calls.
+track_stubs() {
+  STUBS="$BATS_TEST_TMPDIR/stubs"
+  mkdir -p "$STUBS" "$BATS_TEST_TMPDIR/run/hypr/old" "$BATS_TEST_TMPDIR/run/hypr/new"
+  touch -d '1 hour ago' "$BATS_TEST_TMPDIR/run/hypr/old"
+  cat > "$STUBS/hyprctl" <<'EOF'
+#!/bin/bash
+echo "${HYPRLAND_INSTANCE_SIGNATURE:-}" >> "$STUB_HYPR_LOG"
+if [[ "${HYPRLAND_INSTANCE_SIGNATURE:-}" == new ]]; then
+  printf '{"title": "%s"}\n' "$STUB_TITLE"
+else
+  echo "Couldn't connect to the Hyprland socket"
+  exit "${STUB_HYPR_RC:-0}"
+fi
+EOF
+  cat > "$STUBS/sleep" <<'EOF'
+#!/bin/bash
+n=$(( $(cat "$STUB_SLEEP_COUNT" 2>/dev/null || echo 0) + 1 ))
+echo "$n" > "$STUB_SLEEP_COUNT"
+(( n < ${STUB_SLEEP_MAX:-2} )) || exit 99
+EOF
+  chmod +x "$STUBS/hyprctl" "$STUBS/sleep"
+  export STUB_HYPR_LOG="$BATS_TEST_TMPDIR/hypr.log" STUB_SLEEP_COUNT="$BATS_TEST_TMPDIR/sleeps"
+  export STUB_TITLE="Q3 - plan - Jarvis - Obsidian v1.8.9"
+}
+
+# timeout: a tracker whose loop ignores the stub's exit would otherwise hang the suite.
+run_track() {
+  run timeout 20 env PATH="$STUBS:$PATH" XDG_RUNTIME_DIR="$BATS_TEST_TMPDIR/${RUNTIME:-run}" HYPRLAND_INSTANCE_SIGNATURE=stale "$TR"
+}
+
+@test "track_obsidian: a stale Hyprland signature is recovered once and then reused" {
+  track_stubs
+  rm -rf system/logs
+  STUB_SLEEP_MAX=3 run_track
+  [ "$status" -eq 99 ]
+  [ "$(tr '\n' ' ' < "$STUB_HYPR_LOG")" = "stale new new new " ]
+  logs=(system/logs/obsidian_focus_*.log)
+  [ "${#logs[@]}" -eq 1 ]
+  [ "${logs[0]}" = "system/logs/obsidian_focus_$(TZ=America/Denver date +%F).log" ]
+  [ "$(wc -l < "${logs[0]}")" -eq 3 ]
+  grep -qE '^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\] Q3 - plan$' "${logs[0]}"
+}
+
+@test "track_obsidian: windows that are not Obsidian are not logged" {
+  track_stubs
+  STUB_TITLE="Firefox - Mozilla" run_track
+  [ "$status" -eq 99 ]
+  logs=(system/logs/obsidian_focus_*.log)
+  [ ! -e "${logs[0]}" ]
+}
+
+@test "track_obsidian: hyprctl failures never stop the loop" {
+  track_stubs
+  RUNTIME=empty STUB_HYPR_RC=1 STUB_SLEEP_MAX=3 run_track
+  [ "$status" -eq 99 ]
+  [ "$(cat "$STUB_SLEEP_COUNT")" -eq 3 ]
+  logs=(system/logs/obsidian_focus_*.log)
+  [ ! -e "${logs[0]}" ]
+}
