@@ -57,3 +57,18 @@ headless_contract() {
   grep -qx '### 2. Unavailable Sources' system/templates/daily-briefing.md
   grep -qF '![[{{date}}.debrief]]' system/templates/daily-briefing.md
 }
+
+@test "debrief: headless contract, its own file, template sections" {
+  f=.claude/commands/debrief.md
+  headless_contract "$f"
+  headless_allowlist "$f"
+  grep -qF 'briefings/<date>.debrief.md' "$f"
+  grep -qx '### 3. Agent Health' system/templates/daily-debrief.md
+  grep -qx '### 4. Unavailable Sources' system/templates/daily-debrief.md
+}
+
+@test "CodingAgent writes metrics where /debrief reads them" {
+  grep -qF 'system/logs/metrics/CodingAgent-<epoch>.json' system/agents/CodingAgent.md
+  grep -qF 'system/logs/metrics/*.json' .claude/commands/debrief.md
+  [ "$(jq -r .agent system/templates/compilation-metric.json)" = '{{agent_name}}' ]
+}
