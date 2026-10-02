@@ -72,3 +72,28 @@ mkrepo() {  # <path> [branch]
   run "$DC"
   [ "$status" -eq 2 ]
 }
+
+@test "inspect: prints one JSON object for the repo" {
+  mkrepo "$R/app"
+  printf '{"name": "app", "dependencies": {"react": "18"}}' > "$R/app/package.json"
+  git -C "$R/app" add package.json
+  run "$IC" "$R/app"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.manifests[0].details.notable[0]' <<< "$output")" = react ]
+  [ "$(jq -r .path <<< "$output")" = "$RP/app" ]
+}
+
+@test "inspect: a relative path is resolved against the caller's directory" {
+  mkrepo "$R/app"
+  cd "$R"
+  run "$IC" app
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .path <<< "$output")" = "$RP/app" ]
+}
+
+@test "inspect: a directory that is not a repo, or no argument, exits 2" {
+  run "$IC" "$R"
+  [ "$status" -eq 2 ]
+  run "$IC"
+  [ "$status" -eq 2 ]
+}
