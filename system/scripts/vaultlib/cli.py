@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import frontmatter, guard, publish, retrieve, schema as schemamod, scope as scopemod
+from . import frontmatter, guard, publish, recall as recallmod, retrieve, schema as schemamod, scope as scopemod
 from .index import Index
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
@@ -279,6 +279,20 @@ def cmd_show(args, vault, sc):
     return EXIT_OK
 
 
+def cmd_recall(args, vault, sc):
+    """The SessionStart recall block (spec §6.17). Scope comes from $PWD; --cwd must name the same scope."""
+    if sc is None:
+        raise UsageError("caller is outside the vault and any registered codebase (scope)")
+    cwd = Path(args.cwd)
+    if not cwd.is_dir():
+        raise UsageError(f"not a directory: {args.cwd}")
+    if scopemod.caller_scope(vault, cwd) != sc:
+        raise UsageError("--cwd is not in the caller's scope")
+    budget = recallmod.budget_for(vault, args.budget_chars)
+    sys.stdout.write(recallmod.build(vault, sc, budget, crew=recallmod.crew_env()))
+    return EXIT_OK
+
+
 def cmd_backlinks(args, vault, sc):
     if sc is None:
         raise UsageError("caller is outside the vault and any registered codebase (scope)")
@@ -399,6 +413,9 @@ def build_parser():
     p = add("stage", cmd_stage, "copy a publishable note into a run's staging tree (headless runs)")
     p.add_argument("target")
     p.add_argument("run_id")
+    p = add("recall", cmd_recall, "build the SessionStart recall block")
+    p.add_argument("--cwd", required=True)
+    p.add_argument("--budget-chars", type=int)
     add("rebuild", cmd_rebuild, "drop and rebuild the index")
     return parser
 
