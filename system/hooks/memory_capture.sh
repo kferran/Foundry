@@ -15,19 +15,22 @@ slugify() {
 }
 
 write_digest() {  # write_digest <sid> <digest text>
-  local sid="$1" text="$2" st part codebase tz stamp created first slug dir name n redacted count task=""
+  local sid="$1" text="$2" st part codebase tz stamp created first slug dir name n redacted count task="" countfile
   st="$MEM_SESSIONS/$sid.json"
   part="$(jq -r .partition "$st")" codebase="$(jq -r .codebase "$st")" tz="$(jq -r .tz "$st")"
   stamp="$(TZ="$tz" date +%Y-%m-%d-%H%M)" created="$(TZ="$tz" date +%Y-%m-%dT%H:%M:%S%:z)"
-  first="$(grep -m 1 -vE '^[[:space:]]*(#.*)?$|^[[:space:]]*\*\*[^*]+\*\*[[:space:]]*$' <<< "$text" || true)"
+  # Redact first (spec §6.17 step 2): secrets must never reach disk, including in filenames
+  countfile="$(mktemp)" || return 1
+  redacted="$(printf '%s' "$text" | "$MEM_VAULT/system/scripts/redact.py" 2> "$countfile")" || { rm -f "$countfile"; return 1; }
+  count="$(sed -n 's/^redactions: //p' "$countfile")"
+  rm -f -- "$countfile"
+  # Derive slug from redacted text to ensure no secrets in filename
+  first="$(grep -m 1 -vE '^[[:space:]]*(#.*)?$|^[[:space:]]*\*\*[^*]+\*\*[[:space:]]*$' <<< "$redacted" || true)"
   slug="$(slugify "$first")"
   dir="$MEM_VAULT/raw/$part/notes"
   mkdir -p "$dir"
   name="$stamp-${sid:0:8}-$slug" n=1
   while [[ -e "$dir/$name.md" ]]; do n=$(( n + 1 )); name="$stamp-${sid:0:8}-$slug-$n"; done
-  redacted="$(printf '%s' "$text" | "$MEM_VAULT/system/scripts/redact.py" 2> "$dir/.$name.count")" || return 1
-  count="$(sed -n 's/^redactions: //p' "$dir/.$name.count")"
-  rm -f -- "$dir/.$name.count"
   if [[ "${JARVIS_CREW:-}" == 1 && "${JARVIS_TASK_ID:-}" =~ ^[A-Za-z0-9._-]+$ ]]; then
     task="task_id: \"$JARVIS_TASK_ID\""$'\n'
   fi

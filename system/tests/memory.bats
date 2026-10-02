@@ -245,6 +245,17 @@ digests() { find raw -path '*/notes/*.md' -type f | sort; }
   grep -qx 'codebase: "code"' "$(digests)"
 }
 
+@test "capture: secrets in the first line don't land in the filename" {
+  start secret-1
+  msg=$'<vault-digest>\npassword: hunter2\n## Outcome\nWork done.\n</vault-digest>'
+  stop secret-1 "$msg"
+  f="$(digests)"
+  [[ "$f" != *"hunter2"* ]]
+  grep -q '\[REDACTED' "$f"
+  run find "$MEM_VAULT/raw/personal/notes" -name '\.secret-1*'
+  [ "$status" -ne 0 ]
+}
+
 @test "crew sessions skip the attended check and the periodic request; marked digests carry task_id" {
   export JARVIS_CREW=1 JARVIS_TASK_ID=task-42 CLAUDE_CODE_SESSION_ATTENDED=0
   thresholds 1 0
