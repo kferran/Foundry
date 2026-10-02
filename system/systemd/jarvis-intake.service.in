@@ -1,0 +1,11 @@
+[Unit]
+Description=Jarvis Wheeljack: intake compiler
+
+[Service]
+Type=oneshot
+WorkingDirectory={{VAULT_ROOT}}
+Environment="TZ={{TZ}}"
+Environment="PATH={{UNIT_PATH}}"
+Environment="CLAUDE_BIN={{CLAUDE_BIN}}"
+TimeoutStartSec=90min
+ExecStart="{{VAULT_ROOT}}/system/scripts/intake_daemon.sh"

@@ -1,0 +1,9 @@
+[Unit]
+Description=Jarvis Optimus: morning brief at {{BRIEF_TIME}}
+
+[Timer]
+OnCalendar=*-*-* {{BRIEF_TIME}}:00 {{TZ}}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
