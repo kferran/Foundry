@@ -251,3 +251,86 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
   [ "$(jq -S . "$bak")" = "$(jq -S . "$BATS_TEST_TMPDIR/original.json")" ]
   [ "$(ls "$CFG" | grep -c 'settings.json.bak')" -eq 5 ]
 }
+
+record() { jq -c --arg k "$SET" '.[$k]' "$V/system/logs/memory/install_hooks.json"; }
+
+@test "permissions without an allow list come back without one after install and uninstall" {
+  printf '%s\n' '{"permissions": {"deny": ["Read(~/.ssh/**)"], "defaultMode": "default"}}' > "$SET"
+  jq -S . "$SET" > "$BATS_TEST_TMPDIR/fixture.json"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  run "$IH"
+  [ "$status" -eq 0 ]
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(jq -S . "$SET")" = "$(cat "$BATS_TEST_TMPDIR/fixture.json")" ]
+}
+
+@test "foreign empty containers of every kind the installer writes into survive install and uninstall" {
+  for doc in '{"hooks": {}}' '{"permissions": {}}' '{"hooks": {"Stop": []}}' '{"hooks": {"SessionStart": [], "PostToolUse": []}, "permissions": {"allow": []}}'; do
+    printf '%s\n' "$doc" > "$SET"
+    run "$IH"
+    [ "$status" -eq 0 ]
+    [ "$(ours | wc -l)" -eq 3 ]
+    run "$IH" --uninstall
+    [ "$status" -eq 0 ]
+    [ "$(jq -S . "$SET")" = "$(jq -S . <<< "$doc")" ]
+  done
+}
+
+@test "the record names exactly the containers the install created, and uninstall drops it" {
+  printf '%s\n' '{"hooks": {"Stop": []}, "permissions": {"deny": []}}' > "$SET"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  [ "$(record)" = '[["hooks","SessionStart"],["hooks","PostToolUse"],["permissions","allow"]]' ]
+  run "$IH"
+  [ "$status" -eq 0 ]
+  [ "$(record)" = '[["hooks","SessionStart"],["hooks","PostToolUse"],["permissions","allow"]]' ]
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(record)" = null ]
+}
+
+@test "--dry-run writes no record" {
+  run "$IH" --dry-run
+  [ "$status" -eq 0 ]
+  [ ! -e "$V/system/logs/memory/install_hooks.json" ]
+}
+
+@test "an install made before records existed still uninstalls cleanly" {
+  run "$IH"
+  [ "$status" -eq 0 ]
+  rm "$V/system/logs/memory/install_hooks.json"
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(jq -S . "$SET")" = "$(jq -S . "$BATS_TEST_TMPDIR/original.json")" ]
+  rm "$SET"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  printf 'not json\n' > "$V/system/logs/memory/install_hooks.json"
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(jq -c . "$SET")" = '{}' ]
+}
+
+@test "a rule the user adds after install keeps its allow list through uninstall" {
+  printf '%s\n' '{"permissions": {"deny": []}}' > "$SET"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  jq '.permissions.allow += ["Bash(make test)"]' "$SET" > "$SET.new"
+  mv "$SET.new" "$SET"
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(jq -c .permissions "$SET")" = '{"deny":[],"allow":["Bash(make test)"]}' ]
+}
+
+@test "a vault moved after install still uninstalls exactly" {
+  printf '%s\n' '{"permissions": {"deny": []}, "hooks": {"Stop": []}}' > "$SET"
+  jq -S . "$SET" > "$BATS_TEST_TMPDIR/fixture.json"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  relocate "$BATS_TEST_TMPDIR/moved"
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(jq -S . "$SET")" = "$(cat "$BATS_TEST_TMPDIR/fixture.json")" ]
+}

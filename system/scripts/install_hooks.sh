@@ -10,6 +10,7 @@ CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SETTINGS="$CONFIG_DIR/settings.json"
 DIGEST="$CONFIG_DIR/commands/digest.md"
 MANAGED="<!-- managed by vault: "
+RECORD="system/logs/memory/install_hooks.json"
 
 die() { echo "install_hooks: $2" >&2; exit "$1"; }
 usage() { die 2 "usage: install_hooks.sh [--dry-run | --uninstall]"; }
@@ -51,29 +52,35 @@ if [[ "$mode" != uninstall ]]; then
   [[ -z "$bad" ]] || refuse "has an unexpected shape at: $bad (hooks and permissions must be objects, hook events and allow arrays)"
 fi
 
+# The containers an install may have to create. Those it did create are recorded per settings file in
+# $RECORD, so --uninstall removes exactly them and leaves a container the user already had, even an empty one.
+LIB='
+  def containers: [["hooks"], ["hooks", "SessionStart"], ["hooks", "Stop"], ["hooks", "PostToolUse"],
+                   ["permissions"], ["permissions", "allow"]];
+  def at($p): try getpath($p) catch null;'
 # Owned = ours from any vault location, so moving the vault re-points the entries instead of duplicating them.
 STRIP='
   def owned_cmd: type == "string" and test("/system/hooks/memory_(recall|capture|activity)\\.sh$");
   def owned_allow: type == "string" and test("^Bash\\(/.*/system/scripts/vault_index\\.py (related|show|backlinks):\\*\\)$");
   def has_owned: type == "object" and (.hooks | type) == "array" and any(.hooks[]; type == "object" and (.command | owned_cmd));
-  # Only containers that held an owned element are pruned; foreign empty ones are left as found.
-  (if (.hooks | type) == "object" then
-     ([.hooks[] | select(type == "array") | .[] | select(has_owned)] | length > 0) as $had
-     | .hooks |= with_entries(
+  def holds_owned: [.. | strings | select(owned_cmd or owned_allow)] | length > 0;
+  . as $before
+  | (if (.hooks | type) == "object" then
+       .hooks |= with_entries(
          if (.value | type) == "array" then
-           (.value | any(.[]; has_owned)) as $held
-           | .value |= map(if has_owned then (.hooks |= map(select((type == "object" and (.command | owned_cmd)) | not))) | select((.hooks | length) > 0) else . end)
-           | select(($held | not) or (.value | length) > 0)
+           .value |= map(if has_owned then (.hooks |= map(select((type == "object" and (.command | owned_cmd)) | not))) | select((.hooks | length) > 0) else . end)
          else . end)
-     | if $had and .hooks == {} then del(.hooks) else . end
-   else . end)
+     else . end)
   | (if (.permissions | type) == "object" and (.permissions.allow | type) == "array" then
-       (.permissions.allow | any(.[]; owned_allow)) as $held
-       | .permissions.allow |= map(select(owned_allow | not))
-       # An emptied allow array is indistinguishable from a foreign empty one, so it is dropped only
-       # when it was the sole permissions key (the shape a fresh install creates); otherwise it stays.
-       | if $held and .permissions.allow == [] and (.permissions | keys) == ["allow"] then del(.permissions) else . end
-     else . end)'
+       .permissions.allow |= map(select(owned_allow | not))
+     else . end)
+  # No record (an install made before records existed): every hooks container counts as created, and an
+  # emptied allow array only when it is the sole permissions key, the shape a fresh install creates.
+  | ((.permissions | type) == "object" and (.permissions | keys) == ["allow"]) as $sole
+  | (if $created == null then [containers[] | select(.[0] == "hooks" or $sole)] else $created end) as $prune
+  # A container is removed only if it was created, held an owned entry before, and is empty now; deepest first.
+  | reduce ($prune | sort_by(-length))[] as $p (.;
+      if (($before | at($p)) | holds_owned) and (at($p) == [] or at($p) == {}) then delpaths([$p]) else . end)'
 ADD='
   .hooks.SessionStart = ((.hooks.SessionStart // []) + [{hooks: [{type: "command", command: ($v + "/system/hooks/memory_recall.sh"), timeout: 5}]}])
   | .hooks.Stop = ((.hooks.Stop // []) + [{hooks: [{type: "command", command: ($v + "/system/hooks/memory_capture.sh"), timeout: 10}]}])
@@ -83,10 +90,23 @@ ADD='
       "Bash(" + $v + "/system/scripts/vault_index.py related:*)",
       "Bash(" + $v + "/system/scripts/vault_index.py show:*)",
       "Bash(" + $v + "/system/scripts/vault_index.py backlinks:*)"])'
+CREATED='[containers[] as $p | select(at($p) == null) | $p]'
+
+# This settings file's record, or null when there is none or it is not a list of key paths.
+created=null
+if [[ -f "$RECORD" ]]; then
+  created="$(jq -c --arg k "$SETTINGS" '(.[$k] // null) as $c
+    | if ($c | type) == "array" and all($c[]; type == "array" and all(.[]; type == "string")) then $c else null end' \
+    "$RECORD" 2> /dev/null)" || created=null
+fi
+
+stripped="$(jq --argjson created "$created" "$LIB $STRIP" <<< "$current" 2> /dev/null)" \
+  || refuse "could not be read"
 if [[ "$mode" == uninstall ]]; then
-  new="$(jq "$STRIP" <<< "$current" 2> /dev/null)" || refuse "could not be read for the uninstall"
+  new="$stripped"
 else
-  new="$(jq --arg v "$VAULT_ROOT" "$STRIP | $ADD" <<< "$current" 2> /dev/null)" || refuse "could not be merged"
+  now_created="$(jq -c "$LIB $CREATED" <<< "$stripped")"
+  new="$(jq --arg v "$VAULT_ROOT" "$ADD" <<< "$stripped" 2> /dev/null)" || refuse "could not be merged"
 fi
 jq -e 'type == "object"' <<< "$new" > /dev/null || die 1 "the merged settings did not parse; nothing was changed"
 
@@ -142,6 +162,20 @@ if [[ "$settings_action" == changed ]]; then
   fi
 fi
 echo "settings: $settings_action"
+
+# Keep the record in step with the settings: rewritten on every install, this file's entry dropped on uninstall.
+record() {
+  local old='{}' tmp="$RECORD.tmp.$$"
+  if [[ -f "$RECORD" ]]; then old="$(jq -c 'if type == "object" then . else {} end' "$RECORD" 2> /dev/null)" || old='{}'; fi
+  mkdir -p -- "$(dirname "$RECORD")"
+  jq --arg k "$SETTINGS" "$@" <<< "$old" > "$tmp"
+  mv -f -- "$tmp" "$RECORD"
+}
+if [[ "$mode" == install ]]; then
+  record --argjson c "$now_created" '.[$k] = $c'
+elif [[ -f "$RECORD" ]]; then
+  record 'del(.[$k])'
+fi
 
 case "$digest_action" in
   new|changed) mkdir -p -- "$(dirname "$DIGEST")"; digest_body > "$DIGEST"; echo "digest command: $digest_action" ;;
