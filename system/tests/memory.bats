@@ -124,3 +124,134 @@ digests() { find raw -path '*/notes/*.md' -type f | sort; }
   start ln-1 "$BATS_TEST_TMPDIR/vault-link"
   [ "$(jq -r .scope "$S/ln-1.json")" = vault ]
 }
+
+@test "capture: an out-of-scope session writes nothing" {
+  mkdir -p "$BATS_TEST_TMPDIR/elsewhere"
+  stop out-2 $'<vault-digest>\n## Outcome\nx\n</vault-digest>' "$BATS_TEST_TMPDIR/elsewhere"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -z "$(digests)" ]
+  [ ! -e "$S/out-2.json" ]
+}
+
+@test "capture: no request below the work-event threshold, a request at it" {
+  thresholds 5 0
+  start c-1
+  tools c-1 4
+  stop c-1 "Done with that."
+  [ -z "$output" ]
+  tool c-1
+  stop c-1 "Done with that."
+  [ "$(jq -r .decision <<< "$output")" = block ]
+  [[ "$(jq -r .reason <<< "$output")" == "Jarvis memory (not an error): please reply with a short session digest."* ]]
+  [ "$(jq -r .awaiting_digest "$S/c-1.json")" = true ]
+}
+
+@test "capture: no request before digest_min_minutes have passed" {
+  thresholds 1 20
+  start t-1
+  tools t-1 5
+  stop t-1 "Done."
+  [ -z "$output" ]
+  jq '.started_at -= 1300' "$S/t-1.json" > "$S/t-1.json.new"
+  mv "$S/t-1.json.new" "$S/t-1.json"
+  stop t-1 "Done."
+  [ "$(jq -r .decision <<< "$output")" = block ]
+}
+
+@test "capture: no request when the last message asks the user a question" {
+  thresholds 1 0
+  start q-1
+  tools q-1 3
+  stop q-1 "Which option do you want?   "
+  [ -z "$output" ]
+}
+
+@test "capture: a requested digest is redacted and written with the sid8 name and valid frontmatter" {
+  thresholds 1 0
+  start abcdef12-3456
+  tools abcdef12-3456 2
+  stop abcdef12-3456 "Done."
+  msg=$'Here it is.\n<vault-digest>\n## Outcome\nShipped the export job.\n## Facts learned\n- password: hunter2\n</vault-digest>'
+  stop abcdef12-3456 "$msg"
+  [ -z "$output" ]
+  f="$(digests)"
+  [ "$(wc -l <<< "$f")" -eq 1 ]
+  [[ "$f" =~ ^raw/personal/notes/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}-abcdef12-shipped-the-export-job\.md$ ]]
+  run grep -c hunter2 "$f"
+  [ "$output" = 0 ]
+  grep -q '\[REDACTED' "$f"
+  grep -qx 'redactions: "1"' "$f"
+  grep -qE '^created_at: "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}"$' "$f"
+  grep -qx 'codebase: "vault"' "$f"
+  system/scripts/vault_index.py validate "$f"
+  [ "$(cat "$S/abcdef12-3456.events")" -eq 0 ]
+  [ "$(jq -r .awaiting_digest "$S/abcdef12-3456.json")" = false ]
+}
+
+@test "capture: an on-demand digest (no request first) is captured" {
+  start od-1
+  stop od-1 $'<vault-digest>\n## Outcome\nOn demand.\n</vault-digest>'
+  [ "$(digests | wc -l)" -eq 1 ]
+}
+
+@test "capture: no digest after a request raises an alert and never asks twice in a row" {
+  thresholds 1 0
+  start n-1
+  tools n-1 3
+  stop n-1 "Done."
+  [ "$(jq -r .decision <<< "$output")" = block ]
+  stop n-1 "I would rather not."
+  [ -z "$output" ]
+  grep -q 'session n-1 did not return the requested digest' system/logs/alerts_*.md
+  [ "$(jq -r .awaiting_digest "$S/n-1.json")" = false ]
+}
+
+@test "capture: an invalid session_id writes nothing" {
+  start "../evil"
+  stop "../evil" $'<vault-digest>\nx\n</vault-digest>'
+  [ -z "$(digests)" ]
+  run ls "$S"
+  [ -z "$output" ]
+}
+
+@test "capture: two sessions in the same minute produce distinct files" {
+  start aaaaaaaa-1
+  start bbbbbbbb-1
+  stop aaaaaaaa-1 $'<vault-digest>\n## Outcome\nSame text.\n</vault-digest>'
+  stop bbbbbbbb-1 $'<vault-digest>\n## Outcome\nSame text.\n</vault-digest>'
+  [ "$(digests | wc -l)" -eq 2 ]
+}
+
+@test "scope: frozen at SessionStart, so a later cd never moves the session" {
+  C="$BATS_TEST_TMPDIR/code"
+  repo "$C"
+  register code "$C" work
+  start fz-1
+  stop fz-1 $'<vault-digest>\n## Outcome\nFrozen.\n</vault-digest>' "$C"
+  f="$(digests)"
+  [[ "$f" == raw/personal/notes/* ]]
+  grep -qx 'codebase: "vault"' "$f"
+}
+
+@test "capture: a worktree session's digest lands in its codebase's partition" {
+  C="$BATS_TEST_TMPDIR/code"
+  repo "$C"
+  git -C "$C" worktree add -q "$BATS_TEST_TMPDIR/code-feature" -b feature
+  register code "$C" work
+  start wt-2 "$BATS_TEST_TMPDIR/code-feature"
+  stop wt-2 $'<vault-digest>\n## Outcome\nFrom a worktree.\n</vault-digest>' "$BATS_TEST_TMPDIR/code-feature"
+  [[ "$(digests)" == raw/work/notes/* ]]
+  grep -qx 'codebase: "code"' "$(digests)"
+}
+
+@test "crew sessions skip the attended check and the periodic request; marked digests carry task_id" {
+  export JARVIS_CREW=1 JARVIS_TASK_ID=task-42 CLAUDE_CODE_SESSION_ATTENDED=0
+  thresholds 1 0
+  start crew-1
+  tools crew-1 5
+  stop crew-1 "Done."
+  [ -z "$output" ]
+  stop crew-1 $'<vault-digest>\n## Outcome\nTask done.\n</vault-digest>'
+  grep -qx 'task_id: "task-42"' "$(digests)"
+}
