@@ -152,8 +152,9 @@ if ! system/scripts/publish_staged.py snapshot "$run_id" --targets "${targets[@]
 fi
 
 body="$(awk 'NR==1 && $0=="---" {fm=1; next} fm && $0=="---" {fm=0; next} !fm' "$cmdfile")"
+# $ARGUMENTS: the run id on the first line, then one input per line (a raw filename may contain spaces).
 argstr="$run_id"
-(( ${#inputs[@]} )) && argstr="$run_id ${inputs[*]}"
+(( ${#inputs[@]} )) && argstr="$run_id"$'\n'"$(printf '%s\n' "${inputs[@]}")"
 shopt -u patsub_replacement 2>/dev/null || true
 prompt="${body//\$ARGUMENTS/$argstr}"
 
