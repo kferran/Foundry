@@ -9,12 +9,13 @@ source system/scripts/lib_config.sh
 source system/scripts/lib_git.sh
 
 die() { echo "setup_remote: $2" >&2; exit "$1"; }
-usage() { die 2 "usage: setup_remote.sh <url> | --none | --keep"; }
+usage() { die 2 "usage: setup_remote.sh <url> | --none | --keep | --detect"; }
 
 (( $# == 1 )) || usage
 case "$1" in
   --none) mode=none url="" ;;
   --keep) mode=keep url="" ;;
+  --detect) mode=detect url="" ;;
   -*) usage ;;
   "") usage ;;
   *) mode=private url="$1" ;;
@@ -22,13 +23,29 @@ esac
 
 template="$(head -n 1 system/template_source 2>/dev/null | tr -d '[:space:]')"
 [[ -n "$template" ]] || die 1 "system/template_source is missing or empty"
-[[ -f system/config.md ]] || die 1 "system/config.md is missing; run /setup first"
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die 1 "the vault is not a git repository"
+
+remote_url() { git remote get-url "$1" 2>/dev/null || true; }
+
+# --detect reports what the other modes would find and changes nothing (spec §11 step 4 asks after it).
+if [[ "$mode" == detect ]]; then
+  origin="$(remote_url origin)"
+  if [[ -n "$origin" ]] && git_url_same "$origin" "$template"; then
+    echo "detected: plain clone (origin is the template)"
+  elif [[ -n "$origin" ]]; then
+    echo "detected: origin is not the template ($origin)"
+  else
+    echo "detected: no origin"
+  fi
+  tmpl="$(remote_url template)"
+  echo "template remote: ${tmpl:-<none>}"
+  exit 0
+fi
+
+[[ -f system/config.md ]] || die 1 "system/config.md is missing; run /setup first"
 if [[ "$mode" == private ]] && git_url_same "$url" "$template"; then
   die 1 "refusing: $url is the template repository, not a private origin"
 fi
-
-remote_url() { git remote get-url "$1" 2>/dev/null || true; }
 
 if [[ "$mode" != keep ]]; then
   origin="$(remote_url origin)" tmpl="$(remote_url template)"

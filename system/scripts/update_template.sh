@@ -11,7 +11,8 @@ git remote get-url template >/dev/null 2>&1 || die 1 "no template remote; run sy
 [[ -z "$(git status --porcelain)" ]] || die 1 "working tree is not clean; commit or stash first"
 
 git fetch --quiet template || die 1 "git fetch template failed"
-branch="$(git remote show template 2>/dev/null | sed -n 's/^ *HEAD branch: //p')"
+# LC_ALL=C: "HEAD branch:" is translated in other locales.
+branch="$(LC_ALL=C git remote show template 2>/dev/null | sed -n 's/^ *HEAD branch: //p')"
 [[ -n "$branch" && "$branch" != "(unknown)" ]] || die 1 "cannot determine the template's default branch"
 ref="template/$branch"
 git merge-base HEAD "$ref" >/dev/null 2>&1 \
@@ -27,4 +28,16 @@ if ! git merge --no-ff --no-edit "$ref"; then
 fi
 
 system/scripts/vault_index.py rebuild
-system/scripts/install_units.sh
+
+# Re-render units only where this vault already installed them: an update must never install or
+# enable units the user skipped (spec gate: no unit runs before Plan 4 rewrites the commands).
+unit_dir="${SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
+owned=0
+for f in "$unit_dir"/*.service "$unit_dir"/*.timer; do
+  if [[ -f "$f" && "$(head -n 1 -- "$f")" == "# Managed by vault: $VAULT_ROOT" ]]; then owned=1; break; fi
+done
+if (( owned )); then
+  system/scripts/install_units.sh
+else
+  echo "update_template: units not installed; skipped (install them with system/scripts/install_units.sh)"
+fi

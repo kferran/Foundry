@@ -155,3 +155,27 @@ codebase() {  # <name> <path>
   grep -qx 'no focus data' "$IN/focus.md"
   grep -qx -- '- debrief_prep: focus: no focus log for 2026-10-01' "$IN/unavailable.md"
 }
+
+@test "debrief_prep: a failing index query is recorded and writes no digests.md" {
+  mv system/scripts/vault_index.py system/scripts/vault_index_real.py
+  printf '#!/bin/bash\n[[ "$1" == query ]] && exit 3\nexec "$(dirname "$0")/vault_index_real.py" "$@"\n' > system/scripts/vault_index.py
+  chmod +x system/scripts/vault_index.py
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ ! -e "$IN/digests.md" ]
+  grep -q -- '^- debrief_prep: digests: index query failed' "$IN/unavailable.md"
+}
+
+@test "debrief_prep: a codebase whose git log fails is recorded, not reported as idle" {
+  C="$BATS_TEST_TMPDIR/app"
+  git init -q "$C"
+  commit_at "$C" 2026-10-01T10:00:00-06:00 "mine"
+  printf '1234567890123456789012345678901234567890\n' > "$C/.git/refs/heads/$(git -C "$C" branch --show-current)"
+  codebase app "$C"
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qx -- '- debrief_prep: git: git log failed for codebase app' "$IN/unavailable.md"
+  run grep -x '## app' "$IN/git.md"
+  [ "$status" -eq 1 ]
+  grep -qx '## vault' "$IN/git.md"
+}

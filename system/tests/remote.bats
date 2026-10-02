@@ -114,6 +114,19 @@ field() { system/scripts/vault_index.py field system/config.md "$1"; }
   [ "$(git remote -v)" = "$remotes" ]
 }
 
+@test "--detect reports the case and changes nothing" {
+  git remote add origin "file://$T/"
+  before="$(sha256sum system/config.md)"
+  run "$SR" --detect
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"plain clone"* ]]
+  [ "$(git remote)" = origin ]
+  [ "$(git remote get-url origin)" = "file://$T/" ]
+  [ "$(sha256sum system/config.md)" = "$before" ]
+  run git config --get core.hooksPath
+  [ "$status" -ne 0 ]
+}
+
 @test "setup_remote: usage errors exit 2; a missing template_source or config exits 1" {
   run "$SR"
   [ "$status" -eq 2 ]
@@ -133,6 +146,7 @@ field() { system/scripts/vault_index.py field system/config.md "$1"; }
 # A published template (UP) that this vault tracks as "template", and a working clone (W) of it.
 template_setup() {
   cp -r "$REPO/system/systemd" system/systemd
+  cp "$REPO/.gitignore" .gitignore  # generated files (index.db) must not dirty the tree
   printf 'base\n' > "my notes.txt"
   git add -A
   git commit -qm base
@@ -159,15 +173,38 @@ upstream_commit() {  # <file> <text>
   git -C "$W" push -q
 }
 
-@test "update_template merges a clean update, then rebuilds the index and re-renders the units" {
+@test "update_template merges a clean update, then rebuilds the index and re-renders installed units" {
   template_setup
+  system/scripts/install_units.sh > /dev/null
+  printf '# Managed by vault: %s\nstale\n' "$(pwd -P)" > "$SYSTEMD_USER_DIR/jarvis-brief.service"
   upstream_commit new.txt hello
   run "$UT"
   [ "$status" -eq 0 ]
   [ "$(cat new.txt)" = hello ]
   [ "$(git log -1 --format=%P | wc -w)" -eq 2 ]
   [ -f system/index.db ]
-  [ -f "$SYSTEMD_USER_DIR/jarvis-brief.service" ]
+  grep -qx 'changed jarvis-brief.service' <<< "$output"
+  grep -q '^ExecStart=' "$SYSTEMD_USER_DIR/jarvis-brief.service"
+}
+
+@test "update_template leaves units alone in a vault that never installed them" {
+  template_setup
+  upstream_commit new.txt hello
+  run "$UT"
+  [ "$status" -eq 0 ]
+  [ "$(cat new.txt)" = hello ]
+  [[ "$output" == *"units not installed; skipped"* ]]
+  [ ! -e "$SYSTEMD_USER_DIR" ]
+  [ ! -e "$STUB_SYSTEMCTL_LOG" ]
+}
+
+@test "update_template finds the default branch under a non-English locale" {
+  template_setup
+  upstream_commit new.txt hello
+  # Translations need an installed locale; en_US.UTF-8 plus LANGUAGE=de gives German git output.
+  LANGUAGE=de LC_ALL=en_US.UTF-8 run "$UT"
+  [ "$status" -eq 0 ]
+  [ "$(cat new.txt)" = hello ]
 }
 
 @test "update_template refuses a dirty working tree before fetching" {
