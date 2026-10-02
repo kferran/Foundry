@@ -67,3 +67,72 @@ setup() {
   run "$CD" --bogus
   [ "$status" -eq 2 ]
 }
+
+mini_vault() {
+  M="$BATS_TEST_TMPDIR/mini"
+  mkdir -p "$M/system/scripts" "$M/system/tests/python"
+  cp "$REPO/system/scripts/verify_setup.sh" "$M/system/scripts/"
+  printf '#!/usr/bin/env bats\n@test "ok" { true; }\n' > "$M/system/tests/a.bats"
+  printf 'def test_ok():\n    assert True\n' > "$M/system/tests/python/test_ok.py"
+  VS="$M/system/scripts/verify_setup.sh"
+}
+
+failing_bats() { printf '#!/usr/bin/env bats\n@test "no" { false; }\n' > "$M/system/tests/$1"; }
+
+@test "verify_setup: passing suites exit 0 and are listed" {
+  mini_vault
+  run "$VS"
+  [ "$status" -eq 0 ]
+  grep -qx 'PASS system/tests/a.bats' <<< "$output"
+  grep -qx 'PASS pytest system/tests/python' <<< "$output"
+}
+
+@test "verify_setup: a failing bats suite fails the run and the others still run" {
+  mini_vault
+  failing_bats b.bats
+  run "$VS"
+  [ "$status" -eq 1 ]
+  grep -qx 'FAIL system/tests/b.bats (exit 1)' <<< "$output"
+  grep -qx 'PASS system/tests/a.bats' <<< "$output"
+  grep -qx 'PASS pytest system/tests/python' <<< "$output"
+}
+
+@test "verify_setup: a failing pytest run fails the run" {
+  mini_vault
+  printf 'def test_no():\n    assert False\n' > "$M/system/tests/python/test_no.py"
+  run "$VS"
+  [ "$status" -eq 1 ]
+  grep -q '^FAIL pytest system/tests/python (exit ' <<< "$output"
+}
+
+@test "verify_setup: system_health.bats is not gated and runs only with --health" {
+  mini_vault
+  failing_bats system_health.bats
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *system_health* ]]
+  run "$VS" --health
+  [ "$status" -eq 0 ]
+  grep -qx 'HEALTH FAIL (exit 1; advisory)' <<< "$output"
+}
+
+@test "verify_setup: --health without a health suite says so" {
+  mini_vault
+  run "$VS" --health
+  [ "$status" -eq 0 ]
+  grep -qx 'HEALTH skipped: system/tests/system_health.bats is not present' <<< "$output"
+}
+
+@test "verify_setup: no gating bats suites is a failure, not a pass" {
+  mini_vault
+  rm "$M/system/tests/a.bats"
+  run "$VS"
+  [ "$status" -eq 1 ]
+  grep -qx 'FAIL no gating bats suites in system/tests/' <<< "$output"
+}
+
+@test "verify_setup: an unknown argument exits 2" {
+  mini_vault
+  run "$VS" --bogus
+  [ "$status" -eq 2 ]
+}
