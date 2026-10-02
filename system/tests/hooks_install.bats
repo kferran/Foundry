@@ -184,3 +184,12 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
   run diff "$BATS_TEST_TMPDIR/fixture.json" "$BATS_TEST_TMPDIR/after.json"
   [ "$status" -eq 0 ]
 }
+
+@test "--dry-run reports a foreign digest.md as left alone, with the dry-run suffix" {
+  printf 'my own digest command\n' > "$CFG/commands/digest.md"
+  run "$IH" --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"digest command: left alone ("*") (dry run, nothing written)"* ]]
+  [[ "$output" != *"foreign"* ]]
+  [ "$(cat "$CFG/commands/digest.md")" = "my own digest command" ]
+}

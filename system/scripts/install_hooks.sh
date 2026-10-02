@@ -97,7 +97,11 @@ if [[ "$mode" == dry ]]; then
   diff -u --label "$SETTINGS (current)" --label "$SETTINGS (after install)" \
     <(jq -S . <<< "$current") <(jq -S . <<< "$new") || true
   echo "settings: $settings_action (dry run, nothing written)"
-  echo "digest command: $digest_action (dry run, nothing written)"
+  case "$digest_action" in
+    foreign) echo "digest command: left alone ($DIGEST exists and is not managed by a vault) (dry run, nothing written)" ;;
+    remove) echo "digest command: removed (dry run, nothing written)" ;;
+    *) echo "digest command: $digest_action (dry run, nothing written)" ;;
+  esac
   exit 0
 fi
 
