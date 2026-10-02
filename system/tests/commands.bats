@@ -50,6 +50,7 @@ headless_contract() {
   headless_allowlist "$f"
   grep -qF '_decisions.jsonl' "$f"
   grep -qF 'vault_index.py related "' "$f"
+  grep -qF '`agent_owner`: leave the key out' "$f"
 }
 
 @test "brief: headless contract, allowlisted index calls, template sections" {
