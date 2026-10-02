@@ -72,3 +72,28 @@ headless_contract() {
   grep -qF 'system/logs/metrics/*.json' .claude/commands/debrief.md
   [ "$(jq -r .agent system/templates/compilation-metric.json)" = '{{agent_name}}' ]
 }
+
+@test "every command has frontmatter with a description" {
+  for f in .claude/commands/*.md; do
+    [ "$(head -n 1 "$f")" = "---" ]
+    grep -q '^description: .' "$f"
+  done
+}
+
+@test "every vault script a prompt names exists and is executable" {
+  scripts="$(grep -ohE 'system/scripts/[A-Za-z0-9_.]+' CLAUDE.md .claude/commands/*.md system/agents/*.md | sort -u)"
+  [ -n "$scripts" ]
+  while IFS= read -r s; do
+    [ -x "$s" ]
+  done <<< "$scripts"
+}
+
+@test "query, impact, backup and lint use the index and the vault scripts" {
+  grep -qF 'system/scripts/vault_index.py related' .claude/commands/query.md
+  grep -qF 'Sources Compiled' .claude/commands/query.md
+  grep -qF 'system/scripts/vault_index.py related' .claude/commands/impact.md
+  grep -qF 'search_globs' .claude/commands/impact.md
+  grep -qF 'system/scripts/verify_setup.sh' .claude/commands/backup.md
+  grep -qF 'remote_mode' .claude/commands/backup.md
+  grep -qF 'system/scripts/lint_vault.sh' .claude/commands/lint.md
+}
