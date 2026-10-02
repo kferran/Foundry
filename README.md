@@ -2,7 +2,7 @@
 
 An Obsidian + Claude Code "second brain" vault template.
 
-> **Design stage.** The design is complete, but implementation has not started. The Plan 0 spike is complete (its findings are folded into the spec) and Plans 1–5 are pending. None of the features described below work yet. Setup and usage steps describe the **intended** experience. The only code in the repo today is the old generator, [`scaffold.sh`](scaffold.sh), which Plan 1 removes.
+> **Status:** the core runs: index and linter, the headless pipeline (intake, brief, debrief) with staged publish, the prep scripts, the systemd units and `/setup`. Memory capture and recall (Plan 3) are not built yet; `/setup` skips that step for now.
 
 ## What Jarvis is
 
@@ -16,13 +16,15 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 
 | Plan | Scope | Status |
 |---|---|---|
-| 0. Spike gate | Check headless isolation and hook behaviour against the real `claude` binary (spec §7.4) | Complete: [plan](docs/superpowers/plans/2026-09-30-plan-0-spike.md), [results](docs/superpowers/spikes/2026-09-30-headless-and-hooks.md) |
-| 1. Foundation | Baseline commit, `vaultlib`, schemas, linter, pre-commit hook, index | Plan written: [plan](docs/superpowers/plans/2026-09-30-plan-1-foundation.md) |
-| 2. Headless pipeline | Staged publish, `run_headless.sh`, intake, prep scripts, systemd units, remotes | Pending |
-| 3. Memory (Soundwave) | Capture/recall hooks, redaction, hook installer, `/digest` | Pending |
-| 4. Prompts, setup, docs | `CLAUDE.md`, commands, personas, `/setup`, final renames | Pending |
+| 0. Spike gate | Check headless isolation and hook behavior against the real `claude` binary (spec §7.4) | Complete: [plan](docs/superpowers/plans/2026-09-30-plan-0-spike.md), [results](docs/superpowers/spikes/2026-09-30-headless-and-hooks.md) |
+| 1. Foundation | Baseline commit, `vaultlib`, schemas, linter, pre-commit hook, index | Complete: [plan](docs/superpowers/plans/2026-09-30-plan-1-foundation.md) |
+| 2a. Headless core | Staged publish, `run_headless.sh`, intake daemon, redaction, settings files | Complete: [plan](docs/superpowers/plans/2026-10-01-plan-2a-headless-core.md) |
+| 2b. Operations | Prep scripts, focus stats, unit templates and installer, remotes, codebase discovery | Complete: [plan](docs/superpowers/plans/2026-10-01-plan-2b-operations.md) |
+| 4a. Commands and setup | `CLAUDE.md`, commands, personas, `/setup` (without memory), health suite | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-4a-commands-setup.md) |
+| 3. Memory (Soundwave) | Capture/recall hooks, hook installer, `/digest` | Pending |
+| 4b. Memory integration, renames | `/setup` memory step, README memory sections, final renames | Pending (after Plan 3) |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | Pending (after the core has run for a few weeks) |
-| Sub-project 2 | Optimus orchestrator | Separate spec, after Plan 4 |
+| Sub-project 2 | Optimus orchestrator | Separate spec, after Plan 4b |
 
 - Design spec: [docs/superpowers/specs/2026-09-30-vault-template-design.md](docs/superpowers/specs/2026-09-30-vault-template-design.md)
 - Roadmap: [docs/superpowers/plans/2026-09-30-jarvis-roadmap.md](docs/superpowers/plans/2026-09-30-jarvis-roadmap.md)
@@ -56,7 +58,7 @@ Script and module filenames stay descriptive so they are easy to grep. The theme
 
 ## Repository layout
 
-The target layout, abbreviated from spec §5. Most of it does not exist yet.
+The layout, abbreviated from spec §5. `system/hooks/`, `install_hooks.sh` and `/digest` arrive with Plan 3.
 
 ```
 CLAUDE.md                     generic rules; imports @system/config.md
@@ -90,7 +92,7 @@ docs/superpowers/             specs, plans, spike results
 
 ## Requirements
 
-Jarvis targets Arch / Omarchy Linux. The planned `check_deps.sh` will check for:
+Jarvis targets Arch / Omarchy Linux. `system/scripts/check_deps.sh` checks for:
 
 - `claude` (Claude Code), `git`, `jq`, `bats`, `flock`, `timeout`
 - `python3` with PyYAML and pytest (`sudo pacman -S python-yaml python-pytest`). Missing PyYAML blocks setup.
@@ -101,9 +103,7 @@ Jarvis targets Arch / Omarchy Linux. The planned `check_deps.sh` will check for:
 - Optional: `herdr` or `tmux` as session backends for sub-project 2
 - Obsidian, with the **Dataview** plugin recommended (`wiki/Index.md` dashboards are plain code blocks without it). **[Vault Curate](https://github.com/notoriouslab/vault-curate)** is an optional plugin for link suggestions. It is not a dependency.
 
-## Getting started (target experience)
-
-This is the intended flow once Plan 4 lands. It does not work today.
+## Getting started
 
 ```sh
 git clone <template-url> my-vault    # or "Use this template" on the hosting site
@@ -120,11 +120,13 @@ claude
 3. **Codebases:** you choose repos from a directory scan. Each one is inspected, written to `system/codebases/<name>.md` with a partition, and confirmed with you field by field.
 4. **Remote:** a `template` remote is added for updates, and you choose a private `origin`, no remote, or keep (maintainer mode).
 5. **Units:** systemd timers are rendered and enabled, and you are offered linger.
-6. **Memory hooks** (optional): you are shown the diff to `~/.claude/settings.json`, and it is applied only after an explicit yes.
+6. **Memory hooks** (optional, arrives with Plan 3): you will be shown the diff to `~/.claude/settings.json`, and it will be applied only after an explicit yes. Setup skips this step for now.
 7. **Calendar:** `gcalcli` auth is checked.
 8. **Index and verify:** the index is rebuilt and `verify_setup.sh --health` runs.
 9. **Hand-off:** an onboarding assignment note is created for each codebase.
 10. **Report:** a status table of everything that was set up.
+
+Once the units are installed, the timers run real headless `claude -p` jobs. They use your Claude subscription and are capped at 60 runs a day (`HEADLESS_MAX_RUNS_PER_DAY`).
 
 ## Security model
 
@@ -136,11 +138,11 @@ claude
 - **Trust dialog.** The first time you open the vault, Claude Code asks whether to trust the folder and lists the permissions `.claude/settings.json` pre-approves (wiki and briefing edits and the read-only `vault_index.py` commands). Those apply to your interactive sessions only; headless runs ignore project settings entirely.
 - **Gitignored.** `raw/**` contents, `system/quarantine/*`, `system/logs/*`, `system/config.md`, `system/codebases/*.md` (except `example.md`), `.claude/settings.local.json`, `system/index.db*`, `wiki/.staging/`, `system/fleet/` and Obsidian workspace files.
 
-## Updating and uninstalling (planned)
+## Updating and uninstalling
 
-- **Pull template updates:** `system/scripts/update_template.sh`. It refuses to run on a dirty tree, fetches the `template` remote, merges with `--no-ff`, and stops on conflicts without resolving them. Afterwards it rebuilds the index and reinstalls units. It never runs automatically.
+- **Pull template updates:** `system/scripts/update_template.sh`. It refuses to run on a dirty tree, fetches the `template` remote, merges with `--no-ff`, and stops on conflicts without resolving them. Afterwards it rebuilds the index and re-renders the units, but only if this vault installed them. It never runs automatically.
 - **Remove systemd units:** `system/scripts/install_units.sh --uninstall` removes only units whose header names this vault.
-- **Remove memory hooks:** `system/scripts/install_hooks.sh --uninstall` removes only the entries owned by this vault and the owned `/digest` command.
+- **Remove memory hooks** (after Plan 3): `system/scripts/install_hooks.sh --uninstall` removes only the entries owned by this vault and the owned `/digest` command.
 
 Both installers also accept `--dry-run`.
 
@@ -148,11 +150,11 @@ Both installers also accept `--dry-run`.
 
 Work follows the superpowers workflow: brainstorm → spec in [`docs/superpowers/specs/`](docs/superpowers/specs/) → plan in [`docs/superpowers/plans/`](docs/superpowers/plans/) → test-driven implementation in small, focused commits. Spike results go in [`docs/superpowers/spikes/`](docs/superpowers/spikes/). Every finding from the design reviews is traced in spec §13.
 
-Once they exist, these gating suites must pass at the end of every task:
+The gating suites must pass at the end of every task. One command runs them all and exits non-zero if any fails:
 
 ```sh
-python3 -m pytest system/tests/python -q
-bats system/tests/vault_integrity.bats system/tests/scripts.bats
+system/scripts/verify_setup.sh            # every system/tests/*.bats except system_health.bats, then pytest
+system/scripts/verify_setup.sh --health   # also the advisory live-state suite
 ```
 
 `system/tests/system_health.bats` checks live service state and is advisory only. After any change to `run_headless.sh` or the settings files, re-run the spike checklist (spec §7.4) by hand.
