@@ -69,3 +69,17 @@ setup() {
   [ "$(jq '[.permissions.allow[] | select(test("vault_index.py set"))] | length' "$f")" = "0" ]
   [ "$(jq '.hooks // {} | length' "$f")" = "0" ]
 }
+
+@test "unit templates: only *.in files, services carry {{VAULT_ROOT}}, no machine paths" {
+  shopt -s nullglob
+  files=(system/systemd/*)
+  [ "${#files[@]}" -eq 7 ]
+  for f in "${files[@]}"; do
+    [[ "$f" == *.in ]]
+  done
+  for f in system/systemd/*.service.in; do
+    grep -q '{{VAULT_ROOT}}' "$f"
+  done
+  run grep -rl '/home/' system/systemd
+  [ "$status" -eq 1 ]
+}

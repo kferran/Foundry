@@ -1,0 +1,12 @@
+[Unit]
+Description=Jarvis Optimus: evening debrief
+
+[Service]
+Type=oneshot
+WorkingDirectory={{VAULT_ROOT}}
+Environment="TZ={{TZ}}"
+Environment="PATH={{UNIT_PATH}}"
+Environment="CLAUDE_BIN={{CLAUDE_BIN}}"
+TimeoutStartSec=20min
+ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/debrief_prep.sh"
+ExecStart="{{VAULT_ROOT}}/system/scripts/run_headless.sh" debrief

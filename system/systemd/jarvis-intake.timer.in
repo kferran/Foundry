@@ -1,5 +1,5 @@
 [Unit]
-Description=Second Brain: raw/ intake every 5 minutes
+Description=Jarvis Wheeljack: intake every 5 minutes
 
 [Timer]
 OnBootSec=2min
