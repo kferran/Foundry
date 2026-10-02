@@ -252,8 +252,7 @@ digests() { find raw -path '*/notes/*.md' -type f | sort; }
   f="$(digests)"
   [[ "$f" != *"hunter2"* ]]
   grep -q '\[REDACTED' "$f"
-  run find "$MEM_VAULT/raw/personal/notes" -name '\.secret-1*'
-  [ "$status" -ne 0 ]
+  [ -z "$(find "$VP/raw/personal/notes" -maxdepth 1 -name '.*' -type f)" ]
 }
 
 @test "crew sessions skip the attended check and the periodic request; marked digests carry task_id" {
