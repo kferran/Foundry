@@ -14,6 +14,8 @@ The spec covers several subsystems that depend on each other in a strict order (
 | **3. Memory (Soundwave)** | §6.17, §6.18, §6.19, §7.3a, `recall` subcommand | Hooks (`lib_memory.sh`, recall, capture, activity) reusing Plan 2a's `redact.py`, `install_hooks.sh`, user-level `/digest` | After Plan 4a |
 | **4b. Memory integration, renames** | §11 step 5a, §15, `/digest` wiring, README memory sections | `/setup` memory-hooks step, README memory and recall sections, final §15 renames commit | After Plan 3 |
 | **5. Preferences phase** | §6.21 derivation, `/brief` acceptance, recall slot | `v_preference.status`, acceptance flow, quoted recall rendering, `preferences_enabled` switch | After the core has run for a few weeks |
+| **6. Communication** | `2026-10-02-communication-design.md` §3–§4 | `CLAUDE.md` Writing section (reply tiers, condensed humanizer wording rules); vendored humanizer skill (`.claude/skills/humanizer/`, MIT); headless `ingest`/`brief`/`debrief` self-edit pass; acceptance re-run | After Plan 3 |
+| **7. Style lint** | `2026-10-02-communication-design.md` §5 | Warning-only `style-*` issue codes in `vault_index.py issues` for wiki and briefing notes, thresholds tuned on real notes | After Plan 6 has run a few weeks |
 | **Sub-project 2** | §16 | Separate brainstorm → spec → plan (Optimus orchestrator) | After Plan 4 |
 
 **Gate lifted** by Plan 4a's live acceptance (`docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md`): the commands follow the headless staging contract, so units may be installed with `/setup`. Re-run the acceptance steps after any change to `run_headless.sh`, `system/headless.settings.json` or the `ingest`, `brief` or `debrief` commands.
