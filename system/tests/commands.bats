@@ -166,6 +166,15 @@ setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } o
   [ "$(jq -c .permissions.additionalDirectories "$f")" = '["/a"]' ]
 }
 
+@test "personas carry their §15 names and nothing names the old Chief of Staff file" {
+  [ "$(cd system/agents && LC_ALL=C ls | tr '\n' ' ')" = 'CodingAgent.md Optimus.md SystemMaintenance.md ' ]
+  grep -qx '# Role Profile: Optimus (Chief of Staff)' system/agents/Optimus.md
+  grep -qF 'Persona: `system/agents/Optimus.md`.' CLAUDE.md
+  # The [C] bracket keeps the pattern from matching this line.
+  run git grep -nE '[C]hiefOfStaff' -- CLAUDE.md README.md .claude system
+  [ "$status" -eq 1 ]
+}
+
 @test "prompts, personas and templates name no specific company or stack" {
   # Template-only: a vault made from the template may name its own stack. The template repo is
   # recognized by having no config yet, or remote_mode keep (maintainer mode).

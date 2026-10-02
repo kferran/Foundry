@@ -42,7 +42,7 @@ The intended loop is **capture → compile → index → recall → correct**:
 5. **Recall.** With the memory hooks installed, a `SessionStart` hook adds up to about 9,500 characters of vault data to new sessions in scope: the latest digests for the codebase or partition and, once enabled, preferences you have confirmed. Recalled text is marked as data, not instructions.
 6. **Correct.** Each digest has a Corrections section. Ingest turns these into `preference` notes with linked evidence. A preference's status is calculated in the index, and it becomes confirmed only after you accept it in `/brief`.
 
-| Name | Role | Concrete artifacts (planned) |
+| Name | Role | Concrete artifacts |
 |---|---|---|
 | **Jarvis** | The vault / product | this repo, `jarvis-*` systemd units |
 | **Optimus** | Chief of Staff persona; orchestrator in sub-project 2 | `system/agents/Optimus.md`, `agent_owner: Optimus` |
