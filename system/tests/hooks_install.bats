@@ -334,3 +334,19 @@ record() { jq -c --arg k "$SET" '.[$k]' "$V/system/logs/memory/install_hooks.jso
   [ "$status" -eq 0 ]
   [ "$(jq -S . "$SET")" = "$(cat "$BATS_TEST_TMPDIR/fixture.json")" ]
 }
+
+@test "an empty or multi-document install record falls back instead of blocking install and uninstall" {
+  for junk in '' '{} {}'; do
+    rm -f "$SET"
+    run "$IH"
+    [ "$status" -eq 0 ]
+    printf '%s\n' "$junk" > "$V/system/logs/memory/install_hooks.json"
+    [ -n "$junk" ] || : > "$V/system/logs/memory/install_hooks.json"
+    run "$IH"
+    [ "$status" -eq 0 ]
+    [ "$(ours | wc -l)" -eq 3 ]
+    run "$IH" --uninstall
+    [ "$status" -eq 0 ]
+    [ "$(jq -c . "$SET")" = '{}' ]
+  done
+}
