@@ -265,3 +265,35 @@ digests() { find raw -path '*/notes/*.md' -type f | sort; }
   stop crew-1 $'<vault-digest>\n## Outcome\nTask done.\n</vault-digest>'
   grep -qx 'task_id: "task-42"' "$(digests)"
 }
+
+seed_digests() {
+  mkdir -p raw/personal/notes raw/work/notes
+  printf -- '---\ntype: session_digest\npartition: "personal"\ncodebase: "vault"\nsession_id: "x"\ncreated_at: "2026-10-01T09:00:00-06:00"\n---\n## Outcome\nPersonal outcome.\n' > raw/personal/notes/d1.md
+  printf -- '---\ntype: session_digest\npartition: "work"\ncodebase: "code"\nsession_id: "y"\ncreated_at: "2026-10-01T10:00:00-06:00"\n---\n## Outcome\nWork outcome.\n' > raw/work/notes/d2.md
+}
+
+@test "recall: a re-entry (compact) from the vault keeps a codebase session's frozen scope" {
+  C="$BATS_TEST_TMPDIR/code"
+  repo "$C"
+  register code "$C" work
+  seed_digests
+  start wall-1 "$C"
+  [[ "$(jq -r .hookSpecificOutput.additionalContext <<< "$output")" == *"Work outcome."* ]]
+  start wall-1 "$VP"
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext // ""' <<< "$output")"
+  [[ "$ctx" == *"Work outcome."* ]]
+  [[ "$ctx" != *"Personal outcome."* ]]
+  [[ "$ctx" != *"Scope: vault (personal)"* ]]
+}
+
+@test "recall: a re-entry from a codebase keeps the vault session's frozen scope" {
+  C="$BATS_TEST_TMPDIR/code"
+  repo "$C"
+  register code "$C" work
+  seed_digests
+  start wall-2 "$VP"
+  start wall-2 "$C"
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext // ""' <<< "$output")"
+  [[ "$ctx" == *"Personal outcome."* ]]
+  [[ "$ctx" != *"Work outcome."* ]]
+}

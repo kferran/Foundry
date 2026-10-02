@@ -73,7 +73,7 @@ memory_scope() {
 # mem_freeze <sid> <cwd>: freeze the session's scope on first sight (SessionStart, or the first hook
 # that sees a session started before the hooks were installed). Returns 0 iff the session is in scope.
 mem_freeze() {
-  local sid="$1" cwd="$2" st="$MEM_SESSIONS/$1.json" scope cfg kind name part
+  local sid="$1" cwd="$2" st="$MEM_SESSIONS/$1.json" scope cfg kind name part real
   if [[ -e "$MEM_SESSIONS/$sid.out" ]]; then return 1; fi
   if [[ -e "$st" ]]; then return 0; fi
   scope="$(memory_scope "$cwd")" || scope=""
@@ -85,9 +85,10 @@ mem_freeze() {
   read -r kind name part <<< "$scope"
   [[ "$kind" == vault ]] && { part="$name"; name="vault"; }
   read -r _ tz min_events min_minutes <<< "$cfg"
-  jq -n --arg scope "$kind" --arg partition "$part" --arg codebase "$name" --argjson now "$(date +%s)" \
+  real="$(realpath -e -- "$cwd")" || return 1
+  jq -n --arg cwd "$real" --arg scope "$kind" --arg partition "$part" --arg codebase "$name" --argjson now "$(date +%s)" \
     --arg tz "$tz" --argjson events "${min_events:-5}" --argjson minutes "${min_minutes:-20}" \
-    '{scope: $scope, partition: $partition, codebase: $codebase, started_at: $now, last_digest_at: 0,
+    '{cwd: $cwd, scope: $scope, partition: $partition, codebase: $codebase, started_at: $now, last_digest_at: 0,
       awaiting_digest: false, tz: $tz, digest_min_events: $events, digest_min_minutes: $minutes}' \
     > "$st.tmp" && mv -f -- "$st.tmp" "$st" || return 1
   printf '0\n' > "$MEM_SESSIONS/$sid.events"
