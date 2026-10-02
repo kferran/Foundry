@@ -23,6 +23,9 @@ headless_contract() {
   grep -qF '$ARGUMENTS' "$1"
   grep -qF 'wiki/.staging/<run_id>/' "$1"
   grep -qF 'system/scripts/vault_index.py stage' "$1"
+  grep -qF 'one per call, exactly as shown' "$1"
+  grep -qF 'still write your output' "$1"
+  grep -qF 'Never add, change or remove `provenance`' "$1"
   run grep -nE '@system/|git (add|commit|push)' "$1"
   [ "$status" -eq 1 ]
 }
