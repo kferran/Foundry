@@ -2,13 +2,15 @@
 
 An Obsidian + Claude Code "second brain" vault template.
 
-> **Status:** built and tested. The headless brief, debrief and intake pipeline passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md)); `/setup` and the installed systemd units have not yet been run end to end. Memory capture and recall (Plan 3) passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md)) and stay off until you install their hooks, which `/setup` offers.
+> **Status:** built and tested on one machine. The headless brief, debrief and intake pipeline passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md)) and passed again with the humanizer self-edit step ([record](docs/superpowers/spikes/2026-10-02-plan-6-acceptance.md)). Memory capture and recall passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md)) and stay off until you install their hooks, which `/setup` offers. A full `/setup` with installed systemd units has not yet been run end to end; that happens after Plan 8 (laptop plus server).
 
 ## What Jarvis is
 
 Jarvis is a template repository that becomes your vault. You clone it (or create a repo from it), run `claude` inside it, and run `/setup`. Setup configures the vault for your machine, your schedule and your codebases. Nothing specific to a machine or a user is committed. Per-user state is generated at setup time and gitignored.
 
 The vault compiles itself. Raw inputs (files you drop in, plus short digests of your Claude Code sessions) are compiled in batches into a wiki of concepts, entities, summaries and preferences. The wiki is split into `work`, `personal` and `shared` partitions, and links are not allowed to cross between `work` and `personal`. A derived SQLite FTS5 index lets agents ask the index for the notes they need before reading anything, so a lookup reads only the notes that answer it rather than the whole wiki.
+
+Agents follow the writing rules in `CLAUDE.md`: chat replies are sized by type (quick answer, one-screen task report, or a linked document), and notes avoid common AI writing tells. The headless intake, brief and debrief runs edit their own prose against the vendored [humanizer](#acknowledgements) skill before they publish, and `/humanizer` runs it interactively.
 
 Automation runs as isolated headless `claude -p` jobs on systemd user timers: intake, a morning brief and an evening debrief. Headless jobs never write to the vault directly. They write to a staging area, and a deterministic gate validates and publishes their output. Anything that has to be exact (parsing, validation, indexing, unit rendering, git remote handling) is done by a script. The model handles conversation and synthesis.
 
@@ -24,13 +26,17 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 | 3. Memory (Soundwave) | Capture/recall hooks, hook installer, `/digest` | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-3-memory.md), [acceptance](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md) |
 | 4b. Memory integration, renames | `/setup` memory step, README memory sections, final renames | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-4b-memory-integration.md), [live check](docs/superpowers/spikes/2026-10-02-plan-4b-acceptance.md) |
 | 6. Communication | `CLAUDE.md` Writing section, vendored humanizer skill, headless self-edit pass | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-6-communication.md), [acceptance](docs/superpowers/spikes/2026-10-02-plan-6-acceptance.md) |
-| 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | Pending (after the core has run for a few weeks) |
-| Sub-project 2 | Optimus orchestrator | Separate spec, after Plan 4b |
+| 8. Two machines | Omarchy laptop for interactive use, Debian server for all automation; distro-aware `check_deps.sh` | Next: brainstorm and spec addendum. The real vault is set up after this plan |
+| 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
+| 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
+| Sub-project 2 | Optimus orchestrator | Separate spec, after Plans 7 and 5 |
+| 9. Product rename | "Jarvis" is a working name; the final name and team theme are not chosen | After everything except Plan 10 |
+| 10. Migrate Cerebro and Wong | Import both older systems, then decommission them (Sub-project 3) | Last |
 
 - Design spec: [docs/superpowers/specs/2026-09-30-vault-template-design.md](docs/superpowers/specs/2026-09-30-vault-template-design.md)
 - Roadmap: [docs/superpowers/plans/2026-09-30-jarvis-roadmap.md](docs/superpowers/plans/2026-09-30-jarvis-roadmap.md)
 
-Each plan is written only after the previous one is finished, because results carry forward. For example, the spike can change the permission model (spec §7), and that affects Plans 2–4.
+Plans are numbered in the order they were defined, not the order they run; the table is in run order. Each plan is written only after the previous one is finished, because results carry forward. For example, the spike can change the permission model (spec §7), and that affects Plans 2–4.
 
 ## How it works
 
@@ -40,7 +46,7 @@ The intended loop is **capture → compile → index → recall → correct**:
 2. **Compile.** The intake timer batches up to 5 inputs from one partition into an isolated headless `/ingest` run. For each fact, the run records an explicit noop, patch or create decision and writes its output to `wiki/.staging/<run_id>/`.
 3. **Publish.** The publish gate validates schemas and partition walls and rejects changes that shrink existing notes. It also checks each target against a snapshot taken at the start of the run. If every check passes, it publishes everything at once. If any check fails, it publishes nothing and the run is quarantined. If you edited a note while the run was going, your edit is kept.
 4. **Index.** Markdown is the source of truth. `system/index.db` is a gitignored SQLite FTS5 index that can be rebuilt at any time. Agents run `related`, `query`, `show` and `backlinks` against it before reading any notes.
-5. **Recall.** With the memory hooks installed, a `SessionStart` hook adds up to about 9,500 characters of vault data to new sessions in scope: the latest digests for the codebase or partition and, once enabled, preferences you have confirmed. Recalled text is marked as data, not instructions.
+5. **Recall.** With the memory hooks installed, a `SessionStart` hook adds up to `recall_budget_chars` of vault data (default 9,000 characters, never more than 9,500) to new sessions in scope: the latest digests for the codebase or partition and, once enabled, preferences you have confirmed. Recalled text is marked as data, not instructions.
 6. **Correct.** Each digest has a Corrections section. Ingest turns these into `preference` notes with linked evidence. A preference's status is calculated in the index, and it becomes confirmed only after you accept it in `/brief`.
 
 | Name | Role | Concrete artifacts |
@@ -105,21 +111,21 @@ system/
                               intake_daemon.sh, install_units.sh, install_hooks.sh,
                               setup_remote.sh, update_template.sh, check_deps.sh, ...
   systemd/                    jarvis-{intake,brief,debrief,focus} unit templates (*.in)
-  tests/                      vault_integrity.bats, scripts.bats, system_health.bats, python/
+  tests/                      *.bats per area (system_health.bats is advisory), python/ for pytest
   fleet/                      reserved for sub-project 2 (gitignored)
 docs/superpowers/             specs, plans, spike results
 ```
 
 ## Requirements
 
-Jarvis targets Arch / Omarchy Linux. `system/scripts/check_deps.sh` checks for:
+Jarvis targets Arch / Omarchy Linux today. Running automation on a Debian server is Plan 8. `system/scripts/check_deps.sh` checks for:
 
 - `claude` (Claude Code), `git`, `jq`, `bats`, `flock`, `timeout`
 - `python3` with PyYAML and pytest (`sudo pacman -S python-yaml python-pytest`). Missing PyYAML blocks setup.
 - `sqlite3` built with FTS5
 - systemd user units (`systemctl --user`, `systemd-analyze`). If you want timers to run while you are logged out, enable lingering.
-- `gcalcli` for calendar input to the brief
-- Hyprland (`hyprctl`) for the Obsidian focus tracker. It is optional, and only focus stats are lost without it.
+- `gcalcli` for calendar input to the brief. Without it the brief lists the calendar under Unavailable Sources.
+- Hyprland (`hyprctl`) for the Obsidian focus tracker. Without it only focus stats are lost, but `check_deps.sh --strict` still counts both of these as missing until Plan 8 makes them per-machine.
 - Optional: `herdr` or `tmux` as session backends for sub-project 2
 - Obsidian, with the **Dataview** plugin recommended (`wiki/Index.md` dashboards are plain code blocks without it). **[Vault Curate](https://github.com/notoriouslab/vault-curate)** is an optional plugin for link suggestions. It is not a dependency.
 
@@ -134,17 +140,18 @@ claude
 
 `/setup` is idempotent and can be re-run at any time. Its phases (spec §11):
 
-0. **Preflight:** `check_deps.sh`. Missing items are listed with install hints.
-1. **Existing config:** if `system/config.md` already exists, it is shown and edited, not overwritten.
-2. **Interview:** timezone, brief and debrief times, superpowers, default partition, digest thresholds and recall budget.
-3. **Codebases:** you choose repos from a directory scan. Each one is inspected, written to `system/codebases/<name>.md` with a partition, and confirmed with you field by field.
-4. **Remote:** a `template` remote is added for updates, and you choose a private `origin`, no remote, or keep (maintainer mode).
-5. **Units:** systemd timers are rendered and enabled, and you are offered linger.
-6. **Memory hooks** (optional): you are shown the diff to `~/.claude/settings.json` and what each hook does, and it is applied only after an explicit yes. Declining leaves memory off (see [Memory](#memory-soundwave)).
-7. **Calendar:** `gcalcli` auth is checked.
-8. **Index and verify:** the index is rebuilt and `verify_setup.sh --health` runs.
-9. **Hand-off:** an onboarding assignment note is created for each codebase.
-10. **Report:** a status table of everything that was set up.
+- **0. Preflight:** `check_deps.sh`. Missing items are listed with install hints.
+- **1. Existing config:** if `system/config.md` already exists, it is shown and edited, not overwritten.
+- **2. Interview:** timezone, brief and debrief times, superpowers, default partition, digest thresholds and recall budget.
+- **3. Codebases:** you choose repos from a directory scan. Each one is inspected, written to `system/codebases/<name>.md` with a partition, and confirmed with you field by field.
+- **4. Remote:** a `template` remote is added for updates, and you choose a private `origin`, no remote, or keep (maintainer mode).
+- **5. Units:** systemd timers are rendered and enabled, and you are offered linger.
+- **5a. Memory hooks** (optional): you are shown the diff to `~/.claude/settings.json` and what each hook does, and it is applied only after an explicit yes. Declining leaves memory off (see [Memory](#memory-soundwave)).
+- **6. Calendar:** `gcalcli` auth is checked.
+- **7. Index:** the index is rebuilt.
+- **8. Verify:** `verify_setup.sh --health` runs.
+- **9. Hand-off:** an onboarding assignment note is created for each codebase.
+- **10. Report:** a status table of everything that was set up.
 
 Once the units are installed, the timers run real headless `claude -p` jobs. They use your Claude subscription and are capped at 60 runs a day (`HEADLESS_MAX_RUNS_PER_DAY`).
 
@@ -155,8 +162,8 @@ Once the units are installed, the timers run real headless `claude -p` jobs. The
 - **Partition walls.** Links from `work` to `personal` (and the other way) are lint errors. A headless run writes to one partition plus `shared`. From a codebase session, the index CLI returns only that codebase's partition plus `shared`, and those sessions get no general read access to the vault. Walls control links and recall, not storage: all partitions are pushed to the same private `origin`.
 - **Data, not instructions.** `CLAUDE.md` tells agents to treat note bodies, raw files, recall blocks and tool output as data. Digests and inbox copies are passed through `redact.py`, and `<private>…</private>` spans are removed.
 - **User-level changes.** `install_hooks.sh` changes only its own entries in `~/.claude/settings.json` and `~/.claude/commands/digest.md`. It takes a backup first, shows a diff during `/setup`, applies nothing without confirmation, and can be fully reversed with `--uninstall`.
-- **Trust dialog.** The first time you open the vault, Claude Code asks whether to trust the folder and lists the permissions `.claude/settings.json` pre-approves (wiki and briefing edits and the read-only `vault_index.py` commands). Those apply to your interactive sessions only; headless runs ignore project settings entirely.
-- **Gitignored.** `raw/**` contents, `system/quarantine/*`, `system/logs/*`, `system/config.md`, `system/codebases/*.md` (except `example.md`), `.claude/settings.local.json`, `system/index.db*`, `wiki/.staging/`, `system/fleet/` and Obsidian workspace files.
+- **Trust dialog.** The first time you open the vault, Claude Code asks whether to trust the folder and lists the permissions `.claude/settings.json` pre-approves: edits under `wiki/` and `briefings/`, the brief and debrief prep scripts, `lint_vault.sh`, and the `vault_index.py` query, index-rebuild and recall commands. Those apply to your interactive sessions only; headless runs ignore project settings entirely.
+- **Gitignored.** `raw/**` contents, `system/quarantine/*`, `system/logs/*`, `system/config.md`, `system/codebases/*.md` (except `example.md`), `.claude/settings.local.json`, `system/index.db*`, `system/*.lock`, `wiki/.staging/`, `system/fleet/` and Obsidian workspace files.
 
 ## Updating and uninstalling
 
@@ -178,7 +185,7 @@ system/scripts/verify_setup.sh            # every system/tests/*.bats except sys
 system/scripts/verify_setup.sh --health   # also the advisory live-state suite
 ```
 
-`system/tests/system_health.bats` checks live service state and is advisory only. After any change to `run_headless.sh` or the settings files, re-run the spike checklist (spec §7.4) by hand.
+`system/tests/system_health.bats` checks live service state and is advisory only. After any change to `run_headless.sh` or the settings files, re-run the spike checklist (spec §7.4) by hand. After any change to `run_headless.sh`, `system/headless.settings.json` or the `ingest`, `brief` or `debrief` commands, re-run the live acceptance steps (Plan 4a, Task 9) in a throwaway clone.
 
 ## Acknowledgements
 
