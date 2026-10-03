@@ -1,7 +1,7 @@
 # Two-Machine Design: machine roles, commit history, git sync, Debian
 
 **Date:** 2026-10-03
-**Status:** Approved in brainstorming; revised after an independent design review (rev 2)
+**Status:** Approved in brainstorming; revised after an independent design review and its re-review (rev 3)
 **Extends:** `2026-09-30-vault-template-design.md` (§6.1 config, §6.2 dependencies, §6.4 intake, §6.6 units, §6.11 remotes, §6.12 updates, §8 `/backup`, §11 `/setup`, §12 tests)
 **Roadmap:** Plan 8, split into three plans (§10): 8a roles and Debian, 8b commit history, 8c sync
 
@@ -102,7 +102,7 @@ Every automated commit message is built by a script from facts the system record
 ### 4.2 `system/scripts/commit_runs.py`
 
 - **Pending run:** a directory `system/logs/runs/<run_id>/` with a `publish.json` whose `published` list is non-empty (any status, so `conflict` and `recovered` count when they published something), with no `committed` file, and with `run_id` at or after the cutover time.
-- **Cutover:** the first time `commit_runs.py` runs, it writes `system/logs/commit_runs.since` with the current time; older run directories are never committed. A fresh vault therefore does not replay its history.
+- **Cutover:** `system/logs/commit_runs.since` holds a timestamp in `run_id` format (`YYYYmmddTHHMMSS`, local time, as `run_headless.sh` writes it), compared as a string with each `run_id`'s first 15 characters. `/setup` phase 7 writes it when absent, and so does `update_template.sh` after merging; `commit_runs.py` writes it as a last resort when it is still missing. Older run directories are never committed, so a vault does not replay its history.
 - **Order:** by `run_id` (it starts with a timestamp). The partition comes from the run's ledger line, falling back to the partition folder of the first decision target.
 - **Commit:** `git add -- <published paths>` then `git commit --only -m <message> -- <published paths>`, so anything else already staged stays out. The commit runs through the pre-commit hook.
 - **Already committed:** when none of the paths differ from `HEAD` (another commit already holds them), write `committed` with `{"sha": null, "reason": "already committed"}` and move on.
@@ -129,10 +129,12 @@ Runs from the vault root on any role. Environment for every git call: `GIT_TERMI
 1. `remote_mode` is `private`, else exit 1 with the reason.
 2. `origin` is not the template repository (the same comparison `backup.md` uses), else exit 1.
 3. The branch has an upstream, else exit 1 ("no upstream; run /setup phase 4").
-4. No operation is in progress: `.git/MERGE_HEAD`, `.git/rebase-merge/`, `.git/rebase-apply/`, `.git/CHERRY_PICK_HEAD`, or unmerged entries in `git ls-files -u`. If any exists: write `sync-blocked` (reason "operation in progress"), exit 3.
-5. `system/logs/sync-blocked` from an earlier conflict exists: try the cycle anyway (a clean merge clears it, §5.4).
+4. No operation is in progress: `.git/MERGE_HEAD`, `.git/rebase-merge/`, `.git/rebase-apply/`, `.git/CHERRY_PICK_HEAD`, unmerged entries in `git ls-files -u`, or a stale `.git/index.lock` (older than 10 minutes with no `git` process running in this repository). Before the lock this is a **check only**: exit 3 without writing anything, because a sync holding the lock may be mid-merge.
+5. `system/logs/sync-blocked` from an earlier conflict exists: try the cycle anyway (§5.4 says when it clears).
 
-**Lock:** `flock -n system/run.lock`; busy: exit 4, nothing done.
+**Lock:** `flock -n system/run.lock`; busy: exit 4, nothing done. After taking the lock, precondition 4 is checked again; if it still holds, write `sync-blocked` (reason "operation in progress" or "stale index.lock"), alert, exit 3.
+
+**Deadline:** the whole script has one budget, `SYNC_DEADLINE` (default 300 s). Each network call gets `timeout` set to the smaller of 120 s and the time left. A `TERM`/`INT` trap aborts an in-progress merge (`git merge --abort` when `MERGE_HEAD` exists) before exiting, so a systemd stop never leaves a half-merged tree.
 
 **Cycle:**
 1. `commit_runs.py` (§4.2). Failure: alert, exit 1.
@@ -148,14 +150,14 @@ Runs from the vault root on any role. Environment for every git call: `GIT_TERMI
 
 **Modes:**
 - default (timer, `/backup`): as above.
-- `--pre` (run services, before the run): check preconditions 4 and the `sync-blocked` marker **first**; either present: exit 3. Then the cycle; a busy lock and every exit-1 failure exit 0, so runs proceed on local state.
+- `--pre` (run services, before the run): check the `sync-blocked` marker and precondition 4 (check only) **first**; either present: exit 3. Then the cycle; a busy lock and every exit-1 failure exit 0, so runs proceed on local state.
 - `--post` (run services, after the run): the cycle; always exits 0 (failures are alerted), so a successful run is never marked failed.
 
 The index does not need an explicit rebuild: `Index.refresh` runs on every read.
 
 ### 5.2 Server units
 
-- `jarvis-sync.service` (oneshot, `ExecStart=vault_sync.sh`, `TimeoutStartSec=10min`) and `jarvis-sync.timer` (`OnBootSec=2min`, `OnUnitActiveSec=<sync_interval_minutes>min`), as `system/systemd/jarvis-sync.{service,timer}.in`, installed for `server` only.
+- `jarvis-sync.service` (oneshot, `ExecStart=vault_sync.sh`) and `jarvis-sync.timer` (`OnBootSec=2min`, `OnUnitActiveSec=<sync_interval_minutes>min`), as `system/systemd/jarvis-sync.{service,timer}.in`, installed for `server` only.
 - One drop-in template, `system/systemd/dropins/jarvis-sync.conf.in`, rendered per run service to `jarvis-{intake,brief,debrief}.service.d/jarvis-sync.conf` with the `# Managed by vault: <root>` first line. It resets the pre-steps and restores order:
   ```
   ExecStartPre=
@@ -164,7 +166,7 @@ The index does not need an explicit rebuild: `Index.refresh` runs on every read.
   ExecStartPost="{{VAULT_ROOT}}/system/scripts/vault_sync.sh" --post
   ```
   `{{PREP_LINE}}` is the service's own prep line (`ExecStartPre=-…/brief_prep.sh` for brief, `…/debrief_prep.sh` for debrief, empty for intake), so prep reads a freshly pulled tree. `ExecStartPost` runs only after a successful run; a failed run's output is committed by the next timer tick.
-- `install_units.sh`'s owned-unit scan, and `update_template.sh`'s "units installed" check, include `*.service.d/*.conf` files whose first line names this vault. `TimeoutStartSec` of brief and debrief rises from 20 to 30 minutes to cover a pre-sync and the existing 600 s lock wait.
+- `install_units.sh`'s owned-unit scan, and `update_template.sh`'s "units installed" check, include `*.service.d/*.conf` files whose first line names this vault. Every pre- and post-step counts toward a oneshot's `TimeoutStartSec`, so the limits rise by two sync deadlines plus margin: brief and debrief from 20 to 35 minutes (sync 5 + lock wait 10 + run 15 + sync 5), intake from 90 to 105 minutes. `jarvis-sync.service` gets `TimeoutStartSec=10min`, twice its deadline.
 
 ### 5.3 Failures that are not conflicts
 
@@ -178,13 +180,17 @@ On a merge conflict, `vault_sync.sh`:
 3. writes `system/logs/sync-blocked` (paths, time, pending branch) and one alert per blocked period;
 4. exits 3.
 
-While `sync-blocked` exists, every run service's pre-step exits 3, so intake, brief and debrief do not run. Manual `run_headless.sh` calls are not blocked. Resolution, on either machine: `git fetch origin`, `git merge origin/jarvis/server-pending`, resolve, commit, push. The server's next sync then merges cleanly (normally a fast-forward), deletes `jarvis/server-pending` on `origin`, removes the marker, and writes a "sync unblocked" alert.
+While `sync-blocked` exists, every run service's pre-step exits 3, so intake, brief and debrief do not run. Manual `run_headless.sh` calls are not blocked. Resolution, on either machine: `git fetch origin`, `git merge origin/jarvis/<role>-pending`, resolve, commit, push. The same steps apply to `jarvis/client-pending`, which a client's `/backup` pushes when its own sync conflicts.
+
+**Clearing:** the marker is removed by any cycle that completes step 5, whether or not `origin` was ahead. That cycle also deletes `jarvis/<role>-pending` on `origin` (a branch that is already gone is not an error) and writes a "sync unblocked" alert.
+
+**Missed daily runs:** brief and debrief fire once a day, and a pre-step that exits 3 skips them. On unblocking, the server starts (`systemctl --user start --no-block`) `jarvis-brief.service` and `jarvis-debrief.service` when that command's scheduled time today has passed and the run ledger has no run of it today. The blocked alert says runs are skipped until unblocked.
 
 On a client, `/backup` (which runs `vault_sync.sh`) also reports any `origin/jarvis/*-pending` branch it sees after fetching, so a conflict surfaces wherever the user next syncs by hand. A missing briefing in the morning is the other visible signal; push notifications are out of scope.
 
 ### 5.5 Conflict markers never land
 
-- `.githooks/pre-commit` rejects any staged text file containing a line matching `^(<<<<<<<|=======|>>>>>>>)( |$)`, for every staged path (not only notes). It does not use `git diff --check`, which also flags Markdown's trailing double-space line breaks.
+- `.githooks/pre-commit` rejects any staged text file (every staged path, not only notes) that contains both a line matching `^<<<<<<< ` and a later line matching `^>>>>>>> `; git always writes a label after both. It does not look at `=======` lines, which are valid Markdown (a setext heading underline), and it does not use `git diff --check`, which also flags Markdown's trailing double-space line breaks.
 - `vault_sync.sh` precondition 4 refuses to commit during an unfinished merge, rebase or cherry-pick (a sync killed mid-merge, or `update_template.sh` stopping on conflicts).
 - A user resolving a merge on the server runs the same hook. If a client note that bypassed the hook blocks the resolution commit, the hook's message names it; the user fixes it or commits with `--no-verify` knowingly. The README documents this.
 
@@ -193,10 +199,10 @@ On a client, `/backup` (which runs `vault_sync.sh`) also reports any `origin/jar
 Briefing extraction (`intake.py`) no longer rewrites the briefing:
 
 - Each complete `#wiki-ingest-start` … `#wiki-ingest-end` block is identified by the sha256 of its text (markers excluded, whitespace trimmed).
-- A block whose hash is not in `system/logs/extracted_blocks.jsonl` is written to `raw/inbox/daily_note_drop_<epoch>.md` and its hash appended (briefing path, hash, drop file, time), inside `run.lock`, before the lock is released. The briefing file is not modified.
+- A block whose `(briefing path, hash)` pair is not in `system/logs/extracted_blocks.jsonl` is written to `raw/inbox/daily_note_drop_<epoch>.md`, and a record `{"kind": "block", "briefing", "hash", "drop", "time"}` is appended inside `run.lock`, before the lock is released. The same text in a later day's briefing is a new block. The briefing file is not modified.
 - An edited block has a new hash and is extracted again; ingest's noop/patch decisions absorb the overlap.
 - The existing rule that the briefing is unmodified for 60 seconds stays. Client notes recommend Obsidian Git's "commit-and-sync after stopping file edits" (§5.7) so half-typed blocks rarely reach the server.
-- An unterminated or nested start marker is alerted once per briefing per day (recorded in the same file), not on every tick.
+- An unterminated or nested start marker is alerted once per briefing per day, recorded as `{"kind": "alert", "briefing", "reason", "date"}` in the same file, not on every tick.
 
 This applies to every role. Standalone users see their blocks stay in the briefing after compiling; the README says so.
 
@@ -214,12 +220,14 @@ The client runs no units. `/setup` (client) prints these Obsidian Git settings (
 | Merge strategy | `syncMethod` | `merge` |
 | Commit message on auto commit-and-sync | `autoCommitMessage` | `sync(client): {{numFiles}} files` + blank line + `{{files}}` + blank line + `Jarvis-Command: sync` + newline + `Jarvis-Role: client` |
 
-The plugin stops auto commits and pushes while a merge has conflicts and shows a notice; it runs the repository's pre-commit hook. `.obsidian/plugins/obsidian-git/data.json` is added to `.gitignore` (machine-specific settings; no secrets on desktop).
+The plugin stops auto commits and pushes while a merge has conflicts and shows a notice; it runs the repository's pre-commit hook. `.obsidian/plugins/obsidian-git/data.json` is added to `.gitignore` (machine-specific settings; no secrets on desktop); client `/setup` runs `git rm --cached` on it when it is already tracked. Other plugins' settings stay synced on purpose, so Dataview and the like behave the same on every machine.
+
+The plugin runs the pre-commit hook inside Obsidian's environment, whose `PATH` may differ from a terminal's (Flatpak and AppImage builds especially). Client `/setup` asks the user to make one test edit and confirm the plugin's commit succeeds; the hook's error names any missing tool.
 
 The client notes also say:
 - files dropped into `raw/inbox/` on a client are not synced (it is gitignored); write notes in the briefing instead. `lint_vault.sh` on a client warns when `raw/inbox/` holds files.
 - disable any Obsidian plugin that creates `briefings/<date>.md` on the client (daily notes, templates): the server creates it, and two creations conflict.
-- `/backup` on a client runs lint, then `vault_sync.sh`.
+- `/backup` on a client runs lint, then `vault_sync.sh`. It shares no lock with the plugin; if both touch git at once, one fails on git's own `index.lock` and the next attempt succeeds.
 
 ### 5.8 `/backup` in `private`
 
@@ -251,7 +259,7 @@ Gated tests are hermetic: temporary repos (a bare `origin` plus server and clien
 
 - **8a:** `check_deps.sh --role` lists; `pacman`/`apt-get` hints via `PATH` stubs; `install_units.sh` per role (client installs nothing, role change removes unused owned units); `setup.md` asks the role first and states each client skip; `backup.md` lints on a client; role-aware `system_health.bats` (advisory); config schema accepts the new keys and rejects out-of-range `sync_interval_minutes`.
 - **8b:** pytest for `commit_runs.py`: exact subjects, bodies and trailers from fixture runs; only the run's paths in its commit even with other files staged; cutover ignores older runs; already-committed paths get the marker without a commit; a hook failure leaves the run pending; `conflict`/`recovered` runs with published files are committed, rejected and empty ones are not. `debrief_prep.sh` lists vault commits from any author.
-- **8c:** `sync.bats`: commit and push; gitignored paths never committed; client commit reaches the server; conflict → abort, pending branch pushed, marker, one alert, exit 3; resolution from the client clone clears it and deletes the pending branch; in-progress merge and unmerged index → exit 3 without committing; conflict-marker file rejected by the hook; refused merge → exit 1 with no `MERGE_HEAD`; rejected push retried once; busy lock → 4, `--pre` → 0, `--post` → 0; `--pre` with a marker → 3 even when the lock is busy; template origin and missing upstream → 1; alert rate limiting. `units.bats`: sync units and drop-ins only for `server`, drop-in text order (reset, sync, prep, post), owned drop-ins removed on uninstall and role change. pytest for non-destructive extraction: briefing bytes unchanged, one drop per new block, no repeat for a known hash, a new drop for an edited block, unterminated alert once per day. `system_health.bats` server checks.
+- **8c:** `sync.bats`: commit and push; gitignored paths never committed; client commit reaches the server; conflict → abort, pending branch pushed, marker, one alert, exit 3; resolution from the client clone clears it and deletes the pending branch; in-progress merge and unmerged index → exit 3 without committing; conflict-marker file rejected by the hook; refused merge → exit 1 with no `MERGE_HEAD`; rejected push retried once; busy lock → 4, `--pre` → 0, `--post` → 0; `--pre` with a marker → 3 even when the lock is busy; `--pre` during another sync's merge → 3 without writing a marker; stale `index.lock` → 3; TERM during a merge leaves no `MERGE_HEAD`; a note with a setext `=======` underline commits; marker cleared by a cycle with nothing to merge; missed brief started on unblock (stubbed `systemctl`); template origin and missing upstream → 1; alert rate limiting. `units.bats`: sync units and drop-ins only for `server`, drop-in text order (reset, sync, prep, post), owned drop-ins removed on uninstall and role change. pytest for non-destructive extraction: briefing bytes unchanged, one drop per new block, no repeat for a known `(briefing, hash)`, the same text in a later briefing extracted, a new drop for an edited block, unterminated alert once per day. `system_health.bats` server checks.
 
 ### 8.1 Live acceptance (per plan, in throwaway clones; a local bare repo stands in for `origin`)
 
