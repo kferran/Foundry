@@ -143,6 +143,14 @@ if [[ "$mode" == dry ]]; then
   exit 0
 fi
 
+# An install must be able to keep its record: check before writing anything, so a refusal is never a half install.
+if [[ "$mode" == install ]]; then
+  mkdir -p -- "$(dirname "$RECORD")" 2> /dev/null || true
+  if [[ ! -d "$(dirname "$RECORD")" || ! -w "$(dirname "$RECORD")" || ( -e "$RECORD" && ! -w "$RECORD" ) ]]; then
+    die 1 "cannot write the install record $VAULT_ROOT/$RECORD; fix its permissions first (nothing was changed)"
+  fi
+fi
+
 if [[ "$settings_action" == changed ]]; then
   mkdir -p -- "$CONFIG_DIR"
   if [[ -e "$SETTINGS" ]]; then
@@ -165,23 +173,27 @@ if [[ "$settings_action" == changed ]]; then
 fi
 echo "settings: $settings_action"
 
-# Keep the record in step with the settings: rewritten on every install, this file's entry dropped on uninstall.
-record() {
-  local old='{}' tmp="$RECORD.tmp.$$"
-  if [[ -f "$RECORD" ]]; then old="$(jq -c 'if type == "object" then . else {} end' "$RECORD" 2> /dev/null)" || old='{}'; fi
-  mkdir -p -- "$(dirname "$RECORD")"
-  jq --arg k "$SETTINGS" "$@" <<< "$old" > "$tmp"
-  mv -f -- "$tmp" "$RECORD"
-}
-if [[ "$mode" == install ]]; then
-  record --argjson c "$now_created" '.[$k] = $c'
-elif [[ -f "$RECORD" ]]; then
-  record 'del(.[$k])'
-fi
-
 case "$digest_action" in
   new|changed) mkdir -p -- "$(dirname "$DIGEST")"; digest_body > "$DIGEST"; echo "digest command: $digest_action" ;;
   remove) rm -f -- "$DIGEST"; echo "digest command: removed" ;;
   foreign) echo "digest command: left alone ($DIGEST exists and is not managed by a vault)" ;;
   *) echo "digest command: $digest_action" ;;
 esac
+
+# Keep the record in step with the settings: rewritten on every install, this file's entry dropped on uninstall.
+record() {
+  local old='{}' tmp="$RECORD.tmp.$$"
+  if [[ -f "$RECORD" ]]; then old="$(jq -c 'if type == "object" then . else {} end' "$RECORD" 2> /dev/null)" || old='{}'; fi
+  mkdir -p -- "$(dirname "$RECORD")" || return 1
+  jq --arg k "$SETTINGS" "$@" <<< "$old" > "$tmp" || return 1  # explicit: set -e is off inside the uninstall caller's if
+  mv -f -- "$tmp" "$RECORD"
+}
+if [[ "$mode" == install ]]; then
+  record --argjson c "$now_created" '.[$k] = $c'
+elif [[ -f "$RECORD" ]]; then
+  # Uninstall is the escape hatch and never depends on the record: a failed update only warns.
+  if ! (record 'del(.[$k])') 2> /dev/null; then
+    rm -f -- "$RECORD.tmp.$$" 2> /dev/null || true
+    echo "record: could not update $VAULT_ROOT/$RECORD (not writable); uninstall completed" >&2
+  fi
+fi

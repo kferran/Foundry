@@ -359,3 +359,29 @@ record() { jq -c --arg k "$SET" '.[$k]' "$V/system/logs/memory/install_hooks.jso
   grep -qx 'settings: unchanged (dry run, nothing written)' <<< "$output"
   grep -qx 'digest command: unchanged (dry run, nothing written)' <<< "$output"
 }
+
+@test "--uninstall completes and restores settings even when the install record cannot be updated" {
+  jq -S . "$SET" > "$BATS_TEST_TMPDIR/fixture.json"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  [ -f "$CFG/commands/digest.md" ]
+  chmod a-w "$V/system/logs/memory" "$V/system/logs/memory/install_hooks.json"
+  run "$IH" --uninstall
+  chmod u+w "$V/system/logs/memory" "$V/system/logs/memory/install_hooks.json"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"record: could not update"* ]]
+  [ "$(jq -S . "$SET")" = "$(cat "$BATS_TEST_TMPDIR/fixture.json")" ]
+  [ ! -e "$CFG/commands/digest.md" ]
+}
+
+@test "install refuses before writing anything when the install record cannot be kept" {
+  mkdir -p "$V/system/logs/memory"
+  chmod a-w "$V/system/logs/memory"
+  before="$(sha256sum < "$SET")"
+  run "$IH"
+  chmod u+w "$V/system/logs/memory"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"install record"* ]]
+  [ "$(sha256sum < "$SET")" = "$before" ]
+  [ ! -e "$CFG/commands/digest.md" ]
+}
