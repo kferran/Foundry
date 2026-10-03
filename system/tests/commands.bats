@@ -238,6 +238,9 @@ self_edit_contract() {
   grep -qF 'Skip section D (formatting)' "$1"
   grep -qF 'Keep every fact, name, number, date and link' "$1"
   grep -qF 'only the text this run wrote' "$1"
+  grep -qE 'leave frontmatter[ ,]' "$1"
+  grep -qF 'Headless, edit only' "$1"
+  grep -qF 'Where the skill says to cut a sentence, keep any fact it carries.' "$1"
 }
 
 @test "ingest self-edits its notes with humanizer before the summary" {
