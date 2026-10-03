@@ -36,3 +36,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - **3. Agent Health:** every agent whose 3 most recent metric files all show `test_suite_passed: false`, with the files. Report only; the user decides what to do. Otherwise "No repeated failures."
 - **4. Unavailable Sources:** one bullet per missing source, or "None."
 - Frontmatter: `type: debrief`, `date: "<date>"`. Never add, change or remove `provenance`; the gate stamps it.
+
+## Self-edit
+
+Read `.claude/skills/humanizer/SKILL.md` once, then edit the debrief against its sections A, B, C and E (wording). Skip section D (formatting): keep the template's headings, emoji and bullets. Keep every fact, name, number, date and link, and leave frontmatter unchanged. Edit only the text this run wrote and keep everything the user wrote. Headless, edit only `wiki/.staging/<run_id>/briefings/<date>.debrief.md`.

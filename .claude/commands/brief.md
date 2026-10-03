@@ -37,3 +37,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - **🌅 Morning Alignment → Unavailable Sources:** one bullet per missing source, or "None."
 - **🛑 Real-Time Workflow Friction Matrix:** Systemic Blockers (friction notes, telemetry, alerts, quarantine), Focus Drift Analysis (yesterday's Focus Fragmentation Warnings), Communication Debt (mail and chat, or the skipped line).
 - Frontmatter: `type: briefing`, `date: "<date>"`, `status: active`. Never add, change or remove `provenance`; the gate stamps it.
+
+## Self-edit
+
+Read `.claude/skills/humanizer/SKILL.md` once, then edit the briefing against its sections A, B, C and E (wording). Skip section D (formatting): keep the template's headings, emoji and bullets. Keep every fact, name, number, date and link, and leave frontmatter unchanged. Edit only the text this run wrote and keep everything the user wrote. Headless, edit only `wiki/.staging/<run_id>/briefings/<date>.md`.

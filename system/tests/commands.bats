@@ -230,3 +230,32 @@ writing_section() { awk '$0 == "## ✍️ Writing" { on = 1; next } /^## / { on 
   # The formatting rule stays where it was (spec §2).
   grep -qF '**Scannable Layouts**' CLAUDE.md
 }
+
+# self_edit_contract <command file>: the headless self-edit pass (communication spec §4).
+self_edit_contract() {
+  grep -qF 'Read `.claude/skills/humanizer/SKILL.md`' "$1"
+  grep -qF 'against its sections A, B, C and E (wording)' "$1"
+  grep -qF 'Skip section D (formatting)' "$1"
+  grep -qF 'Keep every fact, name, number, date and link' "$1"
+  grep -qF 'only the text this run wrote' "$1"
+}
+
+@test "ingest self-edits its notes with humanizer before the summary" {
+  f=.claude/commands/ingest.md
+  self_edit_contract "$f"
+  grep -qF '`_decisions.jsonl`' <(grep -F '**Self-edit.**' "$f")
+  edit="$(grep -nF '**Self-edit.**' "$f" | cut -d: -f1)"
+  fin="$(grep -nF '**Finish**' "$f" | cut -d: -f1)"
+  last_write="$(grep -nF '**Write the notes.**' "$f" | cut -d: -f1)"
+  [ -n "$edit" ]
+  [ "$last_write" -lt "$edit" ]
+  [ "$edit" -lt "$fin" ]
+}
+
+@test "brief and debrief end with the humanizer self-edit pass" {
+  for f in .claude/commands/brief.md .claude/commands/debrief.md; do
+    self_edit_contract "$f"
+    [ "$(grep -E '^## ' "$f" | tail -n 1)" = '## Self-edit' ]
+    grep -qF 'keep everything the user wrote' <(awk '$0 == "## Self-edit" { on = 1 } on' "$f")
+  done
+}
