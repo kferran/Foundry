@@ -106,3 +106,13 @@ setup() {
   grep -qF 'Jarvis memory (not an error): please reply with a short session digest.' system/hooks/digest_instructions.md
   grep -qF '<vault-digest>' system/hooks/digest_instructions.md
 }
+
+@test "the vendored humanizer is v3.0.0, unchanged, with its MIT license" {
+  d=.claude/skills/humanizer
+  grep -qx '  version: "3.0.0"' "$d/SKILL.md"
+  grep -qx 'name: humanizer' "$d/SKILL.md"
+  [ "$(sha256sum < "$d/SKILL.md")" = 'e8269e236bed06ed0fe4824c274112e54950b0cb46b0bafe5e1576ef7c9f93d5  -' ]
+  [ "$(head -n 1 "$d/LICENSE")" = 'MIT License' ]
+  grep -qx 'Copyright (c) 2025 Siqi Chen' "$d/LICENSE"
+  grep -qF 'humanizer v3.0.0' README.md
+}

@@ -206,3 +206,7 @@ setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } o
   before_ask="${sec%%Then ask*}"
   [ "${#before_read}" -lt "${#before_ask}" ]
 }
+
+@test "the humanizer skill and its license ship with the template" {
+  [ "$(git ls-files .claude/skills/humanizer | tr '\n' ' ')" = '.claude/skills/humanizer/LICENSE .claude/skills/humanizer/SKILL.md ' ]
+}

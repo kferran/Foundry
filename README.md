@@ -82,6 +82,7 @@ The layout, abbreviated from spec §5. `/digest` is not in the repo: it is a use
 CLAUDE.md                     generic rules; imports @system/config.md
 .claude/settings.json         interactive permissions
 .claude/commands/             setup brief debrief ingest query lint backup impact
+.claude/skills/humanizer/     vendored humanizer v3.0.0 (MIT): /humanizer, headless self-edit
 .githooks/pre-commit          deterministic linter (lint_vault.sh --staged)
 raw/                          contents gitignored
   inbox/ archive/ telemetry/  manual drops, compiled drops, production-error notes
@@ -159,6 +160,7 @@ Once the units are installed, the timers run real headless `claude -p` jobs. The
 ## Updating and uninstalling
 
 - **Pull template updates:** `system/scripts/update_template.sh`. It refuses to run on a dirty tree, fetches the `template` remote, merges with `--no-ff`, and stops on conflicts without resolving them. Afterwards it rebuilds the index and re-renders the units, but only if this vault installed them. It never runs automatically.
+- **Update the humanizer skill:** `.claude/skills/humanizer/` is humanizer v3.0.0, copied unchanged with its MIT license. To move to a newer version, copy the new `SKILL.md` and `LICENSE` over it by hand in the template repo, then update the version and checksum in `system/tests/vault_integrity.bats` and the version in this README. Vaults receive it through `update_template.sh`.
 - **Remove systemd units:** `system/scripts/install_units.sh --uninstall` removes only units whose header names this vault.
 - **Remove memory hooks:** `system/scripts/install_hooks.sh --uninstall` removes only the entries owned by this vault, any container the install had to create, and the owned `/digest` command. It still works if the hook files are gone.
 
@@ -181,6 +183,7 @@ system/scripts/verify_setup.sh --health   # also the advisory live-state suite
 
 - Yonatan Karp, [The self-compiling second brain](https://yonatankarp.com/blog/self-compiling-second-brain/): the capture → compile → recall model.
 - [firstmate](https://github.com/kunchenguid/firstmate): the model for the Optimus orchestrator (sub-project 2).
+- [humanizer](https://github.com/blader/humanizer) by Siqi Chen (MIT): vendored in `.claude/skills/humanizer/`; its wording rules are condensed in `CLAUDE.md` and applied by the headless commands before they write.
 - Projects from the ecosystem survey (spec §13.5). Each one contributed a design pattern; none is a dependency:
   - [open-second-brain](https://github.com/itechmeat/open-second-brain): corrections → preference notes with evidence
   - [DocMason](https://github.com/JetXu-LLM/DocMason), [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian): stage → validate → atomic publish
