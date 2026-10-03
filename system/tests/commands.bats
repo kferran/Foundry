@@ -210,3 +210,23 @@ setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } o
 @test "the humanizer skill and its license ship with the template" {
   [ "$(git ls-files .claude/skills/humanizer | tr '\n' ' ')" = '.claude/skills/humanizer/LICENSE .claude/skills/humanizer/SKILL.md ' ]
 }
+
+# writing_section: the body of CLAUDE.md's Writing section.
+writing_section() { awk '$0 == "## ✍️ Writing" { on = 1; next } /^## / { on = 0 } on' CLAUDE.md; }
+
+@test "CLAUDE.md Writing section: three reply tiers and the condensed wording rules" {
+  sec="$(writing_section)"
+  for s in '**Quick answer:** 1–3 sentences.' '**Task report:** fits one screen (about 25 lines).' \
+      'Outcome first, then the decisions the user must make' 'Never narrate the steps taken.' \
+      'at most about 5 lines' '**Document:**' 'never paste them into chat' \
+      '`.claude/skills/humanizer/SKILL.md` sections A, B, C and E' 'Its section D (formatting) does not apply' \
+      'No not-X-but-Y contrasts' 'No one-line closers' 'No forced triads' 'Use dashes sparingly' \
+      'No inflated significance or sales language' 'No chatbot wrappers'; do
+    [[ "$sec" == *"$s"* ]]
+  done
+  n="$(grep -cE '^[0-9]+\. ' <<< "$sec")"
+  [ "$n" -ge 8 ]
+  [ "$n" -le 12 ]
+  # The formatting rule stays where it was (spec §2).
+  grep -qF '**Scannable Layouts**' CLAUDE.md
+}
