@@ -206,3 +206,59 @@ setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } o
   before_ask="${sec%%Then ask*}"
   [ "${#before_read}" -lt "${#before_ask}" ]
 }
+
+@test "the humanizer skill and its license ship with the template" {
+  [ "$(git ls-files .claude/skills/humanizer | tr '\n' ' ')" = '.claude/skills/humanizer/LICENSE .claude/skills/humanizer/SKILL.md ' ]
+}
+
+# writing_section: the body of CLAUDE.md's Writing section.
+writing_section() { awk '$0 == "## ✍️ Writing" { on = 1; next } /^## / { on = 0 } on' CLAUDE.md; }
+
+@test "CLAUDE.md Writing section: three reply tiers and the condensed wording rules" {
+  sec="$(writing_section)"
+  for s in '**Quick answer:** 1–3 sentences.' '**Task report:** fits one screen (about 25 lines).' \
+      'Outcome first, then the decisions the user must make' 'Never narrate the steps taken.' \
+      'at most about 5 lines' '**Document:**' 'never paste them into chat' \
+      '`.claude/skills/humanizer/SKILL.md` sections A, B, C and E' 'Its section D (formatting) does not apply' \
+      'No not-X-but-Y contrasts' 'No one-line closers' 'No forced triads' 'Use dashes sparingly' \
+      'No inflated significance or sales language' 'No chatbot wrappers'; do
+    [[ "$sec" == *"$s"* ]]
+  done
+  n="$(grep -cE '^[0-9]+\. ' <<< "$sec")"
+  [ "$n" -ge 8 ]
+  [ "$n" -le 12 ]
+  # The formatting rule stays where it was (spec §2).
+  grep -qF '**Scannable Layouts**' CLAUDE.md
+}
+
+# self_edit_contract <command file>: the headless self-edit pass (communication spec §4).
+self_edit_contract() {
+  grep -qF 'Read `.claude/skills/humanizer/SKILL.md`' "$1"
+  grep -qF 'against its sections A, B, C and E (wording)' "$1"
+  grep -qF 'Skip section D (formatting)' "$1"
+  grep -qF 'Keep every fact, name, number, date and link' "$1"
+  grep -qF 'only the text this run wrote' "$1"
+  grep -qE 'leave frontmatter[ ,]' "$1"
+  grep -qF 'Headless, edit only' "$1"
+  grep -qF 'Where the skill says to cut a sentence, keep any fact it carries.' "$1"
+}
+
+@test "ingest self-edits its notes with humanizer before the summary" {
+  f=.claude/commands/ingest.md
+  self_edit_contract "$f"
+  grep -qF '`_decisions.jsonl`' <(grep -F '**Self-edit.**' "$f")
+  edit="$(grep -nF '**Self-edit.**' "$f" | cut -d: -f1)"
+  fin="$(grep -nF '**Finish**' "$f" | cut -d: -f1)"
+  last_write="$(grep -nF '**Write the notes.**' "$f" | cut -d: -f1)"
+  [ -n "$edit" ]
+  [ "$last_write" -lt "$edit" ]
+  [ "$edit" -lt "$fin" ]
+}
+
+@test "brief and debrief end with the humanizer self-edit pass" {
+  for f in .claude/commands/brief.md .claude/commands/debrief.md; do
+    self_edit_contract "$f"
+    [ "$(grep -E '^## ' "$f" | tail -n 1)" = '## Self-edit' ]
+    grep -qF 'keep everything the user wrote' <(awk '$0 == "## Self-edit" { on = 1 } on' "$f")
+  done
+}
