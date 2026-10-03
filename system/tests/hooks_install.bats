@@ -50,6 +50,7 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
 
 @test "install writes the managed /digest command; a foreign one is never touched" {
   run "$IH"
+  [ "$status" -eq 0 ]
   grep -qF "<!-- managed by vault: $VP -->" "$CFG/commands/digest.md"
   grep -qF '<vault-digest>' "$CFG/commands/digest.md"
   printf 'my own digest command\n' > "$CFG/commands/digest.md"
@@ -61,6 +62,7 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
 
 @test "a second run changes nothing and writes no new backup" {
   run "$IH"
+  [ "$status" -eq 0 ]
   backups="$(ls "$CFG" | grep -c 'settings.json.bak')"
   sum="$(sha256sum "$SET")"
   run "$IH"
@@ -73,6 +75,7 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
 
 @test "a change is preceded by a timestamped backup of the old file" {
   run "$IH"
+  [ "$status" -eq 0 ]
   bak="$(ls "$CFG"/settings.json.bak.*)"
   [ "$(jq -S . "$bak")" = "$(jq -S . "$BATS_TEST_TMPDIR/original.json")" ]
 }
@@ -89,17 +92,20 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
 
 @test "--uninstall restores the original settings and removes only the owned /digest" {
   run "$IH"
+  [ "$status" -eq 0 ]
   run "$IH" --uninstall
   [ "$status" -eq 0 ]
   [ "$(jq -S . "$SET")" = "$(jq -S . "$BATS_TEST_TMPDIR/original.json")" ]
   [ ! -e "$CFG/commands/digest.md" ]
   printf 'foreign\n' > "$CFG/commands/digest.md"
   run "$IH" --uninstall
+  [ "$status" -eq 0 ]
   [ "$(cat "$CFG/commands/digest.md")" = foreign ]
 }
 
 @test "moving the vault re-points the entries instead of duplicating them" {
   run "$IH"
+  [ "$status" -eq 0 ]
   relocate "$BATS_TEST_TMPDIR/moved"
   run "$IH"
   [ "$status" -eq 0 ]
@@ -192,4 +198,190 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
   [[ "$output" == *"digest command: left alone ("*") (dry run, nothing written)"* ]]
   [[ "$output" != *"foreign"* ]]
   [ "$(cat "$CFG/commands/digest.md")" = "my own digest command" ]
+}
+
+@test "a settings.json holding two JSON documents is refused, not rewritten" {
+  printf '{} {}\n' > "$SET"
+  run "$IH"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"is not a single JSON object"* ]]
+  [ "$(cat "$SET")" = '{} {}' ]
+}
+
+@test "well-formed JSON of an unexpected shape exits 1 with a message and is left untouched" {
+  for doc in '{"hooks": []}' '{"hooks": {"Stop": {}}}' '{"permissions": "ask"}' '{"permissions": {"allow": "Bash(x)"}}'; do
+    printf '%s\n' "$doc" > "$SET"
+    for mode in "" --dry-run; do
+      run "$IH" $mode
+      [ "$status" -eq 1 ]
+      [[ "$output" == *"unexpected shape at: "* ]]
+      [ "$(cat "$SET")" = "$doc" ]
+    done
+  done
+}
+
+@test "install refuses a missing or non-executable hook and changes nothing" {
+  chmod -x "$V/system/hooks/memory_capture.sh"
+  run "$IH"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"missing or not executable: system/hooks/memory_capture.sh"* ]]
+  [ "$(sha256sum < "$SET")" = "$(sha256sum < "$BATS_TEST_TMPDIR/original.json")" ]
+}
+
+@test "--uninstall works without the hook files and from a path that needs quoting" {
+  run "$IH"
+  [ "$status" -eq 0 ]
+  rm "$V/system/hooks/memory_recall.sh"
+  chmod -x "$V/system/hooks/memory_capture.sh"
+  relocate "$BATS_TEST_TMPDIR/my vault"
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(jq -S . "$SET")" = "$(jq -S . "$BATS_TEST_TMPDIR/original.json")" ]
+  [ ! -e "$CFG/commands/digest.md" ]
+}
+
+@test "a backup never overwrites an earlier one from the same second" {
+  now="$(date +%s)"
+  for t in $(seq "$now" $((now + 3))); do printf 'older %s\n' "$t" > "$SET.bak.$t"; done
+  run "$IH"
+  [ "$status" -eq 0 ]
+  for t in $(seq "$now" $((now + 3))); do [ "$(cat "$SET.bak.$t")" = "older $t" ]; done
+  bak="$(sed -n 's/^backup: //p' <<< "$output")"
+  [ -f "$bak" ]
+  [ "$(jq -S . "$bak")" = "$(jq -S . "$BATS_TEST_TMPDIR/original.json")" ]
+  [ "$(ls "$CFG" | grep -c 'settings.json.bak')" -eq 5 ]
+}
+
+record() { jq -c --arg k "$SET" '.[$k]' "$V/system/logs/memory/install_hooks.json"; }
+
+@test "permissions without an allow list come back without one after install and uninstall" {
+  printf '%s\n' '{"permissions": {"deny": ["Read(~/.ssh/**)"], "defaultMode": "default"}}' > "$SET"
+  jq -S . "$SET" > "$BATS_TEST_TMPDIR/fixture.json"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  run "$IH"
+  [ "$status" -eq 0 ]
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(jq -S . "$SET")" = "$(cat "$BATS_TEST_TMPDIR/fixture.json")" ]
+}
+
+@test "foreign empty containers of every kind the installer writes into survive install and uninstall" {
+  for doc in '{"hooks": {}}' '{"permissions": {}}' '{"hooks": {"Stop": []}}' '{"hooks": {"SessionStart": [], "PostToolUse": []}, "permissions": {"allow": []}}'; do
+    printf '%s\n' "$doc" > "$SET"
+    run "$IH"
+    [ "$status" -eq 0 ]
+    [ "$(ours | wc -l)" -eq 3 ]
+    run "$IH" --uninstall
+    [ "$status" -eq 0 ]
+    [ "$(jq -S . "$SET")" = "$(jq -S . <<< "$doc")" ]
+  done
+}
+
+@test "the record names exactly the containers the install created, and uninstall drops it" {
+  printf '%s\n' '{"hooks": {"Stop": []}, "permissions": {"deny": []}}' > "$SET"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  [ "$(record)" = '[["hooks","SessionStart"],["hooks","PostToolUse"],["permissions","allow"]]' ]
+  run "$IH"
+  [ "$status" -eq 0 ]
+  [ "$(record)" = '[["hooks","SessionStart"],["hooks","PostToolUse"],["permissions","allow"]]' ]
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(record)" = null ]
+}
+
+@test "--dry-run writes no record" {
+  run "$IH" --dry-run
+  [ "$status" -eq 0 ]
+  [ ! -e "$V/system/logs/memory/install_hooks.json" ]
+}
+
+@test "an install made before records existed still uninstalls cleanly" {
+  run "$IH"
+  [ "$status" -eq 0 ]
+  rm "$V/system/logs/memory/install_hooks.json"
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(jq -S . "$SET")" = "$(jq -S . "$BATS_TEST_TMPDIR/original.json")" ]
+  rm "$SET"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  printf 'not json\n' > "$V/system/logs/memory/install_hooks.json"
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(jq -c . "$SET")" = '{}' ]
+}
+
+@test "a rule the user adds after install keeps its allow list through uninstall" {
+  printf '%s\n' '{"permissions": {"deny": []}}' > "$SET"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  jq '.permissions.allow += ["Bash(make test)"]' "$SET" > "$SET.new"
+  mv "$SET.new" "$SET"
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(jq -c .permissions "$SET")" = '{"deny":[],"allow":["Bash(make test)"]}' ]
+}
+
+@test "a vault moved after install still uninstalls exactly" {
+  printf '%s\n' '{"permissions": {"deny": []}, "hooks": {"Stop": []}}' > "$SET"
+  jq -S . "$SET" > "$BATS_TEST_TMPDIR/fixture.json"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  relocate "$BATS_TEST_TMPDIR/moved"
+  run "$IH" --uninstall
+  [ "$status" -eq 0 ]
+  [ "$(jq -S . "$SET")" = "$(cat "$BATS_TEST_TMPDIR/fixture.json")" ]
+}
+
+@test "an empty or multi-document install record falls back instead of blocking install and uninstall" {
+  for junk in '' '{} {}'; do
+    rm -f "$SET"
+    run "$IH"
+    [ "$status" -eq 0 ]
+    printf '%s\n' "$junk" > "$V/system/logs/memory/install_hooks.json"
+    [ -n "$junk" ] || : > "$V/system/logs/memory/install_hooks.json"
+    run "$IH"
+    [ "$status" -eq 0 ]
+    [ "$(ours | wc -l)" -eq 3 ]
+    run "$IH" --uninstall
+    [ "$status" -eq 0 ]
+    [ "$(jq -c . "$SET")" = '{}' ]
+  done
+}
+
+@test "after an install, --dry-run prints the two lines /setup reads as already installed" {
+  run "$IH"
+  [ "$status" -eq 0 ]
+  run "$IH" --dry-run
+  [ "$status" -eq 0 ]
+  grep -qx 'settings: unchanged (dry run, nothing written)' <<< "$output"
+  grep -qx 'digest command: unchanged (dry run, nothing written)' <<< "$output"
+}
+
+@test "--uninstall completes and restores settings even when the install record cannot be updated" {
+  jq -S . "$SET" > "$BATS_TEST_TMPDIR/fixture.json"
+  run "$IH"
+  [ "$status" -eq 0 ]
+  [ -f "$CFG/commands/digest.md" ]
+  chmod a-w "$V/system/logs/memory" "$V/system/logs/memory/install_hooks.json"
+  run "$IH" --uninstall
+  chmod u+w "$V/system/logs/memory" "$V/system/logs/memory/install_hooks.json"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"record: could not update"* ]]
+  [ "$(jq -S . "$SET")" = "$(cat "$BATS_TEST_TMPDIR/fixture.json")" ]
+  [ ! -e "$CFG/commands/digest.md" ]
+}
+
+@test "install refuses before writing anything when the install record cannot be kept" {
+  mkdir -p "$V/system/logs/memory"
+  chmod a-w "$V/system/logs/memory"
+  before="$(sha256sum < "$SET")"
+  run "$IH"
+  chmod u+w "$V/system/logs/memory"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"install record"* ]]
+  [ "$(sha256sum < "$SET")" = "$before" ]
+  [ ! -e "$CFG/commands/digest.md" ]
 }

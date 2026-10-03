@@ -115,16 +115,39 @@ headless_contract() {
   [ "$status" -eq 1 ]
 }
 
-@test "/setup detects remotes before changing them and installs no memory hooks" {
+# setup_section <heading>: the body of one "## <heading>" phase of setup.md.
+setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } on' .claude/commands/setup.md; }
+
+@test "/setup detects remotes before changing them" {
   text="$(cat .claude/commands/setup.md)"
   [[ "$text" == *'setup_remote.sh --detect'* ]]
   [[ "$text" == *'setup_remote.sh <url>'* ]]
   before_detect="${text%%setup_remote.sh --detect*}"
   before_act="${text%%setup_remote.sh <url>*}"
   [ "${#before_detect}" -lt "${#before_act}" ]
-  run grep -n 'install_hooks' .claude/commands/setup.md
-  [ "$status" -eq 1 ]
   grep -qF 'system/scripts/install_units.sh --dry-run' .claude/commands/setup.md
+}
+
+@test "/setup phase 5a shows the hooks dry run, explains it, and installs only on an explicit yes" {
+  f=.claude/commands/setup.md
+  [ "$(grep -E '^## (5|5a|6)\. ' "$f" | tr '\n' '|')" = '## 5. Units|## 5a. Memory hooks|## 6. Calendar|' ]
+  sec="$(setup_section '5a. Memory hooks')"
+  for s in memory_recall.sh memory_capture.sh memory_activity.sh '`/digest`' 'left alone' \
+      'act only inside the vault and the registered codebases' 'Stop hook error: Jarvis memory (not an error)' \
+      'It is not an error.' 'Only an explicit yes installs.' 'memory capture stays off' \
+      'settings: unchanged (dry run, nothing written)' 'digest command: unchanged (dry run, nothing written)' \
+      'system/scripts/install_hooks.sh --uninstall'; do
+    [[ "$sec" == *"$s"* ]]
+  done
+  before_dry="${sec%%system/scripts/install_hooks.sh --dry-run*}"
+  before_install="${sec%%run \`system/scripts/install_hooks.sh\` and report*}"
+  [ "${#before_dry}" -lt "${#before_install}" ]
+  [ "${#before_install}" -lt "${#sec}" ]
+  # Nothing outside phase 5a runs the installer.
+  [ "$(grep -o 'install_hooks' "$f" | wc -l)" -eq "$(grep -o 'install_hooks' <<< "$sec" | wc -l)" ]
+  run grep -n 'not part of this version of setup' "$f"
+  [ "$status" -eq 1 ]
+  grep -qF 'linger, memory hooks, calendar' "$f"
 }
 
 @test "/setup's additionalDirectories merge keeps every other key in settings.local.json" {
@@ -143,6 +166,15 @@ headless_contract() {
   [ "$(jq -c .permissions.additionalDirectories "$f")" = '["/a"]' ]
 }
 
+@test "personas carry their §15 names and nothing names the old Chief of Staff file" {
+  [ "$(cd system/agents && LC_ALL=C ls | tr '\n' ' ')" = 'CodingAgent.md Optimus.md SystemMaintenance.md ' ]
+  grep -qx '# Role Profile: Optimus (Chief of Staff)' system/agents/Optimus.md
+  grep -qF 'Persona: `system/agents/Optimus.md`.' CLAUDE.md
+  # The [C] bracket keeps the pattern from matching this line.
+  run git grep -nE '[C]hiefOfStaff' -- CLAUDE.md README.md .claude system
+  [ "$status" -eq 1 ]
+}
+
 @test "prompts, personas and templates name no specific company or stack" {
   # Template-only: a vault made from the template may name its own stack. The template repo is
   # recognized by having no config yet, or remote_mode keep (maintainer mode).
@@ -150,4 +182,27 @@ headless_contract() {
   if [[ -n "$mode" && "$mode" != keep ]]; then skip "template-only check (remote_mode=$mode)"; fi
   run grep -rniE 'ultron|kusto|\bvue\b|\.net\b' CLAUDE.md .claude/commands system/agents system/templates
   [ "$status" -eq 1 ]
+}
+
+@test "/setup creates config.md from the example's frontmatter only, and never over an existing one" {
+  cmd="$(grep -oE '`\[ -f system/config\.md \][^`]*`' .claude/commands/setup.md | tr -d '`')"
+  [ -n "$cmd" ]
+  d="$BATS_TEST_TMPDIR/v"
+  mkdir -p "$d/system"
+  cp system/config.example.md "$d/system/"
+  (cd "$d" && eval "$cmd")
+  n="$(awk 'NR > 1 && /^---$/ { print NR; exit }' system/config.example.md)"
+  [ "$(head -n "$n" "$d/system/config.md")" = "$(head -n "$n" system/config.example.md)" ]
+  [ "$(tail -n +"$((n + 1))" "$d/system/config.md")" = "$(printf '# Config\n\nWritten by /setup. Re-run /setup to change it.')" ]
+  printf 'mine\n' > "$d/system/config.md"
+  (cd "$d" && eval "$cmd")
+  [ "$(cat "$d/system/config.md")" = mine ]
+}
+
+@test "/setup offers the current remote_mode as the default before asking" {
+  sec="$(setup_section '4. Remote')"
+  [[ "$sec" == *'showing the current mode as the default'* ]]
+  before_read="${sec%%system/scripts/vault_index.py field system/config.md remote_mode*}"
+  before_ask="${sec%%Then ask*}"
+  [ "${#before_read}" -lt "${#before_ask}" ]
 }

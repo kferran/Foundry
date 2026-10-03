@@ -2,7 +2,7 @@
 
 An Obsidian + Claude Code "second brain" vault template.
 
-> **Status:** built and tested. The headless brief, debrief and intake pipeline passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md)); `/setup` and the installed systemd units have not yet been run end to end. Memory capture and recall (Plan 3) are not built yet; `/setup` skips that step for now.
+> **Status:** built and tested. The headless brief, debrief and intake pipeline passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md)); `/setup` and the installed systemd units have not yet been run end to end. Memory capture and recall (Plan 3) passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md)) and stay off until you install their hooks, which `/setup` offers.
 
 ## What Jarvis is
 
@@ -21,8 +21,8 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 | 2a. Headless core | Staged publish, `run_headless.sh`, intake daemon, redaction, settings files | Complete: [plan](docs/superpowers/plans/2026-10-01-plan-2a-headless-core.md) |
 | 2b. Operations | Prep scripts, focus stats, unit templates and installer, remotes, codebase discovery | Complete: [plan](docs/superpowers/plans/2026-10-01-plan-2b-operations.md) |
 | 4a. Commands and setup | `CLAUDE.md`, commands, personas, `/setup` (without memory), health suite | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-4a-commands-setup.md) |
-| 3. Memory (Soundwave) | Capture/recall hooks, hook installer, `/digest` | Pending |
-| 4b. Memory integration, renames | `/setup` memory step, README memory sections, final renames | Pending (after Plan 3) |
+| 3. Memory (Soundwave) | Capture/recall hooks, hook installer, `/digest` | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-3-memory.md), [acceptance](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md) |
+| 4b. Memory integration, renames | `/setup` memory step, README memory sections, final renames | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-4b-memory-integration.md), [live check](docs/superpowers/spikes/2026-10-02-plan-4b-acceptance.md) |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | Pending (after the core has run for a few weeks) |
 | Sub-project 2 | Optimus orchestrator | Separate spec, after Plan 4b |
 
@@ -35,14 +35,14 @@ Each plan is written only after the previous one is finished, because results ca
 
 The intended loop is **capture → compile → index → recall → correct**:
 
-1. **Capture.** Files you drop in go to `raw/inbox/`. In the vault and in registered codebases, a `Stop` hook asks for a short session digest once enough work has happened (default: 5 tool events and 20 minutes). The hook writes the digest, redacted, to `raw/<partition>/notes/`. `/digest` writes one on demand. Claude Code shows a Stop hook's request under the label "Stop hook error:"; for Jarvis that line starts with "Jarvis memory (not an error)" and simply asks for the digest.
+1. **Capture.** Files you drop in go to `raw/inbox/`. Once the memory hooks are installed, sessions in the vault and in registered codebases also leave short, redacted session digests in `raw/<partition>/notes/` (see [Memory](#memory-soundwave) below).
 2. **Compile.** The intake timer batches up to 5 inputs from one partition into an isolated headless `/ingest` run. For each fact, the run records an explicit noop, patch or create decision and writes its output to `wiki/.staging/<run_id>/`.
 3. **Publish.** The publish gate validates schemas and partition walls and rejects changes that shrink existing notes. It also checks each target against a snapshot taken at the start of the run. If every check passes, it publishes everything at once. If any check fails, it publishes nothing and the run is quarantined. If you edited a note while the run was going, your edit is kept.
 4. **Index.** Markdown is the source of truth. `system/index.db` is a gitignored SQLite FTS5 index that can be rebuilt at any time. Agents run `related`, `query`, `show` and `backlinks` against it before reading any notes.
-5. **Recall.** A `SessionStart` hook adds up to about 9,500 characters of vault data to new sessions in scope: the latest digests for the codebase or partition and, once enabled, preferences you have confirmed. Recalled text is marked as data, not instructions.
+5. **Recall.** With the memory hooks installed, a `SessionStart` hook adds up to about 9,500 characters of vault data to new sessions in scope: the latest digests for the codebase or partition and, once enabled, preferences you have confirmed. Recalled text is marked as data, not instructions.
 6. **Correct.** Each digest has a Corrections section. Ingest turns these into `preference` notes with linked evidence. A preference's status is calculated in the index, and it becomes confirmed only after you accept it in `/brief`.
 
-| Name | Role | Concrete artifacts (planned) |
+| Name | Role | Concrete artifacts |
 |---|---|---|
 | **Jarvis** | The vault / product | this repo, `jarvis-*` systemd units |
 | **Optimus** | Chief of Staff persona; orchestrator in sub-project 2 | `system/agents/Optimus.md`, `agent_owner: Optimus` |
@@ -56,14 +56,32 @@ The intended loop is **capture → compile → index → recall → correct**:
 
 Script and module filenames stay descriptive so they are easy to grep. The themed names appear in unit `Description=` lines, log headers and documentation.
 
+## Memory (Soundwave)
+
+Memory is optional and off until you install its hooks. `/setup` offers them in its memory step: it shows the change `system/scripts/install_hooks.sh --dry-run` would make to your user-level `~/.claude/settings.json`, explains each entry, and installs only after an explicit yes. Declining leaves memory off; re-run `/setup` to turn it on later.
+
+| Entry | What it does |
+|---|---|
+| `memory_recall.sh` (`SessionStart`) | Adds recent digests for the codebase or partition to a new session, up to `recall_budget_chars` (default 9,000 characters), marked as vault data, not instructions |
+| `memory_capture.sh` (`Stop`) | After enough work (`digest_min_events` tool events and `digest_min_minutes` minutes since the last digest, default 5 and 20), asks for a short digest once, then redacts it and writes it to `raw/<partition>/notes/` |
+| `memory_activity.sh` (`PostToolUse`) | Counts edits and Bash calls toward that threshold |
+| three `permissions.allow` rules | Let codebase sessions run `vault_index.py related`, `show` and `backlinks`, which return only that codebase's partition plus `shared` |
+| `~/.claude/commands/digest.md` | The `/digest` command, written only if you have no `digest.md` of your own |
+
+The hooks run in every Claude Code session on the machine but act only inside the vault and registered codebases. Headless runs, subagents and `claude -p` scripts are skipped.
+
+**"Stop hook error" is not an error.** Claude Code labels every request from a `Stop` hook "Stop hook error:". When Jarvis asks for a digest, you see `Stop hook error: Jarvis memory (not an error): please reply with a short session digest. …`; Claude replies with the digest and the session carries on. The hook never asks twice in a row, and not when Claude's last reply ended with a question to you.
+
+**`/digest`** writes a digest of the work since the last one whenever you want, in any session in scope. The `Stop` hook captures it from the reply; no script or session id is needed.
+
 ## Repository layout
 
-The layout, abbreviated from spec §5. `system/hooks/`, `install_hooks.sh` and `/digest` arrive with Plan 3.
+The layout, abbreviated from spec §5. `/digest` is not in the repo: it is a user-level command that `install_hooks.sh` writes to `~/.claude/commands/digest.md`, so it works in codebase sessions too.
 
 ```
 CLAUDE.md                     generic rules; imports @system/config.md
 .claude/settings.json         interactive permissions
-.claude/commands/             setup brief debrief ingest query lint backup impact digest
+.claude/commands/             setup brief debrief ingest query lint backup impact
 .githooks/pre-commit          deterministic linter (lint_vault.sh --staged)
 raw/                          contents gitignored
   inbox/ archive/ telemetry/  manual drops, compiled drops, production-error notes
@@ -120,7 +138,7 @@ claude
 3. **Codebases:** you choose repos from a directory scan. Each one is inspected, written to `system/codebases/<name>.md` with a partition, and confirmed with you field by field.
 4. **Remote:** a `template` remote is added for updates, and you choose a private `origin`, no remote, or keep (maintainer mode).
 5. **Units:** systemd timers are rendered and enabled, and you are offered linger.
-6. **Memory hooks** (optional, arrives with Plan 3): you will be shown the diff to `~/.claude/settings.json`, and it will be applied only after an explicit yes. Setup skips this step for now.
+6. **Memory hooks** (optional): you are shown the diff to `~/.claude/settings.json` and what each hook does, and it is applied only after an explicit yes. Declining leaves memory off (see [Memory](#memory-soundwave)).
 7. **Calendar:** `gcalcli` auth is checked.
 8. **Index and verify:** the index is rebuilt and `verify_setup.sh --health` runs.
 9. **Hand-off:** an onboarding assignment note is created for each codebase.
@@ -142,7 +160,7 @@ Once the units are installed, the timers run real headless `claude -p` jobs. The
 
 - **Pull template updates:** `system/scripts/update_template.sh`. It refuses to run on a dirty tree, fetches the `template` remote, merges with `--no-ff`, and stops on conflicts without resolving them. Afterwards it rebuilds the index and re-renders the units, but only if this vault installed them. It never runs automatically.
 - **Remove systemd units:** `system/scripts/install_units.sh --uninstall` removes only units whose header names this vault.
-- **Remove memory hooks** (after Plan 3): `system/scripts/install_hooks.sh --uninstall` removes only the entries owned by this vault and the owned `/digest` command.
+- **Remove memory hooks:** `system/scripts/install_hooks.sh --uninstall` removes only the entries owned by this vault, any container the install had to create, and the owned `/digest` command. It still works if the hook files are gone.
 
 Both installers also accept `--dry-run`.
 

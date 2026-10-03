@@ -13,7 +13,7 @@
 - `system/scripts/`: deterministic tools. `system/logs/`: logs, prep inputs, alerts, run ledger. `system/quarantine/`: failed inputs.
 
 ## Agents
-1. **Optimus (Chief of Staff)**: owns `briefings/`, the agenda and delegation. Persona: `system/agents/ChiefOfStaff.md`.
+1. **Optimus (Chief of Staff)**: owns `briefings/`, the agenda and delegation. Persona: `system/agents/Optimus.md`.
 2. **CodingAgent** and **SystemMaintenance**: own wiki note updates and code work. Personas in `system/agents/`.
 
 ## Commands
