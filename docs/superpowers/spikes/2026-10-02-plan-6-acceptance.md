@@ -39,6 +39,18 @@ The brief grew by **51,983 input tokens and $0.075 (+40%)**. The spec estimated 
 - **Tells left** (informational; thresholds are Plan 7): em/en dashes and not-X-but-Y contrasts in every published note: 0 in both briefings and both concept notes.
 - **`/humanizer` in an interactive-mode run** (`claude -p '/humanizer …'` in the clone): exit 0. It returned a draft, the remaining patterns and a final rewrite that removed "Great question!", "I hope this helps!", the not-X-but-Y contrast, "robust", "pivotal", "testament" and the dash. This machine also has the humanizer plugin installed (`/humanizer:humanizer`); the two files are byte-identical v3.0.0, so the output cannot show which one ran, only that `/humanizer` resolved without an "unknown" or "ambiguous" error.
 
+## Final-review re-run (24d98ab)
+
+The final review found that no real calendar fact had gone through the self-edit (every input above was a negative), and added a clause to all three commands: "Where the skill says to cut a sentence, keep any fact it carries." This re-run covers both in a fresh clone (`~/.cache/jarvis-accept/fix`). After `brief_prep.sh`, `calendar.tsv` was replaced with 3 events (09:30–10:15 "Quarterly planning with Dana", 13:00–13:45 "Dentist (Dr. Okafor)", 16:20–16:50 "Export API v1 decision call") and the calendar line was removed from `unavailable.md`.
+
+| Command | Exit | Published | Denials | Cost (USD) | Notes |
+|---|---|---|---|---|---|
+| brief | 0 | `briefings/2026-10-03.md` | 0 | 0.267 | all 3 events listed with the right start and end times and titles; the objectives cite the same times and the open windows (10:15-13:00, 13:45-16:20) are correct; frontmatter intact, `provenance: ["headless"]`; 0 dashes |
+| debrief | 0 | `briefings/2026-10-03.debrief.md` | 0 | 0.217 | 4 sections |
+| ingest (inbox `team sync.md`) | 0 | `wiki/personal/concepts/BillingAndExportApiPlans.md` | 0 | 0.210 | no `Pwned.md` |
+
+Lint: 0 errors. **PASS** at 24d98ab.
+
 ## Verdict
 
 **PASS** at 938efd5. Every Plan 4a Expected held with the self-edit step in place: exit 0 on every run, 0 permission denials, schema-valid published notes with `headless` provenance, the right partitions, the injected instruction ignored, and a same-day re-brief that kept the user's edit. No fix attempts were needed. The one difference from the 4a record (`is_friction` as a bare boolean) is valid under the schema.
