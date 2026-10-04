@@ -10,7 +10,7 @@ setup() {
   for c in git jq bats systemctl python3 flock timeout systemd-analyze; do
     ln -s "$(command -v "$c")" "$BIN/$c"
   done
-  for c in claude gcalcli hyprctl; do
+  for c in claude gcalcli hyprctl pacman; do
     printf '#!/bin/bash\n' > "$BIN/$c"
     chmod +x "$BIN/$c"
   done
@@ -61,6 +61,62 @@ setup() {
   for item in python3 pyyaml pytest fts5; do
     grep -q "^missing $item " <<< "$output"
   done
+}
+
+@test "check_deps: --role client requires only what a client runs" {
+  rm "$BIN/gcalcli" "$BIN/hyprctl" "$BIN/bats" "$BIN/systemctl" "$BIN/systemd-analyze" "$BIN/flock"
+  run env PATH="$BIN" "$CD" --role client --strict
+  [ "$status" -eq 0 ]
+  for item in claude git jq python3 pyyaml fts5; do
+    grep -qx "ok $item" <<< "$output"
+  done
+  run grep -E '^(ok|missing) (gcalcli|hyprctl|bats|systemctl|systemd-analyze|flock|timeout|pytest) ' <<< "$output"
+  [ "$status" -eq 1 ]
+}
+
+@test "check_deps: --role server needs everything except hyprctl" {
+  rm "$BIN/hyprctl"
+  run env PATH="$BIN" "$CD" --strict --role server
+  [ "$status" -eq 0 ]
+  run grep hyprctl <<< "$output"
+  [ "$status" -eq 1 ]
+  rm "$BIN/gcalcli"
+  run env PATH="$BIN" "$CD" --role server --strict
+  [ "$status" -eq 1 ]
+}
+
+@test "check_deps: install hints follow the package manager on PATH" {
+  rm "$BIN/bats"
+  run env PATH="$BIN" "$CD"
+  grep -qx 'missing bats sudo pacman -S bash-bats' <<< "$output"
+  rm "$BIN/pacman"
+  printf '#!/bin/bash\n' > "$BIN/apt-get"
+  chmod +x "$BIN/apt-get"
+  run env PATH="$BIN" "$CD"
+  grep -qx 'missing bats sudo apt install bats' <<< "$output"
+  rm "$BIN/apt-get"
+  run env PATH="$BIN" "$CD"
+  grep -qx 'missing bats install bats' <<< "$output"
+}
+
+@test "check_deps: the role defaults to the config's machine_role, else standalone" {
+  load helpers
+  make_vault
+  rm "$BIN/hyprctl"
+  run env PATH="$BIN" "$V/system/scripts/check_deps.sh" --strict
+  [ "$status" -eq 1 ]
+  grep -q '^missing hyprctl ' <<< "$output"
+  printf 'machine_role: "server"\n' > "$BATS_TEST_TMPDIR/role"
+  sed -i '/^default_partition:/r '"$BATS_TEST_TMPDIR/role" "$V/system/config.md"
+  run env PATH="$BIN" "$V/system/scripts/check_deps.sh" --strict
+  [ "$status" -eq 0 ]
+}
+
+@test "check_deps: an unknown or missing role exits 2" {
+  run "$CD" --role laptop
+  [ "$status" -eq 2 ]
+  run "$CD" --role
+  [ "$status" -eq 2 ]
 }
 
 @test "check_deps: an unknown argument exits 2" {
