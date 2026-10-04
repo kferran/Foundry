@@ -335,3 +335,14 @@ self_edit_contract() {
   grep -qF 'skip_unless_role standalone server' "$f"
   grep -qF 'skip_unless_role standalone' <(grep -A3 'focus tracker is active' "$f")
 }
+
+@test "gcalcli is gone: only the two settings deny rules still name it" {
+  [ "$(git grep -l gcalcli -- CLAUDE.md README.md .claude system/scripts system/systemd system/agents system/templates system/headless.settings.json | tr '\n' ' ')" = '.claude/settings.json system/headless.settings.json ' ]
+}
+
+@test "/setup phase 6 checks the calendar connector with a Bash timeout long enough for a fetch" {
+  sec="$(setup_section '6. Calendar')"
+  [[ "$sec" == *'system/scripts/calendar_fetch.sh'* ]]
+  [[ "$sec" == *'Bash timeout of at least 300000 ms'* ]]
+  grep -qF 'run `system/scripts/brief_prep.sh <date>` first, with a Bash timeout of at least 300000 ms' .claude/commands/brief.md
+}

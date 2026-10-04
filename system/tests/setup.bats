@@ -10,7 +10,7 @@ setup() {
   for c in git jq bats systemctl python3 flock timeout systemd-analyze; do
     ln -s "$(command -v "$c")" "$BIN/$c"
   done
-  for c in claude gcalcli hyprctl pacman; do
+  for c in claude hyprctl pacman; do
     printf '#!/bin/bash\n' > "$BIN/$c"
     chmod +x "$BIN/$c"
   done
@@ -19,7 +19,7 @@ setup() {
 @test "check_deps: every item present reports ok and --strict passes" {
   run env PATH="$BIN" "$CD" --strict
   [ "$status" -eq 0 ]
-  for item in claude git jq bats gcalcli systemctl hyprctl python3 flock timeout pyyaml pytest fts5 systemd-analyze; do
+  for item in claude git jq bats systemctl hyprctl python3 flock timeout pyyaml pytest fts5 systemd-analyze; do
     grep -qx "ok $item" <<< "$output"
   done
 }
@@ -64,13 +64,13 @@ setup() {
 }
 
 @test "check_deps: --role client requires only what a client runs" {
-  rm "$BIN/gcalcli" "$BIN/hyprctl" "$BIN/bats" "$BIN/systemctl" "$BIN/systemd-analyze" "$BIN/flock"
+  rm "$BIN/hyprctl" "$BIN/bats" "$BIN/systemctl" "$BIN/systemd-analyze" "$BIN/flock"
   run env PATH="$BIN" "$CD" --role client --strict
   [ "$status" -eq 0 ]
   for item in claude git jq python3 pyyaml fts5; do
     grep -qx "ok $item" <<< "$output"
   done
-  run grep -E '^(ok|missing) (gcalcli|hyprctl|bats|systemctl|systemd-analyze|flock|timeout|pytest) ' <<< "$output"
+  run grep -E '^(ok|missing) (hyprctl|bats|systemctl|systemd-analyze|flock|timeout|pytest) ' <<< "$output"
   [ "$status" -eq 1 ]
 }
 
@@ -112,12 +112,12 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "check_deps: gcalcli is optional for every role (the calendar comes from the connector)" {
-  rm "$BIN/gcalcli"
+@test "check_deps: no role checks for gcalcli (the calendar comes from the connector)" {
   for role in standalone server client; do
     run env PATH="$BIN" "$CD" --strict --role "$role"
     [ "$status" -eq 0 ]
-    grep -q '^optional gcalcli ' <<< "$output"
+    run grep -c gcalcli <<< "$output"
+    [ "$output" = 0 ]
   done
 }
 
