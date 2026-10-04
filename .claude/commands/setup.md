@@ -10,7 +10,7 @@ Read the current role with `system/scripts/vault_index.py field system/config.md
 - `server`: an always-on machine that runs the automation and the coding sessions. Other machines sync with it through the private `origin`.
 - `client`: a machine for reading and editing the vault in Obsidian. It runs no automation and syncs through git.
 
-Then run `system/scripts/check_deps.sh --role <role>`. List every `missing` line with its install hint, and every `optional` line as optional. If `pyyaml` is missing, stop: setup cannot continue without it. Otherwise continue, noting which features are off (no `gcalcli`: no calendar in the brief; no `hyprctl` on a standalone machine: no focus tracking).
+Then run `system/scripts/check_deps.sh --role <role>`. List every `missing` line with its install hint, and every `optional` line as optional. If `pyyaml` is missing, stop: setup cannot continue without it. Otherwise continue, noting which features are off (no `hyprctl` on a standalone machine: no focus tracking).
 
 On a client, skip phases 3, 6 and 9, and report each as "not used on a client". Phases 5 and 5a run on a client only to remove automation and memory hooks left from an earlier role.
 
@@ -65,7 +65,7 @@ On a client, never install the hooks. Run `system/scripts/install_hooks.sh --dry
 6. Ask: "Install the memory hooks? (yes/no, default no)". Only an explicit yes installs. On yes, run `system/scripts/install_hooks.sh` and report its `backup:`, `settings:` and `digest command:` lines. On anything else, change nothing and say that memory capture stays off and that re-running `/setup` (or `system/scripts/install_hooks.sh` after reading its `--dry-run`) turns it on later.
 
 ## 6. Calendar
-Run `timeout 20 gcalcli list < /dev/null`. If it fails, tell the user to run `! gcalcli init` and re-run this phase afterwards.
+The brief reads today's calendar from the Google Calendar connector of the Claude account this machine's `claude` is logged in with. Run `system/scripts/calendar_fetch.sh` with a Bash timeout of at least 300000 ms (a fetch takes up to about three minutes and costs about $0.20). On exit 0, report how many events it printed for today. Otherwise report its `calendar_fetch:` line and what to do: exit 3, connect Google Calendar in the account's connector settings at claude.ai (same account as this machine), or log `claude` in with a claude.ai account; exit 6, reconnect it; exit 4, try again later; any other exit, show the line from `system/logs/calendar_fetch-<YYYY-MM>.jsonl`. A calendar failure never blocks setup: the brief then lists the calendar under Unavailable Sources.
 
 ## 7. Index
 Run `system/scripts/vault_index.py rebuild`, then `system/scripts/vault_index.py issues`, and report any error.

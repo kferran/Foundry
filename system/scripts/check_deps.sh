@@ -37,7 +37,6 @@ hint() {
   local pkg_pacman pkg_apt
   case "$1" in
     claude) echo "install Claude Code: https://docs.claude.com/en/docs/claude-code/setup"; return ;;
-    gcalcli) echo "optional calendar source for the brief: pipx install gcalcli"; return ;;
     systemctl) echo "systemd is required (user services)"; return ;;
     systemd-analyze) echo "systemd is required (unit verification)"; return ;;
     herdr) echo "optional session backend for sub-project 2; see README"; return ;;
@@ -79,7 +78,7 @@ present() {  # <item>: 1 when the item is available
 }
 
 for item in "${REQUIRED[@]}"; do report "$item" "$(present "$item")"; done
-for c in gcalcli herdr tmux; do report "$c" "$(has "$c")" optional; done
+for c in herdr tmux; do report "$c" "$(has "$c")" optional; done
 
 (( strict && missing )) && exit 1
 exit 0

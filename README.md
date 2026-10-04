@@ -27,8 +27,8 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 | 4b. Memory integration, renames | `/setup` memory step, README memory sections, final renames | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-4b-memory-integration.md), [live check](docs/superpowers/spikes/2026-10-02-plan-4b-acceptance.md) |
 | 6. Communication | `CLAUDE.md` Writing section, vendored humanizer skill, headless self-edit pass | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-6-communication.md), [acceptance](docs/superpowers/spikes/2026-10-02-plan-6-acceptance.md) |
 | 8a. Machine roles and Debian | `machine_role` (standalone, server, client), `check_deps --role` with apt hints, units by role, Debian proven natively | Complete: [plan](docs/superpowers/plans/2026-10-03-plan-8a-roles-debian.md), [acceptance](docs/superpowers/spikes/2026-10-03-plan-8a-acceptance.md) |
-| 8d. Calendar from the connector | Brief calendar from the installed calendar connector instead of `gcalcli` | Next |
-| 8b. Commit history | Scripted commit messages, one commit per headless run | After 8d |
+| 8d. Calendar from the connector | Brief calendar from the installed Google Calendar connector | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8d-calendar-connector.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8d-acceptance.md) |
+| 8b. Commit history | Scripted commit messages, one commit per headless run | Next |
 | 8c. Sync | `vault_sync.sh`, server sync units, conflicts, client setup. The real vault is set up after this plan | After 8b |
 | 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
@@ -139,7 +139,7 @@ Jarvis runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh --rol
 - `python3` with PyYAML and pytest (`sudo pacman -S python-yaml python-pytest`). Missing PyYAML blocks setup.
 - `sqlite3` built with FTS5
 - systemd user units (`systemctl --user`, `systemd-analyze`). If you want timers to run while you are logged out, enable lingering.
-- Optional: `gcalcli` for calendar input to the brief. Without it the brief lists the calendar under Unavailable Sources. Plan 8d replaces it with the calendar connector.
+- A Google Calendar connector on the Claude account the brief machine is logged in with, for calendar input to the brief. Without it the brief lists the calendar under Unavailable Sources. Each morning fetch costs about $0.20.
 - Hyprland (`hyprctl`) for the Obsidian focus tracker, on a standalone machine only. Without it only focus stats are lost.
 - A client needs only `claude`, `git`, `jq`, `python3` with PyYAML, and SQLite with FTS5.
 - Optional: `herdr` or `tmux` as session backends for sub-project 2
@@ -172,7 +172,7 @@ claude
 - **4. Remote:** a `template` remote is added for updates, and you choose a private `origin`, no remote, or keep (maintainer mode). A server or client must use a private `origin`; setup checks that git can reach it without a prompt and publishes the branch.
 - **5. Units:** the role's systemd units are rendered and enabled, and you are offered linger (required on a server).
 - **5a. Memory hooks** (optional): you are shown the diff to `~/.claude/settings.json` and what each hook does, and it is applied only after an explicit yes. Declining leaves memory off (see [Memory](#memory-soundwave)).
-- **6. Calendar:** `gcalcli` auth is checked.
+- **6. Calendar:** one fetch from the Google Calendar connector checks that the brief can read today's events.
 - **7. Index:** the index is rebuilt.
 - **8. Verify:** `verify_setup.sh --health` runs.
 - **9. Hand-off:** an onboarding assignment note is created for each codebase.

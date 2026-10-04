@@ -44,7 +44,7 @@ The template stays machine-agnostic: a machine's own hostname, paths, remote URL
 | Codebases registered | yes | yes | no |
 | `remote_mode` | any | `private` required | `private` required |
 | Linger | offered | `/setup` stops phase 5 until `loginctl show-user` reports `yes`, giving the command to run | n/a |
-| Calendar (`gcalcli`) | checked | checked | skipped |
+| Calendar (Google Calendar connector, `2026-10-03-calendar-connector-design.md`) | checked | checked | skipped |
 
 ### 3.2 `/setup`
 

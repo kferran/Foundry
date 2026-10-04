@@ -249,6 +249,7 @@ Per run, holding `flock system/run.lock` only around step 1 (each ingest takes t
 
 Both validate `[date]` (default: today in the configured timezone), write to `system/logs/inputs/<date>/`, always exit 0, and record any unavailable source in `inputs/<date>/unavailable.md` (one line per source).
 
+- *(Superseded for the calendar by `2026-10-03-calendar-connector-design.md`: the calendar comes from the Google Calendar connector through `calendar_fetch.sh`, and `gcalcli` is gone.)*
 - `brief_prep.sh`: `gcalcli agenda "<date>T00:00" "<date>T23:59" --tsv > calendar.tsv`; `focus_stats.sh <yesterday> > focus_yesterday.md`.
 - `debrief_prep.sh`:
   - `git.md` — for the vault and every codebase: `git log --since=<date>T00:00 --until=<date>T23:59 --format=…` under a `## <name>` heading.
@@ -720,7 +721,7 @@ Every phase is idempotent and safe to re-run.
 4. **Remote:** `setup_remote.sh` detection runs first and is reported; then ask private URL / none / keep.
 5. **Units:** `install_units.sh`. If `loginctl show-user "$USER" -p Linger` is `no`, explain that timers only run while logged in and offer `loginctl enable-linger`.
 5a. **Memory hooks:** run `install_hooks.sh --dry-run`, show the diff to `~/.claude/settings.json`, explain what each hook does and that it only acts inside the vault and registered codebases, and apply only on explicit yes. Declining leaves memory capture off; `/setup` can be re-run later.
-6. **Calendar auth:** non-interactive `gcalcli list`; on failure, tell the user to run `! gcalcli init`.
+6. **Calendar auth:** non-interactive `gcalcli list`; on failure, tell the user to run `! gcalcli init`. *(Superseded by `2026-10-03-calendar-connector-design.md` §6: one connector fetch.)*
 7. **Index:** `vault_index.py rebuild`, then `issues`; report any problems.
 8. **Verify:** `verify_setup.sh --health`; `systemctl --user list-timers`.
 9. **Hand-off:** for each codebase without one, create `wiki/<partition>/concepts/<Name>OnboardingAssignment.md` (schema-valid, `agent_owner: CodingAgent`, the codebase's partition) directing a map of layers and logging/telemetry definitions (seeded from `logging_hints`) into `wiki/<partition>/entities/<Name>LogEventMap.md`, linked to the superpowers.

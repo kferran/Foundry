@@ -1,0 +1,55 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "reason",
+    "events"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "no_tool",
+        "tool_error",
+        "too_many"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "start_date",
+          "start_time",
+          "end_date",
+          "end_time",
+          "title"
+        ],
+        "properties": {
+          "start_date": {
+            "type": "string"
+          },
+          "start_time": {
+            "type": "string"
+          },
+          "end_date": {
+            "type": "string"
+          },
+          "end_time": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

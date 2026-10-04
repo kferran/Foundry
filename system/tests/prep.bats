@@ -7,22 +7,31 @@ setup() {
   cd "$V"
   STUBS="$BATS_TEST_TMPDIR/stubs"
   mkdir -p "$STUBS"
-  cat > "$STUBS/gcalcli" <<'EOF'
-#!/bin/bash
-printf '%s\n' "$@" > "$STUB_GCAL_ARGS"
-readlink /proc/self/fd/0 > "$STUB_GCAL_STDIN"
-case "${STUB_GCAL_MODE:-ok}" in
-  ok) printf '2026-10-01\t09:00\t2026-10-01\t09:30\tStandup\n' ;;
-  fail) echo "partial output"; exit 1 ;;
-  missing) exit 127 ;;
-esac
-EOF
-  chmod +x "$STUBS/gcalcli"
-  export PATH="$STUBS:$PATH" STUB_GCAL_ARGS="$BATS_TEST_TMPDIR/gcal.args" STUB_GCAL_STDIN="$BATS_TEST_TMPDIR/gcal.stdin"
+  # The calendar comes from calendar_fetch.sh, whose claude is the calendar stub (never the real one).
+  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_calendar"
+  # A temporary HOME hides ~/.gitconfig, so the test commits need an identity of their own.
+  export GIT_AUTHOR_NAME=test GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
+  export JARVIS_MANAGED_SETTINGS="$BATS_TEST_TMPDIR/managed.json" JARVIS_MANAGED_SETTINGS_DIR="$BATS_TEST_TMPDIR/managed.d"
+  export STUB_STREAM="$BATS_TEST_TMPDIR/stream.jsonl"
+  calendar_says '{"status":"ok","reason":"","events":[{"start_date":"2026-10-01","start_time":"09:00","end_date":"2026-10-01","end_time":"09:30","title":"Standup"}]}'
+  export PATH="$STUBS:$PATH"
   BP="$V/system/scripts/brief_prep.sh"
   DP="$V/system/scripts/debrief_prep.sh"
   IN=system/logs/inputs/2026-10-01
   mkdir -p system/logs
+}
+
+# calendar_says <structured output json> [tool…]: what the stubbed calendar session returns.
+calendar_says() {
+  local out="$1" t
+  shift
+  {
+    printf '{"type":"system","subtype":"init","tools":[]}\n'
+    for t in "${@:-ToolSearch}"; do
+      printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"%s","input":{}}]}}\n' "$t"
+    done
+    printf '{"type":"result","subtype":"success","is_error":false,"num_turns":4,"total_cost_usd":0.2,"permission_denials":[],"structured_output":%s}\n' "$out"
+  } > "$STUB_STREAM"
 }
 
 commit_at() {  # <repo> <iso date> <message> [author email]
@@ -44,26 +53,40 @@ codebase() {  # <name> <path>
   printf '[09:00:00] Kafka\n' > system/logs/obsidian_focus_2026-09-30.log
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
-  grep -q 'Standup' "$IN/calendar.tsv"
-  [ "$(tr '\n' ' ' < "$STUB_GCAL_ARGS")" = "agenda 2026-10-01T00:00 2026-10-01T23:59 --tsv " ]
-  [ "$(cat "$STUB_GCAL_STDIN")" = /dev/null ]
+  [ "$(cat "$IN/calendar.tsv")" = "$(printf '2026-10-01\t09:00\t2026-10-01\t09:30\tStandup')" ]
   grep -qx '# Focus: 2026-09-30' "$IN/focus_yesterday.md"
   grep -qx '| Kafka | 1 | 0.5 |' "$IN/focus_yesterday.md"
   [ ! -e "$IN/unavailable.md" ]
 }
 
-@test "brief_prep: a failing gcalcli is recorded, leaves no partial file, and still exits 0" {
-  STUB_GCAL_MODE=fail run "$BP" 2026-10-01
+@test "brief_prep: a failed calendar fetch is recorded, leaves no partial file, and still exits 0" {
+  : > "$STUB_STREAM"
+  STUB_RC=1 run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
   [ ! -e "$IN/calendar.tsv" ]
-  grep -q '^- brief_prep: calendar: gcalcli agenda failed (exit 1' "$IN/unavailable.md"
+  grep -q '^- brief_prep: calendar: calendar_fetch.sh failed (exit 1; see system/logs/inputs/2026-10-01/prep_errors.log)$' "$IN/unavailable.md"
+  grep -q '^calendar_fetch: ' "$IN/prep_errors.log"
   grep -qx -- '- brief_prep: focus_yesterday: no focus log for 2026-09-30' "$IN/unavailable.md"
 }
 
-@test "brief_prep: gcalcli not installed is recorded as such" {
-  STUB_GCAL_MODE=missing run "$BP" 2026-10-01
-  [ "$status" -eq 0 ]
-  grep -qx -- '- brief_prep: calendar: gcalcli is not installed' "$IN/unavailable.md"
+@test "brief_prep: each calendar failure gets its own Unavailable Sources line" {
+  check() {  # <expected line>
+    run "$BP" 2026-10-01
+    [ "$status" -eq 0 ]
+    grep -qxF -- "- brief_prep: calendar: $1" "$IN/unavailable.md"
+  }
+  calendar_says '{"status":"no_tool","reason":"","events":[]}'
+  check 'no Google Calendar connector reachable (connect it at claude.ai with the account this machine'"'"'s claude is logged in with, then re-run /setup phase 6)'
+  calendar_says '{"status":"tool_error","reason":"rate limited","events":[]}'
+  check 'the connector returned an error: rate limited (if it persists, reconnect Google Calendar at claude.ai)'
+  calendar_says '{"status":"ok","reason":"","events":[{"start_date":"2026-10-02","start_time":"","end_date":"2026-10-02","end_time":"","title":"x"}]}'
+  check 'the connector returned an unreadable event list (see system/logs/calendar_fetch-2026-10.jsonl)'
+  calendar_says '{"status":"too_many","reason":"140","events":[]}'
+  check 'more than 100 events that day; not listed'
+  calendar_says '{"status":"ok","reason":"","events":[]}' ToolSearch mcp__claude_ai_Gmail__send_message
+  check 'the fetch session used an unexpected tool; nothing was written (see system/logs/alerts_'"$(TZ=America/Denver date +%F)"'.md)'
+  STUB_SLEEP=5 CALENDAR_TIMEOUT=1 check 'the connector timed out'
+  CLAUDE_BIN="$BATS_TEST_TMPDIR/no-such-claude" check 'claude is not on PATH'
 }
 
 @test "brief_prep: the default date is today in the configured timezone" {
