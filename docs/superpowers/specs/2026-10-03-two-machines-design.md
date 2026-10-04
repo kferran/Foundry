@@ -26,7 +26,7 @@ The template stays machine-agnostic: a machine's own hostname, paths, remote URL
 | Other sync failures | Network, credential and push failures never stop runs: the server keeps working on its own copy, alerts (rate-limited), and catches up when sync works (§5.3) |
 | Focus tracking | Standalone only |
 | Offline client | Tolerated, not designed for: the client keeps a full clone and syncs when it can reach `origin` |
-| Distros | `check_deps.sh` detects `pacman` or `apt` and prints matching hints. The suite is proven in Debian containers on the oldest supported release (oldstable, currently bookworm) and on stable (§6) |
+| Distros | `check_deps.sh` detects `pacman` or `apt` and prints matching hints. The suite is proven by running it natively on a Debian host, the oldest supported release available (§6) |
 
 ## 3. Machine roles (Plan 8a)
 
@@ -235,10 +235,11 @@ Order: verification (§3.6) → `vault_sync.sh` (which runs `commit_runs.py` and
 
 ## 6. Debian (Plan 8a)
 
-- `system/tests/debian/Containerfile` takes `ARG DEBIAN_RELEASE` (default `oldstable`) and installs the `apt` dependencies; tests run as a non-root user (some tests rely on permission checks root bypasses).
-- `system/tests/debian/run.sh [release…]` builds and runs `verify_setup.sh` with `podman` or `docker`, whichever exists; with no argument it runs `oldstable` and `stable`. Exit 0 only if every release passes.
-- Inside the container (`JARVIS_CONTAINER=1`), tests that need a running user systemd (`systemd-analyze --user verify`) skip with that reason; they still run on the host.
-- Not part of the gate (it needs a container runtime); run at each plan's acceptance. The oldest supported release sets the tool floor (currently jq 1.6, bats 1.8); code and tests must work on it.
+- Debian is proven by running the gate natively on a Debian machine, not in a container (user decision, 2026-10-03). `system/tests/verify_on_host.sh <ssh-host>` copies the committed tree (`git archive HEAD`) to a new directory under the host's `/tmp`, runs `verify_setup.sh` there with its output in a log beside it, prints the summary, and exits with the gate's code. On success it removes the directory and the log; on failure it keeps both and prints their paths. It installs nothing and writes nothing outside that directory and its log. The host needs the apt dependencies from §3.4 (no `claude`: the suite stubs it).
+- Not part of the gate (it needs a reachable host); run at each plan's acceptance on the oldest supported Debian release available. That release sets the tool floor (currently jq 1.6, bats 1.8, SQLite 3.40, Python 3.11); code and tests must work on it.
+- Defects found on Debian 12 while planning, fixed in Plan 8a:
+  - `vaultlib/guard.py`: SQLite 3.40 reports its own schema parse as an `UPDATE` of `sqlite_master` while it builds the FTS5 table, which the query authorizer denied, so `vault_index.py query` failed for FTS `MATCH` and `pragma_table_info`. The authorizer allows `UPDATE` on `sqlite_master`/`sqlite_schema` only; the connection stays read-only (`mode=ro`, `query_only`).
+  - `install_hooks.sh`: jq 1.6 exits 0 for `jq -e .` on empty input (newer jq exits 4), so an empty install record passed the one-value check and broke the merge. The check tests for a non-empty value explicitly.
 
 ## 7. Error handling summary
 
@@ -255,7 +256,7 @@ Order: verification (§3.6) → `vault_sync.sh` (which runs `commit_runs.py` and
 
 ## 8. Tests
 
-Gated tests are hermetic: temporary repos (a bare `origin` plus server and client clones under `$BATS_TEST_TMPDIR`), stubs on `PATH`, no network. They must pass with jq 1.6 and bats 1.8 (§6).
+Gated tests are hermetic: temporary repos (a bare `origin` plus server and client clones under `$BATS_TEST_TMPDIR`), stubs on `PATH`, no network. They must pass with jq 1.6, bats 1.8 and SQLite 3.40 (§6).
 
 - **8a:** `check_deps.sh --role` lists; `pacman`/`apt-get` hints via `PATH` stubs; `install_units.sh` per role (client installs nothing, role change removes unused owned units); `setup.md` asks the role first and states each client skip; `backup.md` lints on a client; role-aware `system_health.bats` (advisory); config schema accepts the new keys and rejects out-of-range `sync_interval_minutes`.
 - **8b:** pytest for `commit_runs.py`: exact subjects, bodies and trailers from fixture runs; only the run's paths in its commit even with other files staged; cutover ignores older runs; already-committed paths get the marker without a commit; a hook failure leaves the run pending; `conflict`/`recovered` runs with published files are committed, rejected and empty ones are not. `debrief_prep.sh` lists vault commits from any author.
@@ -263,7 +264,7 @@ Gated tests are hermetic: temporary repos (a bare `origin` plus server and clien
 
 ### 8.1 Live acceptance (per plan, in throwaway clones; a local bare repo stands in for `origin`)
 
-- **8a:** `system/tests/debian/run.sh` exits 0 on `oldstable` and `stable`; `check_deps.sh --role client|server` output read on the host.
+- **8a:** `system/tests/verify_on_host.sh <debian host>` exits 0; `check_deps.sh --role client|server` output read on that host.
 - **8b:** a headless ingest and a brief in a throwaway clone, then `commit_runs.py`: one commit per run with the expected message and trailers; Plan 4a acceptance steps re-run if `run_headless.sh` or the headless commands changed.
 - **8c:**
   1. Server clone: `vault_sync.sh --pre`, a headless brief, `vault_sync.sh --post`: a `brief <date>` commit pushed.
@@ -273,7 +274,7 @@ Gated tests are hermetic: temporary repos (a bare `origin` plus server and clien
 
 ## 9. Template rules
 
-- No machine's own hostname, user path, remote URL or distro choice is committed. Docs use placeholders (`<server>`, `<private origin>`). Generic support files (apt hints, the Debian Containerfile) are fine.
+- No machine's own hostname, user path, remote URL or distro choice is committed. Docs use placeholders (`<server>`, `<private origin>`). Generic support files (apt hints, the host-verification script) are fine.
 - Standalone vaults keep today's behavior except: scripted run commits (§4), the vault log in the debrief without the author filter (§4.4), non-destructive extraction (§5.6), the conflict-marker hook (§5.5), and, in `private`, `/backup` syncing through `vault_sync.sh` (§5.8).
 
 ## 10. Plans
