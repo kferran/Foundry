@@ -136,3 +136,55 @@ failing_bats() { printf '#!/usr/bin/env bats\n@test "no" { false; }\n' > "$M/sys
   run "$VS" --bogus
   [ "$status" -eq 2 ]
 }
+
+# A fake host: an ssh stub that drops its options and host and runs the command here, with the
+# "remote" /tmp redirected to the test's tmpdir.
+host_repo() {
+  H="$BATS_TEST_TMPDIR/hostrepo"
+  mkdir -p "$H/system/scripts" "$H/system/tests" "$BATS_TEST_TMPDIR/remote-tmp" "$BATS_TEST_TMPDIR/sbin"
+  cp "$REPO/system/tests/verify_on_host.sh" "$H/system/tests/"
+  printf '#!/bin/bash\necho "===== summary"\necho "PASS fake"\nexit "${FAKE_GATE_RC:-0}"\n' > "$H/system/scripts/verify_setup.sh"
+  chmod +x "$H/system/scripts/verify_setup.sh"
+  git -C "$H" init -q
+  git -C "$H" add -A
+  git -C "$H" -c user.name=t -c user.email=t@e commit -qm init
+  cat > "$BATS_TEST_TMPDIR/sbin/ssh" <<'STUB'
+#!/bin/bash
+while [[ "$1" == -o ]]; do shift 2; done
+shift
+exec bash -c "$*"
+STUB
+  chmod +x "$BATS_TEST_TMPDIR/sbin/ssh"
+  export PATH="$BATS_TEST_TMPDIR/sbin:$PATH" VERIFY_TMP="$BATS_TEST_TMPDIR/remote-tmp"
+}
+
+@test "verify_on_host: a passing gate on the host exits 0, prints the summary and leaves nothing behind" {
+  host_repo
+  run "$H/system/tests/verify_on_host.sh" somehost
+  [ "$status" -eq 0 ]
+  grep -qx 'PASS fake' <<< "$output"
+  [ -z "$(ls -A "$VERIFY_TMP")" ]
+}
+
+@test "verify_on_host: a failing gate exits with its code and keeps the copy and log" {
+  host_repo
+  run env FAKE_GATE_RC=1 "$H/system/tests/verify_on_host.sh" somehost
+  [ "$status" -eq 1 ]
+  grep -q '^kept: somehost:' <<< "$output"
+  [ "$(ls "$VERIFY_TMP" | wc -l)" -eq 2 ]
+}
+
+@test "verify_on_host: copies HEAD, not uncommitted changes" {
+  host_repo
+  printf '#!/bin/bash\nexit 7\n' > "$H/system/scripts/verify_setup.sh"
+  run "$H/system/tests/verify_on_host.sh" somehost
+  [ "$status" -eq 0 ]
+}
+
+@test "verify_on_host: needs exactly one plain host argument" {
+  host_repo
+  run "$H/system/tests/verify_on_host.sh"
+  [ "$status" -eq 2 ]
+  run "$H/system/tests/verify_on_host.sh" 'h; rm -rf /'
+  [ "$status" -eq 2 ]
+}
