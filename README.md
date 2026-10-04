@@ -138,7 +138,7 @@ A server and its clients share the vault through a private `origin` (`remote_mod
 
 ### Sync conflicts
 
-A conflict is never resolved automatically. The server aborts the merge, pushes its side to `jarvis/server-pending` on `origin`, writes `system/logs/sync-blocked`, alerts once, and skips intake, brief and debrief until it is resolved. Resolve it from either machine:
+A conflict is never resolved automatically. The server aborts the merge, pushes its side to `jarvis/server-pending` on `origin`, writes `system/logs/sync-blocked`, alerts once, and skips intake, brief and debrief until it is resolved. Resolve it on the other machine (for `jarvis/server-pending`, a client):
 
 ```sh
 git fetch origin
@@ -147,6 +147,8 @@ git merge origin/jarvis/server-pending   # a client's own conflict uses origin/j
 git commit
 git push
 ```
+
+On the machine that pushed the pending branch, its side is already checked out: run `git merge origin/<branch>` there instead (`<branch>` is the vault's branch), then resolve, commit and push.
 
 The next server sync clears the marker, deletes the pending branch and starts a brief or debrief that was skipped today. The pre-commit hook rejects any file that still holds conflict markers; if a client note that bypassed the hook blocks your commit, the hook names it: fix it, or commit with `--no-verify` knowingly.
 

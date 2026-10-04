@@ -386,6 +386,7 @@ self_edit_contract() {
 @test "the README explains sync conflicts and drops the by-hand sync" {
   grep -qx '### Sync conflicts' README.md
   grep -qF 'git merge origin/jarvis/server-pending' README.md
+  grep -qF 'On the machine that pushed the pending branch, its side is already checked out: run `git merge origin/<branch>` there instead' README.md
   grep -qF -- '--no-verify' README.md
   run grep -F 'Syncing them automatically is Plan 8c' README.md
   [ "$status" -eq 1 ]

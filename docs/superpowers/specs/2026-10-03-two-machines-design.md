@@ -180,7 +180,7 @@ On a merge conflict, `vault_sync.sh`:
 3. writes `system/logs/sync-blocked` (paths, time, pending branch) and one alert per blocked period;
 4. exits 3.
 
-While `sync-blocked` exists, every run service's pre-step exits 3, so intake, brief and debrief do not run. Manual `run_headless.sh` calls are not blocked. Resolution, on either machine: `git fetch origin`, `git merge origin/jarvis/<role>-pending`, resolve, commit, push. The same steps apply to `jarvis/client-pending`, which a client's `/backup` pushes when its own sync conflicts.
+While `sync-blocked` exists, every run service's pre-step exits 3, so intake, brief and debrief do not run. Manual `run_headless.sh` calls are not blocked. Resolution: on the other machine, `git fetch origin`, `git merge origin/jarvis/<role>-pending`, resolve, commit, push; on the machine that pushed the pending branch, its side is already checked out, so it merges `origin/<branch>` instead. The same steps apply to `jarvis/client-pending`, which a client's `/backup` pushes when its own sync conflicts.
 
 **Clearing:** the marker is removed by any cycle that completes step 5, whether or not `origin` was ahead. That cycle also deletes `jarvis/<role>-pending` on `origin` (a branch that is already gone is not an error) and writes a "sync unblocked" alert.
 
