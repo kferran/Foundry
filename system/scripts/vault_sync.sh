@@ -150,7 +150,7 @@ if ! git diff --cached --quiet; then
   fi
 fi
 for attempt in 1 2; do
-  net fetch -q origin || fail fetch "git fetch origin failed"
+  net fetch -q --prune origin || fail fetch "git fetch origin failed"
   if ! git merge-base --is-ancestor "origin/$branch" HEAD; then
     if ! err="$(git merge -q --no-edit -m "sync($role): merge origin/$branch" \
                   -m "Jarvis-Command: sync"$'\n'"Jarvis-Role: $role" "origin/$branch" 2>&1)"; then
@@ -186,12 +186,14 @@ start_missed() {
   done
 }
 
+# Only this role pushes its pending branch: once a push completed, delete it if the fetch still saw it
+# (a failed delete retries next tick).
+pending="jarvis/$role-pending"
+if git rev-parse -q --verify "refs/remotes/origin/$pending" > /dev/null; then
+  net push -q origin ":refs/heads/$pending" || alert "could not delete $pending on origin"
+fi
 # Any cycle that reaches this point clears a block (§5.4), whether or not origin was ahead.
 if [[ -e "$BLOCKED" ]]; then
-  pending="jarvis/$role-pending"
-  if [[ -n "$(net ls-remote --heads origin "refs/heads/$pending" 2>/dev/null)" ]]; then
-    net push -q origin ":refs/heads/$pending" || alert "could not delete $pending on origin"
-  fi
   rm -f "$BLOCKED"
   alert "sync unblocked"
   [[ "$role" != server ]] || start_missed

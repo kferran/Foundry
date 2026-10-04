@@ -315,3 +315,21 @@ diverge_on_kafka() {  # the client and the server change the same line; the clie
   [ -z "$(git -C "$O" for-each-ref refs/heads/jarvis/)" ]
   [ ! -e "$BATS_TEST_TMPDIR/systemctl.log" ]
 }
+
+@test "a deleted pending branch disappears from the remote refs on the next sync" {
+  git push -q origin "HEAD:refs/heads/jarvis/client-pending"
+  git fetch -q origin
+  git -C "$C" push -q origin :refs/heads/jarvis/client-pending
+  run "$VS"
+  [ "$status" -eq 0 ]
+  run git rev-parse -q --verify refs/remotes/origin/jarvis/client-pending
+  [ "$status" -ne 0 ]
+}
+
+@test "an own pending branch left on origin without a marker is deleted" {
+  git push -q origin "HEAD:refs/heads/jarvis/server-pending"
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ -z "$(git -C "$O" for-each-ref refs/heads/jarvis/)" ]
+  [ -z "$(alerts | grep 'sync unblocked')" ]
+}
