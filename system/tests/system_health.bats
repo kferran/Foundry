@@ -9,6 +9,14 @@ setup() {
 
 field() { system/scripts/vault_index.py field system/config.md "$1"; }
 
+# skip_unless_role <role…>: skip this check on a machine whose role is not listed.
+skip_unless_role() {
+  local role
+  role="$(field machine_role 2>/dev/null || true)"
+  role="${role:-standalone}"
+  [[ " $* " == *" $role "* ]] || skip "not used on a $role machine"
+}
+
 @test "claude version is unchanged since the last health check (else re-run spike item 12)" {
   mkdir -p system/logs
   current="$(claude --version 2>/dev/null || echo unknown)"
@@ -30,16 +38,19 @@ field() { system/scripts/vault_index.py field system/config.md "$1"; }
 }
 
 @test "the intake, brief and debrief timers are active" {
+  skip_unless_role standalone server
   for t in jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer; do
     systemctl --user is-active --quiet "$t"
   done
 }
 
 @test "the focus tracker is active" {
+  skip_unless_role standalone
   systemctl --user is-active --quiet jarvis-focus.service
 }
 
 @test "lingering is enabled, so timers run while logged out" {
+  skip_unless_role standalone server
   [ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" = yes ]
 }
 

@@ -10,7 +10,7 @@ setup() {
   for c in git jq bats systemctl python3 flock timeout systemd-analyze; do
     ln -s "$(command -v "$c")" "$BIN/$c"
   done
-  for c in claude gcalcli hyprctl; do
+  for c in claude gcalcli hyprctl pacman; do
     printf '#!/bin/bash\n' > "$BIN/$c"
     chmod +x "$BIN/$c"
   done
@@ -25,10 +25,10 @@ setup() {
 }
 
 @test "check_deps: a missing required tool gets an install hint and fails only --strict" {
-  rm "$BIN/gcalcli"
+  rm "$BIN/jq"
   run env PATH="$BIN" "$CD"
   [ "$status" -eq 0 ]
-  grep -qx 'missing gcalcli pipx install gcalcli' <<< "$output"
+  grep -qx 'missing jq sudo pacman -S jq' <<< "$output"
   run env PATH="$BIN" "$CD" --strict
   [ "$status" -eq 1 ]
 }
@@ -61,6 +61,71 @@ setup() {
   for item in python3 pyyaml pytest fts5; do
     grep -q "^missing $item " <<< "$output"
   done
+}
+
+@test "check_deps: --role client requires only what a client runs" {
+  rm "$BIN/gcalcli" "$BIN/hyprctl" "$BIN/bats" "$BIN/systemctl" "$BIN/systemd-analyze" "$BIN/flock"
+  run env PATH="$BIN" "$CD" --role client --strict
+  [ "$status" -eq 0 ]
+  for item in claude git jq python3 pyyaml fts5; do
+    grep -qx "ok $item" <<< "$output"
+  done
+  run grep -E '^(ok|missing) (gcalcli|hyprctl|bats|systemctl|systemd-analyze|flock|timeout|pytest) ' <<< "$output"
+  [ "$status" -eq 1 ]
+}
+
+@test "check_deps: --role server needs everything except hyprctl" {
+  rm "$BIN/hyprctl"
+  run env PATH="$BIN" "$CD" --strict --role server
+  [ "$status" -eq 0 ]
+  run grep hyprctl <<< "$output"
+  [ "$status" -eq 1 ]
+  rm "$BIN/bats"
+  run env PATH="$BIN" "$CD" --role server --strict
+  [ "$status" -eq 1 ]
+}
+
+@test "check_deps: install hints follow the package manager on PATH" {
+  rm "$BIN/bats"
+  run env PATH="$BIN" "$CD"
+  grep -qx 'missing bats sudo pacman -S bash-bats' <<< "$output"
+  rm "$BIN/pacman"
+  printf '#!/bin/bash\n' > "$BIN/apt-get"
+  chmod +x "$BIN/apt-get"
+  run env PATH="$BIN" "$CD"
+  grep -qx 'missing bats sudo apt install bats' <<< "$output"
+  rm "$BIN/apt-get"
+  run env PATH="$BIN" "$CD"
+  grep -qx 'missing bats install bats' <<< "$output"
+}
+
+@test "check_deps: the role defaults to the config's machine_role, else standalone" {
+  load helpers
+  make_vault
+  rm "$BIN/hyprctl"
+  run env PATH="$BIN" "$V/system/scripts/check_deps.sh" --strict
+  [ "$status" -eq 1 ]
+  grep -q '^missing hyprctl ' <<< "$output"
+  printf 'machine_role: "server"\n' > "$BATS_TEST_TMPDIR/role"
+  sed -i '/^default_partition:/r '"$BATS_TEST_TMPDIR/role" "$V/system/config.md"
+  run env PATH="$BIN" "$V/system/scripts/check_deps.sh" --strict
+  [ "$status" -eq 0 ]
+}
+
+@test "check_deps: gcalcli is optional for every role (the calendar comes from the connector)" {
+  rm "$BIN/gcalcli"
+  for role in standalone server client; do
+    run env PATH="$BIN" "$CD" --strict --role "$role"
+    [ "$status" -eq 0 ]
+    grep -q '^optional gcalcli ' <<< "$output"
+  done
+}
+
+@test "check_deps: an unknown or missing role exits 2" {
+  run "$CD" --role laptop
+  [ "$status" -eq 2 ]
+  run "$CD" --role
+  [ "$status" -eq 2 ]
 }
 
 @test "check_deps: an unknown argument exits 2" {
@@ -135,4 +200,62 @@ failing_bats() { printf '#!/usr/bin/env bats\n@test "no" { false; }\n' > "$M/sys
   mini_vault
   run "$VS" --bogus
   [ "$status" -eq 2 ]
+}
+
+# A fake host: an ssh stub that drops its options and host and runs the command here, with the
+# "remote" /tmp redirected to the test's tmpdir.
+host_repo() {
+  H="$BATS_TEST_TMPDIR/hostrepo"
+  mkdir -p "$H/system/scripts" "$H/system/tests" "$BATS_TEST_TMPDIR/remote-tmp" "$BATS_TEST_TMPDIR/sbin"
+  cp "$REPO/system/tests/verify_on_host.sh" "$H/system/tests/"
+  printf '#!/bin/bash\necho "===== summary"\necho "PASS fake"\nexit "${FAKE_GATE_RC:-0}"\n' > "$H/system/scripts/verify_setup.sh"
+  chmod +x "$H/system/scripts/verify_setup.sh"
+  git -C "$H" init -q
+  git -C "$H" add -A
+  git -C "$H" -c user.name=t -c user.email=t@e commit -qm init
+  cat > "$BATS_TEST_TMPDIR/sbin/ssh" <<'STUB'
+#!/bin/bash
+while [[ "$1" == -o ]]; do shift 2; done
+shift
+exec bash -c "$*"
+STUB
+  chmod +x "$BATS_TEST_TMPDIR/sbin/ssh"
+  export PATH="$BATS_TEST_TMPDIR/sbin:$PATH" VERIFY_TMP="$BATS_TEST_TMPDIR/remote-tmp"
+}
+
+@test "verify_on_host: a passing gate on the host exits 0, prints the summary and leaves nothing behind" {
+  host_repo
+  run "$H/system/tests/verify_on_host.sh" somehost
+  [ "$status" -eq 0 ]
+  grep -qx 'PASS fake' <<< "$output"
+  [ -z "$(ls -A "$VERIFY_TMP")" ]
+}
+
+@test "verify_on_host: a failing gate exits with its code and keeps the copy and log" {
+  host_repo
+  run env FAKE_GATE_RC=1 "$H/system/tests/verify_on_host.sh" somehost
+  [ "$status" -eq 1 ]
+  grep -qx 'PASS fake' <<< "$output"
+  grep -q '^kept: somehost:' <<< "$output"
+  [ "$(ls "$VERIFY_TMP" | wc -l)" -eq 2 ]
+}
+
+@test "verify_on_host: copies HEAD, not uncommitted changes" {
+  host_repo
+  printf '#!/bin/bash\nexit 7\n' > "$H/system/scripts/verify_setup.sh"
+  run "$H/system/tests/verify_on_host.sh" somehost
+  [ "$status" -eq 0 ]
+}
+
+@test "verify_on_host: needs exactly one plain host argument" {
+  host_repo
+  run "$H/system/tests/verify_on_host.sh"
+  [ "$status" -eq 2 ]
+  run "$H/system/tests/verify_on_host.sh" 'h; rm -rf /'
+  [ "$status" -eq 2 ]
+  # ssh would read these as options and could exit 0 without running the gate.
+  for opt in -V -Jhost; do
+    run "$H/system/tests/verify_on_host.sh" "$opt"
+    [ "$status" -eq 2 ]
+  done
 }

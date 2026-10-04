@@ -15,6 +15,8 @@ fields:
   recall_budget_chars: {kind: int, default: "9000"}
   preferences_enabled: {kind: bool, default: "false"}
   superpowers: {kind: list, of: string}
+  machine_role: {kind: enum, values: [standalone, server, client], default: "standalone"}
+  sync_interval_minutes: {kind: int, min: "1", max: "60", default: "5"}
 ---
 # Config
 The per-user global configuration written by `/setup` (gitignored). `system/config.example.md` is the committed example.

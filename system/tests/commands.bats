@@ -262,3 +262,76 @@ self_edit_contract() {
     grep -qF 'keep everything the user wrote' <(awk '$0 == "## Self-edit" { on = 1 } on' "$f")
   done
 }
+
+@test "config: machine_role and sync_interval_minutes are in the example and bounded by the schema" {
+  [ "$(system/scripts/vault_index.py field system/config.example.md machine_role)" = standalone ]
+  [ "$(system/scripts/vault_index.py field system/config.example.md sync_interval_minutes)" = 5 ]
+  load helpers
+  make_vault
+  cd "$V"
+  for bad in 'machine_role: "laptop"' 'sync_interval_minutes: "0"' 'sync_interval_minutes: "61"'; do
+    sed -e "s/^${bad%%:*}: .*/$bad/" "$REPO/system/config.example.md" > "$V/system/config.md"
+    grep -qxF "$bad" "$V/system/config.md"
+    run system/scripts/vault_index.py validate system/config.md
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"${bad%%:*}"* ]]
+  done
+  cp "$REPO/system/config.example.md" "$V/system/config.md"
+  run system/scripts/vault_index.py validate system/config.md
+  [ "$status" -eq 0 ]
+}
+
+@test "/setup asks the machine role first and checks dependencies for that role" {
+  sec="$(setup_section '0. Role and preflight')"
+  for s in 'system/scripts/vault_index.py field system/config.md machine_role' '`standalone`' '`server`' '`client`' \
+      'showing the current role as the default' 'system/scripts/check_deps.sh --role <role>'; do
+    [[ "$sec" == *"$s"* ]]
+  done
+  before_ask="${sec%%Ask which role*}"
+  before_deps="${sec%%check_deps.sh --role*}"
+  [ "${#before_ask}" -lt "${#before_deps}" ]
+  [ "$(grep -m1 -E '^## ' .claude/commands/setup.md)" = '## 0. Role and preflight' ]
+  grep -qF 'system/scripts/vault_index.py set system/config.md machine_role <role>' .claude/commands/setup.md
+}
+
+@test "/setup on a client skips the phases a client does not use, and says so" {
+  f=.claude/commands/setup.md
+  grep -qF 'On a client, skip phases 3, 6 and 9' "$f"
+  # A machine re-run as a client must stop running automation and memory hooks.
+  units="$(setup_section '5. Units')"
+  [[ "$units" == *'On a client, run `system/scripts/install_units.sh` without asking'* ]]
+  [[ "$units" == *'`new|changed|unchanged|removed`'* ]]
+  hooks="$(setup_section '5a. Memory hooks')"
+  [[ "$hooks" == *'On a client, never install the hooks.'* ]]
+  [[ "$hooks" == *'offer `system/scripts/install_hooks.sh --uninstall`'* ]]
+  grep -qF 'not used on a client' "$f"
+  grep -qF 'On a client, ask only for the timezone and the default partition.' "$f"
+  sec="$(setup_section '8. Verify')"
+  [[ "$sec" == *'On a client, run `system/scripts/lint_vault.sh` instead'* ]]
+}
+
+@test "/setup requires private remotes, working credentials and a published branch on a server or client" {
+  sec="$(setup_section '4. Remote')"
+  for s in 'On a server or a client, only `private` is allowed' 'git config user.name' 'git config user.email' \
+      'GIT_TERMINAL_PROMPT=0 timeout 30 git ls-remote origin' 'git ls-remote --heads origin' 'git push -u origin HEAD'; do
+    [[ "$sec" == *"$s"* ]]
+  done
+}
+
+@test "/setup requires linger on a server and lists the units for the role" {
+  sec="$(setup_section '5. Units')"
+  [[ "$sec" == *'On a server, linger is required'* ]]
+  [[ "$sec" == *'`jarvis-focus` (standalone only)'* ]]
+}
+
+@test "/backup lints instead of running the suites on a client" {
+  f=.claude/commands/backup.md
+  grep -qF 'On a client (`machine_role: client`), run `system/scripts/lint_vault.sh` instead' "$f"
+  grep -qF 'Skip this step on a client.' "$f"
+}
+
+@test "system_health checks each item only on the roles that run it" {
+  f=system/tests/system_health.bats
+  grep -qF 'skip_unless_role standalone server' "$f"
+  grep -qF 'skip_unless_role standalone' <(grep -A3 'focus tracker is active' "$f")
+}

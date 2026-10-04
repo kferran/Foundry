@@ -11,6 +11,10 @@ MAX_RESULT_BYTES = 16 * 1024 * 1024
 def _authorizer(action, arg1, arg2, _db, _source):
     if action in ALLOWED_ACTIONS:
         return sqlite3.SQLITE_OK
+    # SQLite 3.40 (Debian 12) reports its own schema parse as an UPDATE of sqlite_master while it builds
+    # a virtual table (FTS5). The connection is read-only (mode=ro, query_only), so no write can follow.
+    if action == sqlite3.SQLITE_UPDATE and arg1 in ("sqlite_master", "sqlite_schema"):
+        return sqlite3.SQLITE_OK
     if action == sqlite3.SQLITE_PRAGMA:
         if arg1 in READ_ONLY_PRAGMAS:
             return sqlite3.SQLITE_OK

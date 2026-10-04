@@ -99,7 +99,8 @@ if [[ -f "$RECORD" ]]; then
     | if ($c | type) == "array" and all($c[]; type == "array" and all(.[]; type == "string")) then $c else null end' \
     "$RECORD" 2> /dev/null)" || created=null
   # An empty record prints nothing and a multi-document one prints several lines: accept exactly one value.
-  [[ "$created" != *$'\n'* ]] && jq -e . <<< "$created" > /dev/null 2>&1 || created=null
+  # Test for empty explicitly: jq 1.6 exits 0 for `jq -e .` on empty input (newer jq exits 4).
+  [[ -n "$created" && "$created" != *$'\n'* ]] && jq -e . <<< "$created" > /dev/null 2>&1 || created=null
 fi
 
 stripped="$(jq --argjson created "$created" "$LIB $STRIP" <<< "$current" 2> /dev/null)" \
