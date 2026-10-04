@@ -7,4 +7,5 @@ WorkingDirectory={{VAULT_ROOT}}
 Environment="TZ={{TZ}}"
 Environment="PATH={{UNIT_PATH}}"
 TimeoutStartSec=10min
+SuccessExitStatus=4
 ExecStart="{{VAULT_ROOT}}/system/scripts/vault_sync.sh"

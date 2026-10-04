@@ -259,6 +259,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   [ "$status" -eq 0 ]
   grep -qx 'OnUnitActiveSec=7min' "$UD/jarvis-sync.timer"
   grep -qx 'TimeoutStartSec=10min' "$UD/jarvis-sync.service"
+  grep -qx 'SuccessExitStatus=4' "$UD/jarvis-sync.service"
   grep -qxF "ExecStart=\"$VP/system/scripts/vault_sync.sh\"" "$UD/jarvis-sync.service"
   for s in intake brief debrief; do
     d="$UD/jarvis-$s.service.d/jarvis-sync.conf"
