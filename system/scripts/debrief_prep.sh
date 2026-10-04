@@ -15,14 +15,15 @@ prep_init debrief_prep "$@"
 # These functions run inside prep_write's `||` context, where bash disables errexit, so every
 # failure must return explicitly.
 
-# One "## <name>" section per repo. When the repo has user.email configured, only that author's
-# commits are listed, so a shared work repo shows your day rather than the whole team's. Local
-# branches only: remote-tracking refs (the template remote included) are other people's history.
-repo_log() {  # <name> <path>
+# One "## <name>" section per repo. In a codebase with user.email configured, only that author's
+# commits are listed, so a shared work repo shows your day rather than the whole team's. The vault
+# lists every author: its commits come from scripts and other machines (two-machines spec §4.4).
+# Local branches only: remote-tracking refs (the template remote included) are other people's history.
+repo_log() {  # <name> <path> [all]
   local email log
   local -a author=()
   email="$(git -C "$2" config user.email 2>/dev/null || true)"
-  [[ -z "$email" ]] || author=(--author="$email")
+  [[ -z "$email" || "${3:-}" == all ]] || author=(--author="$email")
   log="$(git -C "$2" log --branches --no-merges "${author[@]}" \
     --since="${PREP_DATE}T00:00:00" --until="${PREP_DATE}T23:59:59" \
     --date=format-local:%H:%M --format='- %ad %h %s')" || return 1
@@ -31,7 +32,7 @@ repo_log() {  # <name> <path>
 
 git_md() {
   local name path
-  repo_log vault "$VAULT_ROOT" || prep_unavailable "git: git log failed for the vault"
+  repo_log vault "$VAULT_ROOT" all || prep_unavailable "git: git log failed for the vault"
   while IFS= read -r name; do
     path="$(codebase_get "$name" path)"
     if [[ -z "$path" ]] || ! git -C "$path" rev-parse --git-dir >/dev/null 2>&1; then

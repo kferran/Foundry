@@ -126,6 +126,15 @@ codebase() {  # <name> <path>
   [ "$status" -eq 1 ]
 }
 
+@test "debrief_prep: the vault section lists commits from every author" {
+  commit_at "$V" 2026-10-01T09:00:00-06:00 "mine"
+  commit_at "$V" 2026-10-01T10:00:00-06:00 "from the other machine" other@example.com
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qE '^- 09:00 [0-9a-f]+ mine$' "$IN/git.md"
+  grep -qE '^- 10:00 [0-9a-f]+ from the other machine$' "$IN/git.md"
+}
+
 @test "debrief_prep: codebase sections list only your commits on local branches" {
   C="$BATS_TEST_TMPDIR/app"
   git init -q "$C"
