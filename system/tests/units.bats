@@ -52,7 +52,7 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   run grep -l stub_claude "$UD"/*
   [ "$status" -eq 1 ]
   grep -qx 'TimeoutStartSec=90min' "$UD/jarvis-intake.service"
-  grep -qx 'TimeoutStartSec=20min' "$UD/jarvis-brief.service"
+  grep -qx 'TimeoutStartSec=30min' "$UD/jarvis-brief.service"
   grep -qx 'TimeoutStartSec=20min' "$UD/jarvis-debrief.service"
   grep -qxF "ExecStartPre=-\"$VP/system/scripts/brief_prep.sh\"" "$UD/jarvis-brief.service"
   grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/jarvis-brief.service"
