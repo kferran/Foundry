@@ -187,12 +187,80 @@ def briefing(iv, text):
     return path
 
 
-def test_briefing_block_extracted_and_removed(iv):
-    path = briefing(iv, "top\n#wiki-ingest-start\nidea one\n#wiki-ingest-end\nbottom\n")
+def drops(iv):
+    return sorted((iv / "raw/inbox").glob("daily_note_drop_*.md"))
+
+
+def blocks_log(iv):
+    path = iv / "system/logs/extracted_blocks.jsonl"
+    return [json.loads(l) for l in path.read_text().splitlines()] if path.exists() else []
+
+
+def test_each_new_block_becomes_one_drop_and_the_briefing_is_unchanged(iv):
+    text = "top\n#wiki-ingest-start\nidea one\n#wiki-ingest-end\nmid\n#wiki-ingest-start\n  idea two  \n#wiki-ingest-end\nbottom\n"
+    path = briefing(iv, text)
+    before = path.read_bytes()
     Intake(iv, now=later()).extract_briefing()
-    assert path.read_text() == "top\nbottom\n"
-    drops = list((iv / "raw/inbox").glob("daily_note_drop_*.md"))
-    assert len(drops) == 1 and drops[0].read_text() == "idea one\n"
+    assert path.read_bytes() == before
+    assert sorted(d.read_text() for d in drops(iv)) == ["  idea two  \n", "idea one\n"]
+    records = blocks_log(iv)
+    assert [r["kind"] for r in records] == ["block", "block"]
+    assert {r["briefing"] for r in records} == {f"briefings/{today()}.md"}
+    assert {r["drop"] for r in records} == {d.relative_to(iv).as_posix() for d in drops(iv)}
+
+
+def test_a_known_block_is_not_extracted_again(iv):
+    briefing(iv, "#wiki-ingest-start\nidea\n#wiki-ingest-end\n")
+    Intake(iv, now=later()).extract_briefing()
+    Intake(iv, now=later()).extract_briefing()
+    assert len(drops(iv)) == 1
+    assert len(blocks_log(iv)) == 1
+
+
+def test_an_edited_block_is_extracted_again(iv):
+    path = briefing(iv, "#wiki-ingest-start\nidea\n#wiki-ingest-end\n")
+    Intake(iv, now=later()).extract_briefing()
+    path.write_text("#wiki-ingest-start\nidea, refined\n#wiki-ingest-end\n")
+    old = time.time() - 600
+    os.utime(path, (old, old))
+    Intake(iv, now=later()).extract_briefing()
+    assert sorted(d.read_text() for d in drops(iv)) == ["idea\n", "idea, refined\n"]
+
+
+def test_the_same_text_in_a_later_briefing_is_a_new_block(iv):
+    import hashlib
+    h = hashlib.sha256(b"idea").hexdigest()
+    write(iv, "system/logs/extracted_blocks.jsonl", json.dumps(
+        {"kind": "block", "briefing": "briefings/2026-01-01.md", "hash": h, "drop": "raw/inbox/x.md", "time": "t"}) + "\n")
+    briefing(iv, "#wiki-ingest-start\nidea\n#wiki-ingest-end\n")
+    Intake(iv, now=later()).extract_briefing()
+    assert [d.read_text() for d in drops(iv)] == ["idea\n"]
+
+
+def test_complete_blocks_before_a_bad_marker_are_extracted_and_it_is_alerted_once_a_day(iv):
+    text = "#wiki-ingest-start\ndone\n#wiki-ingest-end\n#wiki-ingest-start\nhalf typed\n"
+    path = briefing(iv, text)
+    Intake(iv, now=later()).extract_briefing()
+    Intake(iv, now=later()).extract_briefing()
+    assert path.read_text() == text
+    assert [d.read_text() for d in drops(iv)] == ["done\n"]
+    alerts = next((iv / "system/logs").glob("alerts_*.md")).read_text()
+    assert alerts.count("unterminated") == 1
+    assert [r["kind"] for r in blocks_log(iv)] == ["block", "alert"]
+
+
+def test_a_nested_start_marker_is_alerted_once_a_day(iv):
+    briefing(iv, "#wiki-ingest-start\na\n#wiki-ingest-start\nb\n#wiki-ingest-end\n")
+    Intake(iv, now=later()).extract_briefing()
+    Intake(iv, now=later()).extract_briefing()
+    assert drops(iv) == []
+    assert next((iv / "system/logs").glob("alerts_*.md")).read_text().count("nested") == 1
+
+
+def test_an_empty_block_makes_no_drop(iv):
+    briefing(iv, "#wiki-ingest-start\n   \n#wiki-ingest-end\n")
+    Intake(iv, now=later()).extract_briefing()
+    assert drops(iv) == []
 
 
 def test_unterminated_marker_leaves_briefing(iv):
@@ -293,26 +361,10 @@ def test_briefing_edit_during_lock_wait_survives(iv):
     fcntl.flock(holder, fcntl.LOCK_UN)
     holder.close()
     t.join()
-    # the read happens under the lock, so it sees the edit: edit kept, block extracted once
-    assert path.read_text() == "top\nbottom\nUSER EDIT WHILE WAITING\n"
+    # the read happens under the lock, so it sees the edit; the briefing is never rewritten
+    assert path.read_text() == edited
     drops = list((iv / "raw/inbox").glob("daily_note_drop_*.md"))
     assert len(drops) == 1 and drops[0].read_text() == "idea\n"
-
-
-def test_briefing_changed_before_replace_left_untouched(iv, monkeypatch):
-    path = briefing(iv, "top\n#wiki-ingest-start\nidea\n#wiki-ingest-end\nbottom\n")
-    # the edit must land before the re-check, so hook the drop-name step (runs before it)
-    import vaultlib.intake as mod
-    orig_unique = mod.unique
-
-    def edit_then_unique(p):
-        path.write_text("top\n#wiki-ingest-start\nidea\n#wiki-ingest-end\nbottom\nEDIT\n")
-        return orig_unique(p)
-    monkeypatch.setattr(mod, "unique", edit_then_unique)
-    Intake(iv, now=later()).extract_briefing()
-    assert "EDIT" in path.read_text() and "#wiki-ingest-start" in path.read_text()
-    assert not list((iv / "raw/inbox").glob("daily_note_drop_*.md"))
-    assert "changed during extraction" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
 
 
 def test_non_utf8_inbox_file_is_redacted(iv):
