@@ -27,8 +27,8 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 | 4b. Memory integration, renames | `/setup` memory step, README memory sections, final renames | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-4b-memory-integration.md), [live check](docs/superpowers/spikes/2026-10-02-plan-4b-acceptance.md) |
 | 6. Communication | `CLAUDE.md` Writing section, vendored humanizer skill, headless self-edit pass | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-6-communication.md), [acceptance](docs/superpowers/spikes/2026-10-02-plan-6-acceptance.md) |
 | 8a. Machine roles and Debian | `machine_role` (standalone, server, client), `check_deps --role` with apt hints, units by role, Debian proven natively | Complete: [plan](docs/superpowers/plans/2026-10-03-plan-8a-roles-debian.md), [acceptance](docs/superpowers/spikes/2026-10-03-plan-8a-acceptance.md) |
-| 8d. Calendar from the connector | Brief calendar from the installed Google Calendar connector | Next |
-| 8b. Commit history | Scripted commit messages, one commit per headless run | After 8d |
+| 8d. Calendar from the connector | Brief calendar from the installed Google Calendar connector | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8d-calendar-connector.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8d-acceptance.md) |
+| 8b. Commit history | Scripted commit messages, one commit per headless run | Next |
 | 8c. Sync | `vault_sync.sh`, server sync units, conflicts, client setup. The real vault is set up after this plan | After 8b |
 | 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
