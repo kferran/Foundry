@@ -81,3 +81,31 @@ bad_note() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"missing or not executable"* ]]
 }
+
+@test "hook rejects any staged text file holding a conflict block and names it" {
+  printf 'a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> origin/master\nb\n' > "$V/notes.txt"
+  git -C "$V" add notes.txt
+  run git -C "$V" commit -qm conflicted
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"conflict markers in notes.txt"* ]]
+  run git -C "$V" rev-parse --verify HEAD
+  [ "$status" -ne 0 ]
+}
+
+@test "hook checks the staged content, not the working tree" {
+  printf '<<<<<<< HEAD\nx\n>>>>>>> other\n' > "$V/notes.txt"
+  git -C "$V" add notes.txt
+  printf 'clean\n' > "$V/notes.txt"
+  run git -C "$V" commit -qm staged-markers
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"conflict markers in notes.txt"* ]]
+}
+
+@test "hook allows setext underlines and a start marker without an end marker" {
+  mkdir -p "$V/wiki/work/concepts"
+  printf -- '---\ntype: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work\n---\nTitle\n=======\n\n<<<<<<< not a conflict\n[[Index]]\n' > "$V/wiki/work/concepts/Setext.md"
+  printf '>>>>>>> end first\n<<<<<<< start after\n' > "$V/order.txt"
+  git -C "$V" add wiki/work/concepts/Setext.md order.txt
+  run git -C "$V" commit -qm setext
+  [ "$status" -eq 0 ]
+}
