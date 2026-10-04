@@ -136,7 +136,7 @@ Jarvis runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh --rol
 - `python3` with PyYAML and pytest (`sudo pacman -S python-yaml python-pytest`). Missing PyYAML blocks setup.
 - `sqlite3` built with FTS5
 - systemd user units (`systemctl --user`, `systemd-analyze`). If you want timers to run while you are logged out, enable lingering.
-- `gcalcli` for calendar input to the brief. Without it the brief lists the calendar under Unavailable Sources.
+- Optional: `gcalcli` for calendar input to the brief. Without it the brief lists the calendar under Unavailable Sources. Plan 8d replaces it with the calendar connector.
 - Hyprland (`hyprctl`) for the Obsidian focus tracker, on a standalone machine only. Without it only focus stats are lost.
 - A client needs only `claude`, `git`, `jq`, `python3` with PyYAML, and SQLite with FTS5.
 - Optional: `herdr` or `tmux` as session backends for sub-project 2
@@ -162,7 +162,7 @@ claude
 
 `/setup` is idempotent and can be re-run at any time. Its phases (spec §11):
 
-- **0. Role and preflight:** you choose the machine role, then `check_deps.sh --role <role>` lists missing items with install hints. A client skips phases 3, 5, 5a, 6 and 9.
+- **0. Role and preflight:** you choose the machine role, then `check_deps.sh --role <role>` lists missing items with install hints. A client skips phases 3, 6 and 9; on a client, phases 5 and 5a only remove units and hooks left from an earlier role.
 - **1. Existing config:** if `system/config.md` already exists, it is shown and edited, not overwritten.
 - **2. Interview:** timezone, brief and debrief times, superpowers, default partition, digest thresholds and recall budget.
 - **3. Codebases:** you choose repos from a directory scan. Each one is inspected, written to `system/codebases/<name>.md` with a partition, and confirmed with you field by field.

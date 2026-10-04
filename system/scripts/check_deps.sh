@@ -22,8 +22,8 @@ if [[ -z "$role" ]]; then
   role="${role:-standalone}"
 fi
 case "$role" in
-  standalone) REQUIRED=(claude git jq bats gcalcli systemctl hyprctl python3 flock timeout pyyaml pytest fts5 systemd-analyze) ;;
-  server) REQUIRED=(claude git jq bats gcalcli systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze) ;;
+  standalone) REQUIRED=(claude git jq bats systemctl hyprctl python3 flock timeout pyyaml pytest fts5 systemd-analyze) ;;
+  server) REQUIRED=(claude git jq bats systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze) ;;
   client) REQUIRED=(claude git jq python3 pyyaml fts5) ;;
   *) usage ;;
 esac
@@ -37,7 +37,7 @@ hint() {
   local pkg_pacman pkg_apt
   case "$1" in
     claude) echo "install Claude Code: https://docs.claude.com/en/docs/claude-code/setup"; return ;;
-    gcalcli) echo "pipx install gcalcli"; return ;;
+    gcalcli) echo "optional calendar source for the brief: pipx install gcalcli"; return ;;
     systemctl) echo "systemd is required (user services)"; return ;;
     systemd-analyze) echo "systemd is required (unit verification)"; return ;;
     herdr) echo "optional session backend for sub-project 2; see README"; return ;;
@@ -79,7 +79,7 @@ present() {  # <item>: 1 when the item is available
 }
 
 for item in "${REQUIRED[@]}"; do report "$item" "$(present "$item")"; done
-for c in herdr tmux; do report "$c" "$(has "$c")" optional; done
+for c in gcalcli herdr tmux; do report "$c" "$(has "$c")" optional; done
 
 (( strict && missing )) && exit 1
 exit 0

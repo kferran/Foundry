@@ -8,7 +8,7 @@ cd "$REPO"
 die() { echo "verify_on_host: $2" >&2; exit "$1"; }
 (( $# == 1 )) || die 2 "usage: verify_on_host.sh <ssh-host>"
 host="$1"
-[[ "$host" =~ ^[A-Za-z0-9._@-]+$ ]] || die 2 "not a plain ssh host name: $host"
+[[ "$host" =~ ^[A-Za-z0-9._@-]+$ && "$host" != -* ]] || die 2 "not a plain ssh host name: $host"
 
 dir="${VERIFY_TMP:-/tmp}/jarvis-verify-$(date +%Y%m%dT%H%M%S)-$$"
 ssh_opts=(-o BatchMode=yes -o ConnectTimeout=15)

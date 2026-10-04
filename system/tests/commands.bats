@@ -296,7 +296,14 @@ self_edit_contract() {
 
 @test "/setup on a client skips the phases a client does not use, and says so" {
   f=.claude/commands/setup.md
-  grep -qF 'On a client, skip phases 3, 5, 5a, 6 and 9' "$f"
+  grep -qF 'On a client, skip phases 3, 6 and 9' "$f"
+  # A machine re-run as a client must stop running automation and memory hooks.
+  units="$(setup_section '5. Units')"
+  [[ "$units" == *'On a client, run `system/scripts/install_units.sh` without asking'* ]]
+  [[ "$units" == *'`new|changed|unchanged|removed`'* ]]
+  hooks="$(setup_section '5a. Memory hooks')"
+  [[ "$hooks" == *'On a client, never install the hooks.'* ]]
+  [[ "$hooks" == *'offer `system/scripts/install_hooks.sh --uninstall`'* ]]
   grep -qF 'not used on a client' "$f"
   grep -qF 'On a client, ask only for the timezone and the default partition.' "$f"
   sec="$(setup_section '8. Verify')"

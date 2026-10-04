@@ -25,10 +25,10 @@ setup() {
 }
 
 @test "check_deps: a missing required tool gets an install hint and fails only --strict" {
-  rm "$BIN/gcalcli"
+  rm "$BIN/jq"
   run env PATH="$BIN" "$CD"
   [ "$status" -eq 0 ]
-  grep -qx 'missing gcalcli pipx install gcalcli' <<< "$output"
+  grep -qx 'missing jq sudo pacman -S jq' <<< "$output"
   run env PATH="$BIN" "$CD" --strict
   [ "$status" -eq 1 ]
 }
@@ -80,7 +80,7 @@ setup() {
   [ "$status" -eq 0 ]
   run grep hyprctl <<< "$output"
   [ "$status" -eq 1 ]
-  rm "$BIN/gcalcli"
+  rm "$BIN/bats"
   run env PATH="$BIN" "$CD" --role server --strict
   [ "$status" -eq 1 ]
 }
@@ -110,6 +110,15 @@ setup() {
   sed -i '/^default_partition:/r '"$BATS_TEST_TMPDIR/role" "$V/system/config.md"
   run env PATH="$BIN" "$V/system/scripts/check_deps.sh" --strict
   [ "$status" -eq 0 ]
+}
+
+@test "check_deps: gcalcli is optional for every role (the calendar comes from the connector)" {
+  rm "$BIN/gcalcli"
+  for role in standalone server client; do
+    run env PATH="$BIN" "$CD" --strict --role "$role"
+    [ "$status" -eq 0 ]
+    grep -q '^optional gcalcli ' <<< "$output"
+  done
 }
 
 @test "check_deps: an unknown or missing role exits 2" {
@@ -226,6 +235,7 @@ STUB
   host_repo
   run env FAKE_GATE_RC=1 "$H/system/tests/verify_on_host.sh" somehost
   [ "$status" -eq 1 ]
+  grep -qx 'PASS fake' <<< "$output"
   grep -q '^kept: somehost:' <<< "$output"
   [ "$(ls "$VERIFY_TMP" | wc -l)" -eq 2 ]
 }
@@ -243,4 +253,9 @@ STUB
   [ "$status" -eq 2 ]
   run "$H/system/tests/verify_on_host.sh" 'h; rm -rf /'
   [ "$status" -eq 2 ]
+  # ssh would read these as options and could exit 0 without running the gate.
+  for opt in -V -Jhost; do
+    run "$H/system/tests/verify_on_host.sh" "$opt"
+    [ "$status" -eq 2 ]
+  done
 }

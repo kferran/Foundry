@@ -87,3 +87,17 @@ def test_result_byte_budget(db):
 def test_runaway_query_times_out(db):
     with pytest.raises(sqlite3.OperationalError, match="interrupted"):
         guard.run_query(db, "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c) SELECT count(*) FROM c", timeout=0.2)
+
+
+def test_update_allowance_covers_only_the_schema_table():
+    # SQLite 3.40 needs UPDATE on sqlite_master while building FTS5 tables; nothing else may pass.
+    assert guard._authorizer(sqlite3.SQLITE_UPDATE, "sqlite_master", "sql", "main", None) == sqlite3.SQLITE_OK
+    for table in ("notes", "notes_fts", "sqlite_temp_master"):
+        assert guard._authorizer(sqlite3.SQLITE_UPDATE, table, "path", "main", None) == sqlite3.SQLITE_DENY
+    for action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_DELETE):
+        assert guard._authorizer(action, "sqlite_master", None, "main", None) == sqlite3.SQLITE_DENY
+
+
+def test_update_of_a_vault_table_rejected(db):
+    with pytest.raises(sqlite3.DatabaseError):
+        guard.run_query(db, "UPDATE notes SET path = 'x'")

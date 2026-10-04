@@ -12,7 +12,7 @@ Read the current role with `system/scripts/vault_index.py field system/config.md
 
 Then run `system/scripts/check_deps.sh --role <role>`. List every `missing` line with its install hint, and every `optional` line as optional. If `pyyaml` is missing, stop: setup cannot continue without it. Otherwise continue, noting which features are off (no `gcalcli`: no calendar in the brief; no `hyprctl` on a standalone machine: no focus tracking).
 
-On a client, skip phases 3, 5, 5a, 6 and 9, and report each as "not used on a client".
+On a client, skip phases 3, 6 and 9, and report each as "not used on a client". Phases 5 and 5a run on a client only to remove automation and memory hooks left from an earlier role.
 
 ## 1. Existing config
 If `system/config.md` exists, show its values and ask which to change. Otherwise create it from the example's frontmatter, without the example's body text, by running exactly this: `[ -f system/config.md ] || { awk '{ print } NR > 1 && /^---$/ { exit }' system/config.example.md; printf '# Config\n\nWritten by /setup. Re-run /setup to change it.\n'; } > system/config.md`. Use its values as the defaults below. Then record the role from phase 0 with `system/scripts/vault_index.py set system/config.md machine_role <role>`.
@@ -41,12 +41,16 @@ On a server or a client, only `private` is allowed: the machines share the vault
 3. The branch is published: if `git ls-remote --heads origin "$(git branch --show-current)"` prints nothing, run `git push -u origin HEAD` and report the result.
 
 ## 5. Units
-Run `system/scripts/install_units.sh --dry-run` and summarize the units it prints: `jarvis-intake` (every 5 minutes), `jarvis-brief` and `jarvis-debrief` (at the configured times), `jarvis-focus` (standalone only), the focus tracker. Ask before installing; on yes run `system/scripts/install_units.sh` and report each `new|changed|unchanged` line.
+Run `system/scripts/install_units.sh --dry-run` and summarize the units it prints: `jarvis-intake` (every 5 minutes), `jarvis-brief` and `jarvis-debrief` (at the configured times), `jarvis-focus` (standalone only), the focus tracker. Ask before installing; on yes run `system/scripts/install_units.sh` and report each `new|changed|unchanged|removed` line.
+
+On a client, run `system/scripts/install_units.sh` without asking: it installs nothing and removes any units this vault installed under an earlier role. Report each `removed` line, or "no units" when it prints none, and skip the linger check.
 
 Then run `loginctl show-user "$USER" -p Linger --value`. If it prints `no`, explain that timers only run while you are logged in, and offer `loginctl enable-linger "$USER"` (the user runs it). On a server, linger is required: give the command, wait until the user says it is done, and re-check; do not continue past this phase until it prints `yes`.
 
 ## 5a. Memory hooks
 Memory (Soundwave) is optional and stays off until its hooks are installed in your user-level Claude Code settings. Ask nothing until you have shown the dry run.
+
+On a client, never install the hooks. Run `system/scripts/install_hooks.sh --dry-run`; if it prints both `unchanged` lines (the hooks are installed from an earlier role), explain that a client runs no coding sessions for the vault, offer `system/scripts/install_hooks.sh --uninstall`, and run it only on an explicit yes. Otherwise report "not used on a client". Then go on to phase 6.
 
 1. Run `system/scripts/install_hooks.sh --dry-run`. If it exits non-zero, show its message, say memory stays off, and go on to phase 6. Otherwise show its output unchanged: the diff to your user settings (`~/.claude/settings.json`, or `$CLAUDE_CONFIG_DIR/settings.json` when that is set) and its `settings:` and `digest command:` lines.
 2. If it prints both `settings: unchanged (dry run, nothing written)` and `digest command: unchanged (dry run, nothing written)`, the hooks are already installed: say so, mention that `system/scripts/install_hooks.sh --uninstall` removes them, and go on to phase 6.
