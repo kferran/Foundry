@@ -166,7 +166,7 @@ The index does not need an explicit rebuild: `Index.refresh` runs on every read.
   ExecStartPost="{{VAULT_ROOT}}/system/scripts/vault_sync.sh" --post
   ```
   `{{PREP_LINE}}` is the service's own prep line (`ExecStartPre=-…/brief_prep.sh` for brief, `…/debrief_prep.sh` for debrief, empty for intake), so prep reads a freshly pulled tree. `ExecStartPost` runs only after a successful run; a failed run's output is committed by the next timer tick.
-- `install_units.sh`'s owned-unit scan, and `update_template.sh`'s "units installed" check, include `*.service.d/*.conf` files whose first line names this vault. Every pre- and post-step counts toward a oneshot's `TimeoutStartSec`, so the limits rise by two sync deadlines plus margin: brief and debrief from 20 to 35 minutes (sync 5 + lock wait 10 + run 15 + sync 5), intake from 90 to 105 minutes. `jarvis-sync.service` gets `TimeoutStartSec=10min`, twice its deadline.
+- `install_units.sh`'s owned-unit scan, and `update_template.sh`'s "units installed" check, include `*.service.d/*.conf` files whose first line names this vault. Every pre- and post-step counts toward a oneshot's `TimeoutStartSec`, so the limits rise by two sync deadlines plus margin: brief from 30 to 45 minutes and debrief from 20 to 35 (two sync deadlines plus 5 min margin; Plan 8d raised the brief base to 30), intake from 90 to 105 minutes. `jarvis-sync.service` gets `TimeoutStartSec=10min`, twice its deadline.
 
 ### 5.3 Failures that are not conflicts
 
