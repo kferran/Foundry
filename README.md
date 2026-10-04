@@ -28,8 +28,8 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 | 6. Communication | `CLAUDE.md` Writing section, vendored humanizer skill, headless self-edit pass | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-6-communication.md), [acceptance](docs/superpowers/spikes/2026-10-02-plan-6-acceptance.md) |
 | 8a. Machine roles and Debian | `machine_role` (standalone, server, client), `check_deps --role` with apt hints, units by role, Debian proven natively | Complete: [plan](docs/superpowers/plans/2026-10-03-plan-8a-roles-debian.md), [acceptance](docs/superpowers/spikes/2026-10-03-plan-8a-acceptance.md) |
 | 8d. Calendar from the connector | Brief calendar from the installed Google Calendar connector | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8d-calendar-connector.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8d-acceptance.md) |
-| 8b. Commit history | Scripted commit messages, one commit per headless run | Next |
-| 8c. Sync | `vault_sync.sh`, server sync units, conflicts, client setup. The real vault is set up after this plan | After 8b |
+| 8b. Commit history | Scripted commit messages, one commit per headless run | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8b-commit-history.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8b-acceptance.md) |
+| 8c. Sync | `vault_sync.sh`, server sync units, conflicts, client setup. The real vault is set up after this plan | Next |
 | 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
 | Sub-project 2 | Optimus orchestrator | Separate spec, after Plans 7 and 5 |
@@ -51,6 +51,8 @@ The intended loop is **capture → compile → index → recall → correct**:
 4. **Index.** Markdown is the source of truth. `system/index.db` is a gitignored SQLite FTS5 index that can be rebuilt at any time. Agents run `related`, `query`, `show` and `backlinks` against it before reading any notes.
 5. **Recall.** With the memory hooks installed, a `SessionStart` hook adds up to `recall_budget_chars` of vault data (default 9,000 characters, never more than 9,500) to new sessions in scope: the latest digests for the codebase or partition and, once enabled, preferences you have confirmed. Recalled text is marked as data, not instructions.
 6. **Correct.** Each digest has a Corrections section. Ingest turns these into `preference` notes with linked evidence. A preference's status is calculated in the index, and it becomes confirmed only after you accept it in `/brief`.
+
+**History.** `/backup` first commits each headless run that published files, one commit per run, with a message `commit_runs.py` builds from the run's records (no model writes it). Each carries `Jarvis-Command`, `Jarvis-Run` and `Jarvis-Role` trailers, so `git log` reads as a handoff log: `git log --grep 'Jarvis-Command: ingest'` lists the ingest runs.
 
 | Name | Role | Concrete artifacts |
 |---|---|---|

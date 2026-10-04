@@ -68,7 +68,7 @@ On a client, never install the hooks. Run `system/scripts/install_hooks.sh --dry
 The brief reads today's calendar from the Google Calendar connector of the Claude account this machine's `claude` is logged in with. Run `system/scripts/calendar_fetch.sh` with a Bash timeout of at least 300000 ms (a fetch takes up to about three minutes and costs about $0.20). On exit 0, report how many events it printed for today. Otherwise report its `calendar_fetch:` line and what to do: exit 3, connect Google Calendar in the account's connector settings at claude.ai (same account as this machine), or log `claude` in with a claude.ai account; exit 6, reconnect it; exit 4, try again later; any other exit, show the line from `system/logs/calendar_fetch-<YYYY-MM>.jsonl`. A calendar failure never blocks setup: the brief then lists the calendar under Unavailable Sources.
 
 ## 7. Index
-Run `system/scripts/vault_index.py rebuild`, then `system/scripts/vault_index.py issues`, and report any error.
+Run `system/scripts/vault_index.py rebuild`, then `system/scripts/vault_index.py issues`, and report any error. Then run `system/scripts/commit_runs.py --init-cutover`: it records the time from which `/backup` commits each headless run on its own; runs from before it are committed with the rest of the vault.
 
 ## 8. Verify
 Run `system/scripts/verify_setup.sh --health` and `systemctl --user list-timers 'jarvis-*'`. Report each suite's PASS/FAIL line and the next run time of each timer. Health failures are advisory. On a client, run `system/scripts/lint_vault.sh` instead (a client has no test tools or timers) and report its last line.

@@ -330,6 +330,19 @@ self_edit_contract() {
   grep -qF 'Skip this step on a client.' "$f"
 }
 
+@test "/backup commits each published headless run before its own commit, in every role" {
+  f=.claude/commands/backup.md
+  grep -qF 'run `system/scripts/commit_runs.py`' "$f"
+  [ "$(grep -n 'commit_runs.py' "$f" | cut -d: -f1)" -gt "$(grep -n '^2\. \*\*Health' "$f" | cut -d: -f1)" ]
+  [ "$(grep -n 'commit_runs.py' "$f" | cut -d: -f1)" -lt "$(grep -n '\*\*Changes\.\*\*' "$f" | cut -d: -f1)" ]
+  grep -qF 'every role and every `remote_mode`' "$f"
+}
+
+@test "/setup phase 7 sets the run-commit cutover" {
+  sec="$(setup_section '7. Index')"
+  [[ "$sec" == *'system/scripts/commit_runs.py --init-cutover'* ]]
+}
+
 @test "system_health checks each item only on the roles that run it" {
   f=system/tests/system_health.bats
   grep -qF 'skip_unless_role standalone server' "$f"
