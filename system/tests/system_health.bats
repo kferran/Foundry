@@ -44,6 +44,19 @@ skip_unless_role() {
   done
 }
 
+@test "the sync timer is active" {
+  skip_unless_role server
+  systemctl --user is-active --quiet jarvis-sync.timer
+}
+
+@test "no sync conflict is blocking the runs" {
+  skip_unless_role server
+  if [[ -e system/logs/sync-blocked ]]; then
+    cat system/logs/sync-blocked
+    false
+  fi
+}
+
 @test "the focus tracker is active" {
   skip_unless_role standalone
   systemctl --user is-active --quiet jarvis-focus.service

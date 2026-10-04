@@ -109,3 +109,19 @@ bad_note() {
   run git -C "$V" commit -qm setext
   [ "$status" -eq 0 ]
 }
+
+@test "lint warns on a client when raw/inbox holds files, which a client never syncs" {
+  mkdir -p "$V/system"
+  printf -- '---\ntype: config\ntimezone: "UTC"\nbrief_time: "06:00"\ndebrief_time: "17:00"\nremote_mode: "none"\ndefault_partition: "work"\nmachine_role: "client"\n---\n' > "$V/system/config.md"
+  run "$V/system/scripts/lint_vault.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"raw/inbox/ holds"* ]]
+  mkdir -p "$V/raw/inbox"
+  echo note > "$V/raw/inbox/idea.md"
+  run "$V/system/scripts/lint_vault.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"warning: raw/inbox/ holds 1 file(s); a client does not sync them, so write notes in the briefing"* ]]
+  printf -- '---\ntype: config\ntimezone: "UTC"\nbrief_time: "06:00"\ndebrief_time: "17:00"\nremote_mode: "none"\ndefault_partition: "work"\nmachine_role: "standalone"\n---\n' > "$V/system/config.md"
+  run "$V/system/scripts/lint_vault.sh"
+  [[ "$output" != *"raw/inbox/ holds"* ]]
+}
