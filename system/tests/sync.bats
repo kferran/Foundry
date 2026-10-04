@@ -133,6 +133,15 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null; }
   [ "$(git -C "$O" rev-parse "$B")" = "$(git rev-parse HEAD)" ]
 }
 
+@test "no git child inherits run.lock's fd 9" {
+  wrap_git
+  export WRAP_EACH='[[ ! -e /proc/self/fd/9 ]] || echo "$1" >> "$BATS_TEST_TMPDIR/fd9"'
+  printf 'more\n' >> wiki/work/concepts/Kafka.md
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$BATS_TEST_TMPDIR/fd9" ]
+}
+
 @test "a busy run.lock exits 4; --pre and --post exit 0" {
   exec 9> system/run.lock
   flock 9

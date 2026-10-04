@@ -20,6 +20,8 @@ case "${1:-}" in
 esac
 
 export GIT_TERMINAL_PROMPT=0
+# Every git child runs with run.lock's fd 9 closed: a daemon or a detached gc it starts must not keep the lock.
+git() { command git "$@" 9>&-; }
 [[ -n "${GIT_SSH_COMMAND:-}" ]] || export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15"
 TZ="$(config_get timezone UTC)"
 export TZ
@@ -57,7 +59,7 @@ net() {
   local left=$(( DEADLINE - $(date +%s) ))
   (( left > 0 )) || return 124
   (( left <= 120 )) || left=120
-  timeout "$left" git "$@"
+  timeout "$left" git "$@" 9>&-  # timeout runs the binary, not the function
 }
 
 git_dir="$(git rev-parse --git-dir 2>/dev/null)" || { echo "vault_sync: not a git repository" >&2; finish 1; }
@@ -73,7 +75,8 @@ in_progress() {
   if [[ -e "$git_dir/index.lock" && -n "$(find "$git_dir/index.lock" -mmin +10 2>/dev/null)" ]]; then
     # ponytail: a git started elsewhere with -C is not seen; the lock then reads as stale and blocks (safe).
     for p in $(pgrep -x git 2>/dev/null); do
-      [[ "$(readlink "/proc/$p/cwd" 2>/dev/null)" == "$VAULT_ROOT"* ]] && return 1
+      p="$(readlink "/proc/$p/cwd" 2>/dev/null)"
+      [[ "$p" == "$VAULT_ROOT" || "$p" == "$VAULT_ROOT"/* ]] && return 1
     done
     echo "stale index.lock"
     return 0
@@ -179,7 +182,7 @@ start_missed() {
         "$ledger" 2>/dev/null | wc -l) > 0 )); then
       continue
     fi
-    "${SYSTEMCTL:-systemctl}" --user start --no-block "jarvis-$cmd.service" || alert "could not start jarvis-$cmd.service"
+    "${SYSTEMCTL:-systemctl}" --user start --no-block "jarvis-$cmd.service" 9>&- || alert "could not start jarvis-$cmd.service"
   done
 }
 
