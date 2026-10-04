@@ -213,6 +213,38 @@ def test_a_published_path_deleted_since_is_committed_as_a_deletion_or_skipped(va
     assert git(vault, "show", "--name-status", "--format=", "HEAD").split() == ["D", "wiki/work/concepts/Kafka.md"]
 
 
+def test_a_users_status_config_cannot_hide_a_new_note(vault):
+    git(vault, "config", "status.showUntrackedFiles", "no")
+    make_run(vault, BRIEF, ["briefings/2026-10-04.md"])
+    assert run_commits(vault).returncode == 0
+    assert marker(vault, BRIEF) == {"sha": git(vault, "rev-parse", "HEAD").strip()}
+    assert git(vault, "show", "--name-only", "--format=", "HEAD").split() == ["briefings/2026-10-04.md"]
+
+
+def test_a_note_two_pending_runs_published_is_committed_with_the_later_run(vault):
+    first, second = "20261004T110000-ingest-aa11", ING
+    alpha, beta = "wiki/work/concepts/Alpha.md", "wiki/work/concepts/Beta.md"
+    make_run(vault, first, [alpha, beta], decisions=[("create", alpha, "s1"), ("create", beta, "s1")], partition="work")
+    make_run(vault, second, [alpha], decisions=[("patch", alpha, "s2")], partition="work")
+    assert run_commits(vault).returncode == 0
+    assert git(vault, "show", "--name-only", "--format=", f"{marker(vault, first)['sha']}").split() == [beta]
+    assert git(vault, "show", "--name-only", "--format=", "HEAD").split() == [alpha]
+    assert f"carries {alpha} from {first}\n" in last_message(vault)
+    assert git(vault, "log", "-1", "--format=%s").strip() == "ingest(work): patch Alpha"
+
+
+def test_a_run_whose_notes_a_later_run_published_again_is_recorded_as_superseded(vault):
+    first = "20261004T110000-ingest-aa11"
+    alpha = "wiki/work/concepts/Alpha.md"
+    make_run(vault, first, [alpha], decisions=[("create", alpha, "s1")], partition="work")
+    make_run(vault, ING, [alpha], decisions=[("patch", alpha, "s2")], partition="work")
+    p = run_commits(vault)
+    assert p.returncode == 0
+    assert marker(vault, first) == {"sha": None, "reason": f"superseded by {ING}"}
+    assert p.stdout.splitlines()[0] == f"{first} superseded by {ING}"
+    assert git(vault, "log", "-1", "--format=%(trailers:key=Jarvis-Run,valueonly)").strip() == ING
+
+
 def test_a_hook_failure_alerts_leaves_the_run_pending_and_stops(vault):
     bad = "wiki/work/concepts/Bad.md"
     make_run(vault, BRIEF, [bad])

@@ -109,7 +109,7 @@ def subject(prefix, items):
     return f"{prefix}{len(items)} notes"
 
 
-def message(run_id, command, published, conflicts, role):
+def message(run_id, command, published, conflicts, role, carried=()):
     if command == "ingest":
         decisions = [r for r in json_lines(RUNS / run_id / "_decisions.jsonl")
                      if isinstance(r.get("decision"), str) and r["decision"] != "noop" and isinstance(r.get("target"), str)]
@@ -131,6 +131,7 @@ def message(run_id, command, published, conflicts, role):
     else:
         head = f"{command} {run_id[:4]}-{run_id[4:6]}-{run_id[6:8]}: {published[0]}"
         body = [f"published {p}" for p in published] + [f"conflict {p}" for p in conflicts]
+    body += [f"carries {p} from {r}" for p, r in carried]
     body = [CONTROL.sub(" ", line) for line in body]
     trailers = [f"Jarvis-Command: {command}", f"Jarvis-Run: {run_id}", f"Jarvis-Role: {CONTROL.sub(' ', role)}"]
     return head + "\n\n" + "\n".join(body) + "\n\n" + "\n".join(trailers) + "\n"
@@ -146,16 +147,17 @@ def commit(paths, text):
     paths = [p for p in paths if (VAULT / p).exists() or p in tracked]
     if not paths:
         return None, None
-    status = git("status", "--porcelain", "--", *paths)
-    if status.returncode:
-        return None, status.stderr.strip() or "git status failed"
-    if not status.stdout.strip():
+    added = git("add", "-A", "--", *paths)
+    if added.returncode:
+        git("reset", "-q", "--", *paths)
+        return None, added.stderr.strip() or "git add failed"
+    # Compared through the index, so no status setting (showUntrackedFiles) can hide a new note.
+    if git("diff", "--cached", "--quiet", "--", *paths).returncode == 0:
         return None, None
-    for step in (["add", "-A", "--", *paths], ["commit", "-q", "--only", "-F", "-", "--", *paths]):
-        done = git(*step, stdin=text if step[0] == "commit" else None)
-        if done.returncode:
-            git("reset", "-q", "--", *paths)
-            return None, (done.stderr.strip() or done.stdout.strip() or f"git {step[0]} failed")
+    done = git("commit", "-q", "--only", "-F", "-", "--", *paths, stdin=text)
+    if done.returncode:
+        git("reset", "-q", "--", *paths)
+        return None, done.stderr.strip() or done.stdout.strip() or "git commit failed"
     return git("rev-parse", "HEAD").stdout.strip(), None
 
 
@@ -168,8 +170,21 @@ def main(argv):
         return 2
     since = init_cutover()
     role = config("machine_role", "standalone")
-    for run_id, command, published, conflicts in pending(since):
-        sha, error = commit(published, message(run_id, command, published, conflicts, role))
+    runs = pending(since)
+    # A note two pending runs published holds the later run's content: it is committed with that run.
+    owner = {p: run_id for run_id, _, published, _ in runs for p in published}
+    earlier = {}
+    for run_id, command, published, conflicts in runs:
+        own = [p for p in published if owner[p] == run_id]
+        carried = [(p, earlier[p]) for p in own if p in earlier]
+        earlier.update({p: run_id for p in published})
+        if not own:
+            later = owner[published[0]]
+            (RUNS / run_id / "committed").write_text(
+                json.dumps({"sha": None, "reason": f"superseded by {later}"}) + "\n", encoding="utf-8")
+            print(f"{run_id} superseded by {later}")
+            continue
+        sha, error = commit(own, message(run_id, command, own, conflicts, role, carried))
         if error:
             first = error.splitlines()[0] if error else ""
             alert(f"run {run_id} not committed: {first} (it stays pending; fix it, then run /backup again)")
