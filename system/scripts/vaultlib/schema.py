@@ -39,6 +39,8 @@ class FieldSpec:
     must_exist: str | None = None
     unique_true: bool = False
     matches_folder: bool = False
+    min: int | None = None
+    max: int | None = None
 
 
 @dataclass
@@ -81,11 +83,21 @@ def parse_fieldspec(raw, where: str) -> FieldSpec:
         raise SchemaError(f"{where}: default must be a string")
     if kind == "const" and "value" in raw and not isinstance(raw["value"], str):
         raise SchemaError(f"{where}: const value must be a string")
+    bounds = {}
+    for key in ("min", "max"):
+        if key in raw:
+            if not isinstance(raw[key], str) or not INT.match(raw[key]):
+                raise SchemaError(f"{where}: {key} must be an integer string")
+            bounds[key] = int(raw[key])
+    if bounds and kind != "int":
+        raise SchemaError(f"{where}: min and max apply to int fields only")
+    if "min" in bounds and "max" in bounds and bounds["min"] > bounds["max"]:
+        raise SchemaError(f"{where}: min is greater than max")
     spec = FieldSpec(
         kind=kind, required=_flag(raw, "required"), default=raw.get("default"),
         value=raw.get("value"), values=list(raw.get("values") or []),
         must_exist=raw.get("must_exist"), unique_true=_flag(raw, "unique_true"),
-        matches_folder=_flag(raw, "matches_folder"),
+        matches_folder=_flag(raw, "matches_folder"), min=bounds.get("min"), max=bounds.get("max"),
     )
     if kind == "list":
         spec.of = parse_fieldspec(raw.get("of", "string"), f"{where}.of")
@@ -211,7 +223,13 @@ def check_value(spec: FieldSpec, value, ctx: Context, where: str) -> list:
     if kind in ("string", "text"):
         return []
     if kind == "int":
-        return [] if INT.match(value) else err("expected an integer")
+        if not INT.match(value):
+            return err("expected an integer")
+        if spec.min is not None and int(value) < spec.min:
+            return err(f"must be at least {spec.min}")
+        if spec.max is not None and int(value) > spec.max:
+            return err(f"must be at most {spec.max}")
+        return []
     if kind == "bool":
         return [] if value.lower() in ("true", "false") else err("expected true or false")
     if kind == "date":

@@ -11,6 +11,7 @@ fields:
   type: {kind: const, value: thing, required: true}
   name: {kind: string, required: true}
   count: {kind: int}
+  minutes: {kind: int, min: "1", max: "60"}
   flag: {kind: bool, default: "false"}
   day: {kind: date}
   at: {kind: datetime}
@@ -82,6 +83,8 @@ def test_plain_markdown_in_covered_folder(schemas):
     ("items", "[a, b]", "notalist"),
     ("layers", "{ui: web/}", "[a]"),
     ("ref", '"[[Index]]"', "Index"),
+    ("minutes", '"60"', '"61"'),
+    ("minutes", '"1"', '"0"'),
 ])
 def test_kinds(schemas, field, good, bad):
     base = "type: thing\nname: A\n"
@@ -172,4 +175,17 @@ def test_must_exist_invalid_raises(tmp_path):
 def test_const_value_not_string_raises(tmp_path):
     write(tmp_path, "system/schemas/bad.md", "---\ntype: schema\nschema_for: bad\nfolders: [\"x/\"]\nfields:\n  a: {kind: const, value: [a]}\n---\n")
     with pytest.raises(schema.SchemaError):
+        schema.load_schemas(tmp_path)
+
+
+@pytest.mark.parametrize("spec, message", [
+    ('{kind: int, min: "x"}', "min must be an integer string"),
+    ('{kind: int, max: "1.5"}', "max must be an integer string"),
+    ('{kind: string, min: "1"}', "min and max apply to int fields only"),
+    ('{kind: int, min: "5", max: "1"}', "min is greater than max"),
+])
+def test_int_bounds_spec_errors(tmp_path, spec, message):
+    write(tmp_path, "system/schemas/thing.md",
+          f"---\ntype: schema\nschema_for: thing\nfolders: [things/]\nfields:\n  n: {spec}\n---\n")
+    with pytest.raises(schema.SchemaError, match=message):
         schema.load_schemas(tmp_path)

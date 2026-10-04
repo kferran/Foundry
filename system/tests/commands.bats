@@ -262,3 +262,21 @@ self_edit_contract() {
     grep -qF 'keep everything the user wrote' <(awk '$0 == "## Self-edit" { on = 1 } on' "$f")
   done
 }
+
+@test "config: machine_role and sync_interval_minutes are in the example and bounded by the schema" {
+  [ "$(system/scripts/vault_index.py field system/config.example.md machine_role)" = standalone ]
+  [ "$(system/scripts/vault_index.py field system/config.example.md sync_interval_minutes)" = 5 ]
+  load helpers
+  make_vault
+  cd "$V"
+  for bad in 'machine_role: "laptop"' 'sync_interval_minutes: "0"' 'sync_interval_minutes: "61"'; do
+    sed -e "s/^${bad%%:*}: .*/$bad/" "$REPO/system/config.example.md" > "$V/system/config.md"
+    grep -qxF "$bad" "$V/system/config.md"
+    run system/scripts/vault_index.py validate system/config.md
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"${bad%%:*}"* ]]
+  done
+  cp "$REPO/system/config.example.md" "$V/system/config.md"
+  run system/scripts/vault_index.py validate system/config.md
+  [ "$status" -eq 0 ]
+}
