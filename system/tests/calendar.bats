@@ -83,7 +83,7 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
 }
 
 @test "every tool the user's settings allow is denied, except list_events and rules that would match it" {
-  printf '%s\n' '{"permissions":{"allow":["mcp__claude_ai_Gmail__send_message","Bash(ls:*)","mcp__claude_ai_Google_Calendar","mcp__claude_ai_Google_Calendar__*","mcp__*","mcp__claude_ai_Google_Calendar__list_events"]}}' > "$HOME/.claude/settings.json"
+  printf '%s\n' '{"permissions":{"allow":["mcp__claude_ai_Gmail__send_message","Bash(ls:*)","mcp__claude_ai_Google_Calendar","mcp__claude_ai_Google_Calendar__*","mcp__claude_ai_Google_Calendar__list_events"]}}' > "$HOME/.claude/settings.json"
   printf '%s\n' '{"permissions":{"allow":["mcp__claude_ai_Slack__slack_send_message"]}}' > "$HOME/.claude/settings.local.json"
   printf '%s\n' '{"permissions":{"allow":["WebFetch(domain:x)"]}}' > "$JARVIS_MANAGED_SETTINGS"
   mkdir -p "$JARVIS_MANAGED_SETTINGS_DIR"
@@ -94,9 +94,20 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   for t in mcp__claude_ai_Gmail__send_message Bash mcp__claude_ai_Slack__slack_send_message WebFetch mcp__claude_ai_Asana__create_task; do
     grep -qx -- "$t" <<< "$deny"
   done
-  for t in mcp__claude_ai_Google_Calendar__list_events mcp__claude_ai_Google_Calendar 'mcp__claude_ai_Google_Calendar__*' 'mcp__*'; do
+  for t in mcp__claude_ai_Google_Calendar__list_events mcp__claude_ai_Google_Calendar 'mcp__claude_ai_Google_Calendar__*'; do
     run grep -qxF -- "$t" <<< "$deny"
     [ "$status" -eq 1 ]
+  done
+}
+
+@test "an allow rule broader than the calendar server stops the fetch before claude runs" {
+  for r in 'mcp__*' '*' 'mcp__claude_ai_*' 'mcp__claude_ai_Google_Calendar*'; do
+    jq -cn --arg r "$r" '{permissions: {allow: [$r]}}' > "$HOME/.claude/settings.json"
+    rm -f "$STUB_ARGS"
+    run "$CF" "$DAY"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"calendar_fetch: allow rule '$r'"* ]]
+    [ ! -e "$STUB_ARGS" ]
   done
 }
 
@@ -166,6 +177,20 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   : > "$STUB_STREAM"
   STUB_RC=1 run "$CF" "$DAY"
   [ "$status" -eq 1 ]
+}
+
+@test "a session that times out is still checked for unexpected tools" {
+  stream '{"status":"ok","reason":"","events":[]}' ToolSearch mcp__claude_ai_Gmail__send_message
+  STUB_RC=124 run "$CF" "$DAY"
+  [ "$status" -eq 7 ]
+  grep -q 'calendar.*mcp__claude_ai_Gmail__send_message' system/logs/alerts_*.md
+  sed -i '$d' "$STUB_STREAM"
+  printf '{"type":"assi' >> "$STUB_STREAM"
+  STUB_RC=137 run "$CF" "$DAY"
+  [ "$status" -eq 7 ]
+  stream_ok '[]'
+  STUB_RC=124 run "$CF" "$DAY"
+  [ "$status" -eq 4 ]
 }
 
 @test "the date defaults to today in the configured timezone" {

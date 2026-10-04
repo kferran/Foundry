@@ -14,7 +14,7 @@ import sys
 EXPECTED_TOOLS = {"ToolSearch", "mcp__claude_ai_Google_Calendar__list_events", "StructuredOutput"}
 FIELDS = ("start_date", "start_time", "end_date", "end_time", "title")
 STATUSES = {"ok", "no_tool", "tool_error", "too_many"}
-TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+TIME = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 MAX_EVENTS = 100
 MAX_TITLE = 200
@@ -28,7 +28,7 @@ class Fail(Exception):
 
 
 def real_date(value):
-    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
         return None
     try:
         return datetime.date.fromisoformat(value)
@@ -37,14 +37,21 @@ def real_date(value):
 
 
 def parse_stream(text):
-    messages = []
+    """Every line that parses as a JSON object; a session cut off by a timeout still gets its tool check."""
+    messages, bad = [], 0
     for line in text.splitlines():
         if not line.strip():
             continue
         try:
-            messages.append(json.loads(line))
+            m = json.loads(line)
         except ValueError:
-            raise Fail(1, "claude output is not stream-json")
+            m = None
+        if isinstance(m, dict):
+            messages.append(m)
+        else:
+            bad += 1
+    if bad and not messages:
+        raise Fail(1, "claude output is not stream-json")
     return messages
 
 
@@ -74,7 +81,7 @@ def rows(events, day):
         st, et = e["start_time"], e["end_time"]
         if (st == "") != (et == ""):
             raise Fail(5, "an event has one time set and the other empty")
-        if st and not (TIME.match(st) and TIME.match(et)):
+        if st and not (TIME.fullmatch(st) and TIME.fullmatch(et)):
             raise Fail(5, f"an event has an invalid time: {st}-{et}")
         if st and start == end and et < st:
             raise Fail(5, f"an event ends before it starts: {st}-{et}")

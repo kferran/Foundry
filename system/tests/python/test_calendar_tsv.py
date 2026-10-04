@@ -115,6 +115,8 @@ def test_no_result_message_exits_1(tmp_path):
     ok([ev(start_date="2026-02-30", end_date="2026-02-30")]),
     ok([ev(start_time="", end_time="10:00")]),
     ok([ev(start_time="25:00")]),
+    ok([ev(start_time="09:00\n")]),
+    ok([ev(end_time="09:3٠")]),
     ok([ev(start_time="10:00", end_time="09:00")]),
 ])
 def test_invalid_outputs_exit_5(tmp_path, output):
@@ -126,6 +128,13 @@ def test_invalid_outputs_exit_5(tmp_path, output):
 def test_unparseable_line_exits_1(tmp_path):
     p, _ = run("not json\n", tmp_path)
     assert p.returncode == 1
+
+
+def test_cut_off_stream_still_checks_tools(tmp_path):
+    text = stream(ok([]), tools=("ToolSearch", "mcp__claude_ai_Gmail__send_message"))
+    p, data = run(text.rsplit("\n", 2)[0] + '\n{"type": "assi\n', tmp_path)
+    assert p.returncode == 7, p.stderr
+    assert data["unexpected_tools"] == ["mcp__claude_ai_Gmail__send_message"]
 
 
 def test_bad_date_argument_exits_2(tmp_path):

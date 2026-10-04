@@ -60,7 +60,12 @@ for f in "${files[@]}"; do
     [[ -n "$rule" ]] || continue
     name="${rule%%(*}"
     # shellcheck disable=SC2053  # the rule is a glob on purpose
-    [[ "$name" == "$SERVER_PREFIX" || "$TOOL" == $name ]] && continue
+    if [[ "$name" == "$SERVER_PREFIX" || "$TOOL" == $name ]]; then
+      # A glob that also reaches other servers can't be denied without denying list_events: fail closed.
+      [[ "$name" == "$SERVER_PREFIX" || "$name" == "${SERVER_PREFIX}__"* ]] \
+        || finish 1 "allow rule '$rule' in $f also allows other servers' tools; narrow it (claude was not run)"
+      continue
+    fi
     deny+=("$name")
   done <<< "$rules"
 done
@@ -82,14 +87,15 @@ rc=0
   --output-format stream-json --verbose --json-schema "$(cat "$VAULT_ROOT/system/scripts/calendar_schema.json")" \
   --max-turns 15 --max-budget-usd 1 --allowedTools "$TOOL" --disallowedTools "${deny[@]}" \
   < /dev/null > "$work/out.jsonl" 2> "$work/claude.err") || rc=$?
-if (( rc == 124 || rc == 137 )); then finish 4 "timed out after ${CALENDAR_TIMEOUT:-150}s"; fi
 
+# The tool-use check runs on every session, a timed-out one included.
 prc=0
 system/scripts/calendar_tsv.py "$day" --summary "$summary" < "$work/out.jsonl" > "$work/events.tsv" 2> "$work/tsv.err" || prc=$?
 reason="$(sed 's/^calendar_tsv: //' "$work/tsv.err" | head -n 1)"
 if (( prc == 7 )); then
   printf -- '- %s [calendar] calendar fetch for %s: %s\n' "$(date +%H:%M:%S)" "$day" "$reason" >> "system/logs/alerts_$(date +%F).md"
 fi
+if (( prc != 7 && (rc == 124 || rc == 137) )); then finish 4 "timed out after ${CALENDAR_TIMEOUT:-150}s"; fi
 if (( prc == 0 && rc != 0 )); then finish 1 "claude exited $rc: $(head -c 200 "$work/claude.err")"; fi
 (( prc == 0 )) || finish "$prc" "$reason"
 cat "$work/events.tsv"
