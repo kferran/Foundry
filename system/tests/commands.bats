@@ -391,3 +391,10 @@ self_edit_contract() {
   run grep -F 'Syncing them automatically is Plan 8c' README.md
   [ "$status" -eq 1 ]
 }
+
+@test "/setup phase 4 checks every private vault and sets the upstream to origin" {
+  sec="$(setup_section '4. Remote')"
+  [[ "$sec" == *'git branch -u "origin/$(git branch --show-current)"'* ]]
+  [[ "$sec" == *'whenever the mode is `private`'* ]]
+  [[ "$sec" != *'On a server or a client, only `private` is allowed: the machines share the vault through the private `origin`. Then check'* ]]
+}

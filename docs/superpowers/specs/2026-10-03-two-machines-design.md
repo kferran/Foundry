@@ -50,11 +50,11 @@ The template stays machine-agnostic: a machine's own hostname, paths, remote URL
 
 The role is asked first, before preflight, with the current value as the default.
 
-- **standalone:** today's phases, unchanged.
+- **standalone:** today's phases, unchanged. In `private` mode phase 4 runs the same three checks as a server, because `vault_sync.sh` needs the upstream `origin/<branch>`.
 - **server:** today's phases, with the linger rule above and `remote_mode: private` required in phase 4. Phase 4 also checks, before finishing:
   - `git config user.name` and `user.email` are set;
   - `origin` is reachable without prompting (`GIT_TERMINAL_PROMPT=0 git ls-remote origin`);
-  - the branch is published: when `origin` has no branch of this name, phase 4 runs `git push -u origin HEAD` (after the template-origin refusal `backup.md` already applies).
+  - the branch is published and its upstream is `origin/<branch>`: when `origin` has no branch of this name, phase 4 runs `git push -u origin HEAD` (after the template-origin refusal `backup.md` already applies); when the upstream is another remote (`setup_remote.sh` moves it to `template` when it renames a plain clone's `origin`), it runs `git fetch origin` and `git branch -u origin/<branch>`.
 - **client:** preflight with the client list (§3.4); config interview limited to timezone and default partition; phase 4 requires `private` and runs the same three checks; codebases, units, memory hooks, calendar and hand-off are reported as "not used on a client"; phases 7 (index) and 8 (verify) run, where phase 8 runs `lint_vault.sh` instead of `verify_setup.sh --health`. The report ends with the client notes in §5.7.
 
 README "Getting started" gains the second path: set up the first machine (standalone or server) from the template, give it a private `origin` in `/setup` phase 4, which publishes the branch; then on a client, `git clone <private origin>`, `claude`, `/setup`, and choose `client`.
