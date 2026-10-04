@@ -152,8 +152,13 @@ for attempt in 1 2; do
     if ! err="$(git merge -q --no-edit -m "sync($role): merge origin/$branch" \
                   -m "Jarvis-Command: sync"$'\n'"Jarvis-Role: $role" "origin/$branch" 2>&1)"; then
       if [[ -n "$(git ls-files -u)" ]]; then
-        git merge --abort
-        fail merge "merge conflict with origin/$branch"
+        # Conflicts are never resolved here (§5.4): abort, publish this side, block the runs.
+        paths="$(git diff --name-only --diff-filter=U)"
+        git merge --abort || block "merge conflict with origin/$branch, and git merge --abort failed" "$paths"$'\n'
+        pending="jarvis/$role-pending"
+        net push -q --force origin "HEAD:refs/heads/$pending" || alert "could not push $pending to origin"
+        block "merge conflict with origin/$branch; resolve it by merging origin/$pending (README: Sync conflicts)" \
+          "pending branch: $pending"$'\n'"$paths"$'\n'
       fi
       [[ ! -e "$git_dir/MERGE_HEAD" ]] || git merge --abort
       fail merge "git merge origin/$branch was refused: $(head -n 1 <<< "$err")"
@@ -162,6 +167,32 @@ for attempt in 1 2; do
   net push -q origin "HEAD:refs/heads/$branch" && break
   (( attempt == 1 )) || fail push "git push origin was rejected twice"
 done
+# start_missed: on a server, start a daily run its pre-step skipped while blocked (§5.4).
+start_missed() {
+  local cmd at ledger
+  ledger="$LOGS/runs-$(date +%Y-%m).jsonl"
+  for cmd in brief debrief; do
+    at="$(config_get "${cmd}_time" "")"
+    [[ -n "$at" && ! "$(date +%H:%M)" < "$at" ]] || continue
+    if [[ -f "$ledger" ]] && (( $(jq -R --arg c "$cmd" --arg d "$(date +%F)" \
+        'fromjson? | objects | select(.command == $c and (((.started_at | strings) // "") | startswith($d))) | 1' \
+        "$ledger" 2>/dev/null | wc -l) > 0 )); then
+      continue
+    fi
+    "${SYSTEMCTL:-systemctl}" --user start --no-block "jarvis-$cmd.service" || alert "could not start jarvis-$cmd.service"
+  done
+}
+
+# Any cycle that reaches this point clears a block (§5.4), whether or not origin was ahead.
+if [[ -e "$BLOCKED" ]]; then
+  pending="jarvis/$role-pending"
+  if [[ -n "$(net ls-remote --heads origin "refs/heads/$pending" 2>/dev/null)" ]]; then
+    net push -q origin ":refs/heads/$pending" || alert "could not delete $pending on origin"
+  fi
+  rm -f "$BLOCKED"
+  alert "sync unblocked"
+  [[ "$role" != server ]] || start_missed
+fi
 if [[ -f "$STATE" ]]; then
   alert "sync recovered (was failing: $(jq -r '.kind // "unknown"' "$STATE" 2>/dev/null))"
   rm -f "$STATE"

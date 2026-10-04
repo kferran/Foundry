@@ -230,3 +230,80 @@ conflicting_merge() {  # leave the server vault mid-merge on Kafka.md
   run "$VS" --bogus
   [ "$status" -eq 2 ]
 }
+
+diverge_on_kafka() {  # the client and the server change the same line; the client pushes first
+  printf 'client line\n' >> "$C/wiki/work/concepts/Kafka.md"
+  git -C "$C" commit -q -am client
+  git -C "$C" push -q
+  printf 'server line\n' >> wiki/work/concepts/Kafka.md
+}
+
+@test "a conflict aborts the merge, pushes jarvis/server-pending, writes the marker and alerts once" {
+  diverge_on_kafka
+  run "$VS"
+  [ "$status" -eq 3 ]
+  [ ! -e .git/MERGE_HEAD ]
+  [ "$(git -C "$O" rev-parse refs/heads/jarvis/server-pending)" = "$(git rev-parse HEAD)" ]
+  grep -qx 'wiki/work/concepts/Kafka.md' system/logs/sync-blocked
+  grep -q 'pending branch: jarvis/server-pending' system/logs/sync-blocked
+  run "$VS"
+  [ "$status" -eq 3 ]
+  [ "$(alerts | grep -c 'sync blocked')" -eq 1 ]
+  run "$VS" --pre
+  [ "$status" -eq 3 ]
+}
+
+@test "resolving from the client clears the marker, deletes the pending branch and alerts" {
+  diverge_on_kafka
+  run "$VS"
+  [ "$status" -eq 3 ]
+  git -C "$C" fetch -q origin
+  run git -C "$C" merge --no-edit origin/jarvis/server-pending
+  printf -- '---\ntype: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work\n---\n# Kafka\nresolved\n[[Index]]\n' > "$C/wiki/work/concepts/Kafka.md"
+  git -C "$C" commit -q -am resolved
+  git -C "$C" push -q
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ ! -e system/logs/sync-blocked ]
+  [ -z "$(git -C "$O" for-each-ref refs/heads/jarvis/)" ]
+  grep -qx resolved wiki/work/concepts/Kafka.md
+  alerts | grep -q 'sync unblocked'
+}
+
+@test "a cycle with nothing to merge clears a marker" {
+  printf 'reason: operation in progress\n' > system/logs/sync-blocked
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ ! -e system/logs/sync-blocked ]
+  alerts | grep -q 'sync unblocked'
+}
+
+@test "on unblocking, a daily run whose time has passed with no run today is started" {
+  printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$BATS_TEST_TMPDIR/systemctl.log"\n' > "$STUBS/systemctl"
+  chmod +x "$STUBS/systemctl"
+  export SYSTEMCTL="$STUBS/systemctl"
+  sed -i -e 's/^brief_time: .*/brief_time: "00:00"/' -e 's/^debrief_time: .*/debrief_time: "00:00"/' system/config.md
+  printf '{"run_id": "x", "command": "debrief", "started_at": "%s", "exit": 0}\n' "$(TZ=America/Denver date -Iseconds)" \
+    > "system/logs/runs-$(TZ=America/Denver date +%Y-%m).jsonl"
+  printf 'reason: conflict\n' > system/logs/sync-blocked
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/systemctl.log")" = "--user start --no-block jarvis-brief.service" ]
+}
+
+@test "a client's conflict pushes jarvis/client-pending and starts no runs" {
+  sed -i 's/^machine_role: .*/machine_role: "client"/' system/config.md
+  printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$BATS_TEST_TMPDIR/systemctl.log"\n' > "$STUBS/systemctl"
+  chmod +x "$STUBS/systemctl"
+  export SYSTEMCTL="$STUBS/systemctl"
+  diverge_on_kafka
+  run "$VS"
+  [ "$status" -eq 3 ]
+  git -C "$O" rev-parse -q --verify refs/heads/jarvis/client-pending
+  rm system/logs/sync-blocked
+  git reset -q --hard "origin/$B"
+  printf 'reason: conflict\n' > system/logs/sync-blocked
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$BATS_TEST_TMPDIR/systemctl.log" ]
+}
