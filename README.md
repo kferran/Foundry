@@ -116,16 +116,29 @@ system/
 docs/superpowers/             specs, plans, spike results
 ```
 
+## Machine roles
+
+Each machine that holds the vault has a `machine_role` in its own `system/config.md`, chosen in `/setup`:
+
+| Role | Runs | Use it for |
+|---|---|---|
+| `standalone` (default) | intake, brief, debrief and focus units; memory hooks; codebases | one machine that does everything |
+| `server` | intake, brief and debrief units; memory hooks; codebases | an always-on machine that runs the automation and your coding sessions |
+| `client` | nothing automated | reading and editing the vault in Obsidian on another machine |
+
+A server and its clients share the vault through a private `origin` (`remote_mode: private`). Syncing them automatically is Plan 8c; until then, sync by hand with `/backup` and `git pull`.
+
 ## Requirements
 
-Jarvis targets Arch / Omarchy Linux today. Running automation on a Debian server is Plan 8. `system/scripts/check_deps.sh` checks for:
+Jarvis runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh --role <role>` checks what that role needs and prints `pacman` or `apt` install hints:
 
 - `claude` (Claude Code), `git`, `jq`, `bats`, `flock`, `timeout`
 - `python3` with PyYAML and pytest (`sudo pacman -S python-yaml python-pytest`). Missing PyYAML blocks setup.
 - `sqlite3` built with FTS5
 - systemd user units (`systemctl --user`, `systemd-analyze`). If you want timers to run while you are logged out, enable lingering.
 - `gcalcli` for calendar input to the brief. Without it the brief lists the calendar under Unavailable Sources.
-- Hyprland (`hyprctl`) for the Obsidian focus tracker. Without it only focus stats are lost, but `check_deps.sh --strict` still counts both of these as missing until Plan 8 makes them per-machine.
+- Hyprland (`hyprctl`) for the Obsidian focus tracker, on a standalone machine only. Without it only focus stats are lost.
+- A client needs only `claude`, `git`, `jq`, `python3` with PyYAML, and SQLite with FTS5.
 - Optional: `herdr` or `tmux` as session backends for sub-project 2
 - Obsidian, with the **Dataview** plugin recommended (`wiki/Index.md` dashboards are plain code blocks without it). **[Vault Curate](https://github.com/notoriouslab/vault-curate)** is an optional plugin for link suggestions. It is not a dependency.
 
@@ -138,14 +151,23 @@ claude
 > /setup
 ```
 
+On a client, clone your private vault instead of the template, then run `/setup` and choose `client`:
+
+```sh
+git clone <private origin> my-vault
+cd my-vault
+claude
+> /setup
+```
+
 `/setup` is idempotent and can be re-run at any time. Its phases (spec §11):
 
-- **0. Preflight:** `check_deps.sh`. Missing items are listed with install hints.
+- **0. Role and preflight:** you choose the machine role, then `check_deps.sh --role <role>` lists missing items with install hints. A client skips phases 3, 5, 5a, 6 and 9.
 - **1. Existing config:** if `system/config.md` already exists, it is shown and edited, not overwritten.
 - **2. Interview:** timezone, brief and debrief times, superpowers, default partition, digest thresholds and recall budget.
 - **3. Codebases:** you choose repos from a directory scan. Each one is inspected, written to `system/codebases/<name>.md` with a partition, and confirmed with you field by field.
-- **4. Remote:** a `template` remote is added for updates, and you choose a private `origin`, no remote, or keep (maintainer mode).
-- **5. Units:** systemd timers are rendered and enabled, and you are offered linger.
+- **4. Remote:** a `template` remote is added for updates, and you choose a private `origin`, no remote, or keep (maintainer mode). A server or client must use a private `origin`; setup checks that git can reach it without a prompt and publishes the branch.
+- **5. Units:** the role's systemd units are rendered and enabled, and you are offered linger (required on a server).
 - **5a. Memory hooks** (optional): you are shown the diff to `~/.claude/settings.json` and what each hook does, and it is applied only after an explicit yes. Declining leaves memory off (see [Memory](#memory-soundwave)).
 - **6. Calendar:** `gcalcli` auth is checked.
 - **7. Index:** the index is rebuilt.
@@ -185,7 +207,7 @@ system/scripts/verify_setup.sh            # every system/tests/*.bats except sys
 system/scripts/verify_setup.sh --health   # also the advisory live-state suite
 ```
 
-`system/tests/system_health.bats` checks live service state and is advisory only. After any change to `run_headless.sh` or the settings files, re-run the spike checklist (spec §7.4) by hand. After any change to `run_headless.sh`, `system/headless.settings.json` or the `ingest`, `brief` or `debrief` commands, re-run the live acceptance steps (Plan 4a, Task 9) in a throwaway clone.
+`system/tests/system_health.bats` checks live service state and is advisory only. To prove the suite on Debian, run `system/tests/verify_on_host.sh <ssh-host>`: it copies the committed tree to a temporary directory on that host, runs the gate there, and exits with its code. The host needs the `apt` packages `check_deps.sh` lists. After any change to `run_headless.sh` or the settings files, re-run the spike checklist (spec §7.4) by hand. After any change to `run_headless.sh`, `system/headless.settings.json` or the `ingest`, `brief` or `debrief` commands, re-run the live acceptance steps (Plan 4a, Task 9) in a throwaway clone.
 
 ## Acknowledgements
 

@@ -280,3 +280,51 @@ self_edit_contract() {
   run system/scripts/vault_index.py validate system/config.md
   [ "$status" -eq 0 ]
 }
+
+@test "/setup asks the machine role first and checks dependencies for that role" {
+  sec="$(setup_section '0. Role and preflight')"
+  for s in 'system/scripts/vault_index.py field system/config.md machine_role' '`standalone`' '`server`' '`client`' \
+      'showing the current role as the default' 'system/scripts/check_deps.sh --role <role>'; do
+    [[ "$sec" == *"$s"* ]]
+  done
+  before_ask="${sec%%Ask which role*}"
+  before_deps="${sec%%check_deps.sh --role*}"
+  [ "${#before_ask}" -lt "${#before_deps}" ]
+  [ "$(grep -m1 -E '^## ' .claude/commands/setup.md)" = '## 0. Role and preflight' ]
+  grep -qF 'system/scripts/vault_index.py set system/config.md machine_role <role>' .claude/commands/setup.md
+}
+
+@test "/setup on a client skips the phases a client does not use, and says so" {
+  f=.claude/commands/setup.md
+  grep -qF 'On a client, skip phases 3, 5, 5a, 6 and 9' "$f"
+  grep -qF 'not used on a client' "$f"
+  grep -qF 'On a client, ask only for the timezone and the default partition.' "$f"
+  sec="$(setup_section '8. Verify')"
+  [[ "$sec" == *'On a client, run `system/scripts/lint_vault.sh` instead'* ]]
+}
+
+@test "/setup requires private remotes, working credentials and a published branch on a server or client" {
+  sec="$(setup_section '4. Remote')"
+  for s in 'On a server or a client, only `private` is allowed' 'git config user.name' 'git config user.email' \
+      'GIT_TERMINAL_PROMPT=0 timeout 30 git ls-remote origin' 'git ls-remote --heads origin' 'git push -u origin HEAD'; do
+    [[ "$sec" == *"$s"* ]]
+  done
+}
+
+@test "/setup requires linger on a server and lists the units for the role" {
+  sec="$(setup_section '5. Units')"
+  [[ "$sec" == *'On a server, linger is required'* ]]
+  [[ "$sec" == *'`jarvis-focus` (standalone only)'* ]]
+}
+
+@test "/backup lints instead of running the suites on a client" {
+  f=.claude/commands/backup.md
+  grep -qF 'On a client (`machine_role: client`), run `system/scripts/lint_vault.sh` instead' "$f"
+  grep -qF 'Skip this step on a client.' "$f"
+}
+
+@test "system_health checks each item only on the roles that run it" {
+  f=system/tests/system_health.bats
+  grep -qF 'skip_unless_role standalone server' "$f"
+  grep -qF 'skip_unless_role standalone' <(grep -A3 'focus tracker is active' "$f")
+}
