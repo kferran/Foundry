@@ -26,6 +26,9 @@ setup() {
   VS="$V/system/scripts/vault_sync.sh"
   STUBS="$BATS_TEST_TMPDIR/stubs"
   mkdir -p "$STUBS"
+  printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$BATS_TEST_TMPDIR/systemctl.log"\n' > "$STUBS/systemctl"
+  chmod +x "$STUBS/systemctl"
+  export SYSTEMCTL="$STUBS/systemctl"
 }
 
 note() {  # <repo> <name> <body line>: write a valid work concept
@@ -279,9 +282,6 @@ diverge_on_kafka() {  # the client and the server change the same line; the clie
 }
 
 @test "on unblocking, a daily run whose time has passed with no run today is started" {
-  printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$BATS_TEST_TMPDIR/systemctl.log"\n' > "$STUBS/systemctl"
-  chmod +x "$STUBS/systemctl"
-  export SYSTEMCTL="$STUBS/systemctl"
   sed -i -e 's/^brief_time: .*/brief_time: "00:00"/' -e 's/^debrief_time: .*/debrief_time: "00:00"/' system/config.md
   printf '{"run_id": "x", "command": "debrief", "started_at": "%s", "exit": 0}\n' "$(TZ=America/Denver date -Iseconds)" \
     > "system/logs/runs-$(TZ=America/Denver date +%Y-%m).jsonl"
@@ -293,9 +293,7 @@ diverge_on_kafka() {  # the client and the server change the same line; the clie
 
 @test "a client's conflict pushes jarvis/client-pending and starts no runs" {
   sed -i 's/^machine_role: .*/machine_role: "client"/' system/config.md
-  printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$BATS_TEST_TMPDIR/systemctl.log"\n' > "$STUBS/systemctl"
-  chmod +x "$STUBS/systemctl"
-  export SYSTEMCTL="$STUBS/systemctl"
+  sed -i -e 's/^brief_time: .*/brief_time: "00:00"/' -e 's/^debrief_time: .*/debrief_time: "00:00"/' system/config.md
   diverge_on_kafka
   run "$VS"
   [ "$status" -eq 3 ]
@@ -305,5 +303,6 @@ diverge_on_kafka() {  # the client and the server change the same line; the clie
   printf 'reason: conflict\n' > system/logs/sync-blocked
   run "$VS"
   [ "$status" -eq 0 ]
+  [ -z "$(git -C "$O" for-each-ref refs/heads/jarvis/)" ]
   [ ! -e "$BATS_TEST_TMPDIR/systemctl.log" ]
 }
