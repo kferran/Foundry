@@ -1,7 +1,7 @@
 # Two-Machine Design: machine roles, commit history, git sync, Debian
 
 **Date:** 2026-10-03
-**Status:** Approved in brainstorming; revised after an independent design review and its re-review (rev 3)
+**Status:** Approved in brainstorming; revised after an independent design review and its re-review (rev 3); rev 4 (Plan 8e) retries skipped daily runs from every server sync cycle (§5.4)
 **Extends:** `2026-09-30-vault-template-design.md` (§6.1 config, §6.2 dependencies, §6.4 intake, §6.6 units, §6.11 remotes, §6.12 updates, §8 `/backup`, §11 `/setup`, §12 tests)
 **Roadmap:** Plan 8, split into three plans (§10): 8a roles and Debian, 8b commit history, 8c sync
 
@@ -184,7 +184,12 @@ While `sync-blocked` exists, every run service's pre-step exits 3, so intake, br
 
 **Clearing:** the marker is removed by any cycle that completes step 5, whether or not `origin` was ahead. That cycle also deletes `jarvis/<role>-pending` on `origin` (a branch that is already gone is not an error) and writes a "sync unblocked" alert.
 
-**Missed daily runs:** brief and debrief fire once a day, and a pre-step that exits 3 skips them. On unblocking, the server starts (`systemctl --user start --no-block`) `jarvis-brief.service` and `jarvis-debrief.service` when that command's scheduled time today has passed and the run ledger has no run of it today. The blocked alert says runs are skipped until unblocked.
+**Missed daily runs:** brief and debrief fire once a day. Two things can skip them: a pre-step that exits 3 while blocked (no ledger line), and `run_headless.sh` giving up on `run.lock` after its 600-second wait (exit 6, one ledger line), for example behind an ingest backlog. On a server, every cycle that completes step 5 (after the unblock step) starts (`systemctl --user start --no-block`) `jarvis-brief.service` or `jarvis-debrief.service` when all of these hold (rev 4, Plan 8e; before it, only an unblocking cycle did):
+- the command's configured time (`brief_time`, `debrief_time`, config timezone) passed at least 15 minutes ago today, so the retry never races the timer (`Persistent=true`, default `AccuracySec` of one minute);
+- today's run ledger has no line for that command except lines with `exit` 6;
+- `systemctl --user is-active` reports the unit neither `active` nor `activating` (a run in progress has no ledger line yet).
+
+A run that failed for any other reason is not retried: it alerted, and retrying a failing run every few minutes would loop. A retry that finds the lock busy again writes another exit-6 line, and a later cycle tries again. The blocked alert says runs are skipped until unblocked. Standalone vaults have no sync timer and get no retry.
 
 On a client, `/backup` (which runs `vault_sync.sh`) also reports any `origin/jarvis/*-pending` branch it sees after fetching, so a conflict surfaces wherever the user next syncs by hand. A missing briefing in the morning is the other visible signal; push notifications are out of scope.
 
@@ -260,7 +265,7 @@ Gated tests are hermetic: temporary repos (a bare `origin` plus server and clien
 
 - **8a:** `check_deps.sh --role` lists; `pacman`/`apt-get` hints via `PATH` stubs; `install_units.sh` per role (client installs nothing, role change removes unused owned units); `setup.md` asks the role first and states each client skip; `backup.md` lints on a client; role-aware `system_health.bats` (advisory); config schema accepts the new keys and rejects out-of-range `sync_interval_minutes`.
 - **8b:** pytest for `commit_runs.py`: exact subjects, bodies and trailers from fixture runs; only the run's paths in its commit even with other files staged; cutover ignores older runs; already-committed paths get the marker without a commit; a hook failure leaves the run pending; `conflict`/`recovered` runs with published files are committed, rejected and empty ones are not. `debrief_prep.sh` lists vault commits from any author.
-- **8c:** `sync.bats`: commit and push; gitignored paths never committed; client commit reaches the server; conflict → abort, pending branch pushed, marker, one alert, exit 3; resolution from the client clone clears it and deletes the pending branch; in-progress merge and unmerged index → exit 3 without committing; conflict-marker file rejected by the hook; refused merge → exit 1 with no `MERGE_HEAD`; rejected push retried once; busy lock → 4, `--pre` → 0, `--post` → 0; `--pre` with a marker → 3 even when the lock is busy; `--pre` during another sync's merge → 3 without writing a marker; stale `index.lock` → 3; TERM during a merge leaves no `MERGE_HEAD`; a note with a setext `=======` underline commits; marker cleared by a cycle with nothing to merge; missed brief started on unblock (stubbed `systemctl`); template origin and missing upstream → 1; alert rate limiting. `units.bats`: sync units and drop-ins only for `server`, drop-in text order (reset, sync, prep, post), owned drop-ins removed on uninstall and role change. pytest for non-destructive extraction: briefing bytes unchanged, one drop per new block, no repeat for a known `(briefing, hash)`, the same text in a later briefing extracted, a new drop for an edited block, unterminated alert once per day. `system_health.bats` server checks.
+- **8c:** `sync.bats`: commit and push; gitignored paths never committed; client commit reaches the server; conflict → abort, pending branch pushed, marker, one alert, exit 3; resolution from the client clone clears it and deletes the pending branch; in-progress merge and unmerged index → exit 3 without committing; conflict-marker file rejected by the hook; refused merge → exit 1 with no `MERGE_HEAD`; rejected push retried once; busy lock → 4, `--pre` → 0, `--post` → 0; `--pre` with a marker → 3 even when the lock is busy; `--pre` during another sync's merge → 3 without writing a marker; stale `index.lock` → 3; TERM during a merge leaves no `MERGE_HEAD`; a note with a setext `=======` underline commits; marker cleared by a cycle with nothing to merge; missed brief started on unblock (stubbed `systemctl`); **8e:** on every completed server cycle, a brief whose only run today exited 6 is started, while one that ran with exit 0 or 1, one within 15 minutes of its time, an active or activating unit, and a standalone or client vault start nothing; template origin and missing upstream → 1; alert rate limiting. `units.bats`: sync units and drop-ins only for `server`, drop-in text order (reset, sync, prep, post), owned drop-ins removed on uninstall and role change. pytest for non-destructive extraction: briefing bytes unchanged, one drop per new block, no repeat for a known `(briefing, hash)`, the same text in a later briefing extracted, a new drop for an edited block, unterminated alert once per day. `system_health.bats` server checks.
 
 ### 8.1 Live acceptance (per plan, in throwaway clones; a local bare repo stands in for `origin`)
 
@@ -271,6 +276,7 @@ Gated tests are hermetic: temporary repos (a bare `origin` plus server and clien
   2. Client clone: a `#wiki-ingest` block added to today's briefing and pushed. Server: sync, intake, sync: an `ingest(<p>)` commit, the briefing unchanged, the note published; the client sees it after a pull.
   3. Forced conflict: both clones change the same briefing line: `jarvis/server-pending` on origin, `sync-blocked`, the brief pre-step exits 3; resolved from the client clone; the next server sync clears both.
   4. Network failure (origin path made unreadable): the brief still runs and publishes locally; one alert; recovery alert after restoring.
+- **8e:** server clone, `systemctl` stubbed, brief time set 20 minutes in the past: hold `run.lock` while `run_headless.sh brief` waits (with a shortened lock wait) so it exits 6; release the lock; one `vault_sync.sh` cycle starts `jarvis-brief.service` once, and a second cycle after a ledger line with exit 0 starts nothing. No `claude` run.
 
 ## 9. Template rules
 
@@ -284,6 +290,7 @@ Gated tests are hermetic: temporary repos (a bare `origin` plus server and clien
 | **8a. Roles and Debian** | §3, §6 | — |
 | **8b. Commit history** | §4 | — (useful alone) |
 | **8c. Sync** | §5, sync parts of §3.2 and §3.5 | 8a, 8b |
+| **8e. Real-use fixes** | §5.4 missed daily runs (rev 4); the `/debrief` ledger field names (main spec §8: `exit` and `.publish.{status,published,rejected,conflicts}`, as `run_headless.sh` writes them) | 8c |
 
 Each plan ends with its live acceptance (§8.1) and an outcomes doc.
 
