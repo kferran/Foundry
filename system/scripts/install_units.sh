@@ -8,7 +8,6 @@ source system/scripts/lib_config.sh
 
 SYSTEMCTL="${SYSTEMCTL:-systemctl}"
 UNIT_DIR="${SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
-ENABLE=(jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer jarvis-focus.service)
 HEADER_PREFIX="# Managed by vault: "
 HEADER="$HEADER_PREFIX$VAULT_ROOT"
 
@@ -42,6 +41,53 @@ if [[ "$mode" == uninstall ]]; then
   exit 0
 fi
 
+
+# The units each machine role runs (two-machine spec §3.3), and the ones it enables.
+role="$(config_get machine_role standalone)"
+case "$role" in
+  standalone)
+    UNITS=(jarvis-intake.service jarvis-intake.timer jarvis-brief.service jarvis-brief.timer
+           jarvis-debrief.service jarvis-debrief.timer jarvis-focus.service)
+    ENABLE=(jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer jarvis-focus.service) ;;
+  server)
+    UNITS=(jarvis-intake.service jarvis-intake.timer jarvis-brief.service jarvis-brief.timer
+           jarvis-debrief.service jarvis-debrief.timer)
+    ENABLE=(jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer) ;;
+  client) UNITS=() ENABLE=() ;;
+  *) die 1 "unknown machine_role in system/config.md: $role" ;;
+esac
+
+# owned_units: the unit files in UNIT_DIR whose header names this vault.
+owned_units() {
+  local f
+  for f in "$UNIT_DIR"/*.service "$UNIT_DIR"/*.timer; do
+    if [[ "$(head -n 1 -- "$f")" == "$HEADER" ]]; then printf '%s\n' "${f##*/}"; fi
+  done
+}
+
+# remove_units <name…>: disable, delete and report units this vault owns.
+remove_units() {
+  (( $# )) || return 0
+  "$SYSTEMCTL" --user disable --now "$@" || echo "install_units: warning: systemctl disable failed" >&2
+  local n
+  for n in "$@"; do
+    rm -f -- "$UNIT_DIR/$n"
+    echo "removed $n"
+  done
+}
+
+if [[ "$role" == client ]]; then
+  echo "install_units: machine_role client: no units"
+  if [[ "$mode" == install ]]; then
+    mapfile -t stale < <(owned_units)
+    if (( ${#stale[@]} )); then
+      remove_units "${stale[@]}"
+      "$SYSTEMCTL" --user daemon-reload
+    fi
+  fi
+  exit 0
+fi
+
 # Unit files split ExecStart on whitespace and expand % specifiers, so paths are quoted in the
 # templates and restricted to characters that survive both.
 SAFE='^/[A-Za-z0-9._/@+ -]+$'
@@ -60,8 +106,11 @@ unit_path="$(dirname "$claude_bin"):%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 esc() { printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'; }
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
-templates=(system/systemd/*.in)
-(( ${#templates[@]} )) || die 1 "no unit templates in system/systemd/"
+templates=()
+for n in "${UNITS[@]}"; do
+  [[ -f "system/systemd/$n.in" ]] || die 1 "missing unit template system/systemd/$n.in"
+  templates+=("system/systemd/$n.in")
+done
 for t in "${templates[@]}"; do
   name="$(basename "$t" .in)"
   {
@@ -117,5 +166,11 @@ for u in "${rendered[@]}"; do
   mv -f -- "$dst.tmp" "$dst"
   echo "$status $n"
 done
+# A role change leaves owned units the new role does not use: remove them.
+stale=()
+while IFS= read -r n; do
+  [[ " ${UNITS[*]} " == *" $n "* ]] || stale+=("$n")
+done < <(owned_units)
+remove_units "${stale[@]}"
 "$SYSTEMCTL" --user daemon-reload
 "$SYSTEMCTL" --user enable --now "${ENABLE[@]}"

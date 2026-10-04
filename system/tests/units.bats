@@ -198,3 +198,56 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   run "$IU" --dry-run --uninstall
   [ "$status" -eq 2 ]
 }
+
+set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1" > /dev/null; }
+
+@test "machine_role server installs the run units without the focus tracker" {
+  set_role server
+  run "$IU"
+  [ "$status" -eq 0 ]
+  for n in "${UNITS[@]}"; do
+    [ "$n" = jarvis-focus.service ] && continue
+    [ -f "$UD/$n" ]
+  done
+  [ ! -e "$UD/jarvis-focus.service" ]
+  grep -qx -- '--user enable --now jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer' "$STUB_SYSTEMCTL_LOG"
+}
+
+@test "machine_role client installs nothing and says so" {
+  set_role client
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'install_units: machine_role client: no units' <<< "$output"
+  [ ! -e "$UD" ]
+  [ ! -e "$STUB_SYSTEMCTL_LOG" ]
+  run "$IU" --dry-run
+  [ "$status" -eq 0 ]
+  grep -qx 'install_units: machine_role client: no units' <<< "$output"
+}
+
+@test "a role change removes the owned units the new role does not use" {
+  run "$IU"
+  [ -f "$UD/jarvis-focus.service" ]
+  set_role server
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'removed jarvis-focus.service' <<< "$output"
+  [ ! -e "$UD/jarvis-focus.service" ]
+  grep -qx -- '--user disable --now jarvis-focus.service' "$STUB_SYSTEMCTL_LOG"
+  set_role client
+  run "$IU"
+  [ "$status" -eq 0 ]
+  for n in "${UNITS[@]}"; do
+    [ ! -e "$UD/$n" ]
+  done
+  grep -qx 'removed jarvis-brief.timer' <<< "$output"
+}
+
+@test "a role change never removes units this vault does not own" {
+  run "$IU"
+  printf '[Unit]\nDescription=foreign\n' > "$UD/foreign.service"
+  set_role client
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ -f "$UD/foreign.service" ]
+}
