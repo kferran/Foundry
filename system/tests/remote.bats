@@ -188,6 +188,16 @@ upstream_commit() {  # <file> <text>
   grep -q '^ExecStart=' "$SYSTEMD_USER_DIR/jarvis-brief.service"
 }
 
+@test "update_template re-renders units when only an owned drop-in is installed" {
+  template_setup
+  mkdir -p "$SYSTEMD_USER_DIR/jarvis-brief.service.d"
+  printf '# Managed by vault: %s\n[Service]\n' "$(pwd -P)" > "$SYSTEMD_USER_DIR/jarvis-brief.service.d/jarvis-sync.conf"
+  upstream_commit new.txt hello
+  run "$UT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"units not installed"* ]]
+}
+
 @test "update_template leaves units alone in a vault that never installed them" {
   template_setup
   upstream_commit new.txt hello

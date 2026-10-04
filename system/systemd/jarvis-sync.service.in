@@ -1,0 +1,10 @@
+[Unit]
+Description=Jarvis: vault sync with the private origin
+
+[Service]
+Type=oneshot
+WorkingDirectory={{VAULT_ROOT}}
+Environment="TZ={{TZ}}"
+Environment="PATH={{UNIT_PATH}}"
+TimeoutStartSec=10min
+ExecStart="{{VAULT_ROOT}}/system/scripts/vault_sync.sh"

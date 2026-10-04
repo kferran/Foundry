@@ -1,0 +1,6 @@
+[Service]
+TimeoutStartSec={{TIMEOUT}}
+ExecStartPre=
+ExecStartPre="{{VAULT_ROOT}}/system/scripts/vault_sync.sh" --pre
+{{PREP_LINE}}
+ExecStartPost="{{VAULT_ROOT}}/system/scripts/vault_sync.sh" --post

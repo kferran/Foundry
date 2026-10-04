@@ -75,12 +75,10 @@ setup() {
 
 @test "unit templates: only *.in files, services carry {{VAULT_ROOT}}, no machine paths" {
   shopt -s nullglob
-  files=(system/systemd/*)
-  [ "${#files[@]}" -eq 7 ]
-  for f in "${files[@]}"; do
-    [[ "$f" == *.in ]]
-  done
-  for f in system/systemd/*.service.in; do
+  files=(system/systemd/*.in system/systemd/dropins/*.in)
+  [ "${#files[@]}" -eq 10 ]
+  [ -z "$(find system/systemd -type f ! -name '*.in')" ]
+  for f in system/systemd/*.service.in system/systemd/dropins/*.in; do
     grep -q '{{VAULT_ROOT}}' "$f"
   done
   run grep -rl '/home/' system/systemd

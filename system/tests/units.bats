@@ -210,7 +210,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
     [ -f "$UD/$n" ]
   done
   [ ! -e "$UD/jarvis-focus.service" ]
-  grep -qx -- '--user enable --now jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer jarvis-sync.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "machine_role client installs nothing and says so" {
@@ -250,4 +250,60 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   run "$IU"
   [ "$status" -eq 0 ]
   [ -f "$UD/foreign.service" ]
+}
+
+@test "a server gets the sync timer and one drop-in per run service, sync around the run" {
+  set_role server
+  sed -i '/^machine_role:/a sync_interval_minutes: "7"' system/config.md
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'OnUnitActiveSec=7min' "$UD/jarvis-sync.timer"
+  grep -qx 'TimeoutStartSec=10min' "$UD/jarvis-sync.service"
+  grep -qxF "ExecStart=\"$VP/system/scripts/vault_sync.sh\"" "$UD/jarvis-sync.service"
+  for s in intake brief debrief; do
+    d="$UD/jarvis-$s.service.d/jarvis-sync.conf"
+    [ "$(head -n 1 "$d")" = "# Managed by vault: $VP" ]
+    grep -qx "new jarvis-$s.service.d/jarvis-sync.conf" <<< "$output"
+  done
+  [ "$(grep '^Exec' "$UD/jarvis-brief.service.d/jarvis-sync.conf")" = "$(printf 'ExecStartPre=\nExecStartPre="%s/system/scripts/vault_sync.sh" --pre\nExecStartPre=-"%s/system/scripts/brief_prep.sh"\nExecStartPost="%s/system/scripts/vault_sync.sh" --post' "$VP" "$VP" "$VP")" ]
+  grep -qxF "ExecStartPre=-\"$VP/system/scripts/debrief_prep.sh\"" "$UD/jarvis-debrief.service.d/jarvis-sync.conf"
+  [ "$(grep -c '^ExecStartPre=' "$UD/jarvis-intake.service.d/jarvis-sync.conf")" -eq 2 ]
+  grep -qx 'TimeoutStartSec=105min' "$UD/jarvis-intake.service.d/jarvis-sync.conf"
+  grep -qx 'TimeoutStartSec=45min' "$UD/jarvis-brief.service.d/jarvis-sync.conf"
+  grep -qx 'TimeoutStartSec=35min' "$UD/jarvis-debrief.service.d/jarvis-sync.conf"
+  run "$IU"
+  grep -qx 'unchanged jarvis-brief.service.d/jarvis-sync.conf' <<< "$output"
+}
+
+@test "a standalone machine gets no sync units or drop-ins" {
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ ! -e "$UD/jarvis-sync.timer" ]
+  run ls -d "$UD"/*.service.d
+  [ "$status" -ne 0 ]
+}
+
+@test "leaving the server role removes the sync units and the owned drop-ins, never a foreign one" {
+  set_role server
+  run "$IU"
+  printf '[Service]\nNice=5\n' > "$UD/jarvis-brief.service.d/local.conf"
+  set_role standalone
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'removed jarvis-sync.timer' <<< "$output"
+  grep -qx 'removed jarvis-intake.service.d/jarvis-sync.conf' <<< "$output"
+  [ ! -e "$UD/jarvis-sync.service" ]
+  [ ! -e "$UD/jarvis-intake.service.d" ]
+  [ ! -e "$UD/jarvis-brief.service.d/jarvis-sync.conf" ]
+  [ -f "$UD/jarvis-brief.service.d/local.conf" ]
+}
+
+@test "--uninstall removes the owned drop-ins too" {
+  set_role server
+  run "$IU"
+  run "$IU" --uninstall
+  [ "$status" -eq 0 ]
+  grep -qx 'removed jarvis-debrief.service.d/jarvis-sync.conf' <<< "$output"
+  run ls -A "$UD"
+  [ -z "$output" ]
 }

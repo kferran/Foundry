@@ -1,0 +1,9 @@
+[Unit]
+Description=Jarvis: vault sync every {{SYNC_INTERVAL}} minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec={{SYNC_INTERVAL}}min
+
+[Install]
+WantedBy=timers.target
