@@ -22,7 +22,7 @@ esac
 export GIT_TERMINAL_PROMPT=0
 # Every git child runs with run.lock's fd 9 closed: a daemon or a detached gc it starts must not keep the lock.
 git() { command git "$@" 9>&-; }
-[[ -n "${GIT_SSH_COMMAND:-}" ]] || export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15"
+[[ -n "${GIT_SSH_COMMAND:-}" || -n "$(git config core.sshCommand 2>/dev/null)" ]] || export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15"
 TZ="$(config_get timezone UTC)"
 export TZ
 role="$(config_get machine_role standalone)"

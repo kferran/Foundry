@@ -333,3 +333,17 @@ diverge_on_kafka() {  # the client and the server change the same line; the clie
   [ -z "$(git -C "$O" for-each-ref refs/heads/jarvis/)" ]
   [ -z "$(alerts | grep 'sync unblocked')" ]
 }
+
+@test "core.sshCommand is left alone; without it the batch-mode default is exported" {
+  wrap_git
+  export WRAP_AFTER_FETCH='echo "${GIT_SSH_COMMAND:-unset}" > "$BATS_TEST_TMPDIR/ssh"'
+  unset GIT_SSH_COMMAND
+  git config core.sshCommand "ssh -i /nonexistent"
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/ssh")" = unset ]
+  git config --unset core.sshCommand
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/ssh")" = "ssh -o BatchMode=yes -o ConnectTimeout=15" ]
+}
