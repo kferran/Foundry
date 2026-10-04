@@ -1,0 +1,16 @@
+#!/bin/bash
+# Test wrapper for vault_sync.sh's git calls: runs the real git ($REAL_GIT), then a hook.
+# WRAP_AFTER_FETCH / WRAP_AFTER_MERGE run after a fetch / merge; WRAP_BEFORE_PUSH runs once before the
+# first push (a marker file under $BATS_TEST_TMPDIR keeps it to one). WRAP_EACH runs before every call.
+[[ -z "${WRAP_EACH:-}" ]] || eval "$WRAP_EACH"
+if [[ "${1:-}" == push && -n "${WRAP_BEFORE_PUSH:-}" && ! -e "$BATS_TEST_TMPDIR/.before_push" ]]; then
+  : > "$BATS_TEST_TMPDIR/.before_push"
+  eval "$WRAP_BEFORE_PUSH"
+fi
+"$REAL_GIT" "$@"
+rc=$?
+case "${1:-}" in
+  fetch) [[ -z "${WRAP_AFTER_FETCH:-}" ]] || eval "$WRAP_AFTER_FETCH" ;;
+  merge) [[ -z "${WRAP_AFTER_MERGE:-}" ]] || eval "$WRAP_AFTER_MERGE" ;;
+esac
+exit "$rc"

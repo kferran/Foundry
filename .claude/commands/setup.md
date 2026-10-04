@@ -35,13 +35,13 @@ Write each scalar with `system/scripts/vault_index.py set system/config.md <key>
 ## 4. Remote
 Run `system/scripts/setup_remote.sh --detect` and report what it found. Read the current mode with `system/scripts/vault_index.py field system/config.md remote_mode`. Then ask, showing the current mode as the default: a private URL for your vault (`private`), no remote (`none`), or keep the remotes as they are (`keep`, for template maintainers; choose this when `origin` is the template and you maintain it). If the current mode is `private`, show the current `origin` URL (`git remote get-url origin`) as the default URL. Run `system/scripts/setup_remote.sh <url>`, `--none` or `--keep` and report its output.
 
-On a server or a client, only `private` is allowed: the machines share the vault through the private `origin`. Then check, in order, and stop this phase at the first failure with what the user must do:
+On a server or a client, only `private` is allowed: the machines share the vault through the private `origin`. Run these checks whenever the mode is `private`, on every role including standalone (`vault_sync.sh` needs the upstream `origin/<branch>`). Check in order, and stop this phase at the first failure with what the user must do:
 1. `git config user.name` and `git config user.email` both print a value. If not, ask the user to set them (`! git config user.name "…"`).
 2. `GIT_TERMINAL_PROMPT=0 timeout 30 git ls-remote origin > /dev/null` succeeds. If not, explain that automation needs credentials that work without a prompt (an SSH key without a passphrase prompt, or a credential helper), and re-check once the user has set them up.
-3. The branch is published: if `git ls-remote --heads origin "$(git branch --show-current)"` prints nothing, run `git push -u origin HEAD` and report the result.
+3. The branch is published and tracks `origin`: if `git ls-remote --heads origin "$(git branch --show-current)"` prints nothing, run `git push -u origin HEAD`. Otherwise, if `git rev-parse --abbrev-ref '@{u}'` is not `origin/<branch>` (`setup_remote.sh` moves the upstream to `template` when it renames a plain clone's `origin`), run `git fetch origin` and `git branch -u "origin/$(git branch --show-current)"`. Report the result.
 
 ## 5. Units
-Run `system/scripts/install_units.sh --dry-run` and summarize the units it prints: `jarvis-intake` (every 5 minutes), `jarvis-brief` and `jarvis-debrief` (at the configured times), `jarvis-focus` (standalone only), the focus tracker. Ask before installing; on yes run `system/scripts/install_units.sh` and report each `new|changed|unchanged|removed` line.
+Run `system/scripts/install_units.sh --dry-run` and summarize the units it prints: `jarvis-intake` (every 5 minutes), `jarvis-brief` and `jarvis-debrief` (at the configured times), `jarvis-focus` (standalone only), the focus tracker; `jarvis-sync` (server only), which syncs with `origin` every `sync_interval_minutes` and, through a drop-in on each run service, before and after every run. Ask before installing; on yes run `system/scripts/install_units.sh` and report each `new|changed|unchanged|removed` line.
 
 On a client, run `system/scripts/install_units.sh` without asking: it installs nothing and removes any units this vault installed under an earlier role. Report each `removed` line, or "no units" when it prints none, and skip the linger check.
 
@@ -77,4 +77,18 @@ Run `system/scripts/verify_setup.sh --health` and `systemctl --user list-timers 
 For each registered codebase without one, create `wiki/<partition>/concepts/<Name>OnboardingAssignment.md`, where `<partition>` is the codebase's partition and `<Name>` its name in PascalCase. Frontmatter: `type: concept`, `tags: ["onboarding"]`, `compiled_at` today, `partition`, `codebase`, `agent_owner: CodingAgent`, `status: draft`. Body: direct **CodingAgent** to map the codebase's layers and its logging and telemetry definitions (start from the `logging_hints` the inspection found) into `wiki/<partition>/entities/<Name>LogEventMap.md`; link `[[Index]]` and name each superpower the work serves. Run `system/scripts/lint_vault.sh` afterwards.
 
 ## 10. Report
+On a client, first set up Obsidian Git (the community plugin) and show these settings with their `data.json` keys:
+
+| Setting | Key | Value |
+|---|---|---|
+| Auto commit-and-sync interval (minutes) | `autoSaveInterval` | `5` |
+| Auto commit-and-sync after stopping file edits | `autoBackupAfterFileChange` | on |
+| Pull on startup | `autoPullOnBoot` | on |
+| Push on commit-and-sync | `disablePush` | `false` |
+| Pull on commit-and-sync | `pullBeforePush` | on |
+| Merge strategy | `syncMethod` | `merge` |
+| Commit message on auto commit-and-sync | `autoCommitMessage` | `sync(client): {{numFiles}} files`, a blank line, `{{files}}`, a blank line, then `Jarvis-Command: sync` and `Jarvis-Role: client` on two lines |
+
+If `git ls-files --error-unmatch .obsidian/plugins/obsidian-git/data.json` succeeds, run `git rm --cached .obsidian/plugins/obsidian-git/data.json` (the file is machine-specific and gitignored). The plugin runs the pre-commit hook inside Obsidian, whose `PATH` can differ from a terminal's: ask the user to make one test edit and confirm the plugin's commit succeeds; the hook's error names any missing tool. Then give the client notes: files dropped into `raw/inbox/` on a client are not synced (write notes in today's briefing between `#wiki-ingest-start` and `#wiki-ingest-end`); disable any plugin that creates `briefings/<date>.md` (daily notes, templates), because the server creates it; `/backup` on a client runs lint and then `vault_sync.sh`.
+
 Show a table of every item set up (role, config, each codebase, remote mode, each unit, linger, memory hooks, calendar, index, verification) with its status; on a client, the skipped items say "not used on a client". Remind the user to install the Obsidian **Dataview** plugin for the `wiki/Index.md` dashboards, and that `system/scripts/update_template.sh` pulls template updates.

@@ -50,11 +50,11 @@ The template stays machine-agnostic: a machine's own hostname, paths, remote URL
 
 The role is asked first, before preflight, with the current value as the default.
 
-- **standalone:** today's phases, unchanged.
+- **standalone:** today's phases, unchanged. In `private` mode phase 4 runs the same three checks as a server, because `vault_sync.sh` needs the upstream `origin/<branch>`.
 - **server:** today's phases, with the linger rule above and `remote_mode: private` required in phase 4. Phase 4 also checks, before finishing:
   - `git config user.name` and `user.email` are set;
   - `origin` is reachable without prompting (`GIT_TERMINAL_PROMPT=0 git ls-remote origin`);
-  - the branch is published: when `origin` has no branch of this name, phase 4 runs `git push -u origin HEAD` (after the template-origin refusal `backup.md` already applies).
+  - the branch is published and its upstream is `origin/<branch>`: when `origin` has no branch of this name, phase 4 runs `git push -u origin HEAD` (after the template-origin refusal `backup.md` already applies); when the upstream is another remote (`setup_remote.sh` moves it to `template` when it renames a plain clone's `origin`), it runs `git fetch origin` and `git branch -u origin/<branch>`.
 - **client:** preflight with the client list (§3.4); config interview limited to timezone and default partition; phase 4 requires `private` and runs the same three checks; codebases, units, memory hooks, calendar and hand-off are reported as "not used on a client"; phases 7 (index) and 8 (verify) run, where phase 8 runs `lint_vault.sh` instead of `verify_setup.sh --health`. The report ends with the client notes in §5.7.
 
 README "Getting started" gains the second path: set up the first machine (standalone or server) from the template, give it a private `origin` in `/setup` phase 4, which publishes the branch; then on a client, `git clone <private origin>`, `claude`, `/setup`, and choose `client`.
@@ -166,7 +166,7 @@ The index does not need an explicit rebuild: `Index.refresh` runs on every read.
   ExecStartPost="{{VAULT_ROOT}}/system/scripts/vault_sync.sh" --post
   ```
   `{{PREP_LINE}}` is the service's own prep line (`ExecStartPre=-…/brief_prep.sh` for brief, `…/debrief_prep.sh` for debrief, empty for intake), so prep reads a freshly pulled tree. `ExecStartPost` runs only after a successful run; a failed run's output is committed by the next timer tick.
-- `install_units.sh`'s owned-unit scan, and `update_template.sh`'s "units installed" check, include `*.service.d/*.conf` files whose first line names this vault. Every pre- and post-step counts toward a oneshot's `TimeoutStartSec`, so the limits rise by two sync deadlines plus margin: brief and debrief from 20 to 35 minutes (sync 5 + lock wait 10 + run 15 + sync 5), intake from 90 to 105 minutes. `jarvis-sync.service` gets `TimeoutStartSec=10min`, twice its deadline.
+- `install_units.sh`'s owned-unit scan, and `update_template.sh`'s "units installed" check, include `*.service.d/*.conf` files whose first line names this vault. Every pre- and post-step counts toward a oneshot's `TimeoutStartSec`, so the limits rise by two sync deadlines plus margin: brief from 30 to 45 minutes and debrief from 20 to 35 (two sync deadlines plus 5 min margin; Plan 8d raised the brief base to 30), intake from 90 to 105 minutes. `jarvis-sync.service` gets `TimeoutStartSec=10min`, twice its deadline.
 
 ### 5.3 Failures that are not conflicts
 
@@ -180,7 +180,7 @@ On a merge conflict, `vault_sync.sh`:
 3. writes `system/logs/sync-blocked` (paths, time, pending branch) and one alert per blocked period;
 4. exits 3.
 
-While `sync-blocked` exists, every run service's pre-step exits 3, so intake, brief and debrief do not run. Manual `run_headless.sh` calls are not blocked. Resolution, on either machine: `git fetch origin`, `git merge origin/jarvis/<role>-pending`, resolve, commit, push. The same steps apply to `jarvis/client-pending`, which a client's `/backup` pushes when its own sync conflicts.
+While `sync-blocked` exists, every run service's pre-step exits 3, so intake, brief and debrief do not run. Manual `run_headless.sh` calls are not blocked. Resolution: on the other machine, `git fetch origin`, `git merge origin/jarvis/<role>-pending`, resolve, commit, push; on the machine that pushed the pending branch, its side is already checked out, so it merges `origin/<branch>` instead. The same steps apply to `jarvis/client-pending`, which a client's `/backup` pushes when its own sync conflicts.
 
 **Clearing:** the marker is removed by any cycle that completes step 5, whether or not `origin` was ahead. That cycle also deletes `jarvis/<role>-pending` on `origin` (a branch that is already gone is not an error) and writes a "sync unblocked" alert.
 

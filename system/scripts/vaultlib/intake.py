@@ -194,11 +194,11 @@ class Intake:
             self.alert("briefing extraction skipped: run.lock busy")
 
     def _extract_locked(self, path: Path) -> None:
+        """Drop each new #wiki-ingest block; the briefing is never rewritten (two-machine spec §5.6)."""
         try:
             if not path.is_file():
                 return
-            before = path.stat()
-            if self.now() - before.st_mtime < FRESH_SECONDS:
+            if self.now() - path.stat().st_mtime < FRESH_SECONDS:
                 return
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
@@ -206,37 +206,49 @@ class Intake:
             return
         if START not in text:
             return
-        kept, extracted, inside = [], [], False
+        blocks, current, problem = [], None, ""
         for line in text.split("\n"):
             stripped = line.strip()
             if stripped == START:
-                if inside:
-                    self.alert("briefing has a nested #wiki-ingest-start; left untouched")
-                    return
-                inside = True
-                continue
-            if stripped == END and inside:
-                inside = False
-                continue
-            (extracted if inside else kept).append(line)
-        if inside:
-            self.alert(f"briefing {path.name} has an unterminated #wiki-ingest-start; left untouched")
-            return
+                if current is not None:
+                    problem = "has a nested #wiki-ingest-start"
+                    current = None
+                    break
+                current = []
+            elif stripped == END and current is not None:
+                blocks.append(current)
+                current = None
+            elif current is not None:
+                current.append(line)
+        if current is not None:
+            problem = "has an unterminated #wiki-ingest-start"
+        rel = path.relative_to(self.vault).as_posix()
+        record_path = self.logs / "extracted_blocks.jsonl"
+        known = {(r.get("briefing"), r.get("hash")) for r in self._jsonl(record_path) if r.get("kind") == "block"}
         try:
-            inbox = self.vault / "raw" / "inbox"
-            inbox.mkdir(parents=True, exist_ok=True)
-            drop = unique(inbox / f"daily_note_drop_{int(time.time())}.md")
-            tmp = path.with_name(f".{path.name}.tmp")
-            tmp.write_text("\n".join(kept), encoding="utf-8")
-            after = path.stat()
-            if (after.st_mtime_ns, after.st_size) != (before.st_mtime_ns, before.st_size):
-                tmp.unlink(missing_ok=True)
-                self.alert(f"briefing {path.name} changed during extraction; left untouched")
-                return
-            drop.write_text("\n".join(extracted) + "\n", encoding="utf-8")
-            os.replace(tmp, path)
+            for lines in blocks:
+                body = "\n".join(lines)
+                digest = hashlib.sha256(body.strip().encode("utf-8")).hexdigest()
+                if not body.strip() or (rel, digest) in known:
+                    continue
+                inbox = self.vault / "raw" / "inbox"
+                inbox.mkdir(parents=True, exist_ok=True)
+                drop = unique(inbox / f"daily_note_drop_{int(time.time())}.md")
+                drop.write_text(body + "\n", encoding="utf-8")
+                _append_jsonl(record_path, {"kind": "block", "briefing": rel, "hash": digest,
+                                            "drop": drop.relative_to(self.vault).as_posix(),
+                                            "time": self.dt().isoformat(timespec="seconds")})
+                known.add((rel, digest))
         except OSError as exc:
-            self.alert(f"briefing extraction failed ({exc.__class__.__name__}); left untouched")
+            self.alert(f"briefing extraction failed ({exc.__class__.__name__}); will retry")
+            return
+        if problem:
+            day = self.today()
+            seen = any(r.get("kind") == "alert" and r.get("briefing") == rel and r.get("reason") == problem
+                       and r.get("date") == day for r in self._jsonl(record_path))
+            if not seen:
+                self.alert(f"briefing {path.name} {problem}; the blocks after it wait until it is fixed")
+                _append_jsonl(record_path, {"kind": "alert", "briefing": rel, "reason": problem, "date": day})
 
     # -- inbox -----------------------------------------------------------
     def process_inbox(self) -> bool:

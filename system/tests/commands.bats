@@ -359,3 +359,42 @@ self_edit_contract() {
   [[ "$sec" == *'Bash timeout of at least 300000 ms'* ]]
   grep -qF 'run `system/scripts/brief_prep.sh <date>` first, with a Bash timeout of at least 300000 ms' .claude/commands/brief.md
 }
+
+@test "/backup in private syncs through vault_sync.sh and reports its exit in words" {
+  f=.claude/commands/backup.md
+  grep -qF 'In `private`, run `system/scripts/vault_sync.sh`' "$f"
+  grep -qF '4 a run is in progress; try again shortly' "$f"
+  grep -qF 'origin/jarvis/*-pending' "$f"
+}
+
+@test "/setup names the sync units on a server and prints the Obsidian Git settings on a client" {
+  [[ "$(setup_section '5. Units')" == *'`jarvis-sync` (server only)'* ]]
+  for k in autoSaveInterval autoBackupAfterFileChange autoPullOnBoot disablePush pullBeforePush syncMethod autoCommitMessage; do
+    grep -qF "\`$k\`" .claude/commands/setup.md
+  done
+  grep -qF 'git rm --cached .obsidian/plugins/obsidian-git/data.json' .claude/commands/setup.md
+  grep -qF 'one test edit' .claude/commands/setup.md
+  grep -qxF '.obsidian/plugins/obsidian-git/data.json' .gitignore
+}
+
+@test "system_health checks the sync timer and the blocked marker on a server" {
+  f=system/tests/system_health.bats
+  grep -A3 'the sync timer is active' "$f" | grep -qF 'skip_unless_role server'
+  grep -A3 'no sync conflict is blocking the runs' "$f" | grep -qF 'skip_unless_role server'
+}
+
+@test "the README explains sync conflicts and drops the by-hand sync" {
+  grep -qx '### Sync conflicts' README.md
+  grep -qF 'git merge origin/jarvis/server-pending' README.md
+  grep -qF 'On the machine that pushed the pending branch, its side is already checked out: run `git merge origin/<branch>` there instead' README.md
+  grep -qF -- '--no-verify' README.md
+  run grep -F 'Syncing them automatically is Plan 8c' README.md
+  [ "$status" -eq 1 ]
+}
+
+@test "/setup phase 4 checks every private vault and sets the upstream to origin" {
+  sec="$(setup_section '4. Remote')"
+  [[ "$sec" == *'git branch -u "origin/$(git branch --show-current)"'* ]]
+  [[ "$sec" == *'whenever the mode is `private`'* ]]
+  [[ "$sec" != *'On a server or a client, only `private` is allowed: the machines share the vault through the private `origin`. Then check'* ]]
+}

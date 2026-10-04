@@ -23,45 +23,18 @@ esac
 
 shopt -s nullglob
 
-if [[ "$mode" == uninstall ]]; then
-  owned=()
-  for f in "$UNIT_DIR"/*.service "$UNIT_DIR"/*.timer; do
-    if [[ "$(head -n 1 -- "$f")" == "$HEADER" ]]; then owned+=("${f##*/}"); fi
-  done
-  if (( ${#owned[@]} == 0 )); then
-    echo "no units managed by $VAULT_ROOT"
-    exit 0
-  fi
-  "$SYSTEMCTL" --user disable --now "${owned[@]}" || echo "install_units: warning: systemctl disable failed" >&2
-  for n in "${owned[@]}"; do
-    rm -f -- "$UNIT_DIR/$n"
-    echo "removed $n"
-  done
-  "$SYSTEMCTL" --user daemon-reload
-  exit 0
-fi
-
-
-# The units each machine role runs (two-machine spec §3.3), and the ones it enables.
-role="$(config_get machine_role standalone)"
-case "$role" in
-  standalone)
-    UNITS=(jarvis-intake.service jarvis-intake.timer jarvis-brief.service jarvis-brief.timer
-           jarvis-debrief.service jarvis-debrief.timer jarvis-focus.service)
-    ENABLE=(jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer jarvis-focus.service) ;;
-  server)
-    UNITS=(jarvis-intake.service jarvis-intake.timer jarvis-brief.service jarvis-brief.timer
-           jarvis-debrief.service jarvis-debrief.timer)
-    ENABLE=(jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer) ;;
-  client) UNITS=() ENABLE=() ;;
-  *) die 1 "unknown machine_role in system/config.md: $role" ;;
-esac
-
-# owned_units: the unit files in UNIT_DIR whose header names this vault.
+# owned_units / owned_dropins: the unit files and drop-ins (<unit>.d/<name>.conf) in UNIT_DIR whose
+# header names this vault.
 owned_units() {
   local f
   for f in "$UNIT_DIR"/*.service "$UNIT_DIR"/*.timer; do
     if [[ "$(head -n 1 -- "$f")" == "$HEADER" ]]; then printf '%s\n' "${f##*/}"; fi
+  done
+}
+owned_dropins() {
+  local f
+  for f in "$UNIT_DIR"/*.service.d/*.conf; do
+    if [[ "$(head -n 1 -- "$f")" == "$HEADER" ]]; then printf '%s\n' "${f#"$UNIT_DIR"/}"; fi
   done
 }
 
@@ -76,12 +49,61 @@ remove_units() {
   done
 }
 
+# remove_dropins <unit.d/name.conf…>: delete and report owned drop-ins, and their directories once empty.
+remove_dropins() {
+  local n
+  for n in "$@"; do
+    rm -f -- "$UNIT_DIR/$n"
+    rmdir -- "$UNIT_DIR/${n%/*}" 2>/dev/null || true
+    echo "removed $n"
+  done
+}
+
+if [[ "$mode" == uninstall ]]; then
+  mapfile -t owned < <(owned_units)
+  mapfile -t dropins < <(owned_dropins)
+  if (( ${#owned[@]} + ${#dropins[@]} == 0 )); then
+    echo "no units managed by $VAULT_ROOT"
+    exit 0
+  fi
+  remove_units "${owned[@]}"
+  remove_dropins "${dropins[@]}"
+  "$SYSTEMCTL" --user daemon-reload
+  exit 0
+fi
+
+
+# The units each machine role runs (two-machine spec §3.3), and the ones it enables.
+role="$(config_get machine_role standalone)"
+case "$role" in
+  standalone)
+    UNITS=(jarvis-intake.service jarvis-intake.timer jarvis-brief.service jarvis-brief.timer
+           jarvis-debrief.service jarvis-debrief.timer jarvis-focus.service)
+    ENABLE=(jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer jarvis-focus.service) ;;
+  server)
+    UNITS=(jarvis-intake.service jarvis-intake.timer jarvis-brief.service jarvis-brief.timer
+           jarvis-debrief.service jarvis-debrief.timer jarvis-sync.service jarvis-sync.timer)
+    ENABLE=(jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer jarvis-sync.timer) ;;
+  client) UNITS=() ENABLE=() ;;
+  *) die 1 "unknown machine_role in system/config.md: $role" ;;
+esac
+# A server syncs around every run (two-machine spec §5.2): one drop-in per run service, with the
+# service's own prep step and a timeout raised by two sync deadlines plus margin.
+DROPINS=()
+[[ "$role" != server ]] || DROPINS=(jarvis-intake.service.d/jarvis-sync.conf jarvis-brief.service.d/jarvis-sync.conf
+                                    jarvis-debrief.service.d/jarvis-sync.conf)
+declare -A DROPIN_TIMEOUT=([jarvis-intake]=105min [jarvis-brief]=45min [jarvis-debrief]=35min)
+declare -A DROPIN_PREP=([jarvis-intake]="" [jarvis-brief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/brief_prep.sh"'
+                        [jarvis-debrief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/debrief_prep.sh"')
+
 if [[ "$role" == client ]]; then
   echo "install_units: machine_role client: no units"
   if [[ "$mode" == install ]]; then
     mapfile -t stale < <(owned_units)
-    if (( ${#stale[@]} )); then
+    mapfile -t stale_dropins < <(owned_dropins)
+    if (( ${#stale[@]} + ${#stale_dropins[@]} )); then
       remove_units "${stale[@]}"
+      remove_dropins "${stale_dropins[@]}"
       "$SYSTEMCTL" --user daemon-reload
     fi
   fi
@@ -101,6 +123,7 @@ if ! out="$(config_validate 2>&1)"; then
   die 1 "system/config.md or a codebase file is invalid; fix it and re-run"
 fi
 tz="$(config_get timezone)" brief="$(config_get brief_time)" debrief="$(config_get debrief_time)"
+sync_interval="$(config_get sync_interval_minutes 5)"
 unit_path="$(dirname "$claude_bin"):%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
 esc() { printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'; }
@@ -111,37 +134,51 @@ for n in "${UNITS[@]}"; do
   [[ -f "system/systemd/$n.in" ]] || die 1 "missing unit template system/systemd/$n.in"
   templates+=("system/systemd/$n.in")
 done
-for t in "${templates[@]}"; do
-  name="$(basename "$t" .in)"
+# render <template> <output> [sed args…]: header plus the template with every placeholder replaced.
+render() {
+  local t="$1" out="$2"
+  shift 2
+  mkdir -p -- "$(dirname -- "$out")"
   {
     printf '%s\n' "$HEADER"
-    sed -e "s|{{VAULT_ROOT}}|$(esc "$VAULT_ROOT")|g" -e "s|{{TZ}}|$(esc "$tz")|g" \
+    sed "$@" -e "s|{{VAULT_ROOT}}|$(esc "$VAULT_ROOT")|g" -e "s|{{TZ}}|$(esc "$tz")|g" \
         -e "s|{{BRIEF_TIME}}|$(esc "$brief")|g" -e "s|{{DEBRIEF_TIME}}|$(esc "$debrief")|g" \
+        -e "s|{{SYNC_INTERVAL}}|$(esc "$sync_interval")|g" \
         -e "s|{{CLAUDE_BIN}}|$(esc "$claude_bin")|g" -e "s|{{UNIT_PATH}}|$(esc "$unit_path")|g" "$t"
-  } > "$work/$name"
-  if grep -q '{{' "$work/$name"; then
-    die 1 "$t: unreplaced placeholder $(grep -o '{{[^}]*}*' "$work/$name" | head -n 1)"
+  } > "$out"
+  if grep -q '{{' "$out"; then
+    die 1 "$t: unreplaced placeholder $(grep -o '{{[^}]*}*' "$out" | head -n 1)"
   fi
+}
+for t in "${templates[@]}"; do
+  render "$t" "$work/$(basename "$t" .in)"
 done
-rendered=("$work"/*)
+for d in "${DROPINS[@]}"; do
+  svc="${d%.service.d/*}"
+  render system/systemd/dropins/jarvis-sync.conf.in "$work/$d" \
+    -e "s|{{PREP_LINE}}|$(esc "${DROPIN_PREP[$svc]}")|" -e "s|{{TIMEOUT}}|${DROPIN_TIMEOUT[$svc]}|"
+done
+# Each unit is verified with its drop-ins beside it, as systemd will load them.
+rendered=("$work"/*.service "$work"/*.timer)
 if ! out="$(systemd-analyze --user verify "${rendered[@]}" 2>&1)"; then
   printf '%s\n' "$out" >&2
   die 1 "systemd-analyze --user verify rejected the rendered units"
 fi
 [[ -z "$out" ]] || printf '%s\n' "$out" >&2
+files=("${rendered[@]##*/}" "${DROPINS[@]}")
 
 if [[ "$mode" == dry ]]; then
-  for u in "${rendered[@]}"; do
-    printf '===== %s\n' "${u##*/}"
-    cat -- "$u"
+  for n in "${files[@]}"; do
+    printf '===== %s\n' "$n"
+    cat -- "$work/$n"
   done
   exit 0
 fi
 
 # Never overwrite a unit this vault does not own: a foreign unit, or one owned by another vault that
 # still exists. A unit whose owning vault is gone was left by a move and is re-pointed here.
-for u in "${rendered[@]}"; do
-  dst="$UNIT_DIR/${u##*/}"
+for n in "${files[@]}"; do
+  dst="$UNIT_DIR/$n"
   [[ -e "$dst" ]] || continue
   first="$(head -n 1 -- "$dst")"
   [[ "$first" == "$HEADER" ]] && continue
@@ -154,9 +191,9 @@ for u in "${rendered[@]}"; do
   fi
 done
 
-mkdir -p -- "$UNIT_DIR"
-for u in "${rendered[@]}"; do
-  n="${u##*/}" dst="$UNIT_DIR/${u##*/}"
+for n in "${files[@]}"; do
+  u="$work/$n" dst="$UNIT_DIR/$n"
+  mkdir -p -- "$(dirname -- "$dst")"
   if [[ -f "$dst" ]] && cmp -s -- "$u" "$dst"; then
     echo "unchanged $n"
     continue
@@ -166,11 +203,15 @@ for u in "${rendered[@]}"; do
   mv -f -- "$dst.tmp" "$dst"
   echo "$status $n"
 done
-# A role change leaves owned units the new role does not use: remove them.
-stale=()
+# A role change leaves owned units and drop-ins the new role does not use: remove them.
+stale=() stale_dropins=()
 while IFS= read -r n; do
   [[ " ${UNITS[*]} " == *" $n "* ]] || stale+=("$n")
 done < <(owned_units)
+while IFS= read -r n; do
+  [[ " ${DROPINS[*]} " == *" $n "* ]] || stale_dropins+=("$n")
+done < <(owned_dropins)
 remove_units "${stale[@]}"
+remove_dropins "${stale_dropins[@]}"
 "$SYSTEMCTL" --user daemon-reload
 "$SYSTEMCTL" --user enable --now "${ENABLE[@]}"

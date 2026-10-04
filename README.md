@@ -29,7 +29,7 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 | 8a. Machine roles and Debian | `machine_role` (standalone, server, client), `check_deps --role` with apt hints, units by role, Debian proven natively | Complete: [plan](docs/superpowers/plans/2026-10-03-plan-8a-roles-debian.md), [acceptance](docs/superpowers/spikes/2026-10-03-plan-8a-acceptance.md) |
 | 8d. Calendar from the connector | Brief calendar from the installed Google Calendar connector | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8d-calendar-connector.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8d-acceptance.md) |
 | 8b. Commit history | Scripted commit messages, one commit per headless run | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8b-commit-history.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8b-acceptance.md) |
-| 8c. Sync | `vault_sync.sh`, server sync units, conflicts, client setup. The real vault is set up after this plan | Next |
+| 8c. Sync | `vault_sync.sh`, server sync units, conflicts, client setup. The real vault is set up after this plan | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8c-sync.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8c-acceptance.md) |
 | 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
 | Sub-project 2 | Optimus orchestrator | Separate spec, after Plans 7 and 5 |
@@ -131,7 +131,26 @@ Each machine that holds the vault has a `machine_role` in its own `system/config
 | `server` | intake, brief and debrief units; memory hooks; codebases | an always-on machine that runs the automation and your coding sessions |
 | `client` | nothing automated | reading and editing the vault in Obsidian on another machine |
 
-A server and its clients share the vault through a private `origin` (`remote_mode: private`). Syncing them automatically is Plan 8c; until then, sync by hand with `/backup` and `git pull`.
+A server and its clients share the vault through a private `origin` (`remote_mode: private`):
+
+- **Server.** `vault_sync.sh` runs every `sync_interval_minutes` (`jarvis-sync.timer`) and before and after every run: it commits headless runs and other changes with scripted messages, merges `origin` and pushes. Network and credential failures never stop the runs; they are alerted once a day until sync works again.
+- **Client.** The Obsidian Git plugin commits and syncs every few minutes; `/setup` prints its settings. Write notes in today's briefing between `#wiki-ingest-start` and `#wiki-ingest-end`: the server compiles each new block and leaves the briefing as it is (on every role, blocks stay in the briefing after compiling). Files in `raw/inbox/` on a client are not synced.
+
+### Sync conflicts
+
+A conflict is never resolved automatically. The server aborts the merge, pushes its side to `jarvis/server-pending` on `origin`, writes `system/logs/sync-blocked`, alerts once, and skips intake, brief and debrief until it is resolved. Resolve it on the other machine (for `jarvis/server-pending`, a client):
+
+```sh
+git fetch origin
+git merge origin/jarvis/server-pending   # a client's own conflict uses origin/jarvis/client-pending
+# fix the conflicted files, then
+git commit
+git push
+```
+
+On the machine that pushed the pending branch, its side is already checked out: run `git merge origin/<branch>` there instead (`<branch>` is the vault's branch), then resolve, commit and push.
+
+The next server sync clears the marker, deletes the pending branch and starts a brief or debrief that was skipped today. The pre-commit hook rejects any file that still holds conflict markers; if a client note that bypassed the hook blocks your commit, the hook names it: fix it, or commit with `--no-verify` knowingly.
 
 ## Requirements
 
