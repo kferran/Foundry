@@ -183,6 +183,7 @@ upstream_commit() {  # <file> <text>
   [ "$(cat new.txt)" = hello ]
   [ "$(git log -1 --format=%P | wc -w)" -eq 2 ]
   [ -f system/index.db ]
+  grep -qE '^[0-9]{8}T[0-9]{6}$' system/logs/commit_runs.since
   grep -qx 'changed jarvis-brief.service' <<< "$output"
   grep -q '^ExecStart=' "$SYSTEMD_USER_DIR/jarvis-brief.service"
 }

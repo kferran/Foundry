@@ -27,6 +27,8 @@ if ! git merge --no-ff --no-edit "$ref"; then
   exit 1
 fi
 
+# Runs from before this update are committed with the rest of the vault, never one by one (two-machines spec §4.2).
+system/scripts/commit_runs.py --init-cutover
 system/scripts/vault_index.py rebuild
 
 # Re-render units only where this vault already installed them: an update must never install or

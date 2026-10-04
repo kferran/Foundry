@@ -52,6 +52,8 @@ The intended loop is **capture → compile → index → recall → correct**:
 5. **Recall.** With the memory hooks installed, a `SessionStart` hook adds up to `recall_budget_chars` of vault data (default 9,000 characters, never more than 9,500) to new sessions in scope: the latest digests for the codebase or partition and, once enabled, preferences you have confirmed. Recalled text is marked as data, not instructions.
 6. **Correct.** Each digest has a Corrections section. Ingest turns these into `preference` notes with linked evidence. A preference's status is calculated in the index, and it becomes confirmed only after you accept it in `/brief`.
 
+**History.** `/backup` first commits each headless run that published files, one commit per run, with a message `commit_runs.py` builds from the run's records (no model writes it). Each carries `Jarvis-Command`, `Jarvis-Run` and `Jarvis-Role` trailers, so `git log` reads as a handoff log: `git log --grep 'Jarvis-Command: ingest'` lists the ingest runs.
+
 | Name | Role | Concrete artifacts |
 |---|---|---|
 | **Jarvis** | The vault / product | this repo, `jarvis-*` systemd units |
