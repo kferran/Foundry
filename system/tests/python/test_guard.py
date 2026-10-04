@@ -43,6 +43,8 @@ def test_views_work(db):
     "ATTACH DATABASE '/tmp/x.db' AS y",
     "PRAGMA journal_mode=DELETE",
     "DROP VIEW v_concept",
+    "UPDATE sqlite_master SET sql = ''",
+    "PRAGMA writable_schema = ON",
 ])
 def test_writes_rejected(db, sql):
     with pytest.raises(sqlite3.DatabaseError):
