@@ -98,3 +98,16 @@ def test_deprecated_wins_and_last_seen_never_goes_back(vault):
     st.set_status("prod-adx/a-0123456789ab", "deprecated", NOW)
     st.upsert(group(), NOW)
     assert read(vault, "raw/telemetry/prod-adx-a-0123456789ab.md")["status"] == "deprecated"
+
+
+def test_manual_note_deprecation_wins_and_substatus_regressed_sticks(vault):
+    st = Store(vault); st.load()
+    st.upsert(group(substatus="regressed"), NOW)
+    assert st.state["groups"]["prod-adx/a-0123456789ab"]["regressed"] is True
+    st.upsert(group(), NOW)
+    assert read(vault, "raw/telemetry/prod-adx-a-0123456789ab.md")["regressed"] == "true"
+    p = vault / "raw/telemetry/prod-adx-a-0123456789ab.md"
+    p.write_text(p.read_text().replace('status: "active"', 'status: "deprecated"'))
+    st.upsert(group(), NOW)
+    assert read(vault, "raw/telemetry/prod-adx-a-0123456789ab.md")["status"] == "deprecated"
+    assert st.state["groups"]["prod-adx/a-0123456789ab"]["status"] == "deprecated"

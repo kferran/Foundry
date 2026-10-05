@@ -122,7 +122,11 @@ class Store:
                 g["last_seen"] = old["last_seen"]
         else:
             count, first, regressed = int(g["count"]), g["detected_at"], False
-        status = "deprecated" if old and old.get("status") == "deprecated" else "active"
+        note_status = None
+        if (self.vault / rel).exists():
+            note_status = (frontmatter.parse((self.vault / rel).read_text(encoding="utf-8")).data or {}).get("status")
+        status = "deprecated" if "deprecated" in (note_status, old and old.get("status")) else "active"
+        regressed = regressed or g.get("substatus") == "regressed"
         fm = {"type": "production_error", "service": g["service"], "exception": g["exception"],
               "operation_id": g["operation_id"], "detected_at": first, "codebase": g["codebase"],
               "partition": g["partition"], "environment": g["environment"], "source": g["source"], "kind": g["kind"],
