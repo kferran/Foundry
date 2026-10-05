@@ -1,7 +1,7 @@
 # The Foundry: Product Rename and Capability Seam (Plan 9)
 
 **Date:** 2026-10-05
-**Status:** Approved in brainstorming (2026-10-05); revised after an independent review (rev 2)
+**Status:** Approved in brainstorming (2026-10-05); revised after an independent review and its re-review (rev 3)
 **Extends:** `2026-09-30-vault-template-design.md` §15 (naming) and §16 (reserved extension points); applies to every spec's vocabulary
 **Roadmap:** Plan 9 (product rename), moved ahead of Plans 5 and 7 by the user (2026-10-05)
 
@@ -28,7 +28,7 @@ Applies to every live file (everything outside `docs/superpowers/`). §4 says wh
 | Today | After Plan 9 |
 |---|---|
 | Jarvis (product, prose) | The Foundry |
-| Optimus; `system/agents/Optimus.md` | the Foreman; `system/agents/foreman.md` |
+| Optimus, "Chief of Staff"; `system/agents/Optimus.md` | the Foreman; `system/agents/foreman.md` ("Chief of Staff" is dropped: the Foreman is the title) |
 | CodingAgent; `system/agents/CodingAgent.md` | the Coding Workcell; `system/agents/workcells/coding.md` |
 | SystemMaintenance; `system/agents/SystemMaintenance.md` | the Maintenance Workcell; `system/agents/workcells/maintenance.md` |
 | The Ark | the index (part of The Core) |
@@ -36,7 +36,7 @@ Applies to every live file (everything outside `docs/superpowers/`). §4 says wh
 | Wheeljack | the intake compiler |
 | Ultra Magnus | the publish gate |
 | Teletraan | the watcher (reserved) |
-| Autobots, Bumblebees, crewmates | Workcell sessions, by capability (ship, scout) |
+| Autobots, Bumblebees, crewmates | Workcell sessions; "ship" and "scout" are session kinds reserved for Sub-project 2, not capabilities |
 | reserved `system/fleet/tasks/<id>/` | reserved `system/jobs/` (layout settled in Sub-project 2) |
 | units `jarvis-intake`, `jarvis-brief`, `jarvis-debrief`, `jarvis-focus`, `jarvis-sync`, reserved `jarvis-watcher`; templates `system/systemd/jarvis-*.in` and `system/systemd/dropins/jarvis-sync.conf.in`; drop-ins `<unit>.service.d/jarvis-sync.conf` | `foundry-…` throughout (templates are moved with `git mv`) |
 | unit `Description=Jarvis <Name>: <role>` (e.g. `Jarvis Wheeljack: intake compiler`, `Jarvis Optimus: morning brief`) | `Description=The Foundry: <role>` (e.g. `The Foundry: intake compiler`, `The Foundry: morning brief`) |
@@ -72,7 +72,7 @@ fields:
 | `workcells/coding.md` | `[code, tests, refactor]` |
 | `workcells/maintenance.md` | `[vault-health, dependencies, telemetry, alerts]` |
 
-The display name is the body's first heading (the index already uses it as the title). The body keeps the persona text of today's `CodingAgent.md` and `SystemMaintenance.md`, reworded for the new names. The index creates a `v_workcell` view from the schema, which is the lookup Sub-project 2 queries.
+The display name is the body's first heading (the index already uses it as the title): exactly `# Coding Workcell` and `# Maintenance Workcell`, and `system/agents/foreman.md` starts with `# The Foreman`. `commands.bats` pins the three headings with `grep -qx`. The body keeps the persona text of today's `CodingAgent.md` and `SystemMaintenance.md`, reworded for the new names. The index creates a `v_workcell` view from the schema, which is the lookup Sub-project 2 queries.
 
 Two rules have no schema kind, so the gated tests enforce them (§6): capability names match `^[a-z]+(-[a-z]+)*$`, and no capability is declared by two Workcells.
 
@@ -115,8 +115,8 @@ No orchestrator, dispatch loop or capability lookup code is built here. Sub-proj
   - `Jarvis-Command`, `Jarvis-Run`, `Jarvis-Role` → `Foundry-…`;
   - `[wheeljack]` → `[intake]`, `[soundwave]` → `[memory]`;
   - the `git mv` moves of the unit templates and personas.
-- **Hand-written patches** cover everything else: the capability seam (§3); every remaining old name in prose and identifiers (Jarvis as a product name, Optimus, CodingAgent, SystemMaintenance, Wheeljack, Ultra Magnus, Soundwave, The Ark, Teletraan, Autobots, Bumblebees, crewmates, `crew` identifiers, `task_id`, `fleet`, the unit `Description=` lines, the digest request line, the recall header), each reworded so the sentence still reads correctly. The §6 test finds any that remain.
-- **README:** "What Jarvis is" becomes "What The Foundry is"; the naming table lists the Foreman, the Workcells, The Core and its parts with plain names; "Memory (Soundwave)" becomes "Memory" under The Core; the Status table's roadmap rows (including "3. Memory (Soundwave)", "Optimus orchestrator", the Plan 9 row that says the name is not chosen, "Zero-token fleet watcher") are reworded; the repository layout shows `system/agents/workcells/` and `jobs/`; the getting-started prompt says "a new Foundry vault".
+- **Hand-written patches** cover everything else (after the script, about 117 lines in 45 files, measured on 2026-10-05; the largest are `README.md` 27, `memory.bats` and `commands.bats` 8 each, `recall.py` 6, `CLAUDE.md` 5), including the test fixtures that pin old wording (`focus.bats`'s window-title fixture `"… - Jarvis - Obsidian …"`, `commands.bats`'s `agent_owner` wording check for `ingest.md` and its `CodingAgent-<epoch>.json` and `{{agent_name}}` checks): the capability seam (§3); every remaining old name in prose and identifiers (Jarvis as a product name, Optimus, CodingAgent, SystemMaintenance, Wheeljack, Ultra Magnus, Soundwave, The Ark, Teletraan, Autobots, Bumblebees, crewmates, `crew` identifiers, `task_id`, `fleet`, the unit `Description=` lines, the digest request line, the recall header), each reworded so the sentence still reads correctly. The §6 test finds any that remain.
+- **README:** "What Jarvis is" becomes "What The Foundry is"; the naming table lists the Foreman, the Workcells, The Core and its parts with plain names; "Memory (Soundwave)" becomes "Memory" under The Core; the Status table's roadmap rows are reworded ("3. Memory (Soundwave)" → "3. Memory", "Optimus orchestrator" → "the Foreman orchestrator", and the Plan 9 row reads `9. Product rename | The Foundry names and the capability seam | Complete` with links, placed after the 8e row, its order of execution); the naming table's "Zero-token fleet watcher" row becomes the watcher; the repository layout shows `system/agents/workcells/` and `jobs/`; the getting-started prompt says "a new Foundry vault".
 - **`.gitignore`** reserves `system/jobs/` instead of `system/fleet/`; the index's `NOT_INDEXED` list follows.
 
 ## 5. Docs under `docs/superpowers/`
@@ -130,9 +130,19 @@ No orchestrator, dispatch loop or capability lookup code is built here. Sub-proj
 
 New tests go into existing files (`vault_integrity.bats`, `commands.bats`), so the gate stays at 16 suites. Under bats 1.8 and ruling R1 (no mid-test `!`, no `&&` assertion chains):
 
-- **No old names in content:** a case-insensitive pattern, built from pieces so the test file does not match itself (for example `re="jar""vis|…"`), covers `jarvis`, `optimus`, `wheeljack`, `ultra magnus`, `ultra-magnus`, `soundwave`, `teletraan`, `the ark`, `autobot`, `bumblebee`, `codingagent`, `systemmaintenance`, `crewmate`, `\bcrew`, `fleet`, `task_id`, `agent_owner`, `assigned_agent` and `agent_name`. The check is
-  `out="$(git grep -h -i -E "$re" -- . ':!docs/superpowers' | sed -e 's/2026-09-30-jarvis-roadmap\.md//g' -e '<the template URL, escaped>' | grep -i -E "$re" || true)"`, then `[ -z "$out" ]`, so a line that holds a protected string and a real leftover still fails.
-- **No old names in paths:** `[ -z "$(git ls-files | grep -v '^docs/superpowers/' | grep -i -E "$re" || true)" ]`.
+- **Scope:** both checks cover only the files the template owns, never the user's notes (a compiled note may say "fleet" or "crew"):
+  `OWN=(CLAUDE.md README.md .gitignore .claude .githooks system wiki/Index.md ':!system/codebases')`. `system/codebases/example.md` is checked by name in the same test.
+- **No old names in content:** every token and both protected strings are split into pieces, so the test file, which lies inside `system/`, does not match itself:
+  ```
+  re="jar""vis|opt""imus|wheel""jack|ultra[ -]mag""nus|sound""wave|tele""traan|the a""rk|auto""bot|bumble""bee|coding""agent|system""maintenance|(^|[^a-z])cr""ew|fl""eet|task""_id|agent""_owner|assigned""_agent|agent""_name|chief of st""aff"
+  road="2026-09-30-jar""vis-roadmap\.md"
+  url="https://github\.com/kferran/jar""vis\.git"
+  out="$(git grep -h -i -E "$re" -- "${OWN[@]}" system/codebases/example.md | sed -e "s#$road##g" -e "s#$url##g" | grep -i -E "$re" || true)"
+  printf '%s\n' "$out"
+  [ -z "$out" ]
+  ```
+  A line that holds a protected string and a real leftover still fails, and so does a bare `kferran/jarvis` without `.git`. (Measured on 2026-10-05: 281 lines in 60 files before Plan 9; 0 false positives; `(^|[^a-z])crew` catches `test_crew_…` and skips `screw` and `aircrew`.)
+- **No old names in paths:** `out="$(git ls-files -- "${OWN[@]}" | grep -i -E "$re" || true)"`, printed, then `[ -z "$out" ]`.
 - **Capabilities:** the concept schema's `capability` values equal the union of `capabilities` in `system/agents/workcells/*.md`; no capability is declared twice; every capability matches `^[a-z]+(-[a-z]+)*$`; every Workcell file passes the `workcell` schema; `system/agents/foreman.md` exists.
 - **Pre-commit:** a staged change to a Workcell file with invalid frontmatter is rejected by the hook.
 - **Existing tests** are updated in place to the new unit names, variables, trailers, branch names, tags, paths, the digest request line and the recall header (for example `commands.bats`'s `ls system/agents` value becomes `foreman.md workcells`, and its persona-script-reference check globs `system/agents/workcells/*.md` too; `test_schema_notes.py` expects the `workcell` schema). No test is removed.
