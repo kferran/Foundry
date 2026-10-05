@@ -133,3 +133,24 @@ setup() {
   enum="$(system/scripts/vault_index.py field system/schemas/concept.md fields.capability.values | tr ',' '\n' | sort)"
   [ "$(sort <<< "$caps")" = "$enum" ]
 }
+
+# Files the template owns (Plan 9 spec §6), never the user's notes. ':!system/codebases' also drops
+# system/codebases/example.md, so each check lists it on its own.
+OWN=(CLAUDE.md README.md .gitignore .claude .githooks system wiki/Index.md ':!system/codebases')
+# Split into pieces so this file, which lies inside system/, does not match itself.
+OLD="jar""vis|opt""imus|wheel""jack|ultra[ -]mag""nus|sound""wave|tele""traan|the a""rk|auto""bot|bumble""bee|coding""agent|system""maintenance|(^|[^a-z])cr""ew|fl""eet|task""_id|agent""_owner|assigned""_agent|agent""_name|chief of st""aff"
+
+@test "no retired names remain in template content" {
+  road="2026-09-30-jar""vis-roadmap\.md"
+  url="$(head -n 1 system/template_source | sed 's/[.[\*^$#]/\\&/g')"  # read at run time; never written in a test
+  out="$( { git grep -h -i -E "$OLD" -- "${OWN[@]}"; git grep -h -i -E "$OLD" -- system/codebases/example.md; } \
+    | sed -e "s#$road##g" -e "s#$url##g" | grep -i -E "$OLD" || true)"
+  printf '%s\n' "$out"
+  [ -z "$out" ]
+}
+
+@test "no retired names remain in template paths" {
+  out="$( { git ls-files -- "${OWN[@]}"; git ls-files -- system/codebases/example.md; } | grep -i -E "$OLD" || true)"
+  printf '%s\n' "$out"
+  [ -z "$out" ]
+}
