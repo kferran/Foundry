@@ -135,7 +135,7 @@ setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } o
   [ "$(grep -E '^## (5|5a|6)\. ' "$f" | tr '\n' '|')" = '## 5. Units|## 5a. Memory hooks|## 6. Calendar|' ]
   sec="$(setup_section '5a. Memory hooks')"
   for s in memory_recall.sh memory_capture.sh memory_activity.sh '`/digest`' 'left alone' \
-      'act only inside the vault and the registered codebases' 'Stop hook error: Jarvis memory (not an error)' \
+      'act only inside the vault and the registered codebases' 'Stop hook error: Foundry memory (not an error)' \
       'It is not an error.' 'Only an explicit yes installs.' 'memory capture stays off' \
       'settings: unchanged (dry run, nothing written)' 'digest command: unchanged (dry run, nothing written)' \
       'system/scripts/install_hooks.sh --uninstall'; do

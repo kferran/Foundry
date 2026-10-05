@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Soundwave memory hooks (spec §6.17): eligibility, scope, activity, capture, recall.
+# Memory hooks (spec §6.17): eligibility, scope, activity, capture, recall.
 load helpers
 
 setup() {
@@ -143,7 +143,7 @@ digests() { find raw -path '*/notes/*.md' -type f | sort; }
   tool c-1
   stop c-1 "Done with that."
   [ "$(jq -r .decision <<< "$output")" = block ]
-  [[ "$(jq -r .reason <<< "$output")" == "Jarvis memory (not an error): please reply with a short session digest."* ]]
+  [[ "$(jq -r .reason <<< "$output")" == "Foundry memory (not an error): please reply with a short session digest."* ]]
   [ "$(jq -r .awaiting_digest "$S/c-1.json")" = true ]
 }
 
@@ -255,15 +255,15 @@ digests() { find raw -path '*/notes/*.md' -type f | sort; }
   [ -z "$(find "$VP/raw/personal/notes" -maxdepth 1 -name '.*' -type f)" ]
 }
 
-@test "crew sessions skip the attended check and the periodic request; marked digests carry task_id" {
+@test "Workcell sessions skip the attended check and the periodic request; marked digests carry work_order" {
   export FOUNDRY_WORKCELL_SESSION=1 FOUNDRY_WORK_ORDER=task-42 CLAUDE_CODE_SESSION_ATTENDED=0
   thresholds 1 0
-  start crew-1
-  tools crew-1 5
-  stop crew-1 "Done."
+  start workcell-1
+  tools workcell-1 5
+  stop workcell-1 "Done."
   [ -z "$output" ]
-  stop crew-1 $'<vault-digest>\n## Outcome\nTask done.\n</vault-digest>'
-  grep -qx 'task_id: "task-42"' "$(digests)"
+  stop workcell-1 $'<vault-digest>\n## Outcome\nTask done.\n</vault-digest>'
+  grep -qx 'work_order: "task-42"' "$(digests)"
 }
 
 seed_digests() {

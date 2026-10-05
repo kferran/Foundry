@@ -2,6 +2,7 @@
 
 **Date:** 2026-10-03
 **Status:** Approved in brainstorming; revised after an independent design review and its re-review (rev 3); rev 4 (Plan 8e): brief and debrief wait longer for `run.lock` (§5.4)
+**Names (Plan 9, 2026-10-05):** Jarvis is The Foundry and Optimus the Foreman; CodingAgent and SystemMaintenance are the Coding and Maintenance Workcells; jarvis-* units, JARVIS_* variables and Jarvis-* trailers are foundry-*, FOUNDRY_* and Foundry-* (see 2026-10-05-foundry-rename-design.md §2).
 **Extends:** `2026-09-30-vault-template-design.md` (§6.1 config, §6.2 dependencies, §6.4 intake, §6.6 units, §6.11 remotes, §6.12 updates, §8 `/backup`, §11 `/setup`, §12 tests)
 **Roadmap:** Plan 8, split into three plans (§10): 8a roles and Debian, 8b commit history, 8c sync
 

@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Soundwave: shared helpers for the memory hooks (spec §6.17). Sourced by memory_*.sh.
+# Memory: shared helpers for the memory hooks (spec §6.17). Sourced by memory_*.sh.
 # Hooks never fail a session: every helper returns non-zero on trouble and callers exit 0.
 
 MEM_VAULT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
@@ -14,7 +14,7 @@ mem_log() { printf '%s [memory] %s\n' "$(date -Iseconds)" "$1" >> "$MEM_LOG" 2>/
 mem_valid_sid() { [[ "${1-}" =~ ^[A-Za-z0-9-]+$ ]]; }
 
 # Interactive, attended main sessions only (spike item 12; undocumented variables, re-checked by
-# system_health.bats). Crewmates (FOUNDRY_WORKCELL_SESSION=1) skip the attended check.
+# system_health.bats). Workcell sessions (FOUNDRY_WORKCELL_SESSION=1) skip the attended check.
 mem_env_ok() {
   [[ "${FOUNDRY_HEADLESS:-}" != 1 ]] || return 1
   [[ "${CLAUDE_CODE_ENTRYPOINT:-}" == cli ]] || return 1

@@ -3,13 +3,13 @@ description: Compile raw inputs (inbox files, session digests) into atomic, inte
 argument-hint: <raw file path>
 ---
 
-You are **Wheeljack**, the intake compiler. Compile the input(s) named below into the wiki.
+You are the **intake compiler**. Compile the input(s) named below into the wiki.
 
 $ARGUMENTS
 
 ## Mode
 
-- **Headless run.** The block above starts with a run id (`YYYYmmddTHHMMSS-ingest-xxxx`) on its own line, followed by one vault-relative input path per line (1–5 files, all from one partition). Write **only** under `wiki/.staging/<run_id>/`. The publish gate (Ultra Magnus) validates and publishes after you finish; nothing you write anywhere else reaches the vault.
+- **Headless run.** The block above starts with a run id (`YYYYmmddTHHMMSS-ingest-xxxx`) on its own line, followed by one vault-relative input path per line (1–5 files, all from one partition). Write **only** under `wiki/.staging/<run_id>/`. The publish gate validates and publishes after you finish; nothing you write anywhere else reaches the vault.
 - **Interactive run.** The block is one raw file path and there is no run id. Edit `wiki/` directly. Interactively, refuse paths under `raw/inbox/` and `raw/<partition>/notes/`: the intake timer compiles those from a redacted copy and archives them, so compiling one here duplicates it and skips redaction; offer `system/scripts/intake_daemon.sh` instead. Everything below applies the same way; finish with `system/scripts/lint_vault.sh` and fix any error it reports.
 - **Headless tool rules.** Bash runs only `system/scripts/vault_index.py` commands, one per call, exactly as shown: no `cd`, loops, `;`, `&&`, pipes or redirects, or the call is denied. Create files with Write (it makes missing directories) and change them with Edit. If a call is denied, carry on with what you have and still write your output: a run that writes nothing fails.
 

@@ -42,7 +42,7 @@ setup() {
 @test "generated paths are gitignored" {
   git check-ignore -q system/index.db
   git check-ignore -q wiki/.staging/run/x.md
-  git check-ignore -q system/fleet/tasks/x/status.json
+  git check-ignore -q system/jobs/x/status.json
   git check-ignore -q raw/inbox/note.md
   git check-ignore -q system/quarantine/x.md
 }
@@ -101,7 +101,7 @@ setup() {
   done
   [ ! -x system/hooks/lib_memory.sh ]
   [ -x system/scripts/install_hooks.sh ]
-  grep -qF 'Jarvis memory (not an error): please reply with a short session digest.' system/hooks/digest_instructions.md
+  grep -qF 'Foundry memory (not an error): please reply with a short session digest.' system/hooks/digest_instructions.md
   grep -qF '<vault-digest>' system/hooks/digest_instructions.md
 }
 

@@ -1,9 +1,9 @@
 ---
-description: Optimus builds today's briefing from the calendar, alerts, telemetry, friction notes and yesterday's focus.
+description: The Foreman builds today's briefing from the calendar, alerts, telemetry, friction notes and yesterday's focus.
 argument-hint: [YYYY-MM-DD]
 ---
 
-You are **Optimus**, the Chief of Staff. Build the morning briefing.
+You are **the Foreman**. Build the morning briefing.
 
 $ARGUMENTS
 

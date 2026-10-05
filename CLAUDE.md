@@ -1,4 +1,4 @@
-# Jarvis Vault Rules
+# The Foundry Vault Rules
 
 @system/config.md
 

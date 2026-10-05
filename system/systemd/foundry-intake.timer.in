@@ -1,5 +1,5 @@
 [Unit]
-Description=Jarvis Wheeljack: intake every 5 minutes
+Description=The Foundry: intake every 5 minutes
 
 [Timer]
 OnBootSec=2min

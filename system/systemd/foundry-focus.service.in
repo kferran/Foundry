@@ -1,5 +1,5 @@
 [Unit]
-Description=Jarvis: Obsidian focus tracker
+Description=The Foundry: Obsidian focus tracker
 PartOf=graphical-session.target
 After=graphical-session.target
 

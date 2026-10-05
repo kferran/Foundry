@@ -1,5 +1,5 @@
 #!/bin/bash
-# Soundwave Stop hook (spec §6.17): capture a marked digest, or ask for one after substantive work.
+# Memory Stop hook (spec §6.17): capture a marked digest, or ask for one after substantive work.
 # Never fails the session and never blocks twice in a row.
 [[ "${FOUNDRY_HEADLESS:-}" == 1 ]] && exit 0
 set -uo pipefail
@@ -32,7 +32,7 @@ write_digest() {  # write_digest <sid> <digest text>
   name="$stamp-${sid:0:8}-$slug" n=1
   while [[ -e "$dir/$name.md" ]]; do n=$(( n + 1 )); name="$stamp-${sid:0:8}-$slug-$n"; done
   if [[ "${FOUNDRY_WORKCELL_SESSION:-}" == 1 && "${FOUNDRY_WORK_ORDER:-}" =~ ^[A-Za-z0-9._-]+$ ]]; then
-    task="task_id: \"$FOUNDRY_WORK_ORDER\""$'\n'
+    task="work_order: \"$FOUNDRY_WORK_ORDER\""$'\n'
   fi
   # Written as a dotfile, then renamed: intake skips dotfiles, so it never sees a half-written digest.
   printf -- '---\ntype: session_digest\npartition: "%s"\ncodebase: "%s"\nsession_id: "%s"\ncreated_at: "%s"\nprovenance: ["session"]\nredactions: "%s"\n%s---\n%s\n' \
@@ -68,7 +68,7 @@ main() {
     printf '0\n' > "$MEM_SESSIONS/$sid.events"
     return 0
   fi
-  [[ "${FOUNDRY_WORKCELL_SESSION:-}" == 1 ]] && return 0  # crewmates: on-demand digests only
+  [[ "${FOUNDRY_WORKCELL_SESSION:-}" == 1 ]] && return 0  # Workcell sessions: on-demand digests only
 
   # 2. We asked last time and got no digest: alert, reset, and never ask twice in a row.
   if [[ "$(jq -r .awaiting_digest "$st")" == true ]]; then

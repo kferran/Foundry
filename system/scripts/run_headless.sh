@@ -1,5 +1,5 @@
 #!/bin/bash
-# Wheeljack's harness: the only way automation invokes claude (spec §6.3).
+# Headless harness: the only way automation invokes claude (spec §6.3).
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$VAULT_ROOT"

@@ -10,7 +10,7 @@ fields:
   created_at: {kind: datetime, required: true}
   provenance: {kind: list, of: {kind: enum, values: [headless, interactive, session]}}
   redactions: {kind: int, default: "0"}
-  task_id: {kind: string}
+  work_order: {kind: string}
 ---
 # Session digest
-A Soundwave digest written by the Stop hook from `last_assistant_message`. Compiled into the wiki by Wheeljack.
+A memory digest written by the Stop hook from `last_assistant_message`. Compiled into the wiki by the intake compiler.

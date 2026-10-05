@@ -1,5 +1,5 @@
 #!/bin/bash
-# Soundwave PostToolUse hook (spec §6.17): count work events for an eligible session.
+# Memory PostToolUse hook (spec §6.17): count work events for an eligible session.
 # Fast path: pure bash, no jq or Python (spike item 15: one jq call alone costs ~44 ms).
 [[ "${FOUNDRY_HEADLESS:-}" != 1 && "${CLAUDE_CODE_ENTRYPOINT:-}" == cli ]] || exit 0
 [[ "${FOUNDRY_WORKCELL_SESSION:-}" == 1 || "${CLAUDE_CODE_SESSION_ATTENDED:-}" == 1 ]] || exit 0

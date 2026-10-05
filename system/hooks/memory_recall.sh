@@ -1,5 +1,5 @@
 #!/bin/bash
-# Soundwave SessionStart hook (spec §6.17): freeze the session's scope, then inject the recall block.
+# Memory SessionStart hook (spec §6.17): freeze the session's scope, then inject the recall block.
 # Never fails the session: any problem is logged and the hook exits 0 with no output.
 [[ "${FOUNDRY_HEADLESS:-}" == 1 ]] && exit 0
 set -uo pipefail

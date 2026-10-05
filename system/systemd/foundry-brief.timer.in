@@ -1,5 +1,5 @@
 [Unit]
-Description=Jarvis Optimus: morning brief at {{BRIEF_TIME}}
+Description=The Foundry: morning brief at {{BRIEF_TIME}}
 
 [Timer]
 OnCalendar=*-*-* {{BRIEF_TIME}}:00 {{TZ}}

@@ -2,7 +2,7 @@
 description: Interactive onboarding — config interview, codebases, remotes, systemd units, calendar, index and verification. Safe to re-run.
 ---
 
-You are running Jarvis setup. Every phase is idempotent: show what exists and edit it, never overwrite blindly. Ask one question at a time, show the default, and wait for the answer. Scripts that are not allowlisted will ask the user for permission; that is intended. Run every script as `system/scripts/<name> …` from the vault root.
+You are running setup for this Foundry vault. Every phase is idempotent: show what exists and edit it, never overwrite blindly. Ask one question at a time, show the default, and wait for the answer. Scripts that are not allowlisted will ask the user for permission; that is intended. Run every script as `system/scripts/<name> …` from the vault root.
 
 ## 0. Role and preflight
 Read the current role with `system/scripts/vault_index.py field system/config.md machine_role` (no config, or an empty value, means `standalone`). Ask which role this machine has, showing the current role as the default:
@@ -48,7 +48,7 @@ On a client, run `system/scripts/install_units.sh` without asking: it installs n
 Then run `loginctl show-user "$USER" -p Linger --value`. If it prints `no`, explain that timers only run while you are logged in, and offer `loginctl enable-linger "$USER"` (the user runs it). On a server, linger is required: give the command, wait until the user says it is done, and re-check; do not continue past this phase until it prints `yes`.
 
 ## 5a. Memory hooks
-Memory (Soundwave) is optional and stays off until its hooks are installed in your user-level Claude Code settings. Ask nothing until you have shown the dry run.
+Memory is optional and stays off until its hooks are installed in your user-level Claude Code settings. Ask nothing until you have shown the dry run.
 
 On a client, never install the hooks. Run `system/scripts/install_hooks.sh --dry-run`; if it prints both `unchanged` lines (the hooks are installed from an earlier role), explain that a client runs no coding sessions for the vault, offer `system/scripts/install_hooks.sh --uninstall`, and run it only on an explicit yes. Otherwise report "not used on a client". Then go on to phase 6.
 
@@ -61,7 +61,7 @@ On a client, never install the hooks. Run `system/scripts/install_hooks.sh --dry
    - Three `permissions.allow` rules for `vault_index.py related`, `show` and `backlinks`: the only way a codebase session reads the vault, and it sees only that codebase's partition plus `shared`.
    - `digest.md` in your user commands directory: the `/digest` command, which writes a digest on demand. If the dry run says `left alone`, a `digest.md` that is not managed by a vault already exists; it is kept, and `/digest` stays yours.
 4. Say that the hooks run in every Claude Code session on this machine but act only inside the vault and the registered codebases. Everywhere else, and in headless runs, subagents and `claude -p` scripts, they exit at once and do nothing.
-5. Explain the label: when the Stop hook asks for a digest, Claude Code shows the request as `Stop hook error: Jarvis memory (not an error): please reply with a short session digest. …`. It is not an error. Claude Code labels every request from a Stop hook that way; Claude replies with the digest and the session carries on.
+5. Explain the label: when the Stop hook asks for a digest, Claude Code shows the request as `Stop hook error: Foundry memory (not an error): please reply with a short session digest. …`. It is not an error. Claude Code labels every request from a Stop hook that way; Claude replies with the digest and the session carries on.
 6. Ask: "Install the memory hooks? (yes/no, default no)". Only an explicit yes installs. On yes, run `system/scripts/install_hooks.sh` and report its `backup:`, `settings:` and `digest command:` lines. On anything else, change nothing and say that memory capture stays off and that re-running `/setup` (or `system/scripts/install_hooks.sh` after reading its `--dry-run`) turns it on later.
 
 ## 6. Calendar

@@ -116,7 +116,7 @@ echo "$n" > "$STUB_SLEEP_COUNT"
 EOF
   chmod +x "$STUBS/hyprctl" "$STUBS/sleep"
   export STUB_HYPR_LOG="$BATS_TEST_TMPDIR/hypr.log" STUB_SLEEP_COUNT="$BATS_TEST_TMPDIR/sleeps"
-  export STUB_TITLE="Q3 - plan - Jarvis - Obsidian v1.8.9"
+  export STUB_TITLE="Q3 - plan - my-vault - Obsidian v1.8.9"
 }
 
 # timeout: a tracker whose loop ignores the stub's exit would otherwise hang the suite.

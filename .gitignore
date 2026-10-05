@@ -20,6 +20,6 @@ wiki/.staging/
 system/index.db-wal
 system/index.db-shm
 system/*.lock
-system/fleet/
+system/jobs/
 __pycache__/
 .pytest_cache/

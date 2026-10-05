@@ -1,4 +1,4 @@
-"""Wheeljack intake: compile inbox files and digest batches through run_headless.sh (spec §6.4)."""
+"""Intake: compile inbox files and digest batches through run_headless.sh (spec §6.4)."""
 import contextlib
 import fcntl
 import hashlib

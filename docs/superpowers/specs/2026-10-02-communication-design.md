@@ -2,6 +2,7 @@
 
 **Date:** 2026-10-02
 **Status:** Approved in brainstorming
+**Names (Plan 9, 2026-10-05):** Jarvis is The Foundry and Optimus the Foreman; CodingAgent and SystemMaintenance are the Coding and Maintenance Workcells; jarvis-* units, JARVIS_* variables and Jarvis-* trailers are foundry-*, FOUNDRY_* and Foundry-* (see 2026-10-05-foundry-rename-design.md §2).
 **Extends:** `2026-09-30-vault-template-design.md` (§9 `CLAUDE.md` rules, §6.3 headless commands, §6.8 linter)
 
 ## 1. Problem
