@@ -221,6 +221,18 @@ teardown() {
   [ "$(jq -r .command "$LEDGER" | tr '\n' ' ')" = "ingest brief ingest " ]
 }
 
+@test "a brief that gets run.lock after midnight keeps the date it started on" {
+  mkdir -p "$BATS_TEST_TMPDIR/bin" system/logs
+  real="$(command -v date)"
+  printf '#!/bin/bash\nfor a in "$@"; do case "$a" in -d|--date*) exec %s "$@" ;; esac; done\nif [[ -e "$BATS_TEST_TMPDIR/tomorrow" ]]; then t="2026-01-02 00:10:00"; else t="2026-01-01 23:59:00"; fi\nexec %s -d "$t" "$@"\n' "$real" "$real" > "$BATS_TEST_TMPDIR/bin/date"
+  chmod +x "$BATS_TEST_TMPDIR/bin/date"
+  ( flock 9; sleep 2; touch "$BATS_TEST_TMPDIR/tomorrow" ) 9> system/run.lock &
+  sleep 0.5
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" HEADLESS_LOCK_WAIT=30 STUB_MODE=brief run "$RH" brief
+  wait
+  [ "$(jq -r .run_id system/logs/runs-2026-01.jsonl | cut -c1-8)" = 20260101 ]
+}
+
 @test "permission denials are recorded as warnings" {
   STUB_DENIALS='[{"tool_name":"Write"}]' run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 0 ]
