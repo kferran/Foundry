@@ -114,7 +114,7 @@ No orchestrator, dispatch loop or capability lookup code is built here. Sub-proj
   - `JARVIS_MANAGED_SETTINGS_DIR`, `JARVIS_MANAGED_SETTINGS`, `JARVIS_ORIGINAL_SHA256`, `JARVIS_HEADLESS`, `JARVIS_CREW`, `JARVIS_TASK_ID` → their §2 names;
   - `Jarvis-Command`, `Jarvis-Run`, `Jarvis-Role` → `Foundry-…`;
   - `[wheeljack]` → `[intake]`, `[soundwave]` → `[memory]`;
-  - the `git mv` moves of the unit templates and personas.
+  - the `git mv` moves of the unit templates. (The persona moves belong to the capability seam and happen with it.)
 - **Hand-written patches** cover everything else (after the script, about 117 lines in 45 files, measured on 2026-10-05; the largest are `README.md` 27, `memory.bats` and `commands.bats` 8 each, `recall.py` 6, `CLAUDE.md` 5), including the test fixtures that pin old wording (`focus.bats`'s window-title fixture `"… - Jarvis - Obsidian …"`, `commands.bats`'s `agent_owner` wording check for `ingest.md` and its `CodingAgent-<epoch>.json` and `{{agent_name}}` checks): the capability seam (§3); every remaining old name in prose and identifiers (Jarvis as a product name, Optimus, CodingAgent, SystemMaintenance, Wheeljack, Ultra Magnus, Soundwave, The Ark, Teletraan, Autobots, Bumblebees, crewmates, `crew` identifiers, `task_id`, `fleet`, the unit `Description=` lines, the digest request line, the recall header), each reworded so the sentence still reads correctly. The §6 test finds any that remain.
 - **README:** "What Jarvis is" becomes "What The Foundry is"; the naming table lists the Foreman, the Workcells, The Core and its parts with plain names; "Memory (Soundwave)" becomes "Memory" under The Core; the Status table's roadmap rows are reworded ("3. Memory (Soundwave)" → "3. Memory", "Optimus orchestrator" → "the Foreman orchestrator", and the Plan 9 row reads `9. Product rename | The Foundry names and the capability seam | Complete` with links, placed after the 8e row, its order of execution); the naming table's "Zero-token fleet watcher" row becomes the watcher; the repository layout shows `system/agents/workcells/` and `jobs/`; the getting-started prompt says "a new Foundry vault".
 - **`.gitignore`** reserves `system/jobs/` instead of `system/fleet/`; the index's `NOT_INDEXED` list follows.
@@ -122,7 +122,7 @@ No orchestrator, dispatch loop or capability lookup code is built here. Sub-proj
 ## 5. Docs under `docs/superpowers/`
 
 - Plans, outcomes, spikes and acceptance records are not edited.
-- Each spec gets one line under its status: `**Names (Plan 9, 2026-10-05):** Jarvis is The Foundry and Optimus the Foreman; CodingAgent and SystemMaintenance are the Coding and Maintenance Workcells; jarvis-* units, JARVIS_* variables and Jarvis-* trailers are foundry-*, FOUNDRY_* and Foundry-* (see 2026-10-05-foundry-rename-design.md §2).`
+- Each earlier spec (not this one) gets one line under its status: `**Names (Plan 9, 2026-10-05):** Jarvis is The Foundry and Optimus the Foreman; CodingAgent and SystemMaintenance are the Coding and Maintenance Workcells; jarvis-* units, JARVIS_* variables and Jarvis-* trailers are foundry-*, FOUNDRY_* and Foundry-* (see 2026-10-05-foundry-rename-design.md §2).`
 - The main spec's §15 naming table is replaced by §2's map, and §16's reserved extension points are restated in the new names (`system/jobs/`, `FOUNDRY_WORKCELL_SESSION`, `FOUNDRY_WORK_ORDER`, the watcher, Workcell sessions by capability).
 - The roadmap's Plan 9 row is marked complete when the plan lands.
 
@@ -131,7 +131,7 @@ No orchestrator, dispatch loop or capability lookup code is built here. Sub-proj
 New tests go into existing files (`vault_integrity.bats`, `commands.bats`), so the gate stays at 16 suites. Under bats 1.8 and ruling R1 (no mid-test `!`, no `&&` assertion chains):
 
 - **Scope:** both checks cover only the files the template owns, never the user's notes (a compiled note may say "fleet" or "crew"):
-  `OWN=(CLAUDE.md README.md .gitignore .claude .githooks system wiki/Index.md ':!system/codebases')`. `system/codebases/example.md` is checked by name in the same test.
+  `OWN=(CLAUDE.md README.md .gitignore .claude .githooks system wiki/Index.md ':!system/codebases')`. `':!system/codebases'` also drops `system/codebases/example.md` from every pathspec, so each check runs a second `git grep`/`git ls-files` on `system/codebases/example.md` alone.
 - **No old names in content:** every token and both protected strings are split into pieces, so the test file, which lies inside `system/`, does not match itself:
   ```
   re="jar""vis|opt""imus|wheel""jack|ultra[ -]mag""nus|sound""wave|tele""traan|the a""rk|auto""bot|bumble""bee|coding""agent|system""maintenance|(^|[^a-z])cr""ew|fl""eet|task""_id|agent""_owner|assigned""_agent|agent""_name|chief of st""aff"
