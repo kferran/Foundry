@@ -1,5 +1,5 @@
 #!/bin/bash
-# Merge Soundwave's memory hooks into the user's Claude Code settings (spec §6.19).
+# Merge the memory hooks into the user's Claude Code settings (spec §6.19).
 # Touches only owned entries: hook commands under <vault>/system/hooks/memory_*.sh, the three
 # absolute vault_index.py allow rules, and a commands/digest.md carrying the managed-by line.
 set -euo pipefail
@@ -114,7 +114,7 @@ fi
 jq -e 'type == "object"' <<< "$new" > /dev/null || die 1 "the merged settings did not parse; nothing was changed"
 
 digest_body() {
-  printf -- '---\ndescription: Write a Jarvis session digest of the work since the last one.\n---\n%s%s -->\n\n' "$MANAGED" "$VAULT_ROOT"
+  printf -- '---\ndescription: Write a Foundry session digest of the work since the last one.\n---\n%s%s -->\n\n' "$MANAGED" "$VAULT_ROOT"
   cat system/hooks/digest_instructions.md
 }
 digest_owned() { [[ -f "$DIGEST" ]] && grep -qF -- "$MANAGED" "$DIGEST"; }

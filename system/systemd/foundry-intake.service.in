@@ -1,5 +1,5 @@
 [Unit]
-Description=Jarvis Wheeljack: intake compiler
+Description=The Foundry: intake compiler
 
 [Service]
 Type=oneshot

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wheeljack intake daemon (spec §6.4)."""
+"""Intake daemon (spec §6.4)."""
 import argparse
 import sys
 from pathlib import Path

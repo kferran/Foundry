@@ -1,9 +1,9 @@
 ---
-description: Optimus builds today's briefing from the calendar, alerts, telemetry, friction notes and yesterday's focus.
+description: The Foreman builds today's briefing from the calendar, alerts, telemetry, friction notes and yesterday's focus.
 argument-hint: [YYYY-MM-DD]
 ---
 
-You are **Optimus**, the Chief of Staff. Build the morning briefing.
+You are **the Foreman**. Build the morning briefing.
 
 $ARGUMENTS
 
@@ -24,7 +24,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - `system/logs/inputs/<date>/focus_yesterday.md`: yesterday's top notes and Focus Fragmentation Warnings.
 - `system/logs/inputs/<date>/unavailable.md`: sources the prep script could not read.
 - `system/logs/alerts_<date>.md` and the previous day's alerts file: pipeline alerts.
-- `raw/telemetry/`: production-error notes. Each is critical and routes to **SystemMaintenance**.
+- `raw/telemetry/`: production-error notes. Each is critical and routes to the Workcell with `telemetry`.
 - Friction notes: `system/scripts/vault_index.py query "SELECT path, title FROM v_concept WHERE is_friction = 1"`.
 - Quarantined inputs: Glob `system/quarantine/**/*` and list the file names only.
 - Mail and chat: only if a Gmail or Slack tool is available in this session (never in a headless run). Otherwise write one line: "Mail and chat skipped: no connector in this session."
@@ -33,7 +33,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 
 - If `briefings/<date>.md` exists: headless, run `system/scripts/vault_index.py stage briefings/<date>.md <run_id>` and Edit `wiki/.staging/<run_id>/briefings/<date>.md`; interactive, edit the file. Update the sections below and keep everything the user wrote.
 - Otherwise create it from `system/templates/daily-briefing.md`: replace `{{date}}`, set `{{status}}` to `active`, and fill `{{brief_time}}` and `{{debrief_time}}` from config. Keep the `![[<date>.debrief]]` line.
-- **🌅 Morning Alignment → Active Objectives:** today's fixed commitments from the calendar, then 3–5 objectives. Tie each to a superpower from config where one fits, and hand concrete slices to **CodingAgent** or **SystemMaintenance**.
+- **🌅 Morning Alignment → Active Objectives:** today's fixed commitments from the calendar, then 3–5 objectives. Tie each to a superpower from config where one fits, and hand each concrete slice to a capability: one of the `capability` values in `system/schemas/concept.md` (the Workcell that declares it does the work).
 - **🌅 Morning Alignment → Unavailable Sources:** one bullet per missing source, or "None."
 - **🛑 Real-Time Workflow Friction Matrix:** Systemic Blockers (friction notes, telemetry, alerts, quarantine), Focus Drift Analysis (yesterday's Focus Fragmentation Warnings), Communication Debt (mail and chat, or the skipped line).
 - Frontmatter: `type: briefing`, `date: "<date>"`, `status: active`. Never add, change or remove `provenance`; the gate stamps it.

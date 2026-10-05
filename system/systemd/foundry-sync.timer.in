@@ -1,5 +1,5 @@
 [Unit]
-Description=Jarvis: vault sync every {{SYNC_INTERVAL}} minutes
+Description=The Foundry: vault sync every {{SYNC_INTERVAL}} minutes
 
 [Timer]
 OnBootSec=2min

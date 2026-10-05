@@ -2,7 +2,7 @@
 description: Interactive onboarding — config interview, codebases, remotes, systemd units, calendar, index and verification. Safe to re-run.
 ---
 
-You are running Jarvis setup. Every phase is idempotent: show what exists and edit it, never overwrite blindly. Ask one question at a time, show the default, and wait for the answer. Scripts that are not allowlisted will ask the user for permission; that is intended. Run every script as `system/scripts/<name> …` from the vault root.
+You are running setup for this Foundry vault. Every phase is idempotent: show what exists and edit it, never overwrite blindly. Ask one question at a time, show the default, and wait for the answer. Scripts that are not allowlisted will ask the user for permission; that is intended. Run every script as `system/scripts/<name> …` from the vault root.
 
 ## 0. Role and preflight
 Read the current role with `system/scripts/vault_index.py field system/config.md machine_role` (no config, or an empty value, means `standalone`). Ask which role this machine has, showing the current role as the default:
@@ -41,14 +41,14 @@ On a server or a client, only `private` is allowed: the machines share the vault
 3. The branch is published and tracks `origin`: if `git ls-remote --heads origin "$(git branch --show-current)"` prints nothing, run `git push -u origin HEAD`. Otherwise, if `git rev-parse --abbrev-ref '@{u}'` is not `origin/<branch>` (`setup_remote.sh` moves the upstream to `template` when it renames a plain clone's `origin`), run `git fetch origin` and `git branch -u "origin/$(git branch --show-current)"`. Report the result.
 
 ## 5. Units
-Run `system/scripts/install_units.sh --dry-run` and summarize the units it prints: `jarvis-intake` (every 5 minutes), `jarvis-brief` and `jarvis-debrief` (at the configured times), `jarvis-focus` (standalone only), the focus tracker; `jarvis-sync` (server only), which syncs with `origin` every `sync_interval_minutes` and, through a drop-in on each run service, before and after every run. Ask before installing; on yes run `system/scripts/install_units.sh` and report each `new|changed|unchanged|removed` line.
+Run `system/scripts/install_units.sh --dry-run` and summarize the units it prints: `foundry-intake` (every 5 minutes), `foundry-brief` and `foundry-debrief` (at the configured times), `foundry-focus` (standalone only), the focus tracker; `foundry-sync` (server only), which syncs with `origin` every `sync_interval_minutes` and, through a drop-in on each run service, before and after every run. Ask before installing; on yes run `system/scripts/install_units.sh` and report each `new|changed|unchanged|removed` line.
 
 On a client, run `system/scripts/install_units.sh` without asking: it installs nothing and removes any units this vault installed under an earlier role. Report each `removed` line, or "no units" when it prints none, and skip the linger check.
 
 Then run `loginctl show-user "$USER" -p Linger --value`. If it prints `no`, explain that timers only run while you are logged in, and offer `loginctl enable-linger "$USER"` (the user runs it). On a server, linger is required: give the command, wait until the user says it is done, and re-check; do not continue past this phase until it prints `yes`.
 
 ## 5a. Memory hooks
-Memory (Soundwave) is optional and stays off until its hooks are installed in your user-level Claude Code settings. Ask nothing until you have shown the dry run.
+Memory is optional and stays off until its hooks are installed in your user-level Claude Code settings. Ask nothing until you have shown the dry run.
 
 On a client, never install the hooks. Run `system/scripts/install_hooks.sh --dry-run`; if it prints both `unchanged` lines (the hooks are installed from an earlier role), explain that a client runs no coding sessions for the vault, offer `system/scripts/install_hooks.sh --uninstall`, and run it only on an explicit yes. Otherwise report "not used on a client". Then go on to phase 6.
 
@@ -61,7 +61,7 @@ On a client, never install the hooks. Run `system/scripts/install_hooks.sh --dry
    - Three `permissions.allow` rules for `vault_index.py related`, `show` and `backlinks`: the only way a codebase session reads the vault, and it sees only that codebase's partition plus `shared`.
    - `digest.md` in your user commands directory: the `/digest` command, which writes a digest on demand. If the dry run says `left alone`, a `digest.md` that is not managed by a vault already exists; it is kept, and `/digest` stays yours.
 4. Say that the hooks run in every Claude Code session on this machine but act only inside the vault and the registered codebases. Everywhere else, and in headless runs, subagents and `claude -p` scripts, they exit at once and do nothing.
-5. Explain the label: when the Stop hook asks for a digest, Claude Code shows the request as `Stop hook error: Jarvis memory (not an error): please reply with a short session digest. …`. It is not an error. Claude Code labels every request from a Stop hook that way; Claude replies with the digest and the session carries on.
+5. Explain the label: when the Stop hook asks for a digest, Claude Code shows the request as `Stop hook error: Foundry memory (not an error): please reply with a short session digest. …`. It is not an error. Claude Code labels every request from a Stop hook that way; Claude replies with the digest and the session carries on.
 6. Ask: "Install the memory hooks? (yes/no, default no)". Only an explicit yes installs. On yes, run `system/scripts/install_hooks.sh` and report its `backup:`, `settings:` and `digest command:` lines. On anything else, change nothing and say that memory capture stays off and that re-running `/setup` (or `system/scripts/install_hooks.sh` after reading its `--dry-run`) turns it on later.
 
 ## 6. Calendar
@@ -71,10 +71,10 @@ The brief reads today's calendar from the Google Calendar connector of the Claud
 Run `system/scripts/vault_index.py rebuild`, then `system/scripts/vault_index.py issues`, and report any error. Then run `system/scripts/commit_runs.py --init-cutover`: it records the time from which `/backup` commits each headless run on its own; runs from before it are committed with the rest of the vault.
 
 ## 8. Verify
-Run `system/scripts/verify_setup.sh --health` and `systemctl --user list-timers 'jarvis-*'`. Report each suite's PASS/FAIL line and the next run time of each timer. Health failures are advisory. On a client, run `system/scripts/lint_vault.sh` instead (a client has no test tools or timers) and report its last line.
+Run `system/scripts/verify_setup.sh --health` and `systemctl --user list-timers 'foundry-*'`. Report each suite's PASS/FAIL line and the next run time of each timer. Health failures are advisory. On a client, run `system/scripts/lint_vault.sh` instead (a client has no test tools or timers) and report its last line.
 
 ## 9. Hand-off
-For each registered codebase without one, create `wiki/<partition>/concepts/<Name>OnboardingAssignment.md`, where `<partition>` is the codebase's partition and `<Name>` its name in PascalCase. Frontmatter: `type: concept`, `tags: ["onboarding"]`, `compiled_at` today, `partition`, `codebase`, `agent_owner: CodingAgent`, `status: draft`. Body: direct **CodingAgent** to map the codebase's layers and its logging and telemetry definitions (start from the `logging_hints` the inspection found) into `wiki/<partition>/entities/<Name>LogEventMap.md`; link `[[Index]]` and name each superpower the work serves. Run `system/scripts/lint_vault.sh` afterwards.
+For each registered codebase without one, create `wiki/<partition>/concepts/<Name>OnboardingAssignment.md`, where `<partition>` is the codebase's partition and `<Name>` its name in PascalCase. Frontmatter: `type: concept`, `tags: ["onboarding"]`, `compiled_at` today, `partition`, `codebase`, `capability: code`, `status: draft`. Body: ask the Workcell with `code` to map the codebase's layers and its logging and telemetry definitions (start from the `logging_hints` the inspection found) into `wiki/<partition>/entities/<Name>LogEventMap.md`; link `[[Index]]` and name each superpower the work serves. Run `system/scripts/lint_vault.sh` afterwards.
 
 ## 10. Report
 On a client, first set up Obsidian Git (the community plugin) and show these settings with their `data.json` keys:
@@ -87,7 +87,7 @@ On a client, first set up Obsidian Git (the community plugin) and show these set
 | Push on commit-and-sync | `disablePush` | `false` |
 | Pull on commit-and-sync | `pullBeforePush` | on |
 | Merge strategy | `syncMethod` | `merge` |
-| Commit message on auto commit-and-sync | `autoCommitMessage` | `sync(client): {{numFiles}} files`, a blank line, `{{files}}`, a blank line, then `Jarvis-Command: sync` and `Jarvis-Role: client` on two lines |
+| Commit message on auto commit-and-sync | `autoCommitMessage` | `sync(client): {{numFiles}} files`, a blank line, `{{files}}`, a blank line, then `Foundry-Command: sync` and `Foundry-Role: client` on two lines |
 
 If `git ls-files --error-unmatch .obsidian/plugins/obsidian-git/data.json` succeeds, run `git rm --cached .obsidian/plugins/obsidian-git/data.json` (the file is machine-specific and gitignored). The plugin runs the pre-commit hook inside Obsidian, whose `PATH` can differ from a terminal's: ask the user to make one test edit and confirm the plugin's commit succeeds; the hook's error names any missing tool. Then give the client notes: files dropped into `raw/inbox/` on a client are not synced (write notes in today's briefing between `#wiki-ingest-start` and `#wiki-ingest-end`); disable any plugin that creates `briefings/<date>.md` (daily notes, templates), because the server creates it; `/backup` on a client runs lint and then `vault_sync.sh`.
 

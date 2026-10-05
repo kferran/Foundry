@@ -289,7 +289,7 @@ def cmd_recall(args, vault, sc):
     if scopemod.caller_scope(vault, cwd) != sc:
         raise UsageError("--cwd is not in the caller's scope")
     budget = recallmod.budget_for(vault, args.budget_chars)
-    sys.stdout.write(recallmod.build(vault, sc, budget, crew=recallmod.crew_env()))
+    sys.stdout.write(recallmod.build(vault, sc, budget, workcell_session=recallmod.workcell_session_env()))
     return EXIT_OK
 
 
@@ -374,7 +374,7 @@ def cmd_rebuild(args, vault, sc):
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(prog="vault_index.py", description="The Ark: Jarvis vault index")
+    parser = argparse.ArgumentParser(prog="vault_index.py", description="The Foundry vault index")
     sub = parser.add_subparsers(dest="command", required=True)
 
     def add(name, func, help_text):

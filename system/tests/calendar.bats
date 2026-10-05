@@ -8,7 +8,7 @@ setup() {
   export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_calendar"
   unset CLAUDE_CONFIG_DIR
   mkdir -p "$HOME/.claude"
-  export JARVIS_MANAGED_SETTINGS="$BATS_TEST_TMPDIR/managed.json" JARVIS_MANAGED_SETTINGS_DIR="$BATS_TEST_TMPDIR/managed.d"
+  export FOUNDRY_MANAGED_SETTINGS="$BATS_TEST_TMPDIR/managed.json" FOUNDRY_MANAGED_SETTINGS_DIR="$BATS_TEST_TMPDIR/managed.d"
   export STUB_ARGS="$BATS_TEST_TMPDIR/args" STUB_CWD="$BATS_TEST_TMPDIR/cwd" STUB_ENV="$BATS_TEST_TMPDIR/env"
   export STUB_STREAM="$BATS_TEST_TMPDIR/stream.jsonl"
   CF="$V/system/scripts/calendar_fetch.sh"
@@ -85,9 +85,9 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
 @test "every tool the user's settings allow is denied, except list_events and rules that would match it" {
   printf '%s\n' '{"permissions":{"allow":["mcp__claude_ai_Gmail__send_message","Bash(ls:*)","mcp__claude_ai_Google_Calendar","mcp__claude_ai_Google_Calendar__*","mcp__claude_ai_Google_Calendar__list_events"]}}' > "$HOME/.claude/settings.json"
   printf '%s\n' '{"permissions":{"allow":["mcp__claude_ai_Slack__slack_send_message"]}}' > "$HOME/.claude/settings.local.json"
-  printf '%s\n' '{"permissions":{"allow":["WebFetch(domain:x)"]}}' > "$JARVIS_MANAGED_SETTINGS"
-  mkdir -p "$JARVIS_MANAGED_SETTINGS_DIR"
-  printf '%s\n' '{"permissions":{"allow":["mcp__claude_ai_Asana__create_task"]}}' > "$JARVIS_MANAGED_SETTINGS_DIR/10-team.json"
+  printf '%s\n' '{"permissions":{"allow":["WebFetch(domain:x)"]}}' > "$FOUNDRY_MANAGED_SETTINGS"
+  mkdir -p "$FOUNDRY_MANAGED_SETTINGS_DIR"
+  printf '%s\n' '{"permissions":{"allow":["mcp__claude_ai_Asana__create_task"]}}' > "$FOUNDRY_MANAGED_SETTINGS_DIR/10-team.json"
   run "$CF" "$DAY"
   [ "$status" -eq 0 ]
   deny="$(awk '$0 == "--disallowedTools" { p = 1; next } p' "$STUB_ARGS")"

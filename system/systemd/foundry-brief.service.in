@@ -1,5 +1,5 @@
 [Unit]
-Description=Jarvis Optimus: morning brief
+Description=The Foundry: morning brief
 
 [Service]
 Type=oneshot

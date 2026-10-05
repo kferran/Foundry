@@ -1,5 +1,5 @@
 [Unit]
-Description=Jarvis Optimus: evening debrief
+Description=The Foundry: evening debrief
 
 [Service]
 Type=oneshot

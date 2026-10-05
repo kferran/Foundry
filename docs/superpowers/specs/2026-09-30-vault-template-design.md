@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-30
 **Status:** Approved in brainstorming; revised after two senior systems reviews (incl. memory addendum); pending spec review
+**Names (Plan 9, 2026-10-05):** Jarvis is The Foundry and Optimus the Foreman; CodingAgent and SystemMaintenance are the Coding and Maintenance Workcells; jarvis-* units, JARVIS_* variables and Jarvis-* trailers are foundry-*, FOUNDRY_* and Foundry-* (see 2026-10-05-foundry-rename-design.md §2).
 **Branch:** `feat/vault-template`
 
 ## 1. Context
@@ -933,33 +934,51 @@ None is integrated as a dependency: each needs a server or database, a cloud LLM
 
 ## 15. Naming
 
-The product and vault remain **Jarvis**. Roles, personas, systemd units and documentation use a Transformers theme; script and module filenames stay descriptive so they remain greppable.
+The product is **The Foundry** (Plan 9, 2026-10-05; `2026-10-05-foundry-rename-design.md`). The user addresses only **the Foreman**. **The Core** is the compiled wiki, the index and memory (capture and recall). Specialist agents are **Workcells**, discovered and dispatched by capability, never by name. A multi-step assignment is a **Production Job** and each of its tasks a **Work Order**. Every other part has a plain descriptive name, and script and module file names stay descriptive so they remain greppable.
 
-| Name | Role | Concrete artifacts |
-|---|---|---|
-| **Jarvis** | The vault / product | repo, `jarvis-*` unit prefix |
-| **Optimus** | Chief of Staff and, in sub-project 2, the orchestrator and single liaison | `system/agents/Optimus.md` (renamed from `ChiefOfStaff.md`); `agent_owner: Optimus` |
-| **Autobots** | Crewmates doing ship tasks (sub-project 2); seeded from `CodingAgent.md` / `SystemMaintenance.md` | — |
-| **Bumblebee** | Scout crewmates producing investigation reports ("recon") | — |
-| **Teletraan** | Zero-token watcher that wakes Optimus (sub-project 2) | `jarvis-watcher.service` (reserved), `Description=Jarvis Teletraan: fleet watcher` |
-| **Wheeljack** | Headless intake compiler | `jarvis-intake.service` / `.timer` (`Description=Jarvis Wheeljack: intake compiler`), `intake_daemon.sh`, `run_headless.sh ingest` |
-| **Ultra Magnus** | Publish gate: validate, conflict-check, publish | `publish_staged.py`, `vaultlib/publish.py` |
-| **Soundwave** | Memory capture and recall | `system/hooks/memory_*.sh`, `/digest`, `vault_index.py recall` |
-| **The Ark** | The index | `system/index.db`, `vault_index.py` |
+| Before Plan 9 | Now |
+|---|---|
+| Jarvis (product, prose) | The Foundry |
+| Optimus, "Chief of Staff"; `system/agents/Optimus.md` | the Foreman; `system/agents/foreman.md` |
+| CodingAgent; `system/agents/CodingAgent.md` | the Coding Workcell; `system/agents/workcells/coding.md` |
+| SystemMaintenance; `system/agents/SystemMaintenance.md` | the Maintenance Workcell; `system/agents/workcells/maintenance.md` |
+| The Ark | the index (part of The Core) |
+| Soundwave | memory (part of The Core) |
+| Wheeljack | the intake compiler |
+| Ultra Magnus | the publish gate |
+| Teletraan | the watcher (reserved) |
+| Autobots, Bumblebees, crewmates | Workcell sessions; "ship" and "scout" are session kinds reserved for Sub-project 2, not capabilities |
+| reserved `system/fleet/tasks/<id>/` | reserved `system/jobs/` (layout settled in Sub-project 2) |
+| units `jarvis-intake`, `jarvis-brief`, `jarvis-debrief`, `jarvis-focus`, `jarvis-sync`, reserved `jarvis-watcher`; templates `system/systemd/jarvis-*.in` and `system/systemd/dropins/jarvis-sync.conf.in`; drop-ins `<unit>.service.d/jarvis-sync.conf` | `foundry-…` throughout |
+| unit `Description=Jarvis <Name>: <role>` | `Description=The Foundry: <role>` (e.g. `The Foundry: intake compiler`) |
+| `JARVIS_HEADLESS` | `FOUNDRY_HEADLESS` |
+| `JARVIS_CREW` (flag, `1`) | `FOUNDRY_WORKCELL_SESSION` (flag, `1`) |
+| `JARVIS_TASK_ID`; digest field `task_id` | `FOUNDRY_WORK_ORDER`; digest field `work_order` |
+| `JARVIS_ORIGINAL_SHA256` | `FOUNDRY_ORIGINAL_SHA256` |
+| `JARVIS_MANAGED_SETTINGS`, `JARVIS_MANAGED_SETTINGS_DIR` | `FOUNDRY_MANAGED_SETTINGS`, `FOUNDRY_MANAGED_SETTINGS_DIR` |
+| commit trailers `Jarvis-Command`, `Jarvis-Run`, `Jarvis-Role` | `Foundry-Command`, `Foundry-Run`, `Foundry-Role` |
+| pending branches `jarvis/<role>-pending` | `foundry/<role>-pending` |
+| log and alert tags `[wheeljack]`, `[soundwave]` | `[intake]`, `[memory]` (`[sync]` and the rest stay) |
+| `recall.crew_env`, `build(…, crew=…)` | `workcell_session_env`, `workcell_session=` |
+| the digest request line `Jarvis memory (not an error): …` | `Foundry memory (not an error): …` |
+| the recall header `## Jarvis vault recall` | `## Foundry vault recall` |
+| `/tmp/jarvis-verify-…` (`verify_on_host.sh`) | `/tmp/foundry-verify-…` |
 
-Unit names stay descriptive and greppable; the themed name appears in each unit's `Description=` and in log headers. Other units: `jarvis-brief`, `jarvis-debrief`, `jarvis-focus`. Environment variables use the `JARVIS_` prefix (`JARVIS_HEADLESS`, `JARVIS_CREW`, `JARVIS_TASK_ID`). Dispatching a crewmate is "roll out"; a scout report is a "recon". Names appear in unit descriptions, log headers (`[wheeljack]`, `[ultra-magnus]`), the README and `CLAUDE.md`.
+Not renamed: the template URL in `system/template_source`, the roadmap's file name, script and module file names, and the `# Managed by vault: <root>` unit header.
 
-## 16. Sub-project 2: Optimus orchestrator (reserved seams)
+Each Workcell is one file in `system/agents/workcells/` whose frontmatter (schema `workcell`) lists its `capabilities`. Concept notes ask for work through `capability`, whose values in `system/schemas/concept.md` are the union of every Workcell's `capabilities` (a gated test checks it). Every place that routes work names a capability, never a Workcell.
 
-A vault-native orchestrator in the style of firstmate (https://github.com/kunchenguid/firstmate): the user talks only to **Optimus**, which stays free while **Autobots** (ship) and **Bumblebees** (scout) run as autonomous interactive sessions in herdr or tmux, each in a disposable git worktree of a registered codebase, supervised by **Teletraan**. It gets its own brainstorm, spec and plan after the core vault plan. The core reserves these seams so nothing needs rework:
+## 16. Sub-project 2: the Foreman orchestrator (reserved seams)
 
-1. **Fleet state:** `system/fleet/` is reserved and gitignored for `tasks/<id>/{brief.md,status.json,report.md}`. The core neither creates nor reads it; `vault_integrity.bats` checks it is ignored.
-2. **Memory hooks:** crewmates are in scope (git common dir) and interactive. With `JARVIS_CREW=1` the periodic Stop gate is off and recall is preferences-only (§6.17); Optimus requests one marked digest at task end, captured with `task_id`.
-3. **Coexisting Stop hooks:** Soundwave's capture hook has no side effects unless its gate fires, never blocks twice in a row, and does not depend on `stop_hook_active`, so a Teletraan turn-end backstop can coexist. Ordering is defined in the sub-project 2 spec.
-4. **Recon intake:** scout reports land in `raw/inbox/` with `partition`, `codebase` and `task_id` frontmatter and are compiled by Wheeljack unchanged; a `fleet_report` schema is deferred to sub-project 2.
-5. **Budgets:** crewmate sessions are not `claude -p` runs; they don't consume `HEADLESS_MAX_RUNS_PER_DAY` or take `run.lock`. Sub-project 2 defines its own concurrency and budget limits.
-6. **Personas and backend:** `CodingAgent.md` and `SystemMaintenance.md` seed Autobot briefs; `check_deps.sh` reports `herdr`/`tmux` as optional; the README names herdr as the recommended backend once sub-project 2 ships.
+A vault-native orchestrator in the style of firstmate (https://github.com/kunchenguid/firstmate): the user talks only to **the Foreman**, which stays free while Workcell sessions (ship and scout) run as autonomous interactive sessions in herdr or tmux, each in a disposable git worktree of a registered codebase, supervised by **the watcher**. The Foreman picks a Workcell by the capability a Work Order needs. It gets its own brainstorm, spec and plan after the core vault plan. The core reserves these seams so nothing needs rework:
 
-**Carried into sub-project 2 (from firstmate, not designed here):** single liaison; ship vs scout task shapes; disposable worktrees; zero-token bash watcher plus turn-end backstop; per-project merge modes (`local-only`, `direct-PR`); restart reconciliation from on-disk state; a bearings-style fleet digest folded into `/brief`; firstmate's `/stow` aligned with Soundwave digests.
+1. **Job state:** `system/jobs/` is reserved and gitignored; its layout is settled in Sub-project 2. The core neither creates nor reads it; `vault_integrity.bats` checks it is ignored.
+2. **Memory hooks:** Workcell sessions are in scope (git common dir) and interactive. With `FOUNDRY_WORKCELL_SESSION=1` the periodic Stop gate is off and recall is preferences-only (§6.17); the Foreman requests one marked digest when a Work Order ends, captured with `work_order` (from `FOUNDRY_WORK_ORDER`).
+3. **Coexisting Stop hooks:** the memory capture hook has no side effects unless its gate fires, never blocks twice in a row, and does not depend on `stop_hook_active`, so a turn-end backstop from the watcher can coexist. Ordering is defined in the Sub-project 2 spec.
+4. **Scout intake:** scout reports land in `raw/inbox/` with `partition`, `codebase` and `work_order` frontmatter and are compiled by the intake compiler unchanged; a report schema is deferred to Sub-project 2.
+5. **Budgets:** Workcell sessions are not `claude -p` runs; they don't consume `HEADLESS_MAX_RUNS_PER_DAY` or take `run.lock`. Sub-project 2 defines its own concurrency and budget limits.
+6. **Workcells and backend:** the Workcell files in `system/agents/workcells/` and their `capabilities` are the lookup Sub-project 2 dispatches on (the index's `v_workcell` view); `check_deps.sh` reports `herdr`/`tmux` as optional; the README names herdr as the recommended backend once Sub-project 2 ships.
+
+**Carried into Sub-project 2 (from firstmate, not designed here):** single liaison; ship vs scout session kinds; disposable worktrees; zero-token bash watcher plus turn-end backstop; per-project merge modes (`local-only`, `direct-PR`); restart reconciliation from on-disk state; a bearings-style digest of Production Jobs folded into `/brief`; firstmate's `/stow` aligned with memory digests.
 
 **Excluded:** auto-merge (`+yolo`), public Relay replies (X/Discord), remote secondmates.

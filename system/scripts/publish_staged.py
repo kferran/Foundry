@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ultra Magnus: validate and publish a headless run's staged output (spec §6.20)."""
+"""Publish gate: validate and publish a headless run's staged output (spec §6.20)."""
 import sys
 from pathlib import Path
 

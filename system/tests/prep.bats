@@ -11,7 +11,7 @@ setup() {
   export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_calendar"
   # A temporary HOME hides ~/.gitconfig, so the test commits need an identity of their own.
   export GIT_AUTHOR_NAME=test GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
-  export JARVIS_MANAGED_SETTINGS="$BATS_TEST_TMPDIR/managed.json" JARVIS_MANAGED_SETTINGS_DIR="$BATS_TEST_TMPDIR/managed.d"
+  export FOUNDRY_MANAGED_SETTINGS="$BATS_TEST_TMPDIR/managed.json" FOUNDRY_MANAGED_SETTINGS_DIR="$BATS_TEST_TMPDIR/managed.d"
   export STUB_STREAM="$BATS_TEST_TMPDIR/stream.jsonl"
   calendar_says '{"status":"ok","reason":"","events":[{"start_date":"2026-10-01","start_time":"09:00","end_date":"2026-10-01","end_time":"09:30","title":"Standup"}]}'
   export PATH="$STUBS:$PATH"

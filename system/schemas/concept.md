@@ -8,7 +8,7 @@ fields:
   compiled_at: {kind: date, required: true}
   partition: {kind: enum, values: [work, personal, shared], required: true, matches_folder: true}
   codebase: {kind: string}
-  agent_owner: {kind: enum, values: [CodingAgent, SystemMaintenance, Optimus]}
+  capability: {kind: enum, values: [code, tests, refactor, vault-health, dependencies, telemetry, alerts]}
   is_friction: {kind: bool, default: "false"}
   status: {kind: enum, values: [canonical, draft, deprecated], default: canonical}
   supersedes: {kind: list, of: link}
@@ -18,4 +18,4 @@ fields:
   provenance: {kind: list, of: {kind: enum, values: [headless, interactive, session]}}
 ---
 # Concept
-An evergreen, atomic knowledge node compiled from raw inputs and session digests. Retire with `status: deprecated` or supersession; never delete.
+An evergreen, atomic knowledge node compiled from raw inputs and session digests. Retire with `status: deprecated` or supersession; never delete. `capability` is set only on a note that assigns work: the capability the work needs, from the union of the Workcells' `capabilities` in `system/agents/workcells/` (work for the Foreman needs no field).

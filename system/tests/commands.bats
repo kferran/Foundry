@@ -50,7 +50,8 @@ headless_contract() {
   headless_allowlist "$f"
   grep -qF '_decisions.jsonl' "$f"
   grep -qF 'vault_index.py related "' "$f"
-  grep -qF '`agent_owner`: leave the key out' "$f"
+  grep -qF '`capability`: leave the key out, unless the note assigns work' "$f"
+  grep -qF 'system/schemas/concept.md' "$f"
   grep -qF 'never add a `work` or `personal` input to its `sources`' "$f"
   grep -qF 'refuse paths under `raw/inbox/` and `raw/<partition>/notes/`' "$f"
   grep -qF '(headless: the run id'"'"'s first 8 digits written as `YYYY-MM-DD`)' "$f"
@@ -74,10 +75,11 @@ headless_contract() {
   grep -qx '### 4. Unavailable Sources' system/templates/daily-debrief.md
 }
 
-@test "CodingAgent writes metrics where /debrief reads them" {
-  grep -qF 'system/logs/metrics/CodingAgent-<epoch>.json' system/agents/CodingAgent.md
+@test "a Workcell writes metrics named by its file stem where /debrief reads them" {
+  grep -qF 'system/logs/metrics/coding-<epoch>.json' system/agents/workcells/coding.md
+  grep -qF '"agent": "coding"' system/agents/workcells/coding.md
   grep -qF 'system/logs/metrics/*.json' .claude/commands/debrief.md
-  [ "$(jq -r .agent system/templates/compilation-metric.json)" = '{{agent_name}}' ]
+  [ "$(jq -r .agent system/templates/compilation-metric.json)" = '{{workcell}}' ]
 }
 
 @test "every command has frontmatter with a description" {
@@ -88,7 +90,7 @@ headless_contract() {
 }
 
 @test "every vault script a prompt names exists and is executable" {
-  scripts="$(grep -ohE 'system/scripts/[A-Za-z0-9_.]+' CLAUDE.md .claude/commands/*.md system/agents/*.md | sort -u)"
+  scripts="$(grep -ohE 'system/scripts/[A-Za-z0-9_.]+' CLAUDE.md .claude/commands/*.md system/agents/*.md system/agents/workcells/*.md | sort -u)"
   [ -n "$scripts" ]
   while IFS= read -r s; do
     [ -x "$s" ]
@@ -133,7 +135,7 @@ setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } o
   [ "$(grep -E '^## (5|5a|6)\. ' "$f" | tr '\n' '|')" = '## 5. Units|## 5a. Memory hooks|## 6. Calendar|' ]
   sec="$(setup_section '5a. Memory hooks')"
   for s in memory_recall.sh memory_capture.sh memory_activity.sh '`/digest`' 'left alone' \
-      'act only inside the vault and the registered codebases' 'Stop hook error: Jarvis memory (not an error)' \
+      'act only inside the vault and the registered codebases' 'Stop hook error: Foundry memory (not an error)' \
       'It is not an error.' 'Only an explicit yes installs.' 'memory capture stays off' \
       'settings: unchanged (dry run, nothing written)' 'digest command: unchanged (dry run, nothing written)' \
       'system/scripts/install_hooks.sh --uninstall'; do
@@ -166,10 +168,14 @@ setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } o
   [ "$(jq -c .permissions.additionalDirectories "$f")" = '["/a"]' ]
 }
 
-@test "personas carry their §15 names and nothing names the old Chief of Staff file" {
-  [ "$(cd system/agents && LC_ALL=C ls | tr '\n' ' ')" = 'CodingAgent.md Optimus.md SystemMaintenance.md ' ]
-  grep -qx '# Role Profile: Optimus (Chief of Staff)' system/agents/Optimus.md
-  grep -qF 'Persona: `system/agents/Optimus.md`.' CLAUDE.md
+@test "the Foreman and the Workcells carry their names, and nothing names the retired persona file" {
+  [ "$(cd system/agents && LC_ALL=C ls | tr '\n' ' ')" = 'foreman.md workcells ' ]
+  [ "$(cd system/agents/workcells && LC_ALL=C ls | tr '\n' ' ')" = 'coding.md maintenance.md ' ]
+  grep -qx '# The Foreman' system/agents/foreman.md
+  grep -qx '# Coding Workcell' system/agents/workcells/coding.md
+  grep -qx '# Maintenance Workcell' system/agents/workcells/maintenance.md
+  [ "$(head -n 1 system/agents/foreman.md)" = '# The Foreman' ]
+  grep -qF 'Persona: `system/agents/foreman.md`.' CLAUDE.md
   # The [C] bracket keeps the pattern from matching this line.
   run git grep -nE '[C]hiefOfStaff' -- CLAUDE.md README.md .claude system
   [ "$status" -eq 1 ]
@@ -321,7 +327,7 @@ self_edit_contract() {
 @test "/setup requires linger on a server and lists the units for the role" {
   sec="$(setup_section '5. Units')"
   [[ "$sec" == *'On a server, linger is required'* ]]
-  [[ "$sec" == *'`jarvis-focus` (standalone only)'* ]]
+  [[ "$sec" == *'`foundry-focus` (standalone only)'* ]]
 }
 
 @test "/backup lints instead of running the suites on a client" {
@@ -364,11 +370,11 @@ self_edit_contract() {
   f=.claude/commands/backup.md
   grep -qF 'In `private`, run `system/scripts/vault_sync.sh`' "$f"
   grep -qF '4 a run is in progress; try again shortly' "$f"
-  grep -qF 'origin/jarvis/*-pending' "$f"
+  grep -qF 'origin/foundry/*-pending' "$f"
 }
 
 @test "/setup names the sync units on a server and prints the Obsidian Git settings on a client" {
-  [[ "$(setup_section '5. Units')" == *'`jarvis-sync` (server only)'* ]]
+  [[ "$(setup_section '5. Units')" == *'`foundry-sync` (server only)'* ]]
   for k in autoSaveInterval autoBackupAfterFileChange autoPullOnBoot disablePush pullBeforePush syncMethod autoCommitMessage; do
     grep -qF "\`$k\`" .claude/commands/setup.md
   done
@@ -385,7 +391,7 @@ self_edit_contract() {
 
 @test "the README explains sync conflicts and drops the by-hand sync" {
   grep -qx '### Sync conflicts' README.md
-  grep -qF 'git merge origin/jarvis/server-pending' README.md
+  grep -qF 'git merge origin/foundry/server-pending' README.md
   grep -qF 'On the machine that pushed the pending branch, its side is already checked out: run `git merge origin/<branch>` there instead' README.md
   grep -qF -- '--no-verify' README.md
   run grep -F 'Syncing them automatically is Plan 8c' README.md
@@ -403,5 +409,17 @@ self_edit_contract() {
   f=.claude/commands/debrief.md
   grep -qF '`exit`, `.publish.status`, `.publish.published`, `.publish.rejected`, `.publish.conflicts`' "$f"
   run grep -F '(command, exit, published, rejected, conflicts)' "$f"
+  [ "$status" -eq 1 ]
+}
+
+@test "work routes by capability, never by a Workcell's name" {
+  grep -qF '`system/agents/workcells/*.md`' CLAUDE.md
+  grep -qF 'route to the Workcell with `telemetry`' CLAUDE.md
+  grep -qF 'routing them to the Workcell with `vault-health`' CLAUDE.md
+  grep -qF 'routes to the Workcell with `telemetry`' .claude/commands/brief.md
+  grep -qF 'hand each concrete slice to a capability' .claude/commands/brief.md
+  grep -qF '`capability: code`' .claude/commands/setup.md
+  grep -qx 'GROUP BY capability' wiki/Index.md
+  run grep -rnE '(Coding|Maintenance) Workcell' CLAUDE.md .claude/commands wiki/Index.md
   [ "$status" -eq 1 ]
 }

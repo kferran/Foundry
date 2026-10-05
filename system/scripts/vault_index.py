@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Ark: schema validation and index CLI for the Jarvis vault (spec §6.16)."""
+"""Schema validation and index CLI for the vault (spec §6.16)."""
 import sys
 from pathlib import Path
 

@@ -10,7 +10,7 @@ OK_STATUSES = {"published", "noop", "aborted"}
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="publish_staged.py", description="Ultra Magnus: publish headless output")
+    parser = argparse.ArgumentParser(prog="publish_staged.py", description="Publish gate: publish headless output")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("snapshot")
     p.add_argument("run_id")

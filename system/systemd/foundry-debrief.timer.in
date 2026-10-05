@@ -1,5 +1,5 @@
 [Unit]
-Description=Jarvis Optimus: evening debrief at {{DEBRIEF_TIME}}
+Description=The Foundry: evening debrief at {{DEBRIEF_TIME}}
 
 [Timer]
 OnCalendar=*-*-* {{DEBRIEF_TIME}}:00 {{TZ}}

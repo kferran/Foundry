@@ -1,5 +1,5 @@
 {
-  "agent": "{{agent_name}}",
+  "agent": "{{workcell}}",
   "timestamp": "{{timestamp}}",
   "branch": "{{git_branch}}",
   "target_feature_slice": "{{vertical_slice_name}}",

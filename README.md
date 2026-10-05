@@ -1,12 +1,12 @@
-# Jarvis
+# The Foundry
 
 An Obsidian + Claude Code "second brain" vault template.
 
 > **Status:** built and tested on one machine. The headless brief, debrief and intake pipeline passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md)) and passed again with the humanizer self-edit step ([record](docs/superpowers/spikes/2026-10-02-plan-6-acceptance.md)). Memory capture and recall passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md)) and stay off until you install their hooks, which `/setup` offers. A full `/setup` with installed systemd units has not yet been run end to end; that happens after Plan 8 (laptop plus server).
 
-## What Jarvis is
+## What The Foundry is
 
-Jarvis is a template repository that becomes your vault. You clone it (or create a repo from it), run `claude` inside it, and run `/setup`. Setup configures the vault for your machine, your schedule and your codebases. Nothing specific to a machine or a user is committed. Per-user state is generated at setup time and gitignored.
+The Foundry is a template repository that becomes your vault. You clone it (or create a repo from it), run `claude` inside it, and run `/setup`. Setup configures the vault for your machine, your schedule and your codebases. Nothing specific to a machine or a user is committed. Per-user state is generated at setup time and gitignored.
 
 The vault compiles itself. Raw inputs (files you drop in, plus short digests of your Claude Code sessions) are compiled in batches into a wiki of concepts, entities, summaries and preferences. The wiki is split into `work`, `personal` and `shared` partitions, and links are not allowed to cross between `work` and `personal`. A derived SQLite FTS5 index lets agents ask the index for the notes they need before reading anything, so a lookup reads only the notes that answer it rather than the whole wiki.
 
@@ -23,7 +23,7 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 | 2a. Headless core | Staged publish, `run_headless.sh`, intake daemon, redaction, settings files | Complete: [plan](docs/superpowers/plans/2026-10-01-plan-2a-headless-core.md) |
 | 2b. Operations | Prep scripts, focus stats, unit templates and installer, remotes, codebase discovery | Complete: [plan](docs/superpowers/plans/2026-10-01-plan-2b-operations.md) |
 | 4a. Commands and setup | `CLAUDE.md`, commands, personas, `/setup` (without memory), health suite | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-4a-commands-setup.md) |
-| 3. Memory (Soundwave) | Capture/recall hooks, hook installer, `/digest` | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-3-memory.md), [acceptance](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md) |
+| 3. Memory | Capture/recall hooks, hook installer, `/digest` | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-3-memory.md), [acceptance](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md) |
 | 4b. Memory integration, renames | `/setup` memory step, README memory sections, final renames | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-4b-memory-integration.md), [live check](docs/superpowers/spikes/2026-10-02-plan-4b-acceptance.md) |
 | 6. Communication | `CLAUDE.md` Writing section, vendored humanizer skill, headless self-edit pass | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-6-communication.md), [acceptance](docs/superpowers/spikes/2026-10-02-plan-6-acceptance.md) |
 | 8a. Machine roles and Debian | `machine_role` (standalone, server, client), `check_deps --role` with apt hints, units by role, Debian proven natively | Complete: [plan](docs/superpowers/plans/2026-10-03-plan-8a-roles-debian.md), [acceptance](docs/superpowers/spikes/2026-10-03-plan-8a-acceptance.md) |
@@ -31,10 +31,10 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 | 8b. Commit history | Scripted commit messages, one commit per headless run | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8b-commit-history.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8b-acceptance.md) |
 | 8c. Sync | `vault_sync.sh`, server sync units, conflicts, client setup. The real vault is set up after this plan | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8c-sync.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8c-acceptance.md) |
 | 8e. Real-use fixes | Brief and debrief wait out an ingest backlog; `/debrief` reads the ledger's publish fields | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-8e-real-use-fixes.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-8e-acceptance.md) |
+| 9. Product rename | The Foundry names and the capability seam | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-9-foundry-rename.md), [spec](docs/superpowers/specs/2026-10-05-foundry-rename-design.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-9-acceptance.md) |
 | 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
-| Sub-project 2 | Optimus orchestrator | Separate spec, after Plans 7 and 5 |
-| 9. Product rename | "Jarvis" is a working name; the final name and team theme are not chosen | After everything except Plan 10 |
+| Sub-project 2 | the Foreman orchestrator | Separate spec, after Plans 7 and 5 |
 | 10. Migrate Cerebro and Wong | Import both older systems, then decommission them (Sub-project 3) | Last |
 
 - Design spec: [docs/superpowers/specs/2026-09-30-vault-template-design.md](docs/superpowers/specs/2026-09-30-vault-template-design.md)
@@ -46,32 +46,34 @@ Plans are numbered in the order they were defined, not the order they run; the t
 
 The intended loop is **capture → compile → index → recall → correct**:
 
-1. **Capture.** Files you drop in go to `raw/inbox/`. Once the memory hooks are installed, sessions in the vault and in registered codebases also leave short, redacted session digests in `raw/<partition>/notes/` (see [Memory](#memory-soundwave) below).
+1. **Capture.** Files you drop in go to `raw/inbox/`. Once the memory hooks are installed, sessions in the vault and in registered codebases also leave short, redacted session digests in `raw/<partition>/notes/` (see [Memory](#memory) below).
 2. **Compile.** The intake timer batches up to 5 inputs from one partition into an isolated headless `/ingest` run. For each fact, the run records an explicit noop, patch or create decision and writes its output to `wiki/.staging/<run_id>/`.
 3. **Publish.** The publish gate validates schemas and partition walls and rejects changes that shrink existing notes. It also checks each target against a snapshot taken at the start of the run. If every check passes, it publishes everything at once. If any check fails, it publishes nothing and the run is quarantined. If you edited a note while the run was going, your edit is kept.
 4. **Index.** Markdown is the source of truth. `system/index.db` is a gitignored SQLite FTS5 index that can be rebuilt at any time. Agents run `related`, `query`, `show` and `backlinks` against it before reading any notes.
 5. **Recall.** With the memory hooks installed, a `SessionStart` hook adds up to `recall_budget_chars` of vault data (default 9,000 characters, never more than 9,500) to new sessions in scope: the latest digests for the codebase or partition and, once enabled, preferences you have confirmed. Recalled text is marked as data, not instructions.
 6. **Correct.** Each digest has a Corrections section. Ingest turns these into `preference` notes with linked evidence. A preference's status is calculated in the index, and it becomes confirmed only after you accept it in `/brief`.
 
-**History.** `/backup` first commits each headless run that published files, one commit per run, with a message `commit_runs.py` builds from the run's records (no model writes it). Each carries `Jarvis-Command`, `Jarvis-Run` and `Jarvis-Role` trailers, so `git log` reads as a handoff log: `git log --grep 'Jarvis-Command: ingest'` lists the ingest runs.
+**History.** `/backup` first commits each headless run that published files, one commit per run, with a message `commit_runs.py` builds from the run's records (no model writes it). Each carries `Foundry-Command`, `Foundry-Run` and `Foundry-Role` trailers, so `git log` reads as a handoff log: `git log --grep 'Foundry-Command: ingest'` lists the ingest runs.
 
 | Name | Role | Concrete artifacts |
 |---|---|---|
-| **Jarvis** | The vault / product | this repo, `jarvis-*` systemd units |
-| **Optimus** | Chief of Staff persona; orchestrator in sub-project 2 | `system/agents/Optimus.md`, `agent_owner: Optimus` |
-| **Wheeljack** | Headless intake compiler | `jarvis-intake.service`/`.timer`, `intake_daemon.sh`, `run_headless.sh ingest` |
-| **Ultra Magnus** | Publish gate: validate, conflict-check, publish | `publish_staged.py`, `vaultlib/publish.py` |
-| **Soundwave** | Memory capture and recall | `system/hooks/memory_*.sh`, `/digest`, `vault_index.py recall` |
-| **The Ark** | The index | `system/index.db`, `vault_index.py` |
-| **Teletraan** | Zero-token fleet watcher (reserved, sub-project 2) | `jarvis-watcher.service` (reserved) |
-| **Autobots** | Ship-task crewmates (reserved, sub-project 2) | seeded from `CodingAgent.md`, `SystemMaintenance.md` |
-| **Bumblebee** | Scout crewmates producing "recon" reports (reserved, sub-project 2) | reports land in `raw/inbox/` |
+| **The Foundry** | The vault / product | this repo, `foundry-*` systemd units |
+| **The Foreman** | The only role you address: briefings, debriefs and the agenda; the orchestrator in Sub-project 2 | `system/agents/foreman.md`, `/brief`, `/debrief` |
+| **Workcells** | Specialist agents, each dispatched by the capabilities it lists | `system/agents/workcells/*.md` (each lists its `capabilities`), `capability` on concept notes |
+| **The Core** | The compiled wiki, the index and memory | `wiki/`, plus the index and memory rows below |
+| index | Search and views over the wiki | `system/index.db`, `vault_index.py` |
+| memory | Session digest capture and recall | `system/hooks/memory_*.sh`, `/digest`, `vault_index.py recall` |
+| intake compiler | Headless compile of raw inputs | `foundry-intake.service`/`.timer`, `intake_daemon.sh`, `run_headless.sh ingest` |
+| publish gate | Validate, conflict-check, publish | `publish_staged.py`, `vaultlib/publish.py` |
+| watcher | Zero-token watcher of Workcell sessions (reserved, Sub-project 2) | `foundry-watcher.service` (reserved) |
+| Workcell sessions | Ship and scout sessions of a Workcell (reserved, Sub-project 2); scout reports land in `raw/inbox/` | `system/jobs/` (reserved), `FOUNDRY_WORKCELL_SESSION` |
+| Production Job, Work Order | A multi-step assignment and each of its tasks (Sub-project 2) | `FOUNDRY_WORK_ORDER`, the digest field `work_order` |
 
-Script and module filenames stay descriptive so they are easy to grep. The themed names appear in unit `Description=` lines, log headers and documentation.
+Script and module filenames stay descriptive so they are easy to grep. Unit `Description=` lines read `The Foundry: <role>`, and log and alert tags use plain names (`[intake]`, `[memory]`, `[sync]`).
 
-## Memory (Soundwave)
+## Memory
 
-Memory is optional and off until you install its hooks. `/setup` offers them in its memory step: it shows the change `system/scripts/install_hooks.sh --dry-run` would make to your user-level `~/.claude/settings.json`, explains each entry, and installs only after an explicit yes. Declining leaves memory off; re-run `/setup` to turn it on later.
+Memory is part of The Core. It is optional and off until you install its hooks. `/setup` offers them in its memory step: it shows the change `system/scripts/install_hooks.sh --dry-run` would make to your user-level `~/.claude/settings.json`, explains each entry, and installs only after an explicit yes. Declining leaves memory off; re-run `/setup` to turn it on later.
 
 | Entry | What it does |
 |---|---|
@@ -83,7 +85,7 @@ Memory is optional and off until you install its hooks. `/setup` offers them in 
 
 The hooks run in every Claude Code session on the machine but act only inside the vault and registered codebases. Headless runs, subagents and `claude -p` scripts are skipped.
 
-**"Stop hook error" is not an error.** Claude Code labels every request from a `Stop` hook "Stop hook error:". When Jarvis asks for a digest, you see `Stop hook error: Jarvis memory (not an error): please reply with a short session digest. …`; Claude replies with the digest and the session carries on. The hook never asks twice in a row, and not when Claude's last reply ended with a question to you.
+**"Stop hook error" is not an error.** Claude Code labels every request from a `Stop` hook "Stop hook error:". When the vault asks for a digest, you see `Stop hook error: Foundry memory (not an error): please reply with a short session digest. …`; Claude replies with the digest and the session carries on. The hook never asks twice in a row, and not when Claude's last reply ended with a question to you.
 
 **`/digest`** writes a digest of the work since the last one whenever you want, in any session in scope. The `Stop` hook captures it from the reply; no script or session id is needed.
 
@@ -111,14 +113,16 @@ system/
   headless.settings.json      headless permissions
   template_source             canonical template URL
   schemas/                    one schema note per note type
-  hooks/                      user-level memory hooks (Soundwave)
-  templates/ agents/          note templates, personas
+  hooks/                      user-level memory hooks
+  templates/                  note templates
+  agents/                     foreman.md (the Foreman persona)
+    workcells/                one file per Workcell, with its capabilities
   scripts/                    vault_index.py, vaultlib/, publish_staged.py, run_headless.sh,
                               intake_daemon.sh, install_units.sh, install_hooks.sh,
                               setup_remote.sh, update_template.sh, check_deps.sh, ...
-  systemd/                    jarvis-{intake,brief,debrief,focus} unit templates (*.in)
+  systemd/                    foundry-{intake,brief,debrief,focus} unit templates (*.in)
   tests/                      *.bats per area (system_health.bats is advisory), python/ for pytest
-  fleet/                      reserved for sub-project 2 (gitignored)
+  jobs/                       reserved for Sub-project 2 (gitignored)
 docs/superpowers/             specs, plans, spike results
 ```
 
@@ -134,16 +138,16 @@ Each machine that holds the vault has a `machine_role` in its own `system/config
 
 A server and its clients share the vault through a private `origin` (`remote_mode: private`):
 
-- **Server.** `vault_sync.sh` runs every `sync_interval_minutes` (`jarvis-sync.timer`) and before and after every run: it commits headless runs and other changes with scripted messages, merges `origin` and pushes. Network and credential failures never stop the runs; they are alerted once a day until sync works again.
+- **Server.** `vault_sync.sh` runs every `sync_interval_minutes` (`foundry-sync.timer`) and before and after every run: it commits headless runs and other changes with scripted messages, merges `origin` and pushes. Network and credential failures never stop the runs; they are alerted once a day until sync works again.
 - **Client.** The Obsidian Git plugin commits and syncs every few minutes; `/setup` prints its settings. Write notes in today's briefing between `#wiki-ingest-start` and `#wiki-ingest-end`: the server compiles each new block and leaves the briefing as it is (on every role, blocks stay in the briefing after compiling). Files in `raw/inbox/` on a client are not synced.
 
 ### Sync conflicts
 
-A conflict is never resolved automatically. The server aborts the merge, pushes its side to `jarvis/server-pending` on `origin`, writes `system/logs/sync-blocked`, alerts once, and skips intake, brief and debrief until it is resolved. Resolve it on the other machine (for `jarvis/server-pending`, a client):
+A conflict is never resolved automatically. The server aborts the merge, pushes its side to `foundry/server-pending` on `origin`, writes `system/logs/sync-blocked`, alerts once, and skips intake, brief and debrief until it is resolved. Resolve it on the other machine (for `foundry/server-pending`, a client):
 
 ```sh
 git fetch origin
-git merge origin/jarvis/server-pending   # a client's own conflict uses origin/jarvis/client-pending
+git merge origin/foundry/server-pending   # a client's own conflict uses origin/foundry/client-pending
 # fix the conflicted files, then
 git commit
 git push
@@ -155,7 +159,7 @@ The next server sync clears the marker, deletes the pending branch and starts a 
 
 ## Requirements
 
-Jarvis runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh --role <role>` checks what that role needs and prints `pacman` or `apt` install hints:
+The Foundry runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh --role <role>` checks what that role needs and prints `pacman` or `apt` install hints:
 
 - `claude` (Claude Code), `git`, `jq`, `bats`, `flock`, `timeout`
 - `python3` with PyYAML and pytest (`sudo pacman -S python-yaml python-pytest`). Missing PyYAML blocks setup.
@@ -190,7 +194,7 @@ claude
 The prompt:
 
 ```text
-Set up this clone as a new Jarvis vault. Run /setup and use these answers; ask me only for what is missing:
+Set up this clone as a new Foundry vault. Run /setup and use these answers; ask me only for what is missing:
 - Machine role: <standalone | server | client>
 - Timezone: <Area/City>; brief at <HH:MM>; debrief at <HH:MM>
 - Default partition: <work | personal>
@@ -213,7 +217,7 @@ You can also type `/setup` and answer its questions one at a time; the prompt on
 - **3. Codebases:** you choose repos from a directory scan. Each one is inspected, written to `system/codebases/<name>.md` with a partition, and confirmed with you field by field.
 - **4. Remote:** a `template` remote is added for updates, and you choose a private `origin`, no remote, or keep (maintainer mode). A server or client must use a private `origin`; setup checks that git can reach it without a prompt and publishes the branch.
 - **5. Units:** the role's systemd units are rendered and enabled, and you are offered linger (required on a server).
-- **5a. Memory hooks** (optional): you are shown the diff to `~/.claude/settings.json` and what each hook does, and it is applied only after an explicit yes. Declining leaves memory off (see [Memory](#memory-soundwave)).
+- **5a. Memory hooks** (optional): you are shown the diff to `~/.claude/settings.json` and what each hook does, and it is applied only after an explicit yes. Declining leaves memory off (see [Memory](#memory)).
 - **6. Calendar:** one fetch from the Google Calendar connector checks that the brief can read today's events.
 - **7. Index:** the index is rebuilt.
 - **8. Verify:** `verify_setup.sh --health` runs.
@@ -225,12 +229,12 @@ Once the units are installed, the timers run real headless `claude -p` jobs. The
 ## Security model
 
 - **Headless isolation.** `run_headless.sh` is the only way automation calls `claude`. It runs in restricted mode with a dedicated settings file, no user settings, no user hooks, no MCP servers, no session persistence, a tool list per command, a timeout and a daily run cap. Reads are limited to the vault, writes are limited to the run's staging directory, and Bash runs in Claude Code's sandbox (no network) with sandbox auto-allow turned off, so only allowlisted commands run.
-- **Staged publish.** Headless output reaches the wiki only through Ultra Magnus, which checks targets, schemas, partition walls, protected fields, shrinkage and conflicts. Every headless-written note gets `headless` added to its `provenance`.
+- **Staged publish.** Headless output reaches the wiki only through the publish gate, which checks targets, schemas, partition walls, protected fields, shrinkage and conflicts. Every headless-written note gets `headless` added to its `provenance`.
 - **Partition walls.** Links from `work` to `personal` (and the other way) are lint errors. A headless run writes to one partition plus `shared`. From a codebase session, the index CLI returns only that codebase's partition plus `shared`, and those sessions get no general read access to the vault. Walls control links and recall, not storage: all partitions are pushed to the same private `origin`.
 - **Data, not instructions.** `CLAUDE.md` tells agents to treat note bodies, raw files, recall blocks and tool output as data. Digests and inbox copies are passed through `redact.py`, and `<private>…</private>` spans are removed.
 - **User-level changes.** `install_hooks.sh` changes only its own entries in `~/.claude/settings.json` and `~/.claude/commands/digest.md`. It takes a backup first, shows a diff during `/setup`, applies nothing without confirmation, and can be fully reversed with `--uninstall`.
 - **Trust dialog.** The first time you open the vault, Claude Code asks whether to trust the folder and lists the permissions `.claude/settings.json` pre-approves: edits under `wiki/` and `briefings/`, the brief and debrief prep scripts, `lint_vault.sh`, and the `vault_index.py` query, index-rebuild and recall commands. Those apply to your interactive sessions only; headless runs ignore project settings entirely.
-- **Gitignored.** `raw/**` contents, `system/quarantine/*`, `system/logs/*`, `system/config.md`, `system/codebases/*.md` (except `example.md`), `.claude/settings.local.json`, `system/index.db*`, `system/*.lock`, `wiki/.staging/`, `system/fleet/` and Obsidian workspace files.
+- **Gitignored.** `raw/**` contents, `system/quarantine/*`, `system/logs/*`, `system/config.md`, `system/codebases/*.md` (except `example.md`), `.claude/settings.local.json`, `system/index.db*`, `system/*.lock`, `wiki/.staging/`, `system/jobs/` and Obsidian workspace files.
 
 ## Updating and uninstalling
 
@@ -257,7 +261,7 @@ system/scripts/verify_setup.sh --health   # also the advisory live-state suite
 ## Acknowledgements
 
 - Yonatan Karp, [The self-compiling second brain](https://yonatankarp.com/blog/self-compiling-second-brain/): the capture → compile → recall model.
-- [firstmate](https://github.com/kunchenguid/firstmate): the model for the Optimus orchestrator (sub-project 2).
+- [firstmate](https://github.com/kunchenguid/firstmate): the model for the Foreman orchestrator (Sub-project 2).
 - [humanizer](https://github.com/blader/humanizer) by Siqi Chen (MIT): vendored in `.claude/skills/humanizer/`; its wording rules are condensed in `CLAUDE.md` and applied by the headless commands before they write.
 - Projects from the ecosystem survey (spec §13.5). Each one contributed a design pattern; none is a dependency:
   - [open-second-brain](https://github.com/itechmeat/open-second-brain): corrections → preference notes with evidence

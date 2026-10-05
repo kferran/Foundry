@@ -4,7 +4,7 @@ tags: []
 compiled_at: "{{date}}"
 partition: "{{partition}}"
 codebase: "{{codebase}}"
-agent_owner: "{{agent_name}}"
+capability: "{{capability}}"
 status: draft
 sources:
   - "[[{{source_stem}}]]"

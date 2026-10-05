@@ -50,8 +50,8 @@ command -v "$claude_bin" > /dev/null 2>&1 || finish 127 "claude not found ($clau
 deny=("${BUILTIN_DENY[@]}")
 for t in "${CALENDAR_OTHERS[@]}"; do deny+=("${SERVER_PREFIX}__$t"); done
 config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-files=("$config_dir/settings.json" "$config_dir/settings.local.json" "${JARVIS_MANAGED_SETTINGS:-/etc/claude-code/managed-settings.json}")
-for f in "${JARVIS_MANAGED_SETTINGS_DIR:-/etc/claude-code/managed-settings.d}"/*.json; do files+=("$f"); done
+files=("$config_dir/settings.json" "$config_dir/settings.local.json" "${FOUNDRY_MANAGED_SETTINGS:-/etc/claude-code/managed-settings.json}")
+for f in "${FOUNDRY_MANAGED_SETTINGS_DIR:-/etc/claude-code/managed-settings.d}"/*.json; do files+=("$f"); done
 for f in "${files[@]}"; do
   [[ -e "$f" ]] || continue
   rules="$(jq -er 'if type == "object" then (.permissions.allow // [])[] | strings else error("not an object") end' "$f" 2>/dev/null)" \
@@ -82,7 +82,7 @@ Return every event: start_date and end_date as YYYY-MM-DD, start_time and end_ti
 
 # The prompt comes first: --allowedTools and --disallowedTools take variable-length lists and stay last.
 rc=0
-(cd "$work" && JARVIS_HEADLESS=1 timeout -k 10 "${CALENDAR_TIMEOUT:-150}" "$claude_bin" -p "$prompt" \
+(cd "$work" && FOUNDRY_HEADLESS=1 timeout -k 10 "${CALENDAR_TIMEOUT:-150}" "$claude_bin" -p "$prompt" \
   --settings "$settings" --disable-slash-commands --no-session-persistence --permission-mode dontAsk \
   --output-format stream-json --verbose --json-schema "$(cat "$VAULT_ROOT/system/scripts/calendar_schema.json")" \
   --max-turns 15 --max-budget-usd 1 --allowedTools "$TOOL" --disallowedTools "${deny[@]}" \

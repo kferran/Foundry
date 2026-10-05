@@ -1,5 +1,5 @@
 #!/bin/bash
-# Wheeljack's harness: the only way automation invokes claude (spec §6.3).
+# Headless harness: the only way automation invokes claude (spec §6.3).
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$VAULT_ROOT"
@@ -14,7 +14,7 @@ TIMEOUT="${HEADLESS_TIMEOUT:-15m}"
 # brief/debrief wait for run.lock: one sync hold plus one ingest run (two-machines spec §5.4)
 LOCK_WAIT="${HEADLESS_LOCK_WAIT:-1400}"
 TZ="$(config_get timezone UTC)"
-export TZ JARVIS_HEADLESS=1
+export TZ FOUNDRY_HEADLESS=1
 # One clock reading names the run: a brief that waits past midnight for run.lock keeps its day (the run id, targets and logs agree).
 RUN_TS="$(date +%Y%m%dT%H%M%S)"
 TODAY="${RUN_TS:0:4}-${RUN_TS:4:2}-${RUN_TS:6:2}"
@@ -22,7 +22,7 @@ LEDGER="system/logs/runs-${RUN_TS:0:4}-${RUN_TS:4:2}.jsonl"
 mkdir -p system/logs/headless system/logs/runs
 
 die() { echo "run_headless: $2" >&2; exit "$1"; }
-alert() { printf -- '- %s [wheeljack] %s\n' "$(date +%H:%M:%S)" "$1" >> "system/logs/alerts_${TODAY}.md"; }
+alert() { printf -- '- %s [intake] %s\n' "$(date +%H:%M:%S)" "$1" >> "system/logs/alerts_${TODAY}.md"; }
 json_list() { if (( $# )); then printf '%s\n' "$@" | jq -R . | jq -cs .; else echo '[]'; fi; }
 
 input_partition() {
@@ -53,9 +53,9 @@ if [[ "$cmd" == ingest ]]; then
     inputs+=("$relpath")
     shas+=("$(sha256sum -- "$relpath" | cut -d' ' -f1)")
   done
-  if [[ -n "${JARVIS_ORIGINAL_SHA256:-}" ]]; then
-    read -r -a shas <<< "$JARVIS_ORIGINAL_SHA256"
-    (( ${#shas[@]} == ${#inputs[@]} )) || die 2 "JARVIS_ORIGINAL_SHA256 has ${#shas[@]} entries for ${#inputs[@]} inputs"
+  if [[ -n "${FOUNDRY_ORIGINAL_SHA256:-}" ]]; then
+    read -r -a shas <<< "$FOUNDRY_ORIGINAL_SHA256"
+    (( ${#shas[@]} == ${#inputs[@]} )) || die 2 "FOUNDRY_ORIGINAL_SHA256 has ${#shas[@]} entries for ${#inputs[@]} inputs"
   fi
 else
   (( $# == 0 )) || die 2 "$cmd takes no arguments"

@@ -13,10 +13,10 @@ from . import frontmatter, links as linkmod, schema as schemamod
 
 INDEX_VERSION = "1"
 PRUNE = {".git", ".obsidian"}
-NOT_INDEXED = ("system/logs/", "system/quarantine/", "system/fleet/", "system/templates/",
+NOT_INDEXED = ("system/logs/", "system/quarantine/", "system/jobs/", "system/templates/",
                "system/tests/", "docs/", "raw/inbox/", "raw/archive/")
 # Walked but never indexed: reachable by explicit path, never by bare [[Name]].
-NAME_EXCLUDED = ("system/tests/", "system/templates/", "system/schemas/", "docs/")
+NAME_EXCLUDED = ("system/tests/", "system/templates/", "system/schemas/", "system/agents/", "docs/")
 SKIP_FILES = ("system/index.db", "system/index.lock")
 TABLES = ("files", "notes", "fields", "links", "tags", "issues", "notes_fts")
 

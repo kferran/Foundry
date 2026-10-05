@@ -42,7 +42,7 @@ setup() {
 @test "generated paths are gitignored" {
   git check-ignore -q system/index.db
   git check-ignore -q wiki/.staging/run/x.md
-  git check-ignore -q system/fleet/tasks/x/status.json
+  git check-ignore -q system/jobs/x/status.json
   git check-ignore -q raw/inbox/note.md
   git check-ignore -q system/quarantine/x.md
 }
@@ -101,7 +101,7 @@ setup() {
   done
   [ ! -x system/hooks/lib_memory.sh ]
   [ -x system/scripts/install_hooks.sh ]
-  grep -qF 'Jarvis memory (not an error): please reply with a short session digest.' system/hooks/digest_instructions.md
+  grep -qF 'Foundry memory (not an error): please reply with a short session digest.' system/hooks/digest_instructions.md
   grep -qF '<vault-digest>' system/hooks/digest_instructions.md
 }
 
@@ -113,4 +113,44 @@ setup() {
   [ "$(head -n 1 "$d/LICENSE")" = 'MIT License' ]
   grep -qx 'Copyright (c) 2025 Siqi Chen' "$d/LICENSE"
   grep -qF 'humanizer v3.0.0' README.md
+}
+
+@test "Workcells pass their schema and declare valid capabilities once each; the concept schema lists their union" {
+  [ -f system/agents/foreman.md ]
+  cells=(system/agents/workcells/*.md)
+  [ -f "${cells[0]}" ]
+  system/scripts/vault_index.py validate "${cells[@]}"
+  [ "$(system/scripts/vault_index.py query 'SELECT count(*) AS n FROM v_workcell' --json | jq '.rows[0][0]')" -eq "${#cells[@]}" ]
+  caps=""
+  for c in "${cells[@]}"; do
+    caps+="$(system/scripts/vault_index.py field "$c" capabilities | tr ',' '\n')"$'\n'
+  done
+  caps="${caps%$'\n'}"
+  printf '%s\n' "$caps"
+  bad="$(grep -vxE '[a-z]+(-[a-z]+)*' <<< "$caps" || true)"
+  [ -z "$bad" ]
+  [ -z "$(sort <<< "$caps" | uniq -d)" ]
+  enum="$(system/scripts/vault_index.py field system/schemas/concept.md fields.capability.values | tr ',' '\n' | sort)"
+  [ "$(sort <<< "$caps")" = "$enum" ]
+}
+
+# Files the template owns (Plan 9 spec §6), never the user's notes. ':!system/codebases' also drops
+# system/codebases/example.md, so each check lists it on its own.
+OWN=(CLAUDE.md README.md .gitignore .claude .githooks system wiki/Index.md ':!system/codebases')
+# Split into pieces so this file, which lies inside system/, does not match itself.
+OLD="jar""vis|opt""imus|wheel""jack|ultra[ -]mag""nus|sound""wave|tele""traan|the a""rk|auto""bot|bumble""bee|coding""agent|system""maintenance|(^|[^a-z])cr""ew|fl""eet|task""_id|agent""_owner|assigned""_agent|agent""_name|chief of st""aff"
+
+@test "no retired names remain in template content" {
+  road="2026-09-30-jar""vis-roadmap\.md"
+  url="$(head -n 1 system/template_source | sed 's/[.[\*^$#]/\\&/g')"  # read at run time; never written in a test
+  out="$( { git grep -h -i -E "$OLD" -- "${OWN[@]}"; git grep -h -i -E "$OLD" -- system/codebases/example.md; } \
+    | sed -e "s#$road##g" -e "s#$url##g" | grep -i -E "$OLD" || true)"
+  printf '%s\n' "$out"
+  [ -z "$out" ]
+}
+
+@test "no retired names remain in template paths" {
+  out="$( { git ls-files -- "${OWN[@]}"; git ls-files -- system/codebases/example.md; } | grep -i -E "$OLD" || true)"
+  printf '%s\n' "$out"
+  [ -z "$out" ]
 }

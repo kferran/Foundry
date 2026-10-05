@@ -137,7 +137,7 @@ sync_message() {
       *) body+="${p//[$'\n\r\t']/ } ${num[$p]:-}"$'\n' ;;
     esac
   done < <(git diff --cached --name-status -z --no-renames)
-  printf 'sync(%s): %d file(s)\n\n%s\nJarvis-Command: sync\nJarvis-Role: %s\n' "$role" "$n" "$body" "$role"
+  printf 'sync(%s): %d file(s)\n\n%s\nFoundry-Command: sync\nFoundry-Role: %s\n' "$role" "$n" "$body" "$role"
 }
 
 # Cycle (§5.1).
@@ -153,12 +153,12 @@ for attempt in 1 2; do
   net fetch -q --prune origin || fail fetch "git fetch origin failed"
   if ! git merge-base --is-ancestor "origin/$branch" HEAD; then
     if ! err="$(git merge -q --no-edit -m "sync($role): merge origin/$branch" \
-                  -m "Jarvis-Command: sync"$'\n'"Jarvis-Role: $role" "origin/$branch" 2>&1)"; then
+                  -m "Foundry-Command: sync"$'\n'"Foundry-Role: $role" "origin/$branch" 2>&1)"; then
       if [[ -n "$(git ls-files -u)" ]]; then
         # Conflicts are never resolved here (§5.4): abort, publish this side, block the runs.
         paths="$(git diff --name-only --diff-filter=U)"
         git merge --abort || block "merge conflict with origin/$branch, and git merge --abort failed" "$paths"$'\n'
-        pending="jarvis/$role-pending"
+        pending="foundry/$role-pending"
         net push -q --force origin "HEAD:refs/heads/$pending" || alert "could not push $pending to origin"
         block "merge conflict with origin/$branch; resolve it by merging origin/$pending (README: Sync conflicts)" \
           "pending branch: $pending"$'\n'"$paths"$'\n'
@@ -182,13 +182,13 @@ start_missed() {
         "$ledger" 2>/dev/null | wc -l) > 0 )); then
       continue
     fi
-    "${SYSTEMCTL:-systemctl}" --user start --no-block "jarvis-$cmd.service" 9>&- || alert "could not start jarvis-$cmd.service"
+    "${SYSTEMCTL:-systemctl}" --user start --no-block "foundry-$cmd.service" 9>&- || alert "could not start foundry-$cmd.service"
   done
 }
 
 # Only this role pushes its pending branch: once a push completed, delete it if the fetch still saw it
 # (a failed delete retries next tick).
-pending="jarvis/$role-pending"
+pending="foundry/$role-pending"
 if git rev-parse -q --verify "refs/remotes/origin/$pending" > /dev/null; then
   net push -q origin ":refs/heads/$pending" || alert "could not delete $pending on origin"
 fi

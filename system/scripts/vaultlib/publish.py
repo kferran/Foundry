@@ -1,4 +1,4 @@
-"""Ultra Magnus: staged, validated, journaled publish of headless output (spec §6.20)."""
+"""Publish gate: staged, validated, journaled publish of headless output (spec §6.20)."""
 import hashlib
 import json
 import os
