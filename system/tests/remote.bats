@@ -176,7 +176,7 @@ upstream_commit() {  # <file> <text>
 @test "update_template merges a clean update, then rebuilds the index and re-renders installed units" {
   template_setup
   system/scripts/install_units.sh > /dev/null
-  printf '# Managed by vault: %s\nstale\n' "$(pwd -P)" > "$SYSTEMD_USER_DIR/jarvis-brief.service"
+  printf '# Managed by vault: %s\nstale\n' "$(pwd -P)" > "$SYSTEMD_USER_DIR/foundry-brief.service"
   upstream_commit new.txt hello
   run "$UT"
   [ "$status" -eq 0 ]
@@ -184,14 +184,14 @@ upstream_commit() {  # <file> <text>
   [ "$(git log -1 --format=%P | wc -w)" -eq 2 ]
   [ -f system/index.db ]
   grep -qE '^[0-9]{8}T[0-9]{6}$' system/logs/commit_runs.since
-  grep -qx 'changed jarvis-brief.service' <<< "$output"
-  grep -q '^ExecStart=' "$SYSTEMD_USER_DIR/jarvis-brief.service"
+  grep -qx 'changed foundry-brief.service' <<< "$output"
+  grep -q '^ExecStart=' "$SYSTEMD_USER_DIR/foundry-brief.service"
 }
 
 @test "update_template re-renders units when only an owned drop-in is installed" {
   template_setup
-  mkdir -p "$SYSTEMD_USER_DIR/jarvis-brief.service.d"
-  printf '# Managed by vault: %s\n[Service]\n' "$(pwd -P)" > "$SYSTEMD_USER_DIR/jarvis-brief.service.d/jarvis-sync.conf"
+  mkdir -p "$SYSTEMD_USER_DIR/foundry-brief.service.d"
+  printf '# Managed by vault: %s\n[Service]\n' "$(pwd -P)" > "$SYSTEMD_USER_DIR/foundry-brief.service.d/foundry-sync.conf"
   upstream_commit new.txt hello
   run "$UT"
   [ "$status" -eq 0 ]

@@ -327,7 +327,7 @@ self_edit_contract() {
 @test "/setup requires linger on a server and lists the units for the role" {
   sec="$(setup_section '5. Units')"
   [[ "$sec" == *'On a server, linger is required'* ]]
-  [[ "$sec" == *'`jarvis-focus` (standalone only)'* ]]
+  [[ "$sec" == *'`foundry-focus` (standalone only)'* ]]
 }
 
 @test "/backup lints instead of running the suites on a client" {
@@ -370,11 +370,11 @@ self_edit_contract() {
   f=.claude/commands/backup.md
   grep -qF 'In `private`, run `system/scripts/vault_sync.sh`' "$f"
   grep -qF '4 a run is in progress; try again shortly' "$f"
-  grep -qF 'origin/jarvis/*-pending' "$f"
+  grep -qF 'origin/foundry/*-pending' "$f"
 }
 
 @test "/setup names the sync units on a server and prints the Obsidian Git settings on a client" {
-  [[ "$(setup_section '5. Units')" == *'`jarvis-sync` (server only)'* ]]
+  [[ "$(setup_section '5. Units')" == *'`foundry-sync` (server only)'* ]]
   for k in autoSaveInterval autoBackupAfterFileChange autoPullOnBoot disablePush pullBeforePush syncMethod autoCommitMessage; do
     grep -qF "\`$k\`" .claude/commands/setup.md
   done
@@ -391,7 +391,7 @@ self_edit_contract() {
 
 @test "the README explains sync conflicts and drops the by-hand sync" {
   grep -qx '### Sync conflicts' README.md
-  grep -qF 'git merge origin/jarvis/server-pending' README.md
+  grep -qF 'git merge origin/foundry/server-pending' README.md
   grep -qF 'On the machine that pushed the pending branch, its side is already checked out: run `git merge origin/<branch>` there instead' README.md
   grep -qF -- '--no-verify' README.md
   run grep -F 'Syncing them automatically is Plan 8c' README.md

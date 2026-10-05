@@ -9,7 +9,7 @@ setup() {
   H="$VP/system/hooks"
   S="$VP/system/logs/memory/sessions"
   export CLAUDE_CODE_ENTRYPOINT=cli CLAUDE_CODE_SESSION_ATTENDED=1
-  unset JARVIS_HEADLESS JARVIS_CREW JARVIS_TASK_ID
+  unset FOUNDRY_HEADLESS FOUNDRY_WORKCELL_SESSION FOUNDRY_WORK_ORDER
   cd "$VP"
 }
 
@@ -40,7 +40,7 @@ digests() { find raw -path '*/notes/*.md' -type f | sort; }
   [ ! -e "$S/p-1.json" ]
   CLAUDE_CODE_SESSION_ATTENDED=0 start p-2
   [ ! -e "$S/p-2.json" ]
-  JARVIS_HEADLESS=1 start p-3
+  FOUNDRY_HEADLESS=1 start p-3
   [ ! -e "$S/p-3.json" ]
   start ok-1
   [ -e "$S/ok-1.json" ]
@@ -256,7 +256,7 @@ digests() { find raw -path '*/notes/*.md' -type f | sort; }
 }
 
 @test "crew sessions skip the attended check and the periodic request; marked digests carry task_id" {
-  export JARVIS_CREW=1 JARVIS_TASK_ID=task-42 CLAUDE_CODE_SESSION_ATTENDED=0
+  export FOUNDRY_WORKCELL_SESSION=1 FOUNDRY_WORK_ORDER=task-42 CLAUDE_CODE_SESSION_ATTENDED=0
   thresholds 1 0
   start crew-1
   tools crew-1 5

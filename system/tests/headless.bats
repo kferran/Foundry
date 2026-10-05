@@ -169,12 +169,12 @@ teardown() {
   [ "$(jq -s 'map(.attempt) | join(",")' "$LEDGER")" = '"1,2,3"' ]
 }
 
-@test "JARVIS_ORIGINAL_SHA256 overrides recorded hashes and must match input count" {
+@test "FOUNDRY_ORIGINAL_SHA256 overrides recorded hashes and must match input count" {
   h="$(printf 'a%.0s' $(seq 64))"
-  JARVIS_ORIGINAL_SHA256="$h" run "$RH" ingest raw/work/notes/d1.md
+  FOUNDRY_ORIGINAL_SHA256="$h" run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 0 ]
   [ "$(jq -r '.input_sha256[0]' "$LEDGER")" = "$h" ]
-  JARVIS_ORIGINAL_SHA256="$h $h" run "$RH" ingest raw/work/notes/d1.md
+  FOUNDRY_ORIGINAL_SHA256="$h $h" run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 2 ]
 }
 

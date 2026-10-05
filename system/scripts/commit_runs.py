@@ -133,7 +133,7 @@ def message(run_id, command, published, conflicts, role, carried=()):
         body = [f"published {p}" for p in published] + [f"conflict {p}" for p in conflicts]
     body += [f"carries {p} from {r}" for p, r in carried]
     body = [CONTROL.sub(" ", line) for line in body]
-    trailers = [f"Jarvis-Command: {command}", f"Jarvis-Run: {run_id}", f"Jarvis-Role: {CONTROL.sub(' ', role)}"]
+    trailers = [f"Foundry-Command: {command}", f"Foundry-Run: {run_id}", f"Foundry-Role: {CONTROL.sub(' ', role)}"]
     return head + "\n\n" + "\n".join(body) + "\n\n" + "\n".join(trailers) + "\n"
 
 

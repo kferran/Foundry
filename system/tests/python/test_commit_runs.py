@@ -85,11 +85,11 @@ def test_ingest_run_gets_its_scripted_message(vault):
         "ingest(work): create NightlyExport, patch BillingService\n\n"
         "create wiki/work/concepts/NightlyExport.md <- raw/work/notes/d1.md\n"
         "patch wiki/work/concepts/BillingService.md <- raw/work/notes/d1.md\n\n"
-        f"Jarvis-Command: ingest\nJarvis-Run: {ING}\nJarvis-Role: server\n\n")
+        f"Foundry-Command: ingest\nFoundry-Run: {ING}\nFoundry-Role: server\n\n")
     sha = git(vault, "rev-parse", "HEAD").strip()
     assert marker(vault, ING) == {"sha": sha}
     assert p.stdout == f"{ING} {sha}\n"
-    assert git(vault, "log", "--grep", "Jarvis-Command: ingest", "--format=%s").strip() == \
+    assert git(vault, "log", "--grep", "Foundry-Command: ingest", "--format=%s").strip() == \
         "ingest(work): create NightlyExport, patch BillingService"
 
 
@@ -103,9 +103,9 @@ def test_brief_and_debrief_runs_name_the_published_briefing(vault):
     log = git(vault, "log", "-2", "--format=%B%x00").split("\x00")
     assert log[0].strip() == ("debrief 2026-10-04: briefings/2026-10-04.debrief.md\n\n"
                               "published briefings/2026-10-04.debrief.md\nconflict briefings/2026-10-04.md\n\n"
-                              f"Jarvis-Command: debrief\nJarvis-Run: {deb}\nJarvis-Role: server")
+                              f"Foundry-Command: debrief\nFoundry-Run: {deb}\nFoundry-Role: server")
     assert log[1].strip() == ("brief 2026-10-04: briefings/2026-10-04.md\n\npublished briefings/2026-10-04.md\n\n"
-                              f"Jarvis-Command: brief\nJarvis-Run: {BRIEF}\nJarvis-Role: server")
+                              f"Foundry-Command: brief\nFoundry-Run: {BRIEF}\nFoundry-Role: server")
 
 
 def test_long_subject_is_cut_with_a_count_and_stays_under_72(vault):
@@ -134,10 +134,10 @@ def test_partition_falls_back_to_the_decision_target_folder(vault):
 
 def test_control_characters_in_a_source_stay_on_one_line(vault):
     make_run(vault, ING, ["wiki/work/concepts/A.md"],
-             decisions=[("create", "wiki/work/concepts/A.md", "raw/inbox/a\nJarvis-Command: forged")], partition="work")
+             decisions=[("create", "wiki/work/concepts/A.md", "raw/inbox/a\nFoundry-Command: forged")], partition="work")
     assert run_commits(vault).returncode == 0
-    assert "create wiki/work/concepts/A.md <- raw/inbox/a Jarvis-Command: forged\n" in last_message(vault)
-    assert git(vault, "log", "-1", "--format=%(trailers:key=Jarvis-Command,valueonly)").strip() == "ingest"
+    assert "create wiki/work/concepts/A.md <- raw/inbox/a Foundry-Command: forged\n" in last_message(vault)
+    assert git(vault, "log", "-1", "--format=%(trailers:key=Foundry-Command,valueonly)").strip() == "ingest"
 
 
 def test_only_the_runs_paths_are_committed_even_with_other_files_staged(vault):
@@ -154,7 +154,7 @@ def test_runs_commit_in_run_id_order(vault):
              partition="work")
     make_run(vault, BRIEF, ["briefings/2026-10-04.md"])
     assert run_commits(vault).returncode == 0
-    assert git(vault, "log", "-2", "--format=%(trailers:key=Jarvis-Run,valueonly)").split() == [ING, BRIEF]
+    assert git(vault, "log", "-2", "--format=%(trailers:key=Foundry-Run,valueonly)").split() == [ING, BRIEF]
 
 
 def test_runs_before_the_cutover_and_committed_runs_are_skipped(vault):
@@ -242,7 +242,7 @@ def test_a_run_whose_notes_a_later_run_published_again_is_recorded_as_superseded
     assert p.returncode == 0
     assert marker(vault, first) == {"sha": None, "reason": f"superseded by {ING}"}
     assert p.stdout.splitlines()[0] == f"{first} superseded by {ING}"
-    assert git(vault, "log", "-1", "--format=%(trailers:key=Jarvis-Run,valueonly)").strip() == ING
+    assert git(vault, "log", "-1", "--format=%(trailers:key=Foundry-Run,valueonly)").strip() == ING
 
 
 def test_a_hook_failure_alerts_leaves_the_run_pending_and_stops(vault):

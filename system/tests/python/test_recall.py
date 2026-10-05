@@ -122,7 +122,7 @@ def test_out_of_scope_and_mismatched_cwd_exit_2(cli, vault, tmp_path):
 def test_crew_sessions_get_no_digests(cli, vault):
     config(vault)
     digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00")
-    r = cli("recall", "--cwd", str(vault), env={"JARVIS_CREW": "1"})
+    r = cli("recall", "--cwd", str(vault), env={"FOUNDRY_WORKCELL_SESSION": "1"})
     assert r.returncode == 0
     assert r.stdout == ""
 

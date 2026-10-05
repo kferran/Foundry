@@ -77,24 +77,24 @@ fi
 role="$(config_get machine_role standalone)"
 case "$role" in
   standalone)
-    UNITS=(jarvis-intake.service jarvis-intake.timer jarvis-brief.service jarvis-brief.timer
-           jarvis-debrief.service jarvis-debrief.timer jarvis-focus.service)
-    ENABLE=(jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer jarvis-focus.service) ;;
+    UNITS=(foundry-intake.service foundry-intake.timer foundry-brief.service foundry-brief.timer
+           foundry-debrief.service foundry-debrief.timer foundry-focus.service)
+    ENABLE=(foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service) ;;
   server)
-    UNITS=(jarvis-intake.service jarvis-intake.timer jarvis-brief.service jarvis-brief.timer
-           jarvis-debrief.service jarvis-debrief.timer jarvis-sync.service jarvis-sync.timer)
-    ENABLE=(jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer jarvis-sync.timer) ;;
+    UNITS=(foundry-intake.service foundry-intake.timer foundry-brief.service foundry-brief.timer
+           foundry-debrief.service foundry-debrief.timer foundry-sync.service foundry-sync.timer)
+    ENABLE=(foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-sync.timer) ;;
   client) UNITS=() ENABLE=() ;;
   *) die 1 "unknown machine_role in system/config.md: $role" ;;
 esac
 # A server syncs around every run (two-machine spec §5.2): one drop-in per run service, with the
 # service's own prep step and a timeout raised by two sync deadlines plus margin.
 DROPINS=()
-[[ "$role" != server ]] || DROPINS=(jarvis-intake.service.d/jarvis-sync.conf jarvis-brief.service.d/jarvis-sync.conf
-                                    jarvis-debrief.service.d/jarvis-sync.conf)
-declare -A DROPIN_TIMEOUT=([jarvis-intake]=105min [jarvis-brief]=60min [jarvis-debrief]=60min)
-declare -A DROPIN_PREP=([jarvis-intake]="" [jarvis-brief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/brief_prep.sh"'
-                        [jarvis-debrief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/debrief_prep.sh"')
+[[ "$role" != server ]] || DROPINS=(foundry-intake.service.d/foundry-sync.conf foundry-brief.service.d/foundry-sync.conf
+                                    foundry-debrief.service.d/foundry-sync.conf)
+declare -A DROPIN_TIMEOUT=([foundry-intake]=105min [foundry-brief]=60min [foundry-debrief]=60min)
+declare -A DROPIN_PREP=([foundry-intake]="" [foundry-brief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/brief_prep.sh"'
+                        [foundry-debrief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/debrief_prep.sh"')
 
 if [[ "$role" == client ]]; then
   echo "install_units: machine_role client: no units"
@@ -155,7 +155,7 @@ for t in "${templates[@]}"; do
 done
 for d in "${DROPINS[@]}"; do
   svc="${d%.service.d/*}"
-  render system/systemd/dropins/jarvis-sync.conf.in "$work/$d" \
+  render system/systemd/dropins/foundry-sync.conf.in "$work/$d" \
     -e "s|{{PREP_LINE}}|$(esc "${DROPIN_PREP[$svc]}")|" -e "s|{{TIMEOUT}}|${DROPIN_TIMEOUT[$svc]}|"
 done
 # Each unit is verified with its drop-ins beside it, as systemd will load them.

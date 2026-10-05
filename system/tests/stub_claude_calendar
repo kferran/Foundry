@@ -1,7 +1,7 @@
 #!/bin/bash
 # Test double for the calendar fetch's claude calls. `mcp list` prints STUB_MCP_LIST (or fails when
 # STUB_MCP_FAIL=1). Any other call records argv (one per line) to STUB_ARGS, the working directory to
-# STUB_CWD and JARVIS_HEADLESS to STUB_ENV, then prints the file STUB_STREAM and exits STUB_RC.
+# STUB_CWD and FOUNDRY_HEADLESS to STUB_ENV, then prints the file STUB_STREAM and exits STUB_RC.
 if [[ "${1:-}" == mcp && "${2:-}" == list ]]; then
   [[ "${STUB_MCP_FAIL:-0}" == 1 ]] && exit 1
   printf '%s\n' "Checking MCP server health…" "" "${STUB_MCP_LIST:-claude.ai Google Calendar: https://calendar.example/mcp - ok Connected}"
@@ -9,7 +9,7 @@ if [[ "${1:-}" == mcp && "${2:-}" == list ]]; then
 fi
 printf '%s\n' "$@" > "${STUB_ARGS:-/dev/null}"
 pwd > "${STUB_CWD:-/dev/null}"
-printf '%s\n' "${JARVIS_HEADLESS:-}" > "${STUB_ENV:-/dev/null}"
+printf '%s\n' "${FOUNDRY_HEADLESS:-}" > "${STUB_ENV:-/dev/null}"
 [[ -n "${STUB_SLEEP:-}" ]] && sleep "$STUB_SLEEP"
 [[ -n "${STUB_STREAM:-}" ]] && cat "$STUB_STREAM"
 exit "${STUB_RC:-0}"

@@ -1,8 +1,8 @@
 #!/bin/bash
 # Soundwave PostToolUse hook (spec §6.17): count work events for an eligible session.
 # Fast path: pure bash, no jq or Python (spike item 15: one jq call alone costs ~44 ms).
-[[ "${JARVIS_HEADLESS:-}" != 1 && "${CLAUDE_CODE_ENTRYPOINT:-}" == cli ]] || exit 0
-[[ "${JARVIS_CREW:-}" == 1 || "${CLAUDE_CODE_SESSION_ATTENDED:-}" == 1 ]] || exit 0
+[[ "${FOUNDRY_HEADLESS:-}" != 1 && "${CLAUDE_CODE_ENTRYPOINT:-}" == cli ]] || exit 0
+[[ "${FOUNDRY_WORKCELL_SESSION:-}" == 1 || "${CLAUDE_CODE_SESSION_ATTENDED:-}" == 1 ]] || exit 0
 input="$(cat)"  # one bulk read: `read -d ''` on a pipe goes byte by byte (1 MB ~ 900 ms)
 [[ "$input" == *'"agent_id"'* ]] && exit 0  # subagent
 [[ "$input" =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9-]+)\" ]] || exit 0

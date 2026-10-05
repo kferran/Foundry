@@ -2,8 +2,8 @@
 # install_units.sh and the unit templates (spec §6.10). systemctl is always a stub; systemd-analyze is real.
 load helpers
 
-UNITS=(jarvis-intake.service jarvis-intake.timer jarvis-brief.service jarvis-brief.timer
-       jarvis-debrief.service jarvis-debrief.timer jarvis-focus.service)
+UNITS=(foundry-intake.service foundry-intake.timer foundry-brief.service foundry-brief.timer
+       foundry-debrief.service foundry-debrief.timer foundry-focus.service)
 
 setup() {
   make_vault
@@ -43,7 +43,7 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   run "$IU"
   [ "$status" -eq 0 ]
   for s in intake brief debrief focus; do
-    f="$UD/jarvis-$s.service"
+    f="$UD/foundry-$s.service"
     grep -qxF 'Environment="TZ=America/Denver"' "$f"
     grep -qxF "Environment=\"PATH=$STUBS:%h/.local/bin:/usr/local/bin:/usr/bin:/bin\"" "$f"
     grep -qxF "Environment=\"CLAUDE_BIN=$STUBS/claude\"" "$f"
@@ -51,29 +51,29 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   done
   run grep -l stub_claude "$UD"/*
   [ "$status" -eq 1 ]
-  grep -qx 'TimeoutStartSec=90min' "$UD/jarvis-intake.service"
-  grep -qx 'TimeoutStartSec=45min' "$UD/jarvis-brief.service"
-  grep -qx 'TimeoutStartSec=45min' "$UD/jarvis-debrief.service"
-  grep -qxF "ExecStartPre=-\"$VP/system/scripts/brief_prep.sh\"" "$UD/jarvis-brief.service"
-  grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/jarvis-brief.service"
-  grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" debrief" "$UD/jarvis-debrief.service"
-  grep -qxF "ExecStart=\"$VP/system/scripts/intake_daemon.sh\"" "$UD/jarvis-intake.service"
+  grep -qx 'TimeoutStartSec=90min' "$UD/foundry-intake.service"
+  grep -qx 'TimeoutStartSec=45min' "$UD/foundry-brief.service"
+  grep -qx 'TimeoutStartSec=45min' "$UD/foundry-debrief.service"
+  grep -qxF "ExecStartPre=-\"$VP/system/scripts/brief_prep.sh\"" "$UD/foundry-brief.service"
+  grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/foundry-brief.service"
+  grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" debrief" "$UD/foundry-debrief.service"
+  grep -qxF "ExecStart=\"$VP/system/scripts/intake_daemon.sh\"" "$UD/foundry-intake.service"
 }
 
 @test "timers fire at the configured times in the configured timezone" {
   run "$IU"
   [ "$status" -eq 0 ]
-  grep -qxF 'OnCalendar=*-*-* 06:00:00 America/Denver' "$UD/jarvis-brief.timer"
-  grep -qxF 'OnCalendar=*-*-* 17:00:00 America/Denver' "$UD/jarvis-debrief.timer"
-  grep -qx 'Persistent=true' "$UD/jarvis-brief.timer"
-  grep -qx 'Persistent=true' "$UD/jarvis-debrief.timer"
+  grep -qxF 'OnCalendar=*-*-* 06:00:00 America/Denver' "$UD/foundry-brief.timer"
+  grep -qxF 'OnCalendar=*-*-* 17:00:00 America/Denver' "$UD/foundry-debrief.timer"
+  grep -qx 'Persistent=true' "$UD/foundry-brief.timer"
+  grep -qx 'Persistent=true' "$UD/foundry-debrief.timer"
 }
 
 @test "installing reloads systemd and enables the three timers and the focus tracker" {
   run "$IU"
   [ "$status" -eq 0 ]
   grep -qx -- '--user daemon-reload' "$STUB_SYSTEMCTL_LOG"
-  grep -qx -- '--user enable --now jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer jarvis-focus.service' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "a second run reports every unit unchanged and rewrites nothing" {
@@ -92,15 +92,15 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   system/scripts/vault_index.py set system/config.md brief_time 07:30
   run "$IU"
   [ "$status" -eq 0 ]
-  grep -qx 'changed jarvis-brief.timer' <<< "$output"
-  grep -qx 'unchanged jarvis-brief.service' <<< "$output"
-  grep -qxF 'OnCalendar=*-*-* 07:30:00 America/Denver' "$UD/jarvis-brief.timer"
+  grep -qx 'changed foundry-brief.timer' <<< "$output"
+  grep -qx 'unchanged foundry-brief.service' <<< "$output"
+  grep -qxF 'OnCalendar=*-*-* 07:30:00 America/Denver' "$UD/foundry-brief.timer"
 }
 
 @test "--dry-run prints the rendered units and touches nothing" {
   run "$IU" --dry-run
   [ "$status" -eq 0 ]
-  grep -qx '===== jarvis-brief.timer' <<< "$output"
+  grep -qx '===== foundry-brief.timer' <<< "$output"
   grep -qxF 'OnCalendar=*-*-* 06:00:00 America/Denver' <<< "$output"
   [ ! -e "$UD" ]
   [ ! -e "$STUB_SYSTEMCTL_LOG" ]
@@ -118,7 +118,7 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   done
   [ -f "$UD/foreign.service" ]
   [ -f "$UD/other.timer" ]
-  grep -q -- '^--user disable --now .*jarvis-brief.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -q -- '^--user disable --now .*foundry-brief.timer' "$STUB_SYSTEMCTL_LOG"
   run grep -E 'foreign|other' "$STUB_SYSTEMCTL_LOG"
   [ "$status" -eq 1 ]
 }
@@ -128,17 +128,17 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   move_vault "$BATS_TEST_TMPDIR/moved"
   run "$IU"
   [ "$status" -eq 0 ]
-  grep -qx 'changed jarvis-brief.service' <<< "$output"
-  [ "$(head -n 1 "$UD/jarvis-brief.service")" = "# Managed by vault: $VP" ]
-  grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/jarvis-brief.service"
+  grep -qx 'changed foundry-brief.service' <<< "$output"
+  [ "$(head -n 1 "$UD/foundry-brief.service")" = "# Managed by vault: $VP" ]
+  grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/foundry-brief.service"
 }
 
 @test "a vault path with spaces renders quoted paths that systemd accepts" {
   move_vault "$BATS_TEST_TMPDIR/my vault"
   run "$IU"
   [ "$status" -eq 0 ]
-  grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/jarvis-brief.service"
-  grep -qxF "WorkingDirectory=$VP" "$UD/jarvis-brief.service"
+  grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/foundry-brief.service"
+  grep -qxF "WorkingDirectory=$VP" "$UD/foundry-brief.service"
 }
 
 @test "a vault path a unit file cannot carry is refused before anything is written" {
@@ -158,7 +158,7 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
 }
 
 @test "a template systemd rejects fails the install before anything is written" {
-  sed -i 's|intake_daemon.sh|missing.sh|' system/systemd/jarvis-intake.service.in
+  sed -i 's|intake_daemon.sh|missing.sh|' system/systemd/foundry-intake.service.in
   run "$IU"
   [ "$status" -eq 1 ]
   [[ "$output" == *"systemd-analyze"* ]]
@@ -166,7 +166,7 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
 }
 
 @test "an unknown placeholder is refused" {
-  printf 'Documentation={{NOPE}}\n' >> system/systemd/jarvis-intake.timer.in
+  printf 'Documentation={{NOPE}}\n' >> system/systemd/foundry-intake.timer.in
   run "$IU"
   [ "$status" -eq 1 ]
   [[ "$output" == *"unreplaced placeholder {{NOPE}}"* ]]
@@ -175,21 +175,21 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
 
 @test "a same-named unit that no vault manages is never overwritten" {
   mkdir -p "$UD"
-  printf '[Unit]\nDescription=mine\n' > "$UD/jarvis-brief.service"
+  printf '[Unit]\nDescription=mine\n' > "$UD/foundry-brief.service"
   run "$IU"
   [ "$status" -eq 1 ]
   [[ "$output" == *"is not managed by a vault"* ]]
-  grep -qx 'Description=mine' "$UD/jarvis-brief.service"
-  [ ! -e "$UD/jarvis-intake.service" ]
+  grep -qx 'Description=mine' "$UD/foundry-brief.service"
+  [ ! -e "$UD/foundry-intake.service" ]
 }
 
 @test "a unit owned by another vault that still exists is never overwritten" {
   mkdir -p "$UD" "$BATS_TEST_TMPDIR/other/system/scripts"
-  printf '# Managed by vault: %s\n[Unit]\n' "$BATS_TEST_TMPDIR/other" > "$UD/jarvis-brief.service"
+  printf '# Managed by vault: %s\n[Unit]\n' "$BATS_TEST_TMPDIR/other" > "$UD/foundry-brief.service"
   run "$IU"
   [ "$status" -eq 1 ]
   [[ "$output" == *"belongs to the vault at $BATS_TEST_TMPDIR/other"* ]]
-  [ ! -e "$UD/jarvis-intake.service" ]
+  [ ! -e "$UD/foundry-intake.service" ]
 }
 
 @test "unknown arguments exit 2" {
@@ -206,11 +206,11 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   run "$IU"
   [ "$status" -eq 0 ]
   for n in "${UNITS[@]}"; do
-    [ "$n" = jarvis-focus.service ] && continue
+    [ "$n" = foundry-focus.service ] && continue
     [ -f "$UD/$n" ]
   done
-  [ ! -e "$UD/jarvis-focus.service" ]
-  grep -qx -- '--user enable --now jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer jarvis-sync.timer' "$STUB_SYSTEMCTL_LOG"
+  [ ! -e "$UD/foundry-focus.service" ]
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-sync.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "machine_role client installs nothing and says so" {
@@ -227,20 +227,20 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
 
 @test "a role change removes the owned units the new role does not use" {
   run "$IU"
-  [ -f "$UD/jarvis-focus.service" ]
+  [ -f "$UD/foundry-focus.service" ]
   set_role server
   run "$IU"
   [ "$status" -eq 0 ]
-  grep -qx 'removed jarvis-focus.service' <<< "$output"
-  [ ! -e "$UD/jarvis-focus.service" ]
-  grep -qx -- '--user disable --now jarvis-focus.service' "$STUB_SYSTEMCTL_LOG"
+  grep -qx 'removed foundry-focus.service' <<< "$output"
+  [ ! -e "$UD/foundry-focus.service" ]
+  grep -qx -- '--user disable --now foundry-focus.service' "$STUB_SYSTEMCTL_LOG"
   set_role client
   run "$IU"
   [ "$status" -eq 0 ]
   for n in "${UNITS[@]}"; do
     [ ! -e "$UD/$n" ]
   done
-  grep -qx 'removed jarvis-brief.timer' <<< "$output"
+  grep -qx 'removed foundry-brief.timer' <<< "$output"
 }
 
 @test "a role change never removes units this vault does not own" {
@@ -257,29 +257,29 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   sed -i '/^machine_role:/a sync_interval_minutes: "7"' system/config.md
   run "$IU"
   [ "$status" -eq 0 ]
-  grep -qx 'OnUnitActiveSec=7min' "$UD/jarvis-sync.timer"
-  grep -qx 'TimeoutStartSec=10min' "$UD/jarvis-sync.service"
-  grep -qx 'SuccessExitStatus=4' "$UD/jarvis-sync.service"
-  grep -qxF "ExecStart=\"$VP/system/scripts/vault_sync.sh\"" "$UD/jarvis-sync.service"
+  grep -qx 'OnUnitActiveSec=7min' "$UD/foundry-sync.timer"
+  grep -qx 'TimeoutStartSec=10min' "$UD/foundry-sync.service"
+  grep -qx 'SuccessExitStatus=4' "$UD/foundry-sync.service"
+  grep -qxF "ExecStart=\"$VP/system/scripts/vault_sync.sh\"" "$UD/foundry-sync.service"
   for s in intake brief debrief; do
-    d="$UD/jarvis-$s.service.d/jarvis-sync.conf"
+    d="$UD/foundry-$s.service.d/foundry-sync.conf"
     [ "$(head -n 1 "$d")" = "# Managed by vault: $VP" ]
-    grep -qx "new jarvis-$s.service.d/jarvis-sync.conf" <<< "$output"
+    grep -qx "new foundry-$s.service.d/foundry-sync.conf" <<< "$output"
   done
-  [ "$(grep '^Exec' "$UD/jarvis-brief.service.d/jarvis-sync.conf")" = "$(printf 'ExecStartPre=\nExecStartPre="%s/system/scripts/vault_sync.sh" --pre\nExecStartPre=-"%s/system/scripts/brief_prep.sh"\nExecStartPost="%s/system/scripts/vault_sync.sh" --post' "$VP" "$VP" "$VP")" ]
-  grep -qxF "ExecStartPre=-\"$VP/system/scripts/debrief_prep.sh\"" "$UD/jarvis-debrief.service.d/jarvis-sync.conf"
-  [ "$(grep -c '^ExecStartPre=' "$UD/jarvis-intake.service.d/jarvis-sync.conf")" -eq 2 ]
-  grep -qx 'TimeoutStartSec=105min' "$UD/jarvis-intake.service.d/jarvis-sync.conf"
-  grep -qx 'TimeoutStartSec=60min' "$UD/jarvis-brief.service.d/jarvis-sync.conf"
-  grep -qx 'TimeoutStartSec=60min' "$UD/jarvis-debrief.service.d/jarvis-sync.conf"
+  [ "$(grep '^Exec' "$UD/foundry-brief.service.d/foundry-sync.conf")" = "$(printf 'ExecStartPre=\nExecStartPre="%s/system/scripts/vault_sync.sh" --pre\nExecStartPre=-"%s/system/scripts/brief_prep.sh"\nExecStartPost="%s/system/scripts/vault_sync.sh" --post' "$VP" "$VP" "$VP")" ]
+  grep -qxF "ExecStartPre=-\"$VP/system/scripts/debrief_prep.sh\"" "$UD/foundry-debrief.service.d/foundry-sync.conf"
+  [ "$(grep -c '^ExecStartPre=' "$UD/foundry-intake.service.d/foundry-sync.conf")" -eq 2 ]
+  grep -qx 'TimeoutStartSec=105min' "$UD/foundry-intake.service.d/foundry-sync.conf"
+  grep -qx 'TimeoutStartSec=60min' "$UD/foundry-brief.service.d/foundry-sync.conf"
+  grep -qx 'TimeoutStartSec=60min' "$UD/foundry-debrief.service.d/foundry-sync.conf"
   run "$IU"
-  grep -qx 'unchanged jarvis-brief.service.d/jarvis-sync.conf' <<< "$output"
+  grep -qx 'unchanged foundry-brief.service.d/foundry-sync.conf' <<< "$output"
 }
 
 @test "a standalone machine gets no sync units or drop-ins" {
   run "$IU"
   [ "$status" -eq 0 ]
-  [ ! -e "$UD/jarvis-sync.timer" ]
+  [ ! -e "$UD/foundry-sync.timer" ]
   run ls -d "$UD"/*.service.d
   [ "$status" -ne 0 ]
 }
@@ -287,16 +287,16 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
 @test "leaving the server role removes the sync units and the owned drop-ins, never a foreign one" {
   set_role server
   run "$IU"
-  printf '[Service]\nNice=5\n' > "$UD/jarvis-brief.service.d/local.conf"
+  printf '[Service]\nNice=5\n' > "$UD/foundry-brief.service.d/local.conf"
   set_role standalone
   run "$IU"
   [ "$status" -eq 0 ]
-  grep -qx 'removed jarvis-sync.timer' <<< "$output"
-  grep -qx 'removed jarvis-intake.service.d/jarvis-sync.conf' <<< "$output"
-  [ ! -e "$UD/jarvis-sync.service" ]
-  [ ! -e "$UD/jarvis-intake.service.d" ]
-  [ ! -e "$UD/jarvis-brief.service.d/jarvis-sync.conf" ]
-  [ -f "$UD/jarvis-brief.service.d/local.conf" ]
+  grep -qx 'removed foundry-sync.timer' <<< "$output"
+  grep -qx 'removed foundry-intake.service.d/foundry-sync.conf' <<< "$output"
+  [ ! -e "$UD/foundry-sync.service" ]
+  [ ! -e "$UD/foundry-intake.service.d" ]
+  [ ! -e "$UD/foundry-brief.service.d/foundry-sync.conf" ]
+  [ -f "$UD/foundry-brief.service.d/local.conf" ]
 }
 
 @test "--uninstall removes the owned drop-ins too" {
@@ -304,7 +304,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   run "$IU"
   run "$IU" --uninstall
   [ "$status" -eq 0 ]
-  grep -qx 'removed jarvis-debrief.service.d/jarvis-sync.conf' <<< "$output"
+  grep -qx 'removed foundry-debrief.service.d/foundry-sync.conf' <<< "$output"
   run ls -A "$UD"
   [ -z "$output" ]
 }

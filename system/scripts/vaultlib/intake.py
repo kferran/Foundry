@@ -84,7 +84,7 @@ class Intake:
     def alert(self, message: str) -> None:
         self.logs.mkdir(parents=True, exist_ok=True)
         with open(self.logs / f"alerts_{self.today()}.md", "a", encoding="utf-8") as fh:
-            fh.write(f"- {self.dt().strftime('%H:%M:%S')} [wheeljack] {message}\n")
+            fh.write(f"- {self.dt().strftime('%H:%M:%S')} [intake] {message}\n")
 
     def config(self, key: str, default: str) -> str:
         path = self.vault / "system" / "config.md"
@@ -170,7 +170,7 @@ class Intake:
 
     def headless(self, rel_paths, shas) -> int:
         self.runs += 1
-        env = {**os.environ, "JARVIS_ORIGINAL_SHA256": " ".join(shas)}
+        env = {**os.environ, "FOUNDRY_ORIGINAL_SHA256": " ".join(shas)}
         return subprocess.run([str(self.vault / "system/scripts/run_headless.sh"), "ingest", *rel_paths],
                               cwd=self.vault, env=env).returncode
 

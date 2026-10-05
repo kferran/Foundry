@@ -45,7 +45,7 @@ ledger.parent.mkdir(parents=True, exist_ok=True)
 with open(ledger, "a") as fh:
     fh.write(json.dumps({"run_id": f"stub-{time.time_ns()}", "command": "ingest",
                          "started_at": datetime.now(TZ).isoformat(), "inputs": args[1:],
-                         "input_sha256": os.environ.get("JARVIS_ORIGINAL_SHA256", "").split(), "exit": rc}) + "\\n")
+                         "input_sha256": os.environ.get("FOUNDRY_ORIGINAL_SHA256", "").split(), "exit": rc}) + "\\n")
 sys.exit(rc)
 """
 

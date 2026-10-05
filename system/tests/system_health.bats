@@ -39,14 +39,14 @@ skip_unless_role() {
 
 @test "the intake, brief and debrief timers are active" {
   skip_unless_role standalone server
-  for t in jarvis-intake.timer jarvis-brief.timer jarvis-debrief.timer; do
+  for t in foundry-intake.timer foundry-brief.timer foundry-debrief.timer; do
     systemctl --user is-active --quiet "$t"
   done
 }
 
 @test "the sync timer is active" {
   skip_unless_role server
-  systemctl --user is-active --quiet jarvis-sync.timer
+  systemctl --user is-active --quiet foundry-sync.timer
 }
 
 @test "no sync conflict is blocking the runs" {
@@ -59,7 +59,7 @@ skip_unless_role() {
 
 @test "the focus tracker is active" {
   skip_unless_role standalone
-  systemctl --user is-active --quiet jarvis-focus.service
+  systemctl --user is-active --quiet foundry-focus.service
 }
 
 @test "lingering is enabled, so timers run while logged out" {

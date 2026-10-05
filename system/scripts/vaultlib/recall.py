@@ -114,4 +114,4 @@ def build(vault, scope, budget, crew=False) -> str:
 
 
 def crew_env() -> bool:
-    return os.environ.get("JARVIS_CREW") == "1"
+    return os.environ.get("FOUNDRY_WORKCELL_SESSION") == "1"

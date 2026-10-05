@@ -9,16 +9,16 @@ MEM_LOG="$MEM_DIR/hooks.log"
 MEM_CACHE="$MEM_DIR/scope_cache.tsv"
 mkdir -p "$MEM_SESSIONS" 2>/dev/null
 
-mem_log() { printf '%s [soundwave] %s\n' "$(date -Iseconds)" "$1" >> "$MEM_LOG" 2>/dev/null; }
+mem_log() { printf '%s [memory] %s\n' "$(date -Iseconds)" "$1" >> "$MEM_LOG" 2>/dev/null; }
 
 mem_valid_sid() { [[ "${1-}" =~ ^[A-Za-z0-9-]+$ ]]; }
 
 # Interactive, attended main sessions only (spike item 12; undocumented variables, re-checked by
-# system_health.bats). Crewmates (JARVIS_CREW=1) skip the attended check.
+# system_health.bats). Crewmates (FOUNDRY_WORKCELL_SESSION=1) skip the attended check.
 mem_env_ok() {
-  [[ "${JARVIS_HEADLESS:-}" != 1 ]] || return 1
+  [[ "${FOUNDRY_HEADLESS:-}" != 1 ]] || return 1
   [[ "${CLAUDE_CODE_ENTRYPOINT:-}" == cli ]] || return 1
-  [[ "${JARVIS_CREW:-}" == 1 || "${CLAUDE_CODE_SESSION_ATTENDED:-}" == 1 ]]
+  [[ "${FOUNDRY_WORKCELL_SESSION:-}" == 1 || "${CLAUDE_CODE_SESSION_ATTENDED:-}" == 1 ]]
 }
 
 _mem_vi() { (cd "$MEM_VAULT" && system/scripts/vault_index.py "$@"); }
@@ -105,7 +105,7 @@ mem_events() { local n=0; [[ -f "$MEM_SESSIONS/$1.events" ]] && read -r n < "$ME
 mem_alert() {  # mem_alert <tz> <message>
   local day
   day="$(TZ="$1" date +%F)"
-  printf -- '- %s [soundwave] %s\n' "$(TZ="$1" date +%H:%M:%S)" "$2" >> "$MEM_VAULT/system/logs/alerts_$day.md"
+  printf -- '- %s [memory] %s\n' "$(TZ="$1" date +%H:%M:%S)" "$2" >> "$MEM_VAULT/system/logs/alerts_$day.md"
 }
 
 mem_prune() { find "$MEM_SESSIONS" -maxdepth 1 -type f -mtime +14 -delete 2>/dev/null || true; }

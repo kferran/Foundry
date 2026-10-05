@@ -53,17 +53,17 @@ The intended loop is **capture → compile → index → recall → correct**:
 5. **Recall.** With the memory hooks installed, a `SessionStart` hook adds up to `recall_budget_chars` of vault data (default 9,000 characters, never more than 9,500) to new sessions in scope: the latest digests for the codebase or partition and, once enabled, preferences you have confirmed. Recalled text is marked as data, not instructions.
 6. **Correct.** Each digest has a Corrections section. Ingest turns these into `preference` notes with linked evidence. A preference's status is calculated in the index, and it becomes confirmed only after you accept it in `/brief`.
 
-**History.** `/backup` first commits each headless run that published files, one commit per run, with a message `commit_runs.py` builds from the run's records (no model writes it). Each carries `Jarvis-Command`, `Jarvis-Run` and `Jarvis-Role` trailers, so `git log` reads as a handoff log: `git log --grep 'Jarvis-Command: ingest'` lists the ingest runs.
+**History.** `/backup` first commits each headless run that published files, one commit per run, with a message `commit_runs.py` builds from the run's records (no model writes it). Each carries `Foundry-Command`, `Foundry-Run` and `Foundry-Role` trailers, so `git log` reads as a handoff log: `git log --grep 'Foundry-Command: ingest'` lists the ingest runs.
 
 | Name | Role | Concrete artifacts |
 |---|---|---|
-| **Jarvis** | The vault / product | this repo, `jarvis-*` systemd units |
+| **Jarvis** | The vault / product | this repo, `foundry-*` systemd units |
 | **Optimus** | Chief of Staff persona; orchestrator in sub-project 2 | `system/agents/Optimus.md`, `agent_owner: Optimus` |
-| **Wheeljack** | Headless intake compiler | `jarvis-intake.service`/`.timer`, `intake_daemon.sh`, `run_headless.sh ingest` |
+| **Wheeljack** | Headless intake compiler | `foundry-intake.service`/`.timer`, `intake_daemon.sh`, `run_headless.sh ingest` |
 | **Ultra Magnus** | Publish gate: validate, conflict-check, publish | `publish_staged.py`, `vaultlib/publish.py` |
 | **Soundwave** | Memory capture and recall | `system/hooks/memory_*.sh`, `/digest`, `vault_index.py recall` |
 | **The Ark** | The index | `system/index.db`, `vault_index.py` |
-| **Teletraan** | Zero-token fleet watcher (reserved, sub-project 2) | `jarvis-watcher.service` (reserved) |
+| **Teletraan** | Zero-token fleet watcher (reserved, sub-project 2) | `foundry-watcher.service` (reserved) |
 | **Autobots** | Ship-task crewmates (reserved, sub-project 2) | seeded from `CodingAgent.md`, `SystemMaintenance.md` |
 | **Bumblebee** | Scout crewmates producing "recon" reports (reserved, sub-project 2) | reports land in `raw/inbox/` |
 
@@ -116,7 +116,7 @@ system/
   scripts/                    vault_index.py, vaultlib/, publish_staged.py, run_headless.sh,
                               intake_daemon.sh, install_units.sh, install_hooks.sh,
                               setup_remote.sh, update_template.sh, check_deps.sh, ...
-  systemd/                    jarvis-{intake,brief,debrief,focus} unit templates (*.in)
+  systemd/                    foundry-{intake,brief,debrief,focus} unit templates (*.in)
   tests/                      *.bats per area (system_health.bats is advisory), python/ for pytest
   fleet/                      reserved for sub-project 2 (gitignored)
 docs/superpowers/             specs, plans, spike results
@@ -134,16 +134,16 @@ Each machine that holds the vault has a `machine_role` in its own `system/config
 
 A server and its clients share the vault through a private `origin` (`remote_mode: private`):
 
-- **Server.** `vault_sync.sh` runs every `sync_interval_minutes` (`jarvis-sync.timer`) and before and after every run: it commits headless runs and other changes with scripted messages, merges `origin` and pushes. Network and credential failures never stop the runs; they are alerted once a day until sync works again.
+- **Server.** `vault_sync.sh` runs every `sync_interval_minutes` (`foundry-sync.timer`) and before and after every run: it commits headless runs and other changes with scripted messages, merges `origin` and pushes. Network and credential failures never stop the runs; they are alerted once a day until sync works again.
 - **Client.** The Obsidian Git plugin commits and syncs every few minutes; `/setup` prints its settings. Write notes in today's briefing between `#wiki-ingest-start` and `#wiki-ingest-end`: the server compiles each new block and leaves the briefing as it is (on every role, blocks stay in the briefing after compiling). Files in `raw/inbox/` on a client are not synced.
 
 ### Sync conflicts
 
-A conflict is never resolved automatically. The server aborts the merge, pushes its side to `jarvis/server-pending` on `origin`, writes `system/logs/sync-blocked`, alerts once, and skips intake, brief and debrief until it is resolved. Resolve it on the other machine (for `jarvis/server-pending`, a client):
+A conflict is never resolved automatically. The server aborts the merge, pushes its side to `foundry/server-pending` on `origin`, writes `system/logs/sync-blocked`, alerts once, and skips intake, brief and debrief until it is resolved. Resolve it on the other machine (for `foundry/server-pending`, a client):
 
 ```sh
 git fetch origin
-git merge origin/jarvis/server-pending   # a client's own conflict uses origin/jarvis/client-pending
+git merge origin/foundry/server-pending   # a client's own conflict uses origin/foundry/client-pending
 # fix the conflicted files, then
 git commit
 git push
