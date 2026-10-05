@@ -30,6 +30,7 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 | 8d. Calendar from the connector | Brief calendar from the installed Google Calendar connector | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8d-calendar-connector.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8d-acceptance.md) |
 | 8b. Commit history | Scripted commit messages, one commit per headless run | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8b-commit-history.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8b-acceptance.md) |
 | 8c. Sync | `vault_sync.sh`, server sync units, conflicts, client setup. The real vault is set up after this plan | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8c-sync.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8c-acceptance.md) |
+| 8e. Real-use fixes | Brief and debrief wait out an ingest backlog; `/debrief` reads the ledger's publish fields | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-8e-real-use-fixes.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-8e-acceptance.md) |
 | 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
 | Sub-project 2 | Optimus orchestrator | Separate spec, after Plans 7 and 5 |
@@ -168,21 +169,41 @@ Jarvis runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh --rol
 
 ## Getting started
 
+Before you start, install what [Requirements](#requirements) lists and sign in to Claude Code (`claude`, then `/login`). For a server or a client, also create an **empty private repository** for your vault on your git host: that is your private `origin`, and every machine syncs through it.
+
+**First machine (standalone or server).** Clone the template, start Claude Code in it, and paste the prompt below with your answers filled in:
+
 ```sh
 git clone <template-url> my-vault    # or "Use this template" on the hosting site
 cd my-vault
 claude
-> /setup
 ```
 
-On a client, clone your private vault instead of the template, then run `/setup` and choose `client`:
+**A client.** Set up the first machine first. Then clone your private vault (not the template) and paste the same prompt with `client` as the role:
 
 ```sh
 git clone <private origin> my-vault
 cd my-vault
 claude
-> /setup
 ```
+
+The prompt:
+
+```text
+Set up this clone as a new Jarvis vault. Run /setup and use these answers; ask me only for what is missing:
+- Machine role: <standalone | server | client>
+- Timezone: <Area/City>; brief at <HH:MM>; debrief at <HH:MM>
+- Default partition: <work | personal>
+- Remote: private, origin <private origin URL>   (or: none, standalone only)
+- Codebases to register: <paths, or none>          (not used on a client)
+- Memory hooks: <yes | no>                         (not used on a client)
+Never push to the template repository. Before installing units or memory hooks,
+show me what will change and wait for my yes. Run any command that needs sudo
+(linger) only by giving it to me. When you finish, show the /setup report table
+and list what I still have to do by hand.
+```
+
+You can also type `/setup` and answer its questions one at a time; the prompt only gives it the answers up front. On a server, `/setup` stops at the units phase until linger is on (`sudo loginctl enable-linger $USER`, which you run yourself). On a client it ends with the Obsidian Git settings to enter and asks you to make one test edit.
 
 `/setup` is idempotent and can be re-run at any time. Its phases (spec §11):
 

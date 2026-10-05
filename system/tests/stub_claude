@@ -3,6 +3,7 @@
 printf '%s\n' "$@" > "${STUB_ARGS:-/dev/null}"
 readlink /proc/self/fd/0 > "${STUB_STDIN:-/dev/null}"
 run_id="$(ls wiki/.staging | head -1)"
+sleep "${STUB_SLEEP:-0}"  # a slow run, for lock-order tests
 s="wiki/.staging/$run_id"
 case "${STUB_MODE:-write}" in
   write|write_delete_input|leak)

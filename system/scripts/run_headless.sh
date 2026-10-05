@@ -11,11 +11,14 @@ source system/scripts/lib_config.sh
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 MAX_PER_DAY="${HEADLESS_MAX_RUNS_PER_DAY:-60}"
 TIMEOUT="${HEADLESS_TIMEOUT:-15m}"
-LOCK_WAIT="${HEADLESS_LOCK_WAIT:-600}"
+# brief/debrief wait for run.lock: one sync hold plus one ingest run (two-machines spec §5.4)
+LOCK_WAIT="${HEADLESS_LOCK_WAIT:-1400}"
 TZ="$(config_get timezone UTC)"
 export TZ JARVIS_HEADLESS=1
-TODAY="$(date +%F)"
-LEDGER="system/logs/runs-$(date +%Y-%m).jsonl"
+# One clock reading names the run: a brief that waits past midnight for run.lock keeps its day (the run id, targets and logs agree).
+RUN_TS="$(date +%Y%m%dT%H%M%S)"
+TODAY="${RUN_TS:0:4}-${RUN_TS:4:2}-${RUN_TS:6:2}"
+LEDGER="system/logs/runs-${RUN_TS:0:4}-${RUN_TS:4:2}.jsonl"
 mkdir -p system/logs/headless system/logs/runs
 
 die() { echo "run_headless: $2" >&2; exit "$1"; }
@@ -139,7 +142,7 @@ if (( runs_today >= MAX_PER_DAY )); then
   die 4 "daily cap reached"
 fi
 
-run_id="$(date +%Y%m%dT%H%M%S)-$cmd-$(od -An -N2 -tx1 /dev/urandom | tr -d ' \n')"
+run_id="$RUN_TS-$cmd-$(od -An -N2 -tx1 /dev/urandom | tr -d ' \n')"
 case "$cmd" in
   ingest) if [[ "$partition" == shared ]]; then targets=("wiki/shared/**"); else targets=("wiki/$partition/**" "wiki/shared/**"); fi ;;
   brief) targets=("briefings/$TODAY.md") ;;

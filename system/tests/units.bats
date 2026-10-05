@@ -52,8 +52,8 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   run grep -l stub_claude "$UD"/*
   [ "$status" -eq 1 ]
   grep -qx 'TimeoutStartSec=90min' "$UD/jarvis-intake.service"
-  grep -qx 'TimeoutStartSec=30min' "$UD/jarvis-brief.service"
-  grep -qx 'TimeoutStartSec=20min' "$UD/jarvis-debrief.service"
+  grep -qx 'TimeoutStartSec=45min' "$UD/jarvis-brief.service"
+  grep -qx 'TimeoutStartSec=45min' "$UD/jarvis-debrief.service"
   grep -qxF "ExecStartPre=-\"$VP/system/scripts/brief_prep.sh\"" "$UD/jarvis-brief.service"
   grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/jarvis-brief.service"
   grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" debrief" "$UD/jarvis-debrief.service"
@@ -270,8 +270,8 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qxF "ExecStartPre=-\"$VP/system/scripts/debrief_prep.sh\"" "$UD/jarvis-debrief.service.d/jarvis-sync.conf"
   [ "$(grep -c '^ExecStartPre=' "$UD/jarvis-intake.service.d/jarvis-sync.conf")" -eq 2 ]
   grep -qx 'TimeoutStartSec=105min' "$UD/jarvis-intake.service.d/jarvis-sync.conf"
-  grep -qx 'TimeoutStartSec=45min' "$UD/jarvis-brief.service.d/jarvis-sync.conf"
-  grep -qx 'TimeoutStartSec=35min' "$UD/jarvis-debrief.service.d/jarvis-sync.conf"
+  grep -qx 'TimeoutStartSec=60min' "$UD/jarvis-brief.service.d/jarvis-sync.conf"
+  grep -qx 'TimeoutStartSec=60min' "$UD/jarvis-debrief.service.d/jarvis-sync.conf"
   run "$IU"
   grep -qx 'unchanged jarvis-brief.service.d/jarvis-sync.conf' <<< "$output"
 }

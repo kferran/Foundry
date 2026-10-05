@@ -398,3 +398,10 @@ self_edit_contract() {
   [[ "$sec" == *'whenever the mode is `private`'* ]]
   [[ "$sec" != *'On a server or a client, only `private` is allowed: the machines share the vault through the private `origin`. Then check'* ]]
 }
+
+@test "/debrief reads the ledger fields where run_headless.sh writes them" {
+  f=.claude/commands/debrief.md
+  grep -qF '`exit`, `.publish.status`, `.publish.published`, `.publish.rejected`, `.publish.conflicts`' "$f"
+  run grep -F '(command, exit, published, rejected, conflicts)' "$f"
+  [ "$status" -eq 1 ]
+}

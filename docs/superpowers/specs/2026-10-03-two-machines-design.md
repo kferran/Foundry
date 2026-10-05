@@ -1,7 +1,7 @@
 # Two-Machine Design: machine roles, commit history, git sync, Debian
 
 **Date:** 2026-10-03
-**Status:** Approved in brainstorming; revised after an independent design review and its re-review (rev 3)
+**Status:** Approved in brainstorming; revised after an independent design review and its re-review (rev 3); rev 4 (Plan 8e): brief and debrief wait longer for `run.lock` (§5.4)
 **Extends:** `2026-09-30-vault-template-design.md` (§6.1 config, §6.2 dependencies, §6.4 intake, §6.6 units, §6.11 remotes, §6.12 updates, §8 `/backup`, §11 `/setup`, §12 tests)
 **Roadmap:** Plan 8, split into three plans (§10): 8a roles and Debian, 8b commit history, 8c sync
 
@@ -166,7 +166,7 @@ The index does not need an explicit rebuild: `Index.refresh` runs on every read.
   ExecStartPost="{{VAULT_ROOT}}/system/scripts/vault_sync.sh" --post
   ```
   `{{PREP_LINE}}` is the service's own prep line (`ExecStartPre=-…/brief_prep.sh` for brief, `…/debrief_prep.sh` for debrief, empty for intake), so prep reads a freshly pulled tree. `ExecStartPost` runs only after a successful run; a failed run's output is committed by the next timer tick.
-- `install_units.sh`'s owned-unit scan, and `update_template.sh`'s "units installed" check, include `*.service.d/*.conf` files whose first line names this vault. Every pre- and post-step counts toward a oneshot's `TimeoutStartSec`, so the limits rise by two sync deadlines plus margin: brief from 30 to 45 minutes and debrief from 20 to 35 (two sync deadlines plus 5 min margin; Plan 8d raised the brief base to 30), intake from 90 to 105 minutes. `jarvis-sync.service` gets `TimeoutStartSec=10min`, twice its deadline.
+- `install_units.sh`'s owned-unit scan, and `update_template.sh`'s "units installed" check, include `*.service.d/*.conf` files whose first line names this vault. Every pre- and post-step counts toward a oneshot's `TimeoutStartSec`, so the limits rise by two sync deadlines plus margin: brief and debrief from 45 to 60 minutes (two sync deadlines plus 5 min margin; Plan 8d raised the brief base to 30, and Plan 8e's longer lock wait raised both bases to 45), intake from 90 to 105 minutes. `jarvis-sync.service` gets `TimeoutStartSec=10min`, twice its deadline.
 
 ### 5.3 Failures that are not conflicts
 
@@ -185,6 +185,10 @@ While `sync-blocked` exists, every run service's pre-step exits 3, so intake, br
 **Clearing:** the marker is removed by any cycle that completes step 5, whether or not `origin` was ahead. That cycle also deletes `jarvis/<role>-pending` on `origin` (a branch that is already gone is not an error) and writes a "sync unblocked" alert.
 
 **Missed daily runs:** brief and debrief fire once a day, and a pre-step that exits 3 skips them. On unblocking, the server starts (`systemctl --user start --no-block`) `jarvis-brief.service` and `jarvis-debrief.service` when that command's scheduled time today has passed and the run ledger has no run of it today. The blocked alert says runs are skipped until unblocked.
+
+**Lock wait (rev 4, Plan 8e):** the other way a daily run is lost is `run_headless.sh` giving up on `run.lock` (exit 6), for example behind an ingest backlog at 06:00, and nothing retries it. `intake.py` starts each ingest as a new `run_headless.sh` process, which needs about 0.2 s to reach its `flock`, so a brief already blocked in `flock` gets the lock before the next ingest does (measured: the waiter won every trial; Linux `flock` is not fair, so a persistent ingest worker or an in-process relock would break this). The one exception is a sync cycle taking the free lock in that gap (`flock -n`, up to its 300-second deadline): an ingest that queues behind it can be ahead of the brief. One ingest run holds the lock at most 15 minutes plus the 30-second kill grace plus publish (with the default `HEADLESS_TIMEOUT` of 15m), so brief and debrief wait 1400 seconds, one sync hold plus one ingest run (`HEADLESS_LOCK_WAIT` default, main spec §6.3), on every role, and their `TimeoutStartSec` rises by the extra wait (main spec §6.6; §5.2 here). Considered and rejected:
+- a retry from every server sync cycle: it fired on days with no run at all (a fresh install, a timer the user disabled), depended on `origin` being reachable, needed ledger parsing and `is-active` checks, and covered only a server;
+- systemd `RestartForceExitStatus=6`: each restart re-runs the pre-steps, and a debrief restarted after midnight would write the next day's file.
 
 On a client, `/backup` (which runs `vault_sync.sh`) also reports any `origin/jarvis/*-pending` branch it sees after fetching, so a conflict surfaces wherever the user next syncs by hand. A missing briefing in the morning is the other visible signal; push notifications are out of scope.
 
@@ -261,6 +265,7 @@ Gated tests are hermetic: temporary repos (a bare `origin` plus server and clien
 - **8a:** `check_deps.sh --role` lists; `pacman`/`apt-get` hints via `PATH` stubs; `install_units.sh` per role (client installs nothing, role change removes unused owned units); `setup.md` asks the role first and states each client skip; `backup.md` lints on a client; role-aware `system_health.bats` (advisory); config schema accepts the new keys and rejects out-of-range `sync_interval_minutes`.
 - **8b:** pytest for `commit_runs.py`: exact subjects, bodies and trailers from fixture runs; only the run's paths in its commit even with other files staged; cutover ignores older runs; already-committed paths get the marker without a commit; a hook failure leaves the run pending; `conflict`/`recovered` runs with published files are committed, rejected and empty ones are not. `debrief_prep.sh` lists vault commits from any author.
 - **8c:** `sync.bats`: commit and push; gitignored paths never committed; client commit reaches the server; conflict → abort, pending branch pushed, marker, one alert, exit 3; resolution from the client clone clears it and deletes the pending branch; in-progress merge and unmerged index → exit 3 without committing; conflict-marker file rejected by the hook; refused merge → exit 1 with no `MERGE_HEAD`; rejected push retried once; busy lock → 4, `--pre` → 0, `--post` → 0; `--pre` with a marker → 3 even when the lock is busy; `--pre` during another sync's merge → 3 without writing a marker; stale `index.lock` → 3; TERM during a merge leaves no `MERGE_HEAD`; a note with a setext `=======` underline commits; marker cleared by a cycle with nothing to merge; missed brief started on unblock (stubbed `systemctl`); template origin and missing upstream → 1; alert rate limiting. `units.bats`: sync units and drop-ins only for `server`, drop-in text order (reset, sync, prep, post), owned drop-ins removed on uninstall and role change. pytest for non-destructive extraction: briefing bytes unchanged, one drop per new block, no repeat for a known `(briefing, hash)`, the same text in a later briefing extracted, a new drop for an edited block, unterminated alert once per day. `system_health.bats` server checks.
+- **8e:** `headless.bats`: the default lock wait is 1400 s; a backlog test (stubbed claude sleeping about 2 s, two inbox files, `HEADLESS_LOCK_WAIT` above one stub run) starts a brief during the first ingest and finds its ledger line between the two ingest lines; a brief that gets `run.lock` after midnight keeps the date it started on (`run_id`, targets and ledger month come from one clock reading). `units.bats`: brief and debrief units carry `TimeoutStartSec=45min` and the server drop-ins `60min`. `commands.bats`: `/debrief` names the ledger's `exit` and `.publish.{status,published,rejected,conflicts}`.
 
 ### 8.1 Live acceptance (per plan, in throwaway clones; a local bare repo stands in for `origin`)
 
@@ -271,6 +276,7 @@ Gated tests are hermetic: temporary repos (a bare `origin` plus server and clien
   2. Client clone: a `#wiki-ingest` block added to today's briefing and pushed. Server: sync, intake, sync: an `ingest(<p>)` commit, the briefing unchanged, the note published; the client sees it after a pull.
   3. Forced conflict: both clones change the same briefing line: `jarvis/server-pending` on origin, `sync-blocked`, the brief pre-step exits 3; resolved from the client clone; the next server sync clears both.
   4. Network failure (origin path made unreadable): the brief still runs and publishes locally; one alert; recovery alert after restoring.
+- **8e:** throwaway clone: hold `run.lock` for 11 minutes (longer than the old 600-second wait), start `run_headless.sh brief` one minute in; it waits, takes the lock when released, and exits 0 with a published briefing (one live brief).
 
 ## 9. Template rules
 
@@ -284,6 +290,7 @@ Gated tests are hermetic: temporary repos (a bare `origin` plus server and clien
 | **8a. Roles and Debian** | §3, §6 | — |
 | **8b. Commit history** | §4 | — (useful alone) |
 | **8c. Sync** | §5, sync parts of §3.2 and §3.5 | 8a, 8b |
+| **8e. Real-use fixes** | §5.4 lock wait (rev 4) with main spec §6.3 and §6.6; `/debrief` reads the ledger fields where main spec §6.3 puts them (`exit`, `publish.{status,published,rejected,conflicts}`) | 8c |
 
 Each plan ends with its live acceptance (§8.1) and an outcomes doc.
 
