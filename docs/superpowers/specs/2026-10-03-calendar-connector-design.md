@@ -128,7 +128,7 @@ The `gcalcli` block is replaced by `prep_write calendar.tsv system/scripts/calen
 | 127 | `calendar: claude is not on PATH` |
 | other | `calendar: calendar_fetch.sh failed (exit <n>; see <prep_errors.log>)` |
 
-`jarvis-brief.service` `TimeoutStartSec` rises from 20 to 30 minutes: listing (≤ 35 s) + fetch (≤ 160 s) + `run.lock` wait (≤ 600 s) + run (≤ 15 min + 30 s kill) = 28.8 minutes. Plan 8c's budget (two-machines spec §5.2) adds the fetch to its own arithmetic. Plan 8e raises the lock wait to 1100 s and this limit to 40 minutes (two-machines spec §5.4, rev 4).
+`jarvis-brief.service` `TimeoutStartSec` rises from 20 to 30 minutes: listing (≤ 35 s) + fetch (≤ 160 s) + `run.lock` wait (≤ 600 s) + run (≤ 15 min + 30 s kill) = 28.8 minutes. Plan 8c's budget (two-machines spec §5.2) adds the fetch to its own arithmetic. Plan 8e raises the lock wait to 1400 s and this limit to 45 minutes (two-machines spec §5.4, rev 4).
 
 ## 6. Other changes
 
