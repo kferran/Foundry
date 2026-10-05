@@ -2,7 +2,7 @@
 
 An Obsidian + Claude Code "second brain" vault template.
 
-> **Status:** built and tested on one machine. The headless brief, debrief and intake pipeline passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md)) and passed again with the humanizer self-edit step ([record](docs/superpowers/spikes/2026-10-02-plan-6-acceptance.md)). Memory capture and recall passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md)) and stay off until you install their hooks, which `/setup` offers. A full `/setup` with installed systemd units has not yet been run end to end; that happens after Plan 8 (laptop plus server).
+> **Status:** built and tested on one machine. The headless brief, debrief and intake pipeline passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md)) and passed again with the humanizer self-edit step ([record](docs/superpowers/spikes/2026-10-02-plan-6-acceptance.md)). Memory capture and recall passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md)) and stay off until you install their hooks, which `/setup` offers. A full `/setup` on a Debian server (units, sync, memory hooks, calendar, one codebase) ran end to end on 2026-10-05. Style lint, preferences, the Foreman orchestrator and the migration are still to come (see [Status](#status)).
 
 ## What The Foundry is
 
@@ -12,7 +12,7 @@ The vault compiles itself. Raw inputs (files you drop in, plus short digests of 
 
 Agents follow the writing rules in `CLAUDE.md`: chat replies are sized by type (quick answer, one-screen task report, or a linked document), and notes avoid common AI writing tells. The headless intake, brief and debrief runs edit their own prose against the vendored [humanizer](#acknowledgements) skill before they publish, and `/humanizer` runs it interactively.
 
-Automation runs as isolated headless `claude -p` jobs on systemd user timers: intake, a morning brief and an evening debrief. Headless jobs never write to the vault directly. They write to a staging area, and a deterministic gate validates and publishes their output. Anything that has to be exact (parsing, validation, indexing, unit rendering, git remote handling) is done by a script. The model handles conversation and synthesis.
+Automation runs on systemd user timers: isolated headless `claude -p` jobs for intake, a morning brief and an evening debrief, plus a scripted git sync on a server. Headless jobs never write to the vault directly. They write to a staging area, and a deterministic gate validates and publishes their output. Anything that has to be exact (parsing, validation, indexing, unit rendering, git remote handling) is done by a script. The model handles conversation and synthesis.
 
 ## Status
 
@@ -71,6 +71,37 @@ The intended loop is **capture → compile → index → recall → correct**:
 
 Script and module filenames stay descriptive so they are easy to grep. Unit `Description=` lines read `The Foundry: <role>`, and log and alert tags use plain names (`[intake]`, `[memory]`, `[sync]`).
 
+## Daily use
+
+| Command | What it does |
+|---|---|
+| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, and a friction matrix |
+| `/debrief [date]` | The Foreman writes `briefings/<date>.debrief.md` (embedded in the briefing): commits per repo, digest outcomes, headless runs, alerts, focus and agent health |
+| `/ingest <raw file>` | Compiles one raw input into `wiki/`; the intake timer runs it headless in batches |
+| `/query <question>` | Answers from compiled `wiki/` notes only, through the index |
+| `/lint` | Integrity report plus link, duplicate, contradiction and staleness suggestions |
+| `/impact <component> [--repo name]` | Read-only blast-radius table across registered codebases and the wiki; offers to draft an intent proposal |
+| `/backup` | Runs the gating suites (lint only on a client), commits each headless run on its own, then commits and pushes the rest according to `remote_mode` (through `vault_sync.sh` in `private`) |
+| `/setup` | Onboarding; safe to re-run |
+| `/humanizer`, `/digest` | Edit prose against the vendored skill; write a session digest on demand |
+
+**Superpowers** are your strategic anchors, set in `system/config.md` (`superpowers:`). The brief ties each objective to one, and onboarding and intent notes name the ones they serve. They are unrelated to the superpowers Claude Code plugin used in [Development](#development).
+
+**Brief inputs.** The calendar (`calendar.tsv`, from the Google Calendar connector), today's and yesterday's alerts, production-error notes in `raw/telemetry/`, friction notes (`is_friction` on concepts), quarantined inputs, yesterday's focus, and mail and chat when a Gmail or Slack connector is present in an interactive session. Missing sources are listed under Unavailable Sources; the brief never fails for one.
+
+**Debrief inputs.** The prep files in `system/logs/inputs/<date>/` (git commits, session digests, focus), alerts, the run ledger `system/logs/runs-<YYYY-MM>.jsonl`, and agent metrics in `system/logs/metrics/*.json`. An agent whose 3 most recent metric files all show `test_suite_passed: false` is reported under Agent Health; the debrief does not act on it.
+
+**Workcells.** Work goes to the Workcell whose `capabilities` include the one the work needs, never by name:
+
+| Workcell | Capabilities |
+|---|---|
+| `coding.md` | `code`, `tests`, `refactor`; writes a `compilation-metric.json` instance to `system/logs/metrics/` after each task |
+| `maintenance.md` | `vault-health`, `dependencies`, `telemetry`, `alerts`; owns `raw/telemetry/` notes, which it checks against local branches of the affected codebase |
+
+**Friction and focus.** Ingest sets `is_friction: "true"` when a fact's source text says "not sure", "waiting on", "stuck", "blocked", "tbd" or "double-check". On a standalone machine with Hyprland, `track_obsidian.sh` samples the focused note every 30 seconds and `focus_stats.sh` flags each 15-minute window with more than 4 switches as a Focus Fragmentation Warning, which the brief and debrief carry.
+
+**Intent proposals.** `system/templates/intent-shaper.md` creates a `plan_gate` note (`PENDING_REVIEW`, `APPROVED` or `REJECTED`) for a planned code change: its superpower, the upstream plan note it traces to, the files it touches, how it is verified and its blast radius.
+
 ## Memory
 
 Memory is part of The Core. It is optional and off until you install its hooks. `/setup` offers them in its memory step: it shows the change `system/scripts/install_hooks.sh --dry-run` would make to your user-level `~/.claude/settings.json`, explains each entry, and installs only after an explicit yes. Declining leaves memory off; re-run `/setup` to turn it on later.
@@ -114,13 +145,15 @@ system/
   template_source             canonical template URL
   schemas/                    one schema note per note type
   hooks/                      user-level memory hooks
-  templates/                  note templates
+  templates/                  briefing, debrief, concept, intent-shaper, compilation-metric.json
   agents/                     foreman.md (the Foreman persona)
-    workcells/                one file per Workcell, with its capabilities
+    workcells/                coding.md, maintenance.md: one per Workcell, with its capabilities
   scripts/                    vault_index.py, vaultlib/, publish_staged.py, run_headless.sh,
                               intake_daemon.sh, install_units.sh, install_hooks.sh,
-                              setup_remote.sh, update_template.sh, check_deps.sh, ...
-  systemd/                    foundry-{intake,brief,debrief,focus} unit templates (*.in)
+                              setup_remote.sh, update_template.sh, check_deps.sh,
+                              vault_sync.sh, commit_runs.py, calendar_fetch.sh, ...
+  systemd/                    foundry-{intake,brief,debrief,focus,sync} unit templates (*.in)
+    dropins/                  foundry-sync.conf.in: sync before and after each run (server)
   tests/                      *.bats per area (system_health.bats is advisory), python/ for pytest
   jobs/                       reserved for Sub-project 2 (gitignored)
 docs/superpowers/             specs, plans, spike results
@@ -133,7 +166,7 @@ Each machine that holds the vault has a `machine_role` in its own `system/config
 | Role | Runs | Use it for |
 |---|---|---|
 | `standalone` (default) | intake, brief, debrief and focus units; memory hooks; codebases | one machine that does everything |
-| `server` | intake, brief and debrief units; memory hooks; codebases | an always-on machine that runs the automation and your coding sessions |
+| `server` | intake, brief, debrief and sync units; memory hooks; codebases | an always-on machine that runs the automation and your coding sessions |
 | `client` | nothing automated | reading and editing the vault in Obsidian on another machine |
 
 A server and its clients share the vault through a private `origin` (`remote_mode: private`):
@@ -173,7 +206,7 @@ The Foundry runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh 
 
 ## Getting started
 
-Before you start, install what [Requirements](#requirements) lists and sign in to Claude Code (`claude`, then `/login`). For a server or a client, also create an **empty private repository** for your vault on your git host: that is your private `origin`, and every machine syncs through it.
+Before you start, install what [Requirements](#requirements) lists and sign in to Claude Code (`claude`, then `/login`). For a server or a client, also create an **empty private repository** for your vault on your git host (no README, license or `.gitignore`, so it has no commit of its own to reconcile): that is your private `origin`, and every machine syncs through it.
 
 **First machine (standalone or server).** Clone the template, start Claude Code in it, and paste the prompt below with your answers filled in:
 
@@ -215,11 +248,11 @@ You can also type `/setup` and answer its questions one at a time; the prompt on
 - **1. Existing config:** if `system/config.md` already exists, it is shown and edited, not overwritten.
 - **2. Interview:** timezone, brief and debrief times, superpowers, default partition, digest thresholds and recall budget.
 - **3. Codebases:** you choose repos from a directory scan. Each one is inspected, written to `system/codebases/<name>.md` with a partition, and confirmed with you field by field.
-- **4. Remote:** a `template` remote is added for updates, and you choose a private `origin`, no remote, or keep (maintainer mode). A server or client must use a private `origin`; setup checks that git can reach it without a prompt and publishes the branch.
+- **4. Remote:** the template `origin` of a plain clone is renamed `template` for updates, and you choose a private `origin`, no remote, or keep (maintainer mode). A server or client must use a private `origin`; setup checks that git can reach it without a prompt and publishes the branch.
 - **5. Units:** the role's systemd units are rendered and enabled, and you are offered linger (required on a server).
 - **5a. Memory hooks** (optional): you are shown the diff to `~/.claude/settings.json` and what each hook does, and it is applied only after an explicit yes. Declining leaves memory off (see [Memory](#memory)).
 - **6. Calendar:** one fetch from the Google Calendar connector checks that the brief can read today's events.
-- **7. Index:** the index is rebuilt.
+- **7. Index:** the index is rebuilt and the run-commit cutover is recorded (`commit_runs.py --init-cutover`).
 - **8. Verify:** `verify_setup.sh --health` runs.
 - **9. Hand-off:** an onboarding assignment note is created for each codebase.
 - **10. Report:** a status table of everything that was set up.
