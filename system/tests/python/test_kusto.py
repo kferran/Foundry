@@ -70,3 +70,38 @@ def test_stub_directory_serves_fixtures_by_route(tmp_path, monkeypatch):
     status, _ = http.request("POST", "https://example.kusto.windows.net/v2/rest/query", {},
                              json.dumps({"csl": "Traces | where x"}).encode())
     assert status == 503
+
+
+def test_query_with_errors_after_primary_result(monkeypatch):
+    monkeypatch.setattr(kusto, "token", lambda cluster: "tok")
+    v2_with_error = [
+        {"FrameType": "DataSetHeader"},
+        {"FrameType": "DataTable", "TableKind": "PrimaryResult",
+         "Columns": [{"ColumnName": "x"}], "Rows": [[1], [2]]},
+        {"FrameType": "DataSetCompletion", "HasErrors": True},
+    ]
+    monkeypatch.setattr(http, "request", lambda *a: (200, json.dumps(v2_with_error).encode()))
+    with pytest.raises(http.TelemetryError) as exc:
+        kusto.query("https://example.kusto.windows.net", "prod", "Logs | take 2")
+    assert exc.value.kind == "bad"
+
+
+def test_query_without_primary_result(monkeypatch):
+    monkeypatch.setattr(kusto, "token", lambda cluster: "tok")
+    v2_no_primary = [
+        {"FrameType": "DataSetHeader"},
+        {"FrameType": "DataTable", "TableKind": "QueryProperties", "Columns": [], "Rows": []},
+        {"FrameType": "DataSetCompletion", "HasErrors": False},
+    ]
+    monkeypatch.setattr(http, "request", lambda *a: (200, json.dumps(v2_no_primary).encode()))
+    with pytest.raises(http.TelemetryError) as exc:
+        kusto.query("https://example.kusto.windows.net", "prod", "Logs")
+    assert exc.value.kind == "bad"
+
+
+def test_last_headers_reset_between_calls(monkeypatch):
+    monkeypatch.setattr(kusto, "token", lambda cluster: "tok")
+    http.request.last_headers = {"Link": "x"}
+    monkeypatch.setattr(http, "request", lambda *a: (200, json.dumps(V2).encode()))
+    _, headers = http.json_call("POST", "https://example.kusto.windows.net/v2/rest/query", {})
+    assert "Link" not in headers

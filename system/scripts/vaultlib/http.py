@@ -44,6 +44,7 @@ def _stub(stub_dir: str, url: str, body: bytes | None) -> tuple[int, bytes]:
 
 
 def request(method: str, url: str, headers: dict, body: bytes | None) -> tuple[int, bytes]:
+    request.last_headers = {}
     stub = os.environ.get("FOUNDRY_TELEMETRY_STUB")
     if stub:
         return _stub(stub, url, body)

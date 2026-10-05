@@ -31,10 +31,13 @@ def query(cluster: str, database: str, kql: str, max_rows: int = 500) -> list[di
     headers = {"Authorization": f"Bearer {token(cluster)}", "Content-Type": "application/json",
                "Accept": "application/json"}
     frames, _ = http.json_call("POST", cluster.rstrip("/") + "/v2/rest/query", headers, body)
+    primary_rows = None
     for frame in frames if isinstance(frames, list) else []:
         if frame.get("FrameType") == "DataTable" and frame.get("TableKind") == "PrimaryResult":
             cols = [c["ColumnName"] for c in frame.get("Columns", [])]
-            return [dict(zip(cols, row)) for row in frame.get("Rows", [])][:max_rows]
+            primary_rows = [dict(zip(cols, row)) for row in frame.get("Rows", [])][:max_rows]
         if frame.get("FrameType") == "DataSetCompletion" and frame.get("HasErrors"):
             raise TelemetryError("bad", "query reported errors")
+    if primary_rows is not None:
+        return primary_rows
     raise TelemetryError("bad", "no primary result")
