@@ -23,3 +23,6 @@ system/*.lock
 system/jobs/
 __pycache__/
 .pytest_cache/
+system/telemetry/*.md
+!system/telemetry/example.md
+system/telemetry.lock

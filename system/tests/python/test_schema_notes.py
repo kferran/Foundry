@@ -15,8 +15,9 @@ TEMPLATE_TARGETS = {
     "daily-debrief.md": "briefings/2026-09-30.debrief.md",
     "intent-shaper.md": "wiki/work/plans/Sample.md",
 }
+NOT_NOTES = {"production-error.md"}  # body fragment filled by telemetry_store.render_body, no frontmatter
 EXPECTED = {"schema", "concept", "index", "briefing", "debrief", "plan_gate",
-            "production_error", "config", "codebase", "session_digest", "preference", "workcell"}
+            "production_error", "config", "codebase", "session_digest", "preference", "workcell", "telemetry_source"}
 
 
 def load():
@@ -43,7 +44,7 @@ def render(text):
 
 def test_every_template_is_mapped():
     names = {p.name for p in (REPO / "system" / "templates").glob("*.md")}
-    assert names == set(TEMPLATE_TARGETS)
+    assert names - NOT_NOTES == set(TEMPLATE_TARGETS)
 
 
 def test_templates_validate_against_their_schema():
