@@ -63,3 +63,38 @@ def test_privacy_nothing_dropped_reaches_disk(vault):
     blobs.append((vault / "system/logs/telemetry_state.json").read_text())
     for s in SECRETS:
         assert all(s not in b for b in blobs), s
+
+
+def test_store_sanitizes_raw_whitelisted_fields(vault):
+    guid = "3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b"
+    st = Store(vault); st.load()
+    st.upsert(group(keys={"route": "GET /items/12345?sig=AbCdEf"}, service="api bob@example.com",
+                    operation_id="free text from a log body", culprit="orders " + guid,
+                    link="https://sentry.example.com/i/1/?token=x", exception="Shop 12345#4012"), NOW)
+    st.save()
+    blobs = [p.read_text() for p in (vault / "raw/telemetry").glob("*.md")]
+    blobs.append((vault / "system/logs/telemetry_state.json").read_text())
+    for s in ["12345\"", "sig=AbCdEf", "bob@example.com", guid, "free text from a log body", "token=x"]:
+        assert all(s not in b for b in blobs), s
+    assert "Shop <n>#4012" in blobs[0]
+
+
+def test_regressed_persists_until_resolved_again(vault):
+    st = Store(vault); st.load()
+    st.upsert(group(last_seen=(NOW - timedelta(days=8)).isoformat()), NOW - timedelta(days=8))
+    st.resolve_stale("prod-adx", NOW)
+    st.upsert(group(), NOW)
+    st.upsert(group(), NOW)
+    assert read(vault, "raw/telemetry/prod-adx-a-0123456789ab.md")["regressed"] == "true"
+    st.set_status("prod-adx/a-0123456789ab", "resolved", NOW)
+    assert read(vault, "raw/telemetry/prod-adx-a-0123456789ab.md")["regressed"] == "false"
+
+
+def test_deprecated_wins_and_last_seen_never_goes_back(vault):
+    st = Store(vault); st.load()
+    st.upsert(group(), NOW)
+    st.upsert(group(last_seen=(NOW - timedelta(hours=3)).isoformat().replace("+00:00", "Z")), NOW)
+    assert read(vault, "raw/telemetry/prod-adx-a-0123456789ab.md")["last_seen"] == NOW.isoformat()
+    st.set_status("prod-adx/a-0123456789ab", "deprecated", NOW)
+    st.upsert(group(), NOW)
+    assert read(vault, "raw/telemetry/prod-adx-a-0123456789ab.md")["status"] == "deprecated"

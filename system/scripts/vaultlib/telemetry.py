@@ -99,6 +99,7 @@ def kql_logs(src: Source, start: datetime, end: datetime, limit: int = 500) -> s
                       + (", " + ", ".join(extra) if extra else ""),
                       f"| summarize n = count(), first = min(Timestamp), last = max(Timestamp), traces = dcount(TraceID), "
                       f"sample_trace = take_any(TraceID) by {', '.join(by)}",
+                      "| order by n desc",
                       f"| take {limit}"])
 
 
@@ -112,6 +113,7 @@ def kql_spans(src: Source, start: datetime, end: datetime, limit: int = 500) -> 
                       "route = coalesce(tostring(TraceAttributes[\"http.route\"]), SpanName)",
                       "| summarize n = count(), first = min(StartTime), last = max(StartTime), traces = dcount(TraceID), "
                       "sample_trace = take_any(TraceID) by service, route, status",
+                      "| order by n desc",
                       f"| take {limit}"])
 
 

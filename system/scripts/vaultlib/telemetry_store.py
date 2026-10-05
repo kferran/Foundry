@@ -2,16 +2,46 @@
 import json
 import os
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import re
+
 from . import frontmatter
+from .telemetry import event_id, sanitize, trace_id
 
 STATE = "system/logs/telemetry_state.json"
 QUIET = timedelta(days=7)
 NOTE_FIELDS = ("type", "service", "exception", "operation_id", "detected_at", "codebase", "partition", "environment",
                "source", "kind", "fingerprint", "count", "last_seen", "status", "resolved_at", "substatus", "regressed",
                "sentry_issue", "covered", "culprit", "link")
+
+
+def _aware(v: str) -> datetime:
+    d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def _clean(g: dict) -> dict:
+    """Enforce the data policy on every whitelisted field, whatever the caller passed."""
+    g = dict(g)
+    g["keys"] = {k: (event_id(v) if k == "event_id" else sanitize(v)) for k, v in (g.get("keys") or {}).items()}
+    g["service"] = sanitize(g.get("service"))
+    if g.get("culprit"):
+        g["culprit"] = sanitize(g["culprit"])
+    ex = str(g.get("exception") or "")
+    if g.get("kind") == "log" and "#" in ex:
+        scope, eid = ex.rsplit("#", 1)
+        g["exception"] = sanitize(scope) + "#" + event_id(eid)
+    else:
+        g["exception"] = sanitize(ex)
+    op = str(g.get("operation_id") or "")
+    g["operation_id"] = trace_id(op) or (op if op.isdigit() else "")
+    si = g.get("sentry_issue")
+    g["sentry_issue"] = si if si and re.fullmatch(r"[A-Za-z0-9_-]+", str(si)) else None
+    if g.get("link"):
+        g["link"] = str(g["link"]).split("?", 1)[0]
+    return g
 
 
 def _atomic(path: Path, text: str) -> None:
@@ -80,25 +110,29 @@ class Store:
         return text
 
     def upsert(self, g: dict, now: datetime) -> str:
+        g = _clean(g)
         key = f"{g['source']}/{g['fingerprint']}"
         old = self.state["groups"].get(key)
         rel = old["note"] if old else self.note_rel(g["source"], g["fingerprint"])
         if old:
             count = int(g["count"]) if g["kind"] == "sentry" else int(old.get("count", 0)) + int(g["count"])
             first = old.get("first_seen") or g["detected_at"]
-            regressed = old.get("status") == "resolved"
+            regressed = bool(old.get("regressed")) or old.get("status") == "resolved"
+            if old.get("last_seen") and _aware(old["last_seen"]) > _aware(g["last_seen"]):
+                g["last_seen"] = old["last_seen"]
         else:
             count, first, regressed = int(g["count"]), g["detected_at"], False
+        status = "deprecated" if old and old.get("status") == "deprecated" else "active"
         fm = {"type": "production_error", "service": g["service"], "exception": g["exception"],
               "operation_id": g["operation_id"], "detected_at": first, "codebase": g["codebase"],
               "partition": g["partition"], "environment": g["environment"], "source": g["source"], "kind": g["kind"],
-              "fingerprint": g["fingerprint"], "count": count, "last_seen": g["last_seen"], "status": "active",
+              "fingerprint": g["fingerprint"], "count": count, "last_seen": g["last_seen"], "status": status,
               "substatus": g.get("substatus"), "regressed": "true" if regressed or g.get("substatus") == "regressed" else "false",
               "sentry_issue": g.get("sentry_issue"), "covered": "true" if g.get("covered") else "false",
               "culprit": g.get("culprit"), "link": g.get("link")}
         self._write_note(rel, fm, self._body(g, fm))
         self.state["groups"][key] = {"note": rel, "first_seen": first, "last_seen": g["last_seen"], "count": count,
-                                     "status": "active", "kind": g["kind"],
+                                     "status": status, "kind": g["kind"], "regressed": regressed,
                                      "sentry_id": g["fingerprint"][2:] if g["kind"] == "sentry" else None}
         return "updated" if old else "new"
 
@@ -109,6 +143,9 @@ class Store:
         fm = dict(note.data or {})
         fm["status"] = status
         fm["resolved_at"] = now.isoformat() if status == "resolved" else None
+        if status == "resolved":
+            fm["regressed"] = "false"
+            grp["regressed"] = False
         self._write_note(grp["note"], fm, note.body)
         grp["status"] = status
 

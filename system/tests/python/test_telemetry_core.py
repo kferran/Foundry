@@ -31,7 +31,7 @@ def test_kql_filter_and_group_keys_are_quoted():
     assert q.startswith("Logs\n")
     assert 'tostring(ResourceAttributes["deployment.instance"]) == "u\\"at"' in q
     assert 'module_0 = tostring(LogsAttributes["app.module"])' in q
-    assert "SeverityNumber >= 17" in q and "take 500" in q
+    assert "SeverityNumber >= 17" in q and "| order by n desc\n| take 500" in q
     assert "Body" not in q
     s = t.kql_spans(adx(), NOW - timedelta(hours=1), NOW)
     assert s.startswith("Traces\n") and 'SpanKind == "SPAN_KIND_SERVER"' in s
