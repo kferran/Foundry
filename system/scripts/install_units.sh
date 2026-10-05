@@ -92,7 +92,7 @@ esac
 DROPINS=()
 [[ "$role" != server ]] || DROPINS=(jarvis-intake.service.d/jarvis-sync.conf jarvis-brief.service.d/jarvis-sync.conf
                                     jarvis-debrief.service.d/jarvis-sync.conf)
-declare -A DROPIN_TIMEOUT=([jarvis-intake]=105min [jarvis-brief]=45min [jarvis-debrief]=35min)
+declare -A DROPIN_TIMEOUT=([jarvis-intake]=105min [jarvis-brief]=60min [jarvis-debrief]=60min)
 declare -A DROPIN_PREP=([jarvis-intake]="" [jarvis-brief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/brief_prep.sh"'
                         [jarvis-debrief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/debrief_prep.sh"')
 

@@ -199,6 +199,28 @@ teardown() {
   wait
 }
 
+@test "brief and debrief wait 1400 s for run.lock by default" {
+  grep -qxF 'LOCK_WAIT="${HEADLESS_LOCK_WAIT:-1400}"' "$RH"
+}
+
+@test "a brief waiting behind an ingest backlog runs before the next ingest" {
+  mkdir -p raw/inbox
+  printf 'first note\n' > raw/inbox/a.md
+  printf 'second note\n' > raw/inbox/b.md
+  touch -d '10 minutes ago' raw/inbox/a.md raw/inbox/b.md
+  STUB_MODE=noop STUB_SLEEP=2 system/scripts/intake.py &
+  ipid=$!
+  for _ in $(seq 50); do
+    [ -s "$STUB_ARGS" ] && break
+    sleep 0.1
+  done
+  [ -s "$STUB_ARGS" ]
+  HEADLESS_LOCK_WAIT=30 STUB_MODE=brief run "$RH" brief
+  wait "$ipid"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .command "$LEDGER" | tr '\n' ' ')" = "ingest brief ingest " ]
+}
+
 @test "permission denials are recorded as warnings" {
   STUB_DENIALS='[{"tool_name":"Write"}]' run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 0 ]

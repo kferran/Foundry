@@ -11,7 +11,8 @@ source system/scripts/lib_config.sh
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 MAX_PER_DAY="${HEADLESS_MAX_RUNS_PER_DAY:-60}"
 TIMEOUT="${HEADLESS_TIMEOUT:-15m}"
-LOCK_WAIT="${HEADLESS_LOCK_WAIT:-600}"
+# brief/debrief wait for run.lock: one sync hold plus one ingest run (two-machines spec §5.4)
+LOCK_WAIT="${HEADLESS_LOCK_WAIT:-1400}"
 TZ="$(config_get timezone UTC)"
 export TZ JARVIS_HEADLESS=1
 TODAY="$(date +%F)"
