@@ -125,3 +125,14 @@ bad_note() {
   run "$V/system/scripts/lint_vault.sh"
   [[ "$output" != *"raw/inbox/ holds"* ]]
 }
+
+@test "hook blocks a Workcell file with invalid frontmatter" {
+  mkdir -p "$V/system/agents/workcells"
+  printf -- '---\ntype: workcell\n---\n# Bad Workcell\n' > "$V/system/agents/workcells/bad.md"
+  git -C "$V" add system/agents/workcells/bad.md
+  run git -C "$V" commit -qm bad
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"missing required field capabilities"* ]]
+  run git -C "$V" rev-parse -q --verify HEAD
+  [ "$status" -ne 0 ]
+}

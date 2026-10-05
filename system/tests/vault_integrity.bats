@@ -114,3 +114,22 @@ setup() {
   grep -qx 'Copyright (c) 2025 Siqi Chen' "$d/LICENSE"
   grep -qF 'humanizer v3.0.0' README.md
 }
+
+@test "Workcells pass their schema and declare valid capabilities once each; the concept schema lists their union" {
+  [ -f system/agents/foreman.md ]
+  cells=(system/agents/workcells/*.md)
+  [ -f "${cells[0]}" ]
+  system/scripts/vault_index.py validate "${cells[@]}"
+  [ "$(system/scripts/vault_index.py query 'SELECT count(*) AS n FROM v_workcell' --json | jq '.rows[0][0]')" -eq "${#cells[@]}" ]
+  caps=""
+  for c in "${cells[@]}"; do
+    caps+="$(system/scripts/vault_index.py field "$c" capabilities | tr ',' '\n')"$'\n'
+  done
+  caps="${caps%$'\n'}"
+  printf '%s\n' "$caps"
+  bad="$(grep -vxE '[a-z]+(-[a-z]+)*' <<< "$caps" || true)"
+  [ -z "$bad" ]
+  [ -z "$(sort <<< "$caps" | uniq -d)" ]
+  enum="$(system/scripts/vault_index.py field system/schemas/concept.md fields.capability.values | tr ',' '\n' | sort)"
+  [ "$(sort <<< "$caps")" = "$enum" ]
+}
