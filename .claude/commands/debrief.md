@@ -24,7 +24,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - `system/logs/inputs/<date>/focus.md`: top notes and Focus Fragmentation Warnings.
 - `system/logs/inputs/<date>/unavailable.md`: sources the prep script could not read.
 - `system/logs/alerts_<date>.md`: pipeline alerts.
-- Headless runs: the lines of `system/logs/runs-<YYYY-MM>.jsonl` whose `started_at` begins with the date (command, exit, published, rejected, conflicts).
+- Headless runs: the lines of `system/logs/runs-<YYYY-MM>.jsonl` whose `started_at` begins with the date: `command`, `exit`, `.publish.status`, `.publish.published`, `.publish.rejected`, `.publish.conflicts` (the publish lists sit under `publish`, not at the top level).
 - Agent metrics: Glob `system/logs/metrics/*.json`; each file has `agent`, `timestamp` and `verification_gates.test_suite_passed`.
 
 ## Write the debrief
