@@ -3,7 +3,7 @@
 set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
 lint="$root/system/scripts/lint_vault.sh"
-pattern='^(wiki/|briefings/|raw/telemetry/|raw/(work|personal|shared)/|system/schemas/|system/config|system/codebases/)'
+pattern='^(wiki/|briefings/|raw/telemetry/|raw/(work|personal|shared)/|system/schemas/|system/agents/|system/config|system/codebases/)'
 # Safely handle staged filenames with spaces and non-ASCII characters using -z.
 mapfile -d '' -t staged < <(git diff --cached --name-only -z --diff-filter=ACMR)
 # Conflict markers never land (two-machine spec §5.5): any staged file with a "<<<<<<< " line and a later

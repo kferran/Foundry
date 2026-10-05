@@ -9,12 +9,12 @@
 - `wiki/.staging/<run_id>/`: headless output awaiting publish. Never edit it by hand.
 - `briefings/`: `<date>.md` (morning briefing) and `<date>.debrief.md` (evening debrief, embedded in the briefing).
 - `system/config.md`: your configuration. `system/codebases/<name>.md`: one file per registered codebase.
-- `system/schemas/`: one schema note per note type. `system/templates/`: note templates. `system/agents/`: personas.
+- `system/schemas/`: one schema note per note type. `system/templates/`: note templates. `system/agents/`: the Foreman persona and `workcells/`, one file per Workcell.
 - `system/scripts/`: deterministic tools. `system/logs/`: logs, prep inputs, alerts, run ledger. `system/quarantine/`: failed inputs.
 
 ## Agents
-1. **Optimus (Chief of Staff)**: owns `briefings/`, the agenda and delegation. Persona: `system/agents/Optimus.md`.
-2. **CodingAgent** and **SystemMaintenance**: own wiki note updates and code work. Personas in `system/agents/`.
+1. **The Foreman**: the only role the user addresses; owns `briefings/`, the agenda and delegation. Persona: `system/agents/foreman.md`.
+2. **Workcells**: specialist agents that own wiki note updates and code work, one file each in `system/agents/workcells/`. Each file's frontmatter lists its `capabilities`. Work goes to the Workcell whose `capabilities` include the one the work needs, found by reading `system/agents/workcells/*.md`; never route work to a Workcell by name.
 
 ## Commands
 - `/ingest <raw file>`: compile a raw input into `wiki/` (headless runs arrive through the intake timer).
@@ -68,7 +68,7 @@ Wording rules for chat and for every note, condensed from `.claude/skills/humani
 - **Tool-Bound Validation**: Agents must explicitly list which automated execution tools and testing frameworks (e.g., BATS harnesses) are bound to the change vector, guaranteeing that validation metrics back-feed to the ledger cleanly upon completion.
 
 ## 🔍 Production Telemetry Routing
-- **Production Telemetry Routing**: Notes in `raw/telemetry/` (`type: production_error`) are critical and route to **SystemMaintenance**, which inspects local branches of the affected codebase for correlating commits.
+- **Production Telemetry Routing**: Notes in `raw/telemetry/` (`type: production_error`) are critical and route to the Workcell with `telemetry`, which inspects local branches of the affected codebase for correlating commits.
 
 ## ⚠️ Friction Identification & Remediation Rules
 - **Focus Fragmentation Threshold**: `system/scripts/focus_stats.sh` flags every 15-minute window with more than 4 note switches as a **Focus Fragmentation Warning**; carry each one into the debrief.
@@ -76,4 +76,4 @@ Wording rules for chat and for every note, condensed from `.claude/skills/humani
 - **Decision Clarity Ingestion**: Flag any incoming email or chat item containing uncertainty keywords (e.g., "not sure," "waiting on approval," "stuck") as **Immediate Architectural Friction**, moving it to the top of the action queue.
 - **Harness-Driven Extraction**: When processing external event text or raw chat-driven interface logs, do not swallow formatting blocks. Extract raw text components explicitly, mapping updates safely to markdown nodes without corrupting metadata headers.
 - **Verification Over Ingestion**: Treat raw logs as an immutable audit layer. Check the factual validity of an execution record against physical filesystem deltas before linking it as a verified asset in `wiki/`.
-- **Shift-Left Priority Parsing**: Flag all tasks matching terms like "runtime failure," "broken link," or "merge conflict" with immediate critical priority, routing them to **SystemMaintenance**.
+- **Shift-Left Priority Parsing**: Flag all tasks matching terms like "runtime failure," "broken link," or "merge conflict" with immediate critical priority, routing them to the Workcell with `vault-health`.

@@ -23,12 +23,12 @@ SORT compiled_at DESC
 LIMIT 20
 ```
 
-## By owner
+## By capability
 ```dataview
 TABLE rows.file.link AS notes
 FROM "wiki"
-WHERE agent_owner
-GROUP BY agent_owner
+WHERE capability
+GROUP BY capability
 ```
 
 ## Written by headless runs
