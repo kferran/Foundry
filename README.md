@@ -31,7 +31,7 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 | 8b. Commit history | Scripted commit messages, one commit per headless run | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8b-commit-history.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8b-acceptance.md) |
 | 8c. Sync | `vault_sync.sh`, server sync units, conflicts, client setup. The real vault is set up after this plan | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8c-sync.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8c-acceptance.md) |
 | 8e. Real-use fixes | Brief and debrief wait out an ingest backlog; `/debrief` reads the ledger's publish fields | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-8e-real-use-fixes.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-8e-acceptance.md) |
-| 9. Product rename | The Foundry names and the capability seam | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-9-foundry-rename.md), [spec](docs/superpowers/specs/2026-10-05-foundry-rename-design.md) |
+| 9. Product rename | The Foundry names and the capability seam | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-9-foundry-rename.md), [spec](docs/superpowers/specs/2026-10-05-foundry-rename-design.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-9-acceptance.md) |
 | 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
 | Sub-project 2 | the Foreman orchestrator | Separate spec, after Plans 7 and 5 |
