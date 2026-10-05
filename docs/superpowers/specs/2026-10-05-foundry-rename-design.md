@@ -136,12 +136,12 @@ New tests go into existing files (`vault_integrity.bats`, `commands.bats`), so t
   ```
   re="jar""vis|opt""imus|wheel""jack|ultra[ -]mag""nus|sound""wave|tele""traan|the a""rk|auto""bot|bumble""bee|coding""agent|system""maintenance|(^|[^a-z])cr""ew|fl""eet|task""_id|agent""_owner|assigned""_agent|agent""_name|chief of st""aff"
   road="2026-09-30-jar""vis-roadmap\.md"
-  url="https://github\.com/kferran/jar""vis\.git"
+  url="$(head -n 1 system/template_source | sed 's/[.[\*^$#]/\\&/g')"   # read at run time; the URL is never written in a test
   out="$(git grep -h -i -E "$re" -- "${OWN[@]}" system/codebases/example.md | sed -e "s#$road##g" -e "s#$url##g" | grep -i -E "$re" || true)"
   printf '%s\n' "$out"
   [ -z "$out" ]
   ```
-  A line that holds a protected string and a real leftover still fails, and so does a bare `kferran/jarvis` without `.git`. (Measured on 2026-10-05: 281 lines in 60 files before Plan 9; 0 false positives; `(^|[^a-z])crew` catches `test_crew_…` and skips `screw` and `aircrew`.)
+  A line that holds a protected string and a real leftover still fails, and so does the template's repository name in any form other than the exact URL in `system/template_source`. (Measured on 2026-10-05: 281 lines in 60 files before Plan 9; 0 false positives; `(^|[^a-z])crew` catches `test_crew_…` and skips `screw` and `aircrew`.)
 - **No old names in paths:** `out="$(git ls-files -- "${OWN[@]}" | grep -i -E "$re" || true)"`, printed, then `[ -z "$out" ]`.
 - **Capabilities:** the concept schema's `capability` values equal the union of `capabilities` in `system/agents/workcells/*.md`; no capability is declared twice; every capability matches `^[a-z]+(-[a-z]+)*$`; every Workcell file passes the `workcell` schema; `system/agents/foreman.md` exists.
 - **Pre-commit:** a staged change to a Workcell file with invalid frontmatter is rejected by the hook.
