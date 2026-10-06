@@ -64,3 +64,33 @@ def test_sanitize_decodes_urls_and_collapses_long_hex():
     assert "bob" not in t.sanitize("user bob%40example.com failed")
     assert t.sanitize("id 3f2b8a1e9c4d4e1f8a2b1c3d4e5f6a7b x") == "id <hex> x"
     assert t.event_id("4012") == "4012" and t.trace_id("0af7651916cd43dd8448eb211c80319c")
+
+
+def test_kql_reopen_logs_no_duplicate_timestamp():
+    first = (NOW - timedelta(hours=1)).isoformat()
+    last = NOW.isoformat()
+    q = t.kql_reopen("log", [], first, last, {"service": "api", "scope": "handler", "event_id": "123"})
+    lines = q.split("\n")
+    assert lines[0] == "Logs"
+    # The second line should have the time range without duplicating the column name
+    where_line = lines[1]
+    assert where_line.startswith("| where Timestamp >=")
+    assert "Timestamp >= Timestamp" not in where_line, f"Found duplicate 'Timestamp >= Timestamp' in: {where_line}"
+    assert "and SeverityNumber >= 17" in where_line
+    # Verify it contains the datetime range correctly
+    assert "datetime(" in where_line and "and Timestamp <" in where_line
+
+
+def test_kql_reopen_spans_no_duplicate_starttime():
+    first = (NOW - timedelta(hours=1)).isoformat()
+    last = NOW.isoformat()
+    q = t.kql_reopen("span", [], first, last, {"service": "api", "route": "GET /items"})
+    lines = q.split("\n")
+    assert lines[0] == "Traces"
+    where_line = lines[1]
+    assert where_line.startswith("| where StartTime >=")
+    assert "StartTime >= StartTime" not in where_line, f"Found duplicate 'StartTime >= StartTime' in: {where_line}"
+    assert 'SpanKind == "SPAN_KIND_SERVER"' in where_line
+    # Verify error conditions are present
+    assert "SpanStatus" in where_line or "http.response.status_code" in where_line
+    assert "datetime(" in where_line and "and StartTime <" in where_line

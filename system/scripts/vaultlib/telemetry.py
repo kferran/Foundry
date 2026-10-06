@@ -156,14 +156,14 @@ def kql_reopen(kind: str, filters: list, first: str, last: str, keys: dict) -> s
     if kind == "log":
         std = {"service": None, "scope": "scope.name", "event_id": "logrecord.event.id"}
         conds = svc + [f"tostring(LogsAttributes[{_q(std.get(n) or n)}]) == {_q(v)}" for n, v in k.items() if n != "service"]
-        head = ["Logs", "| where Timestamp >= " + rng("Timestamp") + " and SeverityNumber >= 17"]
+        head = ["Logs", "| where " + rng("Timestamp") + " and SeverityNumber >= 17"]
     else:
         conds = svc
         if "route" in k:
             conds.append(f'coalesce(tostring(TraceAttributes["http.route"]), SpanName) == {_q(k["route"])}')
         if str(k.get("status", "")).isdigit():
             conds.append(f'toint(TraceAttributes["http.response.status_code"]) == {int(k["status"])}')
-        head = ["Traces", "| where StartTime >= " + rng("StartTime") + ' and SpanKind == "SPAN_KIND_SERVER"']
+        head = ["Traces", "| where " + rng("StartTime") + ' and SpanKind == "SPAN_KIND_SERVER" and (SpanStatus == "STATUS_CODE_ERROR" or toint(TraceAttributes["http.response.status_code"]) >= 500)']
     return "\n".join(head + [*filters] + (["| where " + " and ".join(conds)] if conds else []))
 
 
