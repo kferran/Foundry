@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 
 from . import frontmatter
-from .telemetry import event_id, sanitize, trace_id
+from .telemetry import event_id, kql_reopen, sanitize, trace_id
 
 STATE = "system/logs/telemetry_state.json"
 QUIET = timedelta(days=7)
@@ -59,7 +59,7 @@ class Store:
     def note_rel(self, source: str, fp: str) -> str:
         return f"raw/telemetry/{source}-{fp}.md"
 
-    def load(self) -> list:
+    def load(self, read_only: bool = False) -> list:
         p = self.vault / STATE
         if not p.exists():
             self._rebuild()
@@ -71,6 +71,9 @@ class Store:
             self.state = {"sources": data.get("sources", {}), "groups": data["groups"], "alerts": data.get("alerts", {})}
             return []
         except ValueError:
+            if read_only:
+                self._rebuild()
+                return []
             q = self.vault / "system" / "quarantine"
             q.mkdir(parents=True, exist_ok=True)
             dest = q / f"telemetry_state-{datetime.now().strftime('%Y%m%dT%H%M%S')}.json"
@@ -99,7 +102,9 @@ class Store:
 
     def _body(self, g: dict, fm: dict) -> str:
         rows = "\n".join(f"| {k} | {v} |" for k, v in sorted((g.get("keys") or {}).items()))
-        reopen = f"Reopen in ADX:\n\n```kql\n{g['reopen']}\n```\n" if g.get("reopen") else (
+        kql = g.get("reopen") or (kql_reopen(g["kind"], g["filters"], fm["detected_at"], fm["last_seen"], g["keys"])
+                                  if g.get("filters") is not None else "")
+        reopen = f"Reopen in ADX:\n\n```kql\n{kql}\n```\n" if kql else (
             f"Sentry: {fm['link']}\n" if fm.get("link") else "")
         tpl = (self.vault / "system/templates/production-error.md")
         text = tpl.read_text(encoding="utf-8") if tpl.exists() else "# {{exception}}\n\n{{key_rows}}\n\n{{reopen}}\n"
@@ -113,6 +118,9 @@ class Store:
         g = _clean(g)
         key = f"{g['source']}/{g['fingerprint']}"
         old = self.state["groups"].get(key)
+        if old and not (self.vault / old["note"]).exists():
+            del self.state["groups"][key]
+            old = None
         rel = old["note"] if old else self.note_rel(g["source"], g["fingerprint"])
         if old:
             count = int(g["count"]) if g["kind"] == "sentry" else int(old.get("count", 0)) + int(g["count"])
@@ -144,10 +152,19 @@ class Store:
                                      "cover_pending": bool(old and old.get("cover_pending"))}
         return "updated" if old else "new"
 
-    def set_status(self, key: str, status: str, now: datetime) -> None:
+    def _note(self, key: str):
+        """The group's parsed note, or None after dropping the group whose note is gone (it returns as new if seen again)."""
+        try:
+            return frontmatter.parse((self.vault / self.state["groups"][key]["note"]).read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            del self.state["groups"][key]
+            return None
+
+    def set_status(self, key: str, status: str, now: datetime) -> bool:
+        note = self._note(key)
+        if note is None:
+            return False
         grp = self.state["groups"][key]
-        path = self.vault / grp["note"]
-        note = frontmatter.parse(path.read_text(encoding="utf-8"))
         fm = dict(note.data or {})
         fm["status"] = status
         fm["resolved_at"] = now.isoformat() if status == "resolved" else None
@@ -156,17 +173,22 @@ class Store:
             grp["regressed"] = False
         self._write_note(grp["note"], fm, note.body)
         grp["status"] = status
+        return True
 
     def operation_id(self, key: str) -> str:
-        grp = self.state["groups"][key]
-        return str((frontmatter.parse((self.vault / grp["note"]).read_text(encoding="utf-8")).data or {}).get("operation_id") or "")
+        note = self._note(key)
+        return str((note.data or {}).get("operation_id") or "") if note else ""
 
-    def set_covered(self, key: str, short_id: str) -> None:
-        grp = self.state["groups"][key]
-        note = frontmatter.parse((self.vault / grp["note"]).read_text(encoding="utf-8"))
+    def set_covered(self, key: str, short_id: str) -> bool:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", str(short_id)):
+            return False
+        note = self._note(key)
+        if note is None:
+            return False
         fm = dict(note.data or {})
         fm["covered"], fm["sentry_issue"] = "true", short_id
-        self._write_note(grp["note"], fm, note.body)
+        self._write_note(self.state["groups"][key]["note"], fm, note.body)
+        return True
 
     def resolve_stale(self, source: str, now: datetime) -> int:
         n = 0
@@ -174,8 +196,7 @@ class Store:
             if not key.startswith(source + "/") or grp.get("status") != "active" or not grp.get("last_seen"):
                 continue
             if now - datetime.fromisoformat(grp["last_seen"].replace("Z", "+00:00")) > QUIET:
-                self.set_status(key, "resolved", now)
-                n += 1
+                n += self.set_status(key, "resolved", now)
         return n
 
     def active(self, source: str) -> list:

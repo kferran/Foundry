@@ -431,6 +431,7 @@ self_edit_contract() {
   grep -qF 'covered' "$f"
   grep -qF 'resolved_at' "$f"
   grep -qF 'OR resolved_at >=' "$f"
+  grep -qF 'UTC with a +00:00 offset' "$f"
   ! grep -qF 'coalesce(mock' "$f"
 }
 

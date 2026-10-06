@@ -61,3 +61,10 @@ def test_issue_for_trace(token_file, monkeypatch):
     assert sentry.issue_for_trace("https://sentry.example.com", "acme", "abc") == {"id": "101", "shortId": "API-1"}
     monkeypatch.setattr(http, "json_call", lambda *a, **k: ({"data": []}, {}))
     assert sentry.issue_for_trace("https://sentry.example.com", "acme", "abc") is None
+
+
+def test_issue_for_trace_rejects_unchecked_ids(token_file, monkeypatch):
+    for row in ({"issue.id": 5}, {"issue": "A B", "issue.id": 5},
+                {"issue": "API-1", "issue.id": "x1"}, {"issue": "API-1"}):
+        monkeypatch.setattr(http, "json_call", lambda *a, **k: ({"data": [row]}, {}))
+        assert sentry.issue_for_trace("https://sentry.example.com", "acme", "abc") is None, row

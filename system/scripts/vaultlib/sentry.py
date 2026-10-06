@@ -94,4 +94,7 @@ def issue_for_trace(base: str, org: str, trace_id: str) -> dict | None:
     rows = (data or {}).get("data") or []
     if not rows:
         return None
-    return {"id": str(rows[0].get("issue.id")), "shortId": str(rows[0].get("issue"))}
+    short, iid = rows[0].get("issue"), str(rows[0].get("issue.id"))
+    if not isinstance(short, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", short) or not iid.isdigit():
+        return None
+    return {"id": iid, "shortId": short}

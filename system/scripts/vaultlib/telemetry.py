@@ -1,8 +1,9 @@
 """Pure parts of the telemetry fetch (Plan 11 spec §2.1, §3.1, §3.3): sources, windows, KQL, keys."""
 import hashlib
 import re
+import urllib.parse
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import frontmatter
@@ -13,6 +14,7 @@ FIRST = timedelta(hours=24)
 CAP = timedelta(days=7)
 GUID = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
 EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+(\.[\w-]+)+\b")
+HEX = re.compile(r"[0-9a-fA-F]{16,}")
 DIGITS = re.compile(r"\d{4,}")
 QUERY = re.compile(r"\?\S*")
 
@@ -44,7 +46,21 @@ def _fm(path: Path) -> dict:
     return note.data or {}
 
 
-def load_sources(vault: Path) -> list:
+def _invalid(d: dict, vault: Path) -> str | None:
+    """The first bad field of a source file, or None."""
+    if str(d.get("enabled", "true")).lower() not in ("true", "false"):
+        return "enabled"
+    try:
+        int(d.get("rank", "50") or 50)
+    except (TypeError, ValueError):
+        return "rank"
+    if not (vault / "system" / "codebases" / f"{d.get('codebase', '')}.md").is_file():
+        return "codebase"
+    return None
+
+
+def load_sources(vault: Path, invalid: list | None = None) -> list:
+    """Valid sources, sorted. Bad ones are appended to `invalid` as (name, field) when a list is given."""
     vault = Path(vault)
     out = []
     for p in sorted((vault / "system" / "telemetry").glob("*.md")):
@@ -53,8 +69,13 @@ def load_sources(vault: Path) -> list:
         d = _fm(p)
         if d.get("type") != "telemetry_source":
             continue
+        bad = _invalid(d, vault)
+        if bad:
+            if invalid is not None:
+                invalid.append((str(d.get("name", p.stem)), bad))
+            continue
         cb = vault / "system" / "codebases" / f"{d.get('codebase', '')}.md"
-        partition = (_fm(cb).get("partition") if cb.is_file() else None) or "work"
+        partition = _fm(cb).get("partition") or "work"
         out.append(Source(
             path=p.relative_to(vault).as_posix(), name=str(d.get("name", p.stem)), codebase=str(d.get("codebase", "")),
             partition=partition, environment=str(d.get("environment", "")), kind=str(d.get("kind", "")),
@@ -117,16 +138,46 @@ def kql_spans(src: Source, start: datetime, end: datetime, limit: int = 500) -> 
                       f"| take {limit}"])
 
 
+LITERAL = re.compile(r"<(?:n|guid|email|hex)>|\[REDACTED")
+
+
+def _utc(v: str) -> datetime:
+    d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def kql_reopen(kind: str, filters: list, first: str, last: str, keys: dict) -> str:
+    """KQL that selects exactly one stored group again (spec §4). A key holding a sanitizer placeholder cannot
+    match the raw data, so its condition is left out. The end is exclusive, so it is one second past `last`."""
+    def rng(col):
+        return f"{col} >= {_t(_utc(first))} and {col} < {_t(_utc(last) + timedelta(seconds=1))}"
+    k = {n: v for n, v in keys.items() if v not in (None, "") and not LITERAL.search(str(v))}
+    svc = [f'tostring(ResourceAttributes["service.name"]) == {_q(k["service"])}'] if "service" in k else []
+    if kind == "log":
+        std = {"service": None, "scope": "scope.name", "event_id": "logrecord.event.id"}
+        conds = svc + [f"tostring(LogsAttributes[{_q(std.get(n) or n)}]) == {_q(v)}" for n, v in k.items() if n != "service"]
+        head = ["Logs", "| where Timestamp >= " + rng("Timestamp") + " and SeverityNumber >= 17"]
+    else:
+        conds = svc
+        if "route" in k:
+            conds.append(f'coalesce(tostring(TraceAttributes["http.route"]), SpanName) == {_q(k["route"])}')
+        if str(k.get("status", "")).isdigit():
+            conds.append(f'toint(TraceAttributes["http.response.status_code"]) == {int(k["status"])}')
+        head = ["Traces", "| where StartTime >= " + rng("StartTime") + ' and SpanKind == "SPAN_KIND_SERVER"']
+    return "\n".join(head + [*filters] + (["| where " + " and ".join(conds)] if conds else []))
+
+
 def kql_count(kql: str) -> str:
     """The group count of a logs or spans query: drop its take line and count."""
     return "\n".join(line for line in kql.split("\n") if not line.startswith("| take ")) + "\n| count"
 
 
 def sanitize(value) -> str:
-    text, _ = redact(str(value if value is not None else ""))
+    text, _ = redact(urllib.parse.unquote(str(value if value is not None else "")))
     text = QUERY.sub("", text)
     text = GUID.sub("<guid>", text)
     text = EMAIL.sub("<email>", text)
+    text = HEX.sub("<hex>", text)
     text = DIGITS.sub("<n>", text)
     return text[:200]
 

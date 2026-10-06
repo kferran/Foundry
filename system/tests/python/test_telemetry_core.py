@@ -57,3 +57,10 @@ def test_load_sources_reads_partition_and_skips_example(vault):
     got = t.load_sources(vault)
     assert [s.name for s in got] == ["a", "b"]
     assert got[1].partition == "personal" and got[0].enabled is False and got[1].adx_signals == ["logs", "spans"]
+
+
+def test_sanitize_decodes_urls_and_collapses_long_hex():
+    assert "<email>" in t.sanitize("user bob%40example.com failed")
+    assert "bob" not in t.sanitize("user bob%40example.com failed")
+    assert t.sanitize("id 3f2b8a1e9c4d4e1f8a2b1c3d4e5f6a7b x") == "id <hex> x"
+    assert t.event_id("4012") == "4012" and t.trace_id("0af7651916cd43dd8448eb211c80319c")

@@ -1,5 +1,6 @@
 """One telemetry fetch over every enabled source (Plan 11 spec §3, §5)."""
 import argparse
+import copy
 import fcntl
 import json
 import os
@@ -61,18 +62,16 @@ def _adx_groups(src, start, end, counters):
                         "event_id": t.event_id(r.get("event_id"))}
                 keys.update({k: t.sanitize(r.get(f"module_{i}")) for i, k in enumerate(src.adx_group_keys)})
                 exception, kind = f"{keys['scope']}#{keys['event_id']}", "log"
-                reopen_where = f'LogsAttributes["logrecord.event.id"] == "{keys["event_id"]}"'
             else:
                 keys = {"service": t.sanitize(r.get("service")), "route": t.sanitize(r.get("route")),
                         "status": t.sanitize(r.get("status"))}
                 exception, kind = f"{keys['route']} {keys['status']}", "span"
-                reopen_where = f'SpanName has "{keys["route"].split(" ")[-1]}"'
             fp = t.fingerprint(src.name, kind, keys)
             groups.append({"fingerprint": fp, "source": src.name, "environment": src.environment, "codebase": src.codebase,
                            "partition": src.partition, "kind": kind, "service": keys["service"], "exception": exception,
                            "operation_id": t.trace_id(r.get("sample_trace")), "detected_at": str(r.get("first")),
                            "last_seen": str(r.get("last")), "count": int(r.get("n") or 0), "keys": keys,
-                           "reopen": f"{'Logs' if kind == 'log' else 'Traces'}\n| where {reopen_where}"})
+                           "filters": t._filters(src)})
     return groups
 
 
@@ -89,10 +88,12 @@ def _cover(src, groups, by_name, store, counters, dry):
             if budget <= 0:
                 break
             budget -= 1
-            hit = sentry.issue_for_trace(target.sentry_url, target.sentry_org, store.operation_id(key))
+            op = store.operation_id(key)
+            hit = sentry.issue_for_trace(target.sentry_url, target.sentry_org, op) if op else None
+            if key not in store.state["groups"]:
+                continue
             grp["cover_pending"] = False
-            if hit:
-                store.set_covered(key, hit["shortId"])
+            if hit and store.set_covered(key, hit["shortId"]):
                 counters["covered"] += 1
     skipped = set()
     for g in groups:
@@ -148,8 +149,12 @@ def _run_source(vault, src, store, by_name, now, dry, line):
         stale = sorted((g for g in store.active(src.name) if g["key"].split("/", 1)[1] not in seen),
                        key=lambda g: g.get("last_seen") or "")[:MAX_STATUS]
         for g in stale:
-            if sentry.issue_status(src.sentry_url, src.sentry_org, g["sentry_id"]) == "resolved":
-                store.set_status(g["key"], "resolved", now)
+            try:
+                gone = sentry.issue_status(src.sentry_url, src.sentry_org, g["sentry_id"]) == "resolved"
+            except TelemetryError as exc:
+                # a deleted or merged issue answers 404: it is done. Any other error skips this issue only.
+                gone = exc.kind == "bad" and exc.reason == "HTTP 404"
+            if gone and store.set_status(g["key"], "resolved", now):
                 counters["resolved"] += 1
     counters["resolved"] += store.resolve_stale(src.name, now)
     st["checkpoint"], st["failures"] = end.isoformat(), 0
@@ -163,7 +168,8 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
         args = _parser().parse_args(argv)
     except SystemExit as exc:
         return 0 if exc.code == 0 else 2
-    sources = t.load_sources(vault)
+    invalid = []
+    sources = t.load_sources(vault, invalid)
     by_name = {s.name: s for s in sources if s.enabled}
     if args.list:
         print("\n".join(by_name))
@@ -200,11 +206,16 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
         if not args.dry_run:
             for w in store.load():
                 _alert(vault, store, now, "state", w)
+        else:
+            store.load(read_only=True)
         rc = 0
         dry = args.dry_run
         try:
             for src in [by_name[wanted]] if wanted else list(by_name.values()):
                 line = {"started_at": now.isoformat(), "source": src.name}
+                prefix = src.name + "/"
+                snap = copy.deepcopy(({k: g for k, g in store.state["groups"].items() if k.startswith(prefix)},
+                                      store.state["sources"].get(src.name)))
                 try:
                     start, end, moved, counters = _run_source(vault, src, store, by_name, now, dry, line)
                     line.update(moved=moved, exit=0, **counters)
@@ -212,6 +223,14 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
                         _alert(vault, store, now, f"{src.name}/truncated", f"{src.name}: {counters['truncated']} groups; only {MAX_GROUPS} kept")
                 except Exception as exc:
                     rc = 1
+                    # a failed source leaves no partial counts: put its groups and checkpoint back
+                    for k in [k for k in store.state["groups"] if k.startswith(prefix)]:
+                        del store.state["groups"][k]
+                    store.state["groups"].update(snap[0])
+                    if snap[1] is None:
+                        store.state["sources"].pop(src.name, None)
+                    else:
+                        store.state["sources"][src.name] = snap[1]
                     kind = exc.kind if isinstance(exc, TelemetryError) else "error"
                     reason = exc.reason if isinstance(exc, TelemetryError) else type(exc).__name__
                     st = store.state["sources"].setdefault(src.name, {})
@@ -221,6 +240,11 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
                         _alert(vault, store, now, f"{src.name}/{kind}", f"{src.name}: {reason}")
                 if not dry:
                     _log(vault, now, line)
+            for name, bad in ([] if wanted else invalid):
+                rc = 1
+                if not dry:
+                    _log(vault, now, {"started_at": now.isoformat(), "source": name, "exit": 1, "error": f"invalid source: {bad}",
+                                      "new": 0, "updated": 0, "resolved": 0, "covered": 0, "truncated": 0})
         finally:
             if not dry:
                 store.save()

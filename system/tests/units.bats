@@ -313,7 +313,8 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   run "$IU"
   [ "$status" -eq 0 ]
   [ ! -e "$UD/foundry-telemetry.timer" ]
-  mkdir -p "$V/system/telemetry"
+  mkdir -p "$V/system/telemetry" "$V/system/codebases"
+  printf -- '---\ntype: codebase\nname: "x"\npath: "~"\npartition: "work"\nsearch_globs: ["*"]\n---\n' > "$V/system/codebases/x.md"
   printf -- '---\ntype: telemetry_source\nname: "p"\ncodebase: "x"\nenvironment: "prod"\nkind: "adx"\nadx_cluster: "https://e"\nadx_database: "d"\n---\n' > "$V/system/telemetry/p.md"
   run "$IU"
   [ "$status" -eq 0 ]
@@ -324,7 +325,8 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
 
 @test "a server gets no sync drop-in for the telemetry service" {
   "$V/system/scripts/vault_index.py" set "$V/system/config.md" machine_role server
-  mkdir -p "$V/system/telemetry"
+  mkdir -p "$V/system/telemetry" "$V/system/codebases"
+  printf -- '---\ntype: codebase\nname: "x"\npath: "~"\npartition: "work"\nsearch_globs: ["*"]\n---\n' > "$V/system/codebases/x.md"
   printf -- '---\ntype: telemetry_source\nname: "p"\ncodebase: "x"\nenvironment: "prod"\nkind: "adx"\nadx_cluster: "https://e"\nadx_database: "d"\n---\n' > "$V/system/telemetry/p.md"
   run "$IU"
   [ "$status" -eq 0 ]

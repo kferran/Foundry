@@ -111,3 +111,65 @@ def test_manual_note_deprecation_wins_and_substatus_regressed_sticks(vault):
     st.upsert(group(), NOW)
     assert read(vault, "raw/telemetry/prod-adx-a-0123456789ab.md")["status"] == "deprecated"
     assert st.state["groups"]["prod-adx/a-0123456789ab"]["status"] == "deprecated"
+
+
+def test_set_covered_ignores_unchecked_short_id(vault):
+    st = Store(vault); st.load(); st.upsert(group(), NOW)
+    st.set_covered("prod-adx/a-0123456789ab", "bad id\n")
+    assert read(vault, "raw/telemetry/prod-adx-a-0123456789ab.md")["covered"] == "false"
+    st.set_covered("prod-adx/a-0123456789ab", "API-1")
+    assert read(vault, "raw/telemetry/prod-adx-a-0123456789ab.md")["covered"] == "true"
+
+
+def test_missing_note_is_dropped_not_raised(vault):
+    st = Store(vault); st.load(); st.upsert(group(), NOW)
+    key = "prod-adx/a-0123456789ab"
+    (vault / "raw/telemetry/prod-adx-a-0123456789ab.md").unlink()
+    assert st.operation_id(key) == ""
+    assert key not in st.state["groups"]
+    st.upsert(group(), NOW)
+    (vault / "raw/telemetry/prod-adx-a-0123456789ab.md").unlink()
+    assert st.set_status(key, "resolved", NOW) is False and key not in st.state["groups"]
+    st.upsert(group(), NOW)
+    (vault / "raw/telemetry/prod-adx-a-0123456789ab.md").unlink()
+    assert st.set_covered(key, "API-1") is False and key not in st.state["groups"]
+
+
+def test_note_for_a_group_whose_note_vanished_is_recreated_as_new(vault):
+    st = Store(vault); st.load(); st.upsert(group(count=3), NOW)
+    (vault / "raw/telemetry/prod-adx-a-0123456789ab.md").unlink()
+    assert st.upsert(group(count=2), NOW) == "new"
+    assert read(vault, "raw/telemetry/prod-adx-a-0123456789ab.md")["count"] == "2"
+
+
+FILTERS = ['| where tostring(ResourceAttributes["k8s.namespace"]) == "prod"']
+
+
+def test_reopen_kql_logs_uses_range_filters_and_keys(vault):
+    st = Store(vault); st.load()
+    st.upsert(group(reopen=None, filters=FILTERS, detected_at="2026-10-05T10:00:00.5Z",
+                    last_seen="2026-10-05T11:00:00Z"), NOW)
+    body = (vault / "raw/telemetry/prod-adx-a-0123456789ab.md").read_text()
+    kql = body.split("```kql\n")[1].split("```")[0]
+    assert kql.split("\n")[0] == "Logs"
+    assert "Timestamp >= datetime(2026-10-05T10:00:00Z) and Timestamp < datetime(2026-10-05T11:00:01Z)" in kql
+    assert FILTERS[0] in kql
+    assert 'tostring(ResourceAttributes["service.name"]) == "api"' in kql
+    assert 'tostring(LogsAttributes["scope.name"]) == "Shop.Orders"' in kql
+    assert 'tostring(LogsAttributes["logrecord.event.id"]) == "4012"' in kql
+
+
+def test_reopen_kql_spans_and_placeholder_keys_are_omitted(vault):
+    st = Store(vault); st.load()
+    st.upsert(group(kind="span", fingerprint="a-1", reopen=None, filters=FILTERS, exception="x",
+                    keys={"service": "api", "route": "GET /items/<n>", "status": "500"}), NOW)
+    st.upsert(group(kind="span", fingerprint="a-2", reopen=None, filters=FILTERS, exception="x",
+                    keys={"service": "api", "route": 'GET /items "x"', "status": "500"}), NOW)
+    k1 = (vault / "raw/telemetry/prod-adx-a-1.md").read_text().split("```kql\n")[1]
+    k2 = (vault / "raw/telemetry/prod-adx-a-2.md").read_text().split("```kql\n")[1]
+    for k in (k1, k2):
+        assert k.startswith("Traces\n") and 'SpanKind == "SPAN_KIND_SERVER"' in k and FILTERS[0] in k
+        assert 'tostring(ResourceAttributes["service.name"]) == "api"' in k
+        assert 'toint(TraceAttributes["http.response.status_code"]) == 500' in k
+    assert "http.route" not in k1 and "GET /items" not in k1
+    assert 'coalesce(tostring(TraceAttributes["http.route"]), SpanName) == "GET /items \\"x\\""' in k2
