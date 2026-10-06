@@ -38,6 +38,11 @@ def _outcomes(vault, date: str) -> list:
     return sorted(out, key=lambda o: str(o.get("started_at", "")))
 
 
+def _clean(text, limit=300) -> str:
+    """Session-supplied text as one table-safe line: no newlines, no pipes, bounded."""
+    return " ".join(str(text or "").split()).replace("|", "/")[:limit]
+
+
 def build(vault, date: str) -> str:
     hp = Path(vault) / DIR / f"health-{date}.json"
     health = json.loads(hp.read_text(encoding="utf-8")) if hp.is_file() else {}
@@ -46,14 +51,14 @@ def build(vault, date: str) -> str:
     outcomes = _outcomes(vault, date)
     if not outcomes:
         return "\n".join(lines + ["Nothing ran.", ""])
-    needs = [f"- [ ] {n} ({o['id']})" for o in outcomes for n in o.get("needs") or []]
+    needs = [f"- [ ] {_clean(n)} ({o['id']})" for o in outcomes for n in o.get("needs") or []]
     if needs:
         lines += ["## Needs you", *needs, ""]
     lines += ["## Items", "| Item | Kind | Result | Time | Notes |", "|---|---|---|---|---|"]
     for o in outcomes:
         state = o["state"] + (f" ({o['reason']})" if o.get("reason") else "")
         span = f"{str(o.get('started_at', ''))[11:16]}–{str(o.get('finished_at', ''))[11:16]}"
-        lines.append(f"| {o['id']} | {o['kind']} | {state} | {span} | {o.get('result') or o.get('notes') or ''} |")
+        lines.append(f"| {o['id']} | {o['kind']} | {_clean(state)} | {span} | {_clean(o.get('result') or o.get('notes'))} |")
     return "\n".join(lines) + "\n"
 
 

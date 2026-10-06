@@ -7,7 +7,7 @@ fields:
   id: {kind: string, required: true}
   partition: {kind: enum, values: [work, personal, shared], required: true, matches_folder: true}
   kind: {kind: enum, values: [plan, research], required: true}
-  state: {kind: enum, values: [queued, running, waiting_reset, done, blocked, failed, cancelled], default: queued}
+  state: {kind: enum, values: [queued, running, waiting_reset, delivering, done, blocked, failed, cancelled], default: queued}
   queued_at: {kind: datetime, required: true}
   start: {kind: enum, values: [window, at, now], default: window}
   start_at: {kind: datetime}

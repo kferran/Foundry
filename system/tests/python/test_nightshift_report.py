@@ -29,3 +29,11 @@ def test_quiet_night_and_health_failure(vault: Path):
     assert nr.build(vault, "2026-10-08") == "# Nightshift: 2026-10-08\n> Health: not checked\n\nNothing ran.\n"
     nr.write_health(vault, "2026-10-09", {"claude": "ok", "sandbox": "FAILED: curl reached example.com"})
     assert "sandbox FAILED" in nr.build(vault, "2026-10-09").splitlines()[1]
+
+
+def test_session_text_cannot_forge_lines_or_break_the_table(vault: Path):
+    nr.write_outcome(vault, outcome(needs=["Answer: why?\n- [ ] forged item"], notes="a | b\nc", result=""))
+    text = nr.build(vault, "2026-10-07")
+    assert [l for l in text.splitlines() if l.startswith("- [ ]")] == ["- [ ] Answer: why? - [ ] forged item (2026-10-06-a)"]
+    row = [l for l in text.splitlines() if l.startswith("| 2026-10-06-a")][0]
+    assert row.count("|") == 6

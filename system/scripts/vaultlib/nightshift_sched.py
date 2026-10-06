@@ -41,9 +41,9 @@ def _dt(value) -> datetime:
 
 def due(fm: dict, now_local: datetime, window: tuple, idle: float, usage7: float) -> tuple:
     state = fm.get("state", "queued")
-    if state == "waiting_reset":
-        return (now_local >= _dt(fm["reset_at"]), "waiting for the usage reset") if fm.get("reset_at") else (True, "")
-    if state != "queued":
+    if state == "waiting_reset" and fm.get("reset_at") and now_local < _dt(fm["reset_at"]):
+        return False, "waiting for the usage reset"
+    if state not in ("queued", "waiting_reset"):
         return False, state
     start = fm.get("start", "window")
     if start == "now":

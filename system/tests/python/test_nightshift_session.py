@@ -59,3 +59,15 @@ def test_task_is_the_agent_alias():
     init = {"permissionMode": "dontAsk", "mcp_servers": [], "tools": ["Read", "Task"]}
     assert ss.init_problem(init, "plan") is None
     assert ss.init_problem(init, "research") == "unexpected tools: Task"
+
+
+def test_profile_denies_common_credentials_and_extra_paths():
+    deny = ss.profile(REPO, "plan", [], [], deny=["/srv/other-repo"])["sandbox"]["filesystem"]["denyRead"]
+    home = str(Path.home())
+    for p in (".npmrc", ".netrc", ".pypirc", ".aws", ".docker", ".config/git", ".gnupg", ".kube", ".azure"):
+        assert f"{home}/{p}" in deny
+    assert "/srv/other-repo" in deny
+
+
+def test_research_prompt_points_at_context():
+    assert "context/" in ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")

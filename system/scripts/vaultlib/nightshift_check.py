@@ -8,7 +8,9 @@ from . import frontmatter
 from . import nightshift_item as ni
 
 TASK = re.compile(r"^### Task (\d+):", re.M)
-PROTECTED = re.compile(r"\b(on|vault|to)\s+`?(master|main)`?(?![\w/-])|\bdeploy", re.I)
+_BRANCH = r"(?:`(?:master|main)`|\bmaster\b|\bmain\s+branch\b|\borigin\s+main\b)"
+PROTECTED = re.compile(rf"\b(?:on|vault|to|into|onto)\s+(?:the\s+)?{_BRANCH}|'s\s+{_BRANCH}"
+                       rf"|\b(?:push|merge|checkout|switch)\b[^\n]*?\s{_BRANCH}|\bdeploy\b", re.I)
 SECTIONS = ("## Question", "## Scope", "## Done when", "## Output")
 HOST = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$")
 

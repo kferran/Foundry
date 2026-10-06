@@ -12,8 +12,6 @@ from . import publish
 
 CODE_PATHS = ["system/scripts", "system/schemas", "system/systemd", "system/hooks", "system/nightshift", ".claude",
               "CLAUDE.md"]
-MASK_DIRS = [".ssh", ".config/gh", ".config/foundry"]
-MASK_FILES = [".claude/.credentials.json", ".claude.json", ".git-credentials"]
 LINK = re.compile(r"https://bitbucket\.org/\S+/pull-requests/new\?\S+")
 
 
@@ -26,13 +24,14 @@ def code_status(vault) -> str:
     return nc.git(vault, "status", "--porcelain", "--", *CODE_PATHS).stdout
 
 
-def bwrap(clone, cmd: str) -> list:
-    home = Path.home()
-    args = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
-            "--bind", str(clone), str(clone), "--unshare-net", "--die-with-parent", "--chdir", str(clone)]
-    args += [a for d in MASK_DIRS if (home / d).is_dir() for a in ("--tmpfs", str(home / d))]
-    args += [a for f in MASK_FILES if (home / f).is_file() for a in ("--ro-bind", "/dev/null", str(home / f))]
-    return args + ["bash", "-c", cmd]
+def bwrap(workdir, cmd: str) -> list:
+    """Run cmd with the host read-only, $HOME and /tmp empty, no network, an empty environment, and only workdir writable."""
+    home = str(Path.home())
+    path = "/usr/local/bin:/usr/bin:/bin"
+    return ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--tmpfs", home,
+            "--bind", str(workdir), str(workdir), "--unshare-net", "--die-with-parent", "--clearenv",
+            "--setenv", "PATH", path, "--setenv", "HOME", home, "--setenv", "LANG", "C.UTF-8", "--setenv", "TMPDIR", "/tmp",
+            "--chdir", str(workdir), "bash", "-c", cmd]
 
 
 def run_verify(clone, cmds, log_path, timeout=1800) -> tuple:
@@ -58,19 +57,43 @@ def push_target(vault, fm: dict) -> tuple:
     return url, str((nc.codebase(vault, fm["repo"]) or {}).get("nightshift_pr") or "")
 
 
-def push(runner_repo, clone, branch: str, url: str) -> tuple:
+def _git_env() -> dict:
+    return dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_TERMINAL_PROMPT="0")
+
+
+def fetch_branch(runner_repo, clone, branch: str, sha: str) -> tuple:
+    """Copy the session's branch into the runner's repository and confirm its tip is the commit the runner checked."""
     runner_repo = Path(runner_repo)
     if not (runner_repo / "HEAD").exists():
         subprocess.run(["git", "init", "-q", "--bare", str(runner_repo)], check=True)
-    f = subprocess.run(["git", "-C", str(runner_repo), "fetch", "-q", str(clone), f"+{branch}:{branch}"],
-                       capture_output=True, text=True)
+    f = subprocess.run(["git", "-C", str(runner_repo), "fetch", "-q", "--no-tags", str(clone), f"+{branch}:{branch}"],
+                       capture_output=True, text=True, env=_git_env())
     if f.returncode:
-        return False, f.stderr
-    env = dict(os.environ, GIT_SSH_COMMAND="ssh -o BatchMode=yes", GIT_TERMINAL_PROMPT="0")
+        return False, f.stderr.strip()
+    tip = subprocess.run(["git", "-C", str(runner_repo), "rev-parse", branch], capture_output=True, text=True).stdout.strip()
+    return (True, "") if tip == sha else (False, f"branch moved after the check ({sha[:8]} -> {tip[:8]})")
+
+
+def verify_sha(runner_repo, sha: str, vdir, cmds, log_path) -> tuple:
+    """Run the verify commands on a private checkout of sha, so nothing they do reaches the commit that is pushed."""
+    vdir = Path(vdir)
+    shutil.rmtree(vdir, ignore_errors=True)
+    try:
+        subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", str(runner_repo), str(vdir)], check=True,
+                       capture_output=True, env=_git_env())
+        subprocess.run(["git", "-C", str(vdir), "-c", "advice.detachedHead=false", "checkout", "-q", "--detach", sha],
+                       check=True, capture_output=True, env=_git_env())
+        return run_verify(vdir, cmds, log_path)
+    finally:
+        shutil.rmtree(vdir, ignore_errors=True)
+
+
+def push(runner_repo, sha: str, branch: str, url: str) -> tuple:
+    env = dict(_git_env(), GIT_SSH_COMMAND="ssh -o BatchMode=yes")
     cmd = ["git", "-C", str(runner_repo), "-c", "core.hooksPath=/dev/null"]
     if url.startswith("https://github.com/"):
         cmd += ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"]
-    p = subprocess.run(cmd + ["push", "--no-verify", url, f"{branch}:refs/heads/{branch}"],
+    p = subprocess.run(cmd + ["push", "--no-verify", url, f"{sha}:refs/heads/{branch}"],
                        capture_output=True, text=True, env=env)
     return p.returncode == 0, p.stdout + p.stderr
 

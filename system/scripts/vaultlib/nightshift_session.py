@@ -21,11 +21,15 @@ def superpowers_dir() -> Path | None:
     return max(dirs, key=lambda d: tuple(int(x) for x in re.findall(r"\d+", d.name)), default=None)
 
 
-def profile(vault, kind: str, hosts, web_hosts=()) -> dict:
+CREDENTIALS = ["~/.npmrc", "~/.netrc", "~/.pypirc", "~/.aws", "~/.docker", "~/.config/git", "~/.gnupg", "~/.kube",
+               "~/.azure", "~/.local/share/keyrings", "~/.cargo/credentials.toml", "~/.m2/settings.xml", "~/.nuget"]
+
+
+def profile(vault, kind: str, hosts, web_hosts=(), deny=()) -> dict:
     data = json.loads((Path(vault) / "system" / "nightshift" / f"{kind}.settings.json").read_text(encoding="utf-8"))
     sb = data["sandbox"]
     sb["network"]["allowedDomains"] = sorted(set(sb["network"]["allowedDomains"]) | set(hosts) | set(web_hosts))
-    sb["filesystem"]["denyRead"] = [os.path.expanduser(p) for p in sb["filesystem"]["denyRead"]]
+    sb["filesystem"]["denyRead"] = [os.path.expanduser(p) for p in sb["filesystem"]["denyRead"] + CREDENTIALS] + list(deny)
     data["permissions"]["allow"] += [f"WebFetch(domain:{h})" for h in web_hosts]
     return data
 
@@ -54,7 +58,8 @@ def plan_prompt(fm: dict) -> str:
 
 def research_prompt(fm: dict, body: str) -> str:
     name = Path(fm["output"]).name
-    return ("Answer the research brief below from the sources in its Scope. Change nothing except files under out/. "
+    return ("Answer the research brief below from the sources in its Scope; background notes from the vault are under "
+            "context/ (a read-only copy). Change nothing except files under out/. "
             f"Write the findings note to out/{name}, valid for its destination {fm['output']}: frontmatter with type "
             "concept, tags, compiled_at (today), partition, provenance [\"headless\"] and sources; then the findings, "
             "each with its source. Finish by writing out/result.json: "

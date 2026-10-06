@@ -73,3 +73,17 @@ def test_research_brief(vault_repo):
     assert any("## Done when" in e for e in nc.check(vault_repo, fm, BRIEF.replace("## Done when", "## Done")))
     assert any("output" in e for e in nc.check(vault_repo, {**fm, "output": "wiki/personal/x.md"}, BRIEF))
     assert any("host" in e for e in nc.check(vault_repo, {**fm, "hosts": ["http://x"]}, BRIEF))
+
+
+@pytest.mark.parametrize("text", ["git push origin master", "git checkout master && git merge feat",
+                                  "Merge into master.", "commit to the vault's master", "git push -u origin main",
+                                  "Runs in the vault on `master`.", "then deploy to production"])
+def test_protected_phrasings_are_caught(text):
+    assert nc.PROTECTED.search(text)
+
+
+@pytest.mark.parametrize("text", ["gh pr create --repo o/r --base master --head feat/x",
+                                  "Merging the PR is the user's call.", "the main loop runs on startup",
+                                  "deployment notes", "git push -u template feat/x"])
+def test_ordinary_phrasings_pass(text):
+    assert not nc.PROTECTED.search(text)

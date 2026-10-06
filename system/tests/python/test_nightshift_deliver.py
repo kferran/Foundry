@@ -40,14 +40,17 @@ def test_verify_runs_sandboxed(tmp_path):
     assert not ok
 
 
-def test_push_and_github_pr(tmp_path, monkeypatch):
+def test_fetch_push_and_github_pr(tmp_path, monkeypatch):
     src = repo_with_commit(tmp_path / "src")
     git(src, "checkout", "-q", "-b", "nightshift/x")
+    sha = git(src, "rev-parse", "HEAD").strip()
     remote = tmp_path / "remote.git"
     git(tmp_path, "init", "-q", "--bare", str(remote))
-    ok, log = nd.push(tmp_path / "runner.git", src, "nightshift/x", str(remote))
+    runner = tmp_path / "runner.git"
+    assert nd.fetch_branch(runner, src, "nightshift/x", sha) == (True, "")
+    ok, log = nd.push(runner, sha, "nightshift/x", str(remote))
     assert ok, log
-    assert "nightshift/x" in git(remote, "branch", "--list")
+    assert git(remote, "rev-parse", "nightshift/x").strip() == sha
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (bin_dir / "gh").write_text('#!/bin/bash\necho "$@" > "$GH_LOG"\necho https://github.com/o/r/pull/7\n')
@@ -58,6 +61,41 @@ def test_push_and_github_pr(tmp_path, monkeypatch):
     body.write_text("b")
     assert nd.open_pr("github:o/r", "nightshift/x", "master", "T", body, "") == (True, "https://github.com/o/r/pull/7")
     assert "--base master --head nightshift/x" in (tmp_path / "gh.log").read_text()
+
+
+def test_fetch_refuses_a_moved_tip(tmp_path):
+    src = repo_with_commit(tmp_path / "src")
+    git(src, "checkout", "-q", "-b", "nightshift/x")
+    old = git(src, "rev-parse", "HEAD").strip()
+    git(src, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-q", "--allow-empty", "-m", "late")
+    ok, why = nd.fetch_branch(tmp_path / "runner.git", src, "nightshift/x", old)
+    assert not ok and "moved" in why
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_verify_runs_on_a_private_checkout_of_the_sha(tmp_path):
+    src = repo_with_commit(tmp_path / "src")
+    sha = git(src, "rev-parse", "HEAD").strip()
+    runner = tmp_path / "runner.git"
+    assert nd.fetch_branch(runner, src, "master", sha)[0]
+    evil = "git -c user.name=e -c user.email=e@e commit -q --allow-empty -m evil; git update-ref refs/heads/master HEAD; true"
+    ok, _ = nd.verify_sha(runner, sha, tmp_path / "vdir", ["test -f a.txt", evil], tmp_path / "v.log")
+    assert ok
+    assert git(runner, "rev-parse", "master").strip() == sha
+    assert not (tmp_path / "vdir").exists()
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_verify_sees_no_home_and_no_environment(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / ".aws").mkdir(parents=True)
+    (home / ".netrc").write_text("machine x password y")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("GH_TOKEN", "secret")
+    r = repo_with_commit(tmp_path / "r")
+    ok, out = nd.run_verify(r, ['test ! -e "$HOME/.netrc"', 'test ! -e "$HOME/.aws"', 'test -z "${GH_TOKEN:-}"'],
+                            tmp_path / "v.log")
+    assert ok, out
 
 
 def test_bitbucket_link_from_push_output():

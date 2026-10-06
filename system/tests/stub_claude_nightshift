@@ -1,6 +1,7 @@
 #!/bin/bash
 # system/tests/stub_claude_nightshift: replays a recorded stream for nightshift tests.
 if [[ "$1" == "auth" ]]; then echo "logged in"; exit 0; fi
+[[ -n "${NIGHTSHIFT_STUB_ARGS:-}" ]] && printf '%s\n' "$@" > "$NIGHTSHIFT_STUB_ARGS"
 if [[ -n "${NIGHTSHIFT_STUB_WRITE:-}" ]]; then
   while IFS='=' read -r rel content; do
     [[ -n "$rel" ]] || continue

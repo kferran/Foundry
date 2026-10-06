@@ -56,3 +56,9 @@ def test_pick_order():
 def test_report_date():
     assert ns.report_date(at(5), "06:00") == "2026-10-06"
     assert ns.report_date(at(23), "06:00") == "2026-10-07"
+
+
+def test_waiting_reset_window_item_still_obeys_the_window():
+    fm = item(state="waiting_reset", reset_at="2026-10-06T11:00:00-06:00")
+    assert not ns.due(fm, at(12), W, 3600, 0.4)[0]
+    assert ns.due(fm, at(23), W, 3600, 0.4)[0]

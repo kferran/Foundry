@@ -138,26 +138,6 @@ def health(vault, now, entries) -> dict:
 
 # --- one item ------------------------------------------------------------------------------------------
 
-def _clone(ctx: Ctx, fm: dict) -> Path:
-    src = nc.source(ctx.vault, fm["repo"])
-    sha = nc.git(src, "rev-parse", f"{fm['base']}^{{commit}}").stdout.strip()
-    clone = ctx.workspace / f"nightshift-{fm['id']}"
-    if clone.exists():
-        return clone
-    ctx.workspace.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", str(src), str(clone)], check=True)
-    subprocess.run(["git", "-C", str(clone), "checkout", "-q", "-b", f"nightshift/{fm['id']}", sha], check=True)
-    with open(clone / ".git" / "info" / "exclude", "a") as f:
-        f.write("\n.nightshift/\n")
-    return clone
-
-
-def _research_dir(ctx: Ctx, fm: dict) -> Path:
-    d = ctx.workspace / f"nightshift-{fm['id']}"
-    (d / "out").mkdir(parents=True, exist_ok=True)
-    return d
-
-
 def _stop(proc, sig) -> None:
     """Signal the session's process group; escalate to SIGKILL after 60 s. A group that already exited is fine."""
     try:
@@ -173,42 +153,139 @@ def _stop(proc, sig) -> None:
     proc.wait()
 
 
+def _clone(ctx: Ctx, fm: dict) -> Path:
+    src = nc.source(ctx.vault, fm["repo"])
+    clone = ctx.workspace / f"nightshift-{fm['id']}"
+    if clone.exists():
+        return clone
+    ctx.workspace.mkdir(parents=True, exist_ok=True)
+    branch = f"nightshift/{fm['id']}"
+    if fm["repo"] == "template":
+        # The vault's object store holds private notes: copy only what the base reaches, with no alternates.
+        ref = nc.git(src, "rev-parse", "--symbolic-full-name", fm["base"]).stdout.strip() or fm["base"]
+        subprocess.run(["git", "init", "-q", str(clone)], check=True)
+        subprocess.run(["git", "-C", str(clone), "fetch", "-q", "--no-tags", str(src), f"{ref}:refs/remotes/base"], check=True)
+        subprocess.run(["git", "-C", str(clone), "checkout", "-q", "-b", branch, "refs/remotes/base"], check=True)
+    else:
+        sha = nc.git(src, "rev-parse", f"{fm['base']}^{{commit}}").stdout.strip()
+        subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", str(src), str(clone)], check=True)
+        subprocess.run(["git", "-C", str(clone), "checkout", "-q", "-b", branch, sha], check=True)
+    with open(clone / ".git" / "info" / "exclude", "a") as f:
+        f.write("\n.nightshift/\n")
+    return clone
+
+
+def _research_dir(ctx: Ctx, fm: dict) -> Path:
+    d = ctx.workspace / f"nightshift-{fm['id']}"
+    (d / "out").mkdir(parents=True, exist_ok=True)
+    wiki = ctx.vault / "wiki" / fm["partition"]
+    if not (d / "context").exists() and wiki.is_dir():
+        shutil.copytree(wiki, d / "context", ignore=shutil.ignore_patterns(".*"))
+    return d
+
+
+def _deny(ctx: Ctx, fm: dict) -> list:
+    """Paths a session must not read: the vault's notes, inputs and logs, and every other registered codebase."""
+    out = [str(ctx.vault / p) for p in ("wiki", "raw", "briefings", "system/logs")]
+    own = nc.source(ctx.vault, fm.get("repo")) if fm.get("repo") not in (None, "template") else None
+    for p in sorted((ctx.vault / "system" / "codebases").glob("*.md")):
+        cb = nc.codebase(ctx.vault, p.stem) or {}
+        path = Path(str(cb.get("path") or "")).expanduser()
+        if cb.get("path") and path != own:
+            out.append(str(path))
+    return out
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.killpg(pid, 0)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+
+
+def _stop_stale(idir: Path) -> None:
+    """Stop a session process group left by an earlier runner (crash, restart, cancel)."""
+    pidf = idir / "session.pid"
+    if not pidf.is_file():
+        return
+    try:
+        pid = int(pidf.read_text().strip())
+    except ValueError:
+        pidf.unlink()
+        return
+    for sig, wait in ((signal.SIGTERM, 30), (signal.SIGKILL, 5)):
+        if not _alive(pid):
+            break
+        try:
+            os.killpg(pid, sig)
+        except ProcessLookupError:
+            break
+        for _ in range(wait * 10):
+            if not _alive(pid):
+                break
+            clock.sleep(0.1)
+    pidf.unlink(missing_ok=True)
+
+
+def _elapsed(idir: Path) -> float:
+    try:
+        return float((idir / "elapsed").read_text())
+    except (OSError, ValueError):
+        return 0.0
+
+
 def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Path, resume: bool) -> dict:
     kind = fm["kind"]
     cb = nc.codebase(ctx.vault, fm.get("repo")) or {}
     hosts = list(cb.get("nightshift_hosts") or [])
     web = list(fm.get("hosts") or []) if kind == "research" else []
     settings = idir / "settings.json"
-    settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web)))
+    settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm))))
     plugins = [p for p in [ss.superpowers_dir()] if p] + [Path(str(p)).expanduser() for p in cb.get("nightshift_plugins") or []]
-    add_dirs = [ctx.vault / "wiki" / fm["partition"]] if kind == "research" else []
     prompt = (ss.plan_prompt(fm) if kind == "plan" else ss.research_prompt(fm, body))
     if resume:
         prompt = "Continue where you stopped; read .nightshift/progress.md (or out/) first. " + prompt
     (idir / "prompt.md").write_text(prompt)
     sid = fm.get("session_id") or str(uuid.uuid4())
     ni.update(path, session_id=sid)
-    cmd = ss.command(kind, prompt, settings, fm.get("model") or "sonnet", sid, plugins, add_dirs, resume=resume)
-    budget = ni.budget_seconds(fm.get("budget") or ("4h" if kind == "plan" else "1h"))
+    cmd = ss.command(kind, prompt, settings, fm.get("model") or "sonnet", sid, plugins, resume=resume and bool(fm.get("session_id")))
+    budget = ni.budget_seconds(fm.get("budget") or ("4h" if kind == "plan" else "1h")) - _elapsed(idir)
     stream = idir / "stream.jsonl"
+    size0 = stream.stat().st_size if stream.is_file() else 0
+    started = clock.monotonic()
+    outcome = None
     with open(stream, "a") as out, open(idir / "run.log", "a") as err:
         proc = subprocess.Popen(cmd, cwd=cwd, stdout=out, stderr=err, start_new_session=True)
-        started, checked = clock.monotonic(), False
+        (idir / "session.pid").write_text(str(proc.pid))
+        checked = False
         while proc.poll() is None:
-            clock.sleep(min(POLL, 1 if not checked else POLL))
-            if not checked and stream.stat().st_size:
+            clock.sleep(1 if not checked else POLL)
+            if not checked and stream.stat().st_size > size0:
                 problem = ss.init_problem(ss.parse_stream(stream)["init"], kind)
                 checked = True
                 if problem:
                     _stop(proc, signal.SIGKILL)
-                    return {"outcome": "failed", "reason": "profile", "detail": problem}
+                    outcome = {"outcome": "failed", "reason": "profile", "detail": problem}
+                    break
             if ni.load(path)[0].get("state") == "cancelled":
                 _stop(proc, signal.SIGTERM)
-                return {"outcome": "cancelled", "reason": "cancelled by user"}
+                outcome = {"outcome": "cancelled", "reason": "cancelled by user"}
+                break
             if clock.monotonic() - started > budget:
                 _stop(proc, signal.SIGTERM)
-                return {"outcome": "failed", "reason": "budget"}
-    s = ss.parse_stream(stream)
+                outcome = {"outcome": "failed", "reason": "budget"}
+                break
+    (idir / "elapsed").write_text(str(_elapsed(idir) + clock.monotonic() - started))
+    (idir / "session.pid").unlink(missing_ok=True)
+    if outcome:
+        return outcome
+    tail = stream.read_bytes()[size0:].decode("utf-8", "replace")
+    part = idir / "stream.last.jsonl"
+    part.write_text(tail)
+    s = ss.parse_stream(part)
+    if s["init"] is None:
+        return {"outcome": "no_start"}
     problem = ss.init_problem(s["init"], kind)
     if problem:
         return {"outcome": "failed", "reason": "profile", "detail": problem}
@@ -225,37 +302,77 @@ def _read_result(p: Path) -> dict | None:
         return None
 
 
+def _questions(res: dict) -> list:
+    qs = res.get("questions")
+    return [q for q in qs if isinstance(q, str) and q.strip()][:5] if isinstance(qs, list) else []
+
+
+def _text(v) -> str:
+    return v if isinstance(v, str) else ""
+
+
+def _before(ctx: Ctx, fm: dict, idir: Path) -> dict:
+    """The containment baseline, taken once at the first attempt and reused by every resume."""
+    f = idir / "before.json"
+    if f.is_file():
+        return json.loads(f.read_text())
+    src = nc.source(ctx.vault, fm["repo"])
+    b = {"src": nd.protected_refs(src) if fm["repo"] != "template" else {}, "code": nd.code_status(ctx.vault),
+         "base_sha": nc.git(src, "rev-parse", f"{fm['base']}^{{commit}}").stdout.strip()}
+    f.write_text(json.dumps(b))
+    return b
+
+
 def _deliver_plan(ctx: Ctx, fm: dict, clone: Path, idir: Path, before: dict) -> dict:
     res = _read_result(clone / ".nightshift" / "result.json")
     if res is None:
         return {"state": "failed", "reason": "no result"}
     if res["status"] == "blocked":
-        return {"state": "blocked", "reason": "session", "needs": [f"Answer: {q}" for q in res.get("questions") or []]}
+        return {"state": "blocked", "reason": "session", "needs": [f"Answer: {q}" for q in _questions(res)]}
     src = nc.source(ctx.vault, fm["repo"])
-    if nd.protected_refs(src) != before["src"] or nd.protected_refs(ctx.vault) != before["vault"] \
-            or nd.code_status(ctx.vault) != before["code"]:
+    if (fm["repo"] != "template" and nd.protected_refs(src) != before["src"]) or nd.code_status(ctx.vault) != before["code"]:
         ctx.alert(f"containment/{fm['id']}", f"{fm['id']}: a protected branch or vault code changed during the run")
         return {"state": "failed", "reason": "containment"}
     branch = f"nightshift/{fm['id']}"
-    if nc.git(clone, "rev-parse", branch).stdout.strip() == nc.git(src, "rev-parse", f"{fm['base']}^{{commit}}").stdout.strip():
+    sha = nc.git(clone, "rev-parse", "--verify", "--quiet", f"{branch}^{{commit}}").stdout.strip()
+    if not sha or sha == before["base_sha"]:
         return {"state": "blocked", "reason": "no commits"}
-    ok, out = nd.run_verify(clone, fm.get("verify") or [], idir / "verify.log")
+    runner = ctx.workspace / "nightshift-runner.git"
+    ok, why = nd.fetch_branch(runner, clone, branch, sha)
+    if not ok:
+        return {"state": "failed", "reason": "containment" if "moved" in why else "delivery", "notes": why}
+    ok, out = nd.verify_sha(runner, sha, ctx.workspace / f"nightshift-{fm['id']}-verify", fm.get("verify") or [],
+                            idir / "verify.log")
     if not ok:
         return {"state": "blocked", "reason": "verify", "needs": [f"Fix the failing check: {out.splitlines()[0]}"]}
+    (idir / "delivery.json").write_text(json.dumps({"sha": sha, "branch": branch, "title": _text(res.get("pr_title")) or fm["id"],
+                                                    "body": _text(res.get("pr_body")) or _text(res.get("summary")),
+                                                    "summary": _text(res.get("summary")), "tries": 0}))
+    shutil.rmtree(clone, ignore_errors=True)
+    return _deliver(ctx, fm, idir)
+
+
+def _deliver(ctx: Ctx, fm: dict, idir: Path) -> dict:
+    """Push the verified commit and open the pull request; on failure later ticks retry this step only."""
+    d = json.loads((idir / "delivery.json").read_text())
+    d["tries"] += 1
+    (idir / "delivery.json").write_text(json.dumps(d))
     url, pr = nd.push_target(ctx.vault, fm)
     pr = pr or PR_FOR_LOCAL
-    ok, push_log = nd.push(ctx.workspace / "nightshift-runner.git", clone, branch, url)
+    ok, push_log = nd.push(ctx.workspace / "nightshift-runner.git", d["sha"], d["branch"], url)
     (idir / "push.log").write_text(push_log)
-    if not ok:
-        return {"state": "failed", "reason": "delivery", "needs": [f"Push failed for {branch}: see {idir}/push.log"]}
-    body = idir / "pr_body.md"
-    body.write_text(f"{res.get('pr_body') or res.get('summary') or ''}\n\nQueued as Nightshift item `{fm['id']}`.\n")
-    ok, link = nd.open_pr(pr, branch, fm.get("pr_base") or "master", res.get("pr_title") or fm["id"], body, push_log)
-    if not ok:
-        return {"state": "failed", "reason": "delivery", "needs": [f"Open the pull request for {branch}: {link}"]}
-    verb = "Review and merge" if pr.startswith("github:") else "Open the pull request"
-    shutil.rmtree(clone, ignore_errors=True)
-    return {"state": "done", "result": link, "needs": [f"{verb}: {link}"], "notes": res.get("summary", "")}
+    link = ""
+    if ok:
+        body = idir / "pr_body.md"
+        body.write_text(f"{d['body']}\n\nQueued as Nightshift item `{fm['id']}`.\n")
+        ok, link = nd.open_pr(pr, d["branch"], fm.get("pr_base") or "master", d["title"], body, push_log)
+    if ok:
+        verb = "Review and merge" if pr.startswith("github:") else "Open the pull request"
+        return {"state": "done", "result": link, "needs": [f"{verb}: {link}"], "notes": d["summary"]}
+    if d["tries"] < 3:
+        return {"state": "delivering", "reason": "delivery", "notes": (link or push_log).strip()[-200:]}
+    return {"state": "failed", "reason": "delivery",
+            "needs": [f"Deliver {d['branch']} by hand ({d['sha'][:8]}): see {idir}/push.log"]}
 
 
 def _deliver_research(ctx: Ctx, fm: dict, d: Path) -> dict:
@@ -263,7 +380,7 @@ def _deliver_research(ctx: Ctx, fm: dict, d: Path) -> dict:
     if res is None:
         return {"state": "failed", "reason": "no result"}
     if res["status"] == "blocked":
-        return {"state": "blocked", "reason": "session", "needs": [f"Answer: {q}" for q in res.get("questions") or []]}
+        return {"state": "blocked", "reason": "session", "needs": [f"Answer: {q}" for q in _questions(res)]}
     findings = d / "out" / Path(fm["output"]).name
     if not findings.is_file():
         return {"state": "failed", "reason": "no result"}
@@ -271,12 +388,32 @@ def _deliver_research(ctx: Ctx, fm: dict, d: Path) -> dict:
     if not ok:
         return {"state": "failed", "reason": "delivery", "needs": [f"Findings rejected by the publish gate: {detail}"]}
     shutil.rmtree(d, ignore_errors=True)
-    return {"state": "done", "result": f"[[{Path(fm['output']).stem}]]", "needs": [], "notes": res.get("summary", "")}
+    return {"state": "done", "result": f"[[{Path(fm['output']).stem}]]", "needs": [], "notes": _text(res.get("summary"))}
+
+
+def _finish(ctx: Ctx, path: Path, fm: dict, idir: Path, cwd, out: dict) -> int:
+    if out["state"] in ("failed", "blocked") and not out.get("needs"):
+        tail = (idir / "run.log").read_text(errors="replace").splitlines()[-3:] if (idir / "run.log").is_file() else []
+        out["needs"] = [f"{fm['id']} {out['state']} ({out.get('reason')}); work kept in {cwd}" + (f"; log: {' | '.join(tail)}" if tail else "")]
+    final = out["state"] != "delivering"
+    ni.update(path, state=out["state"], reason=out.get("reason") or None, result=out.get("result") or None,
+              finished_at=ctx.now.isoformat() if final else None)
+    if final:
+        rep.write_outcome(ctx.vault, {"id": fm["id"], "kind": fm["kind"], "state": out["state"], "result": out.get("result", ""),
+                                      "reason": out.get("reason", ""), "started_at": fm.get("started_at") or ctx.now.isoformat(),
+                                      "finished_at": ctx.now.isoformat(), "report_date": ctx.date,
+                                      "needs": out.get("needs", []), "notes": out.get("notes", "")})
+        rep.write(ctx.vault, ctx.date)
+    ctx.log({"item": fm["id"], "state": out["state"], "reason": out.get("reason", "")})
+    return 0 if out["state"] in ("done", "cancelled", "delivering") else 1
 
 
 def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     idir = rep.item_dir(ctx.vault, fm["id"])
     idir.mkdir(parents=True, exist_ok=True)
+    if fm.get("state") == "delivering":
+        return _finish(ctx, path, fm, idir, None, _deliver(ctx, fm, idir))
+    _stop_stale(idir)
     resume = fm.get("state") in ("waiting_reset", "running")
     attempts = int(fm.get("attempts") or 0) + 1
     ni.update(path, state="running", started_at=fm.get("started_at") or ctx.now.isoformat(), attempts=str(attempts),
@@ -284,8 +421,7 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     before = {}
     if fm["kind"] == "plan":
         cwd = _clone(ctx, fm)
-        before = {"src": nd.protected_refs(nc.source(ctx.vault, fm["repo"])), "vault": nd.protected_refs(ctx.vault),
-                  "code": nd.code_status(ctx.vault)}
+        before = _before(ctx, fm, idir)
     else:
         cwd = _research_dir(ctx, fm)
     run = _run_session(ctx, path, fm, body, cwd, idir, resume)
@@ -301,6 +437,12 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
         ni.update(path, state="waiting_reset", reset_at=reset.isoformat())
         ctx.log({"item": fm["id"], "state": "waiting_reset", "reset_at": reset.isoformat()})
         return 0
+    if run["outcome"] == "no_start":
+        if attempts >= 3:
+            return _finish(ctx, path, fm, idir, cwd, {"state": "failed", "reason": "no result"})
+        ctx.alert(f"nostart/{fm['id']}", f"{fm['id']}: the session did not start (expired auth or a failed resume); requeued")
+        ni.update(path, state="queued", reason="session did not start", session_id=None)
+        return 1
     if run["outcome"] == "cancelled":
         out = {"state": "cancelled", "reason": "cancelled by user", "needs": []}
     elif run["outcome"] == "failed":
@@ -311,40 +453,44 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
         out = _deliver_plan(ctx, fm, cwd, idir, before)
     else:
         out = _deliver_research(ctx, fm, cwd)
-    if out["state"] in ("failed", "blocked") and not out.get("needs"):
-        tail = (idir / "run.log").read_text(errors="replace").splitlines()[-3:] if (idir / "run.log").is_file() else []
-        out["needs"] = [f"{fm['id']} {out['state']} ({out.get('reason')}); work kept in {cwd}" + (f"; log: {' | '.join(tail)}" if tail else "")]
-    ni.update(path, state=out["state"], reason=out.get("reason") or None, result=out.get("result") or None,
-              finished_at=ctx.now.isoformat())
-    rep.write_outcome(ctx.vault, {"id": fm["id"], "kind": fm["kind"], "state": out["state"], "result": out.get("result", ""),
-                                  "reason": out.get("reason", ""), "started_at": fm.get("started_at") or ctx.now.isoformat(),
-                                  "finished_at": ctx.now.isoformat(), "report_date": ctx.date,
-                                  "needs": out.get("needs", []), "notes": out.get("notes", "")})
-    rep.write(ctx.vault, ctx.date)
-    ctx.log({"item": fm["id"], "state": out["state"], "reason": out.get("reason", "")})
-    return 0 if out["state"] in ("done", "cancelled") else 1
+    return _finish(ctx, path, fm, idir, cwd, out)
 
 
 # --- tick and CLI --------------------------------------------------------------------------------------
 
 def _reconcile(ctx: Ctx) -> None:
     for path, fm, _ in ni.items(ctx.vault):
-        if fm.get("state") == "running" and int(fm.get("attempts") or 0) >= 3:
+        idir = rep.item_dir(ctx.vault, fm["id"])
+        state = fm.get("state")
+        if state == "cancelled":
+            _stop_stale(idir)
+        elif state == "running" and int(fm.get("attempts") or 0) >= 3:
+            _stop_stale(idir)
             ni.update(path, state="failed", reason="no result", finished_at=ctx.now.isoformat())
+        if state in ("failed", "blocked", "cancelled", "done") and fm.get("finished_at"):
+            try:
+                old = ctx.now - datetime.fromisoformat(str(fm["finished_at"])) > timedelta(days=7)
+            except ValueError:
+                old = False
+            if old:
+                for d in (ctx.workspace / f"nightshift-{fm['id']}", ctx.workspace / f"nightshift-{fm['id']}-verify"):
+                    shutil.rmtree(d, ignore_errors=True)
 
 
 def tick(ctx: Ctx) -> int:
     _reconcile(ctx)
     entries = [(p, fm, b) for p, fm, b in ni.items(ctx.vault)]
+    delivering = [e for e in entries if e[1].get("state") == "delivering"]
+    if delivering:
+        path, fm, body = delivering[0]
+        return run_item(ctx, path, fm, body)
     hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
-    usage7 = None
     candidates = [e for e in entries if ns.due(e[1], ctx.local, ctx.window, float("inf"), 0)[0]
                   or e[1].get("state") == "running"]
     if not candidates:
         return 0
     if not hfile.is_file():
         h = health(ctx.vault, ctx.now, entries)
-        h["last_tick"] = ctx.local.strftime("%H:%M")
         rep.write_health(ctx.vault, ctx.date, h)
     h = json.loads(hfile.read_text())
     h["last_tick"] = ctx.local.strftime("%H:%M")

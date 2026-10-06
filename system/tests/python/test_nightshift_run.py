@@ -159,3 +159,129 @@ def test_selftest_parses_tool_results(env, monkeypatch, tmp_path):
     monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(bad))
     ok, why = nr.selftest(vault)
     assert ok is False and "curl" in why
+
+
+def note_of(vault):
+    return only_item(vault)[0]
+
+
+def test_template_clone_holds_no_private_vault_objects(env):
+    vault, _ = env
+    write(vault, "wiki/work/concepts/Secret.md", "private")
+    git(vault, "add", "-A")
+    git(vault, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "private note")
+    secret = git(vault, "rev-parse", "HEAD").strip()
+    assert add(vault) == 0
+    path, fm = only_item(vault)
+    clone = nr._clone(nr.Ctx(vault, NOW), fm)
+    assert subprocess.run(["git", "-C", str(clone), "cat-file", "-e", secret]).returncode != 0
+    assert not (clone / ".git" / "objects" / "info" / "alternates").exists()
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_vault_master_moving_during_a_run_is_not_a_containment_failure(env, monkeypatch):
+    vault, _ = env
+    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "git add done.txt && git -c user.name=t -c user.email=t@e commit -qm work"
+                       f" && git -C {vault} -c user.name=t -c user.email=t@e commit -q --allow-empty -m ingest")
+    assert add(vault, "--now") == 0
+    assert nr.main(["tick"], vault, NOW) == 0
+    assert only_item(vault)[1]["state"] == "done"
+
+
+def test_resume_stops_a_session_left_running(env):
+    vault, _ = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    stale = subprocess.Popen(["sleep", "300"], start_new_session=True)
+    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir.mkdir(parents=True)
+    (idir / "session.pid").write_text(str(stale.pid))
+    ni.update(path, state="running", attempts="1", session_id="old")
+    nr.main(["tick"], vault, NOW)
+    assert stale.poll() is not None
+
+
+def test_cancel_stops_a_live_session(env):
+    vault, _ = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    live = subprocess.Popen(["sleep", "300"], start_new_session=True)
+    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir.mkdir(parents=True)
+    (idir / "session.pid").write_text(str(live.pid))
+    ni.update(path, state="cancelled")
+    nr.main(["tick"], vault, NOW)
+    assert live.poll() is not None
+
+
+def test_budget_spans_attempts(env, monkeypatch):
+    vault, _ = env
+    monkeypatch.setattr(nr, "POLL", 1)
+    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "sleep 4")
+    assert add(vault, "--now") == 0
+    _, fm = only_item(vault)
+    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir.mkdir(parents=True)
+    (idir / "elapsed").write_text(str(4 * 3600 - 2))
+    assert nr.main(["tick"], vault, NOW) == 1
+    assert only_item(vault)[1]["reason"] == "budget"
+
+
+def test_no_init_event_requeues_with_a_fresh_session(env, monkeypatch, tmp_path):
+    vault, _ = env
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("")
+    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(empty))
+    assert add(vault, "--now") == 0
+    nr.main(["tick"], vault, NOW)
+    _, fm = only_item(vault)
+    assert fm["state"] == "queued" and fm["reason"] == "session did not start" and "session_id" not in fm
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_delivery_failure_is_retried_without_a_new_session(env, monkeypatch, tmp_path):
+    vault, tmp = env
+    shutil.rmtree(tmp / "remote.git")
+    assert add(vault, "--now") == 0
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1]["state"] == "delivering"
+    git(tmp, "init", "-q", "--bare", str(tmp / "remote.git"))
+    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(tmp_path / "missing.jsonl"))  # a new session would fail
+    assert nr.main(["tick"], vault, NOW) == 0
+    assert only_item(vault)[1]["state"] == "done"
+
+
+def test_failed_clones_are_removed_after_seven_days(env):
+    vault, tmp = env
+    assert add(vault) == 0
+    path, fm = only_item(vault)
+    old = (NOW - __import__("datetime").timedelta(days=8)).isoformat()
+    ni.update(path, state="failed", reason="budget", finished_at=old)
+    clone = tmp / "ws" / f"nightshift-{fm['id']}"
+    clone.mkdir(parents=True)
+    nr.main(["tick"], vault, NOW)
+    assert not clone.exists()
+
+
+def test_research_runs_on_a_context_copy_and_publishes(env, monkeypatch, tmp_path):
+    vault, _ = env
+    from helpers import concept
+    write(vault, "wiki/work/concepts/Background.md", concept("work", "Background"))
+    note = concept("work", "Answer", "Found it.", provenance='["headless"]').replace("\n", "\\n")
+    writes = tmp_path / "rw.txt"
+    writes.write_text(f'out/Answer.md={note}\nout/result.json={{"status": "done", "summary": "ok", "questions": []}}\n')
+    monkeypatch.setenv("NIGHTSHIFT_STUB_WRITE", str(writes))
+    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "test -f context/concepts/Background.md")
+    monkeypatch.setenv("NIGHTSHIFT_STUB_ARGS", str(tmp_path / "args.txt"))
+    shutil.copy(FX / "ok.jsonl", tmp_path / "r.jsonl")
+    (tmp_path / "r.jsonl").write_text((FX / "ok.jsonl").read_text().replace(
+        '"tools":["Read","Glob","Grep","Edit","Write","Bash","Skill","Agent","TodoWrite"]', '"tools":["Read","Write"]'))
+    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(tmp_path / "r.jsonl"))
+    brief = tmp_path / "brief.md"
+    brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
+    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+                    "--output", "wiki/work/concepts/Answer.md", "--now"], vault, NOW) == 0
+    assert nr.main(["tick"], vault, NOW) == 0
+    assert only_item(vault)[1]["state"] == "done"
+    assert (vault / "wiki/work/concepts/Answer.md").is_file()
+    assert "--add-dir" not in (tmp_path / "args.txt").read_text()
