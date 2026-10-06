@@ -169,3 +169,11 @@ def test_dead_link_messages_by_kind(vault):
         ("wiki/work/concepts/B.md", "warning", "dead-link", "dead link [[Ghost]]"),
         ("wiki/work/concepts/C.md", "warning", "dead-link", "dead link missing.md"),
     ]
+
+
+def test_meeting_sources_and_drops_are_not_indexed(vault):
+    write(vault, "raw/meetings/FAKE-doc-0001.gdoc.md", '---\ndoc_id: "FAKE-doc-0001"\n---\nsee [[Nowhere]]\n')
+    write(vault, "meetings/drop/work/standup.md", "Avery: see [[Nowhere]]\n")
+    idx = build(vault)
+    assert query(idx, "SELECT path FROM notes WHERE path LIKE 'raw/meetings/%' OR path LIKE 'meetings/%'") == []
+    assert issues(idx, "dead-link") == []

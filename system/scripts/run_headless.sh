@@ -134,7 +134,7 @@ fi
 
 runs_today=0
 if [[ -f "$LEDGER" ]]; then
-  runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and ([2,3,4,6] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
+  runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and .command != "meeting" and ([2,3,4,6] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
 fi
 if (( runs_today >= MAX_PER_DAY )); then
   marker="system/logs/.cap-alerted-$TODAY"

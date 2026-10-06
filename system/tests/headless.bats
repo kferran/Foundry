@@ -134,6 +134,14 @@ teardown() {
   [ ! -e "$STUB_ARGS" ]
 }
 
+@test "meeting runs do not count toward the daily cap" {
+  mkdir -p system/logs
+  today="$(TZ=America/Denver date +%F)"
+  for i in 1 2; do printf '{"run_id":"r%s","command":"meeting","started_at":"%sT01:00:00-06:00","exit":0}\n' "$i" "$today" >> "$LEDGER"; done
+  HEADLESS_MAX_RUNS_PER_DAY=2 run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+}
+
 @test "malformed ledger line is ignored" {
   mkdir -p system/logs
   printf '{"run_id":"r1","command":"ingest","started_at":"%sT01:0' "$(TZ=America/Denver date +%F)" > "$LEDGER"

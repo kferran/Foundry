@@ -237,7 +237,8 @@ def cmd_related(args, vault, sc):
     terms = retrieve.terms_for_note(conn, note) if note else retrieve.terms_for_text(args.target)
     hits = retrieve.related(conn, terms, limit=args.limit, partitions=partitions, codebase=args.codebase,
                             ntype=args.type, per_source=args.per_source,
-                            include_inactive=args.include_inactive, exclude=note)
+                            include_inactive=args.include_inactive, exclude=note,
+                            include_transcripts=args.include_transcripts)
     conn.close()
     if args.json:
         print(json.dumps(hits))
@@ -398,6 +399,7 @@ def build_parser():
     p.add_argument("--type")
     p.add_argument("--per-source", type=int, default=2)
     p.add_argument("--include-inactive", action="store_true")
+    p.add_argument("--include-transcripts", action="store_true")
     p = add("show", cmd_show, "print one note")
     p.add_argument("note")
     p = add("backlinks", cmd_backlinks, "notes linking to a note")
