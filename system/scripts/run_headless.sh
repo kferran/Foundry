@@ -134,7 +134,7 @@ fi
 
 runs_today=0
 if [[ -f "$LEDGER" ]]; then
-  runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and ([2,3,4,6] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
+  runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and .command != "meeting" and ([2,3,4,6] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
 fi
 if (( runs_today >= MAX_PER_DAY )); then
   marker="system/logs/.cap-alerted-$TODAY"
@@ -179,8 +179,9 @@ rc=$?
 cpid=""
 set -e
 # An account spend or usage limit is not the input's fault: report it as the cap (exit 4) so the
-# daemon stops and the inputs keep their attempts.
-if (( rc != 0 )) && jq -e '.is_error == true and ((.result // "") | tostring | test("(spend|usage|rate) limit|limit resets|usage-credits"; "i"))' "$out" > /dev/null 2>&1; then
+# daemon stops and the inputs keep their attempts. Test for empty output first: jq 1.6 exits 0 for
+# `jq -e` on empty input, which would turn every silent failure into a usage limit.
+if (( rc != 0 )) && [[ -s "$out" ]] && jq -e '.is_error == true and ((.result // "") | tostring | test("(spend|usage|rate) limit|limit resets|usage-credits"; "i"))' "$out" > /dev/null 2>&1; then
   rc=4
 fi
 denials="$(jq -r '(.permission_denials // []) | length' "$out" 2>/dev/null || true)"

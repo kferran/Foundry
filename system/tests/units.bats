@@ -73,7 +73,7 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   run "$IU"
   [ "$status" -eq 0 ]
   grep -qx -- '--user daemon-reload' "$STUB_SYSTEMCTL_LOG"
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-nightshift.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "a second run reports every unit unchanged and rewrites nothing" {
@@ -210,7 +210,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
     [ -f "$UD/$n" ]
   done
   [ ! -e "$UD/foundry-focus.service" ]
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-sync.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-sync.timer foundry-nightshift.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "machine_role client installs nothing and says so" {
@@ -309,6 +309,37 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   [ -z "$output" ]
 }
 
+@test "the meetings fetch is installed only with meetings_enabled, on a server or standalone, hourly on workdays" {
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ ! -e "$UD/foundry-meetings.timer" ]
+  system/scripts/vault_index.py set system/config.md meetings_enabled true > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'new foundry-meetings.service' <<< "$output"
+  grep -qxF 'OnCalendar=Mon..Fri *-*-* 08..18:00:00 America/Denver' "$UD/foundry-meetings.timer"
+  grep -qx 'Persistent=false' "$UD/foundry-meetings.timer"
+  grep -qxF "ExecStart=\"$VP/system/scripts/meetings_fetch.sh\"" "$UD/foundry-meetings.service"
+  grep -qx 'TimeoutStartSec=35min' "$UD/foundry-meetings.service"
+  grep -qxF "Environment=\"CLAUDE_BIN=$STUBS/claude\"" "$UD/foundry-meetings.service"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-meetings.timer foundry-nightshift.timer' "$STUB_SYSTEMCTL_LOG"
+  set_role server
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ -f "$UD/foundry-meetings.timer" ]
+  [ ! -e "$UD/foundry-meetings.service.d" ]
+  system/scripts/vault_index.py set system/config.md meetings_enabled false > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'removed foundry-meetings.timer' <<< "$output"
+  [ ! -e "$UD/foundry-meetings.service" ]
+  system/scripts/vault_index.py set system/config.md meetings_enabled true > /dev/null
+  set_role client
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ ! -e "$UD/foundry-meetings.timer" ]
+}
+
 @test "a vault with an enabled telemetry source gets the telemetry timer; one without does not" {
   run "$IU"
   [ "$status" -eq 0 ]
@@ -332,4 +363,12 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   [ "$status" -eq 0 ]
   [ -e "$UD/foundry-telemetry.timer" ]
   [ ! -e "$UD/foundry-telemetry.service.d" ]
+}
+
+@test "standalone and server get the nightshift timer every 15 minutes" {
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -q '^OnCalendar=\*:0/15$' "$UD/foundry-nightshift.timer"
+  grep -q 'nightshift.py' "$UD/foundry-nightshift.service"
+  grep -q 'enable --now .*foundry-nightshift.timer' "$STUB_SYSTEMCTL_LOG"
 }

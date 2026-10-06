@@ -12,6 +12,9 @@ recall_budget_chars: "9000"     # SessionStart recall size cap (hard max 9500)
 template_remote: ""             # set by setup_remote.sh
 machine_role: "standalone"      # standalone | server | client; what this machine does (see README)
 sync_interval_minutes: "5"      # server only: minutes between vault syncs (1-60)
+meetings_enabled: "false"       # server and standalone: fetch Gemini notes from Google Drive on workdays
+meetings_partition: ""          # work | personal: where fetched meetings go (empty: default_partition, or personal when that is shared)
+owner_names: []                 # your names as they appear in meeting action items, e.g. ["Avery Sample"]
 superpowers:
   - "<strategic anchor>"
 ---

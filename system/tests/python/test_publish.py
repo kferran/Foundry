@@ -4,10 +4,12 @@ import time
 
 import pytest
 
-from helpers import concept, write
+from helpers import concept, meeting, transcript, write
 from vaultlib import publish
 
 RID = "20261001T120000-ingest-ab12"
+MID = "20261005T160000-meeting-ab12"
+NAME = "2026-10-05-1500-weekly-sync"
 LATER = time.time() + 3600
 
 
@@ -36,6 +38,7 @@ def reasons(problems):
 
 def test_check_run_id():
     assert publish.check_run_id(RID) == "ingest"
+    assert publish.check_run_id(MID) == "meeting"
     for bad in ("x", "20261001T120000-rm-ab12", "../20261001T120000-ingest-ab12"):
         with pytest.raises(publish.PublishError):
             publish.check_run_id(bad)
@@ -260,3 +263,21 @@ def test_existing_non_utf8_target_rejected(vault):
     decide(vault, rec("wiki/work/concepts/Bin.md", "patch"))
     rs = reasons(publish.validate_run(vault, RID, now=LATER)[2])
     assert "existing note unreadable" in rs
+
+
+def test_a_meeting_run_publishes_its_two_exact_targets(vault):
+    targets = [f"wiki/work/meetings/{NAME}.md", f"wiki/work/meetings/{NAME}.transcript.md"]
+    publish.snapshot(vault, MID, targets)
+    stage_new(vault, targets[0], meeting("work", NAME, body="[[Index]]"), run_id=MID)
+    stage_new(vault, targets[1], transcript("work", NAME), run_id=MID)
+    report = publish.commit_run(vault, MID, now=LATER)
+    assert (report["status"], report["published"]) == ("published", targets)
+    assert 'provenance: ["headless"]' in (vault / targets[0]).read_text()
+
+
+@pytest.mark.parametrize("text", [meeting("work", NAME), concept("work", "Sneaky", "[[Index]]")], ids=["meeting", "concept"])
+def test_an_ingest_never_stages_a_note_under_meetings(run, text):
+    target = f"wiki/work/meetings/{NAME}.md"
+    stage_new(run, target, text)
+    decide(run, rec(target))
+    assert "meeting notes are written only by the meeting import" in reasons(publish.validate_run(run, RID, now=LATER)[2])

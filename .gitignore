@@ -15,6 +15,9 @@ raw/**
 !raw/inbox/
 !raw/archive/
 !raw/telemetry/
+!raw/*/
+!raw/*/nightshift/
+!raw/*/nightshift/*.md
 !raw/*/.gitkeep
 system/index.db
 wiki/.staging/
@@ -24,6 +27,10 @@ system/*.lock
 system/jobs/
 __pycache__/
 .pytest_cache/
+meetings/drop/**/.*
+!meetings/drop/*/.gitkeep
+meetings/drop/**/Thumbs.db
+meetings/drop/**/desktop.ini
 system/telemetry/*.md
 !system/telemetry/example.md
 system/telemetry.lock

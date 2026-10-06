@@ -61,6 +61,7 @@ digests_md() {
 }
 prep_write digests.md digests_md || prep_unavailable "digests: index query failed (see $PREP_DIR/prep_errors.log)"
 
+prep_meetings
 prep_write focus.md system/scripts/focus_stats.sh "$PREP_DATE" || prep_unavailable "focus: focus_stats.sh failed"
 [[ -s "system/logs/obsidian_focus_$PREP_DATE.log" ]] || prep_unavailable "focus: no focus log for $PREP_DATE"
 exit 0

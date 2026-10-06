@@ -171,6 +171,14 @@ def test_dead_link_messages_by_kind(vault):
     ]
 
 
+def test_meeting_sources_and_drops_are_not_indexed(vault):
+    write(vault, "raw/meetings/FAKE-doc-0001.gdoc.md", '---\ndoc_id: "FAKE-doc-0001"\n---\nsee [[Nowhere]]\n')
+    write(vault, "meetings/drop/work/standup.md", "Avery: see [[Nowhere]]\n")
+    idx = build(vault)
+    assert query(idx, "SELECT path FROM notes WHERE path LIKE 'raw/meetings/%' OR path LIKE 'meetings/%'") == []
+    assert issues(idx, "dead-link") == []
+
+
 def test_links_to_a_notes_own_sources_are_not_dead(vault):
     """Raw inputs are gitignored, so a source resolves only on the machine that compiled it (#31)."""
     body = "Body cites [[Nowhere]].\n\n## Audit Trail\n- Source Material: [[2026-10-05-digest]]"
@@ -193,3 +201,14 @@ def test_table_escaped_wikilink_resolves(vault):
     idx = build(vault)
     assert issues(idx, "dead-link") == []
     assert query(idx, "SELECT target_path FROM links WHERE src='wiki/work/concepts/A.md'") == [("wiki/work/concepts/Target.md",)]
+
+
+def test_quarantined_or_staged_copy_does_not_make_a_name_ambiguous(vault):
+    """A rejected run's staged copy keeps the note's name; bare links must still resolve cleanly."""
+    write(vault, "wiki/work/concepts/Same.md", concept("work", "Same"))
+    write(vault, "system/quarantine/20261005T000000-ingest-abcd/staged/wiki/work/concepts/Same.md", concept("work", "Same"))
+    write(vault, "wiki/.staging/20261005T000001-ingest-ef01/wiki/work/concepts/Same.md", concept("work", "Same"))
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", "See [[Same]]."))
+    idx = build(vault)
+    assert issues(idx, "ambiguous-link") == []
+    assert query(idx, "SELECT target_path FROM links WHERE src='wiki/work/concepts/A.md'") == [("wiki/work/concepts/Same.md",)]

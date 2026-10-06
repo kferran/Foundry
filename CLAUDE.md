@@ -5,12 +5,15 @@
 ## Directory Map
 - `raw/inbox/`: manual drops (unstructured). `raw/archive/`: compiled drops. `raw/telemetry/`: production-error notes (not ingested).
 - `raw/<partition>/notes/`: pending session digests; `raw/<partition>/archive/`: compiled digests.
+- `raw/<partition>/nightshift/`: Nightshift queue notes (tracked; never ingested).
 - `wiki/work/`, `wiki/personal/`, `wiki/shared/`: compiled notes in `concepts/`, `entities/`, `summaries/` (and `preferences/` outside `shared`). `wiki/Index.md` is the cross-partition index.
+- `wiki/<partition>/meetings/`: meeting notes and their `.transcript.md` notes, written only by the meeting import (tick an action item's checkbox to close it). `meetings/drop/<partition>/`: drop meeting transcripts here (`.vtt`, `.srt`, `.txt`, `.md`); the server imports and removes them. `raw/meetings/`: fetched Gemini notes awaiting import.
 - `wiki/.staging/<run_id>/`: headless output awaiting publish. Never edit it by hand.
 - `briefings/`: `<date>.md` (morning briefing) and `<date>.debrief.md` (evening debrief, embedded in the briefing).
 - `system/config.md`: your configuration. `system/codebases/<name>.md`: one file per registered codebase.
 - `system/schemas/`: one schema note per note type. `system/templates/`: note templates. `system/agents/`: the Foreman persona and `workcells/`, one file per Workcell.
 - `system/scripts/`: deterministic tools. `system/logs/`: logs, prep inputs, alerts, run ledger. `system/quarantine/`: failed inputs.
+- `.scratch/`: throwaway clones, worktrees and temp files. Put scratch work here, inside the vault, so it stays in Claude Code's working directory; everything in it but its `.gitignore` is ignored, and the index, lint and Obsidian skip it.
 
 ## Agents
 1. **The Foreman**: the only role the user addresses; owns `briefings/`, the agenda and delegation. Persona: `system/agents/foreman.md`.
@@ -23,6 +26,7 @@
 - `/lint`: vault integrity report plus link, duplicate, contradiction and staleness suggestions.
 - `/impact <component> [--repo name]`: read-only blast-radius analysis across registered codebases.
 - `/backup`: verify, commit and push according to `remote_mode`.
+- `/nightshift add|ask|list|cancel|status`: queue refined work for unattended runs (a plan's task range to a pull request, or a research brief to a findings note).
 - `/setup`: interactive onboarding; safe to re-run.
 
 ## Codebases

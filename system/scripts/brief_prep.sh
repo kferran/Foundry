@@ -1,5 +1,6 @@
 #!/bin/bash
-# Calendar and yesterday's focus stats into system/logs/inputs/<date>/ (spec §6.5; calendar spec §5).
+# Calendar, meeting actions and yesterday's focus stats into system/logs/inputs/<date>/ (spec §6.5; calendar
+# spec §5; meetings spec §2.5).
 # Exits 0 whenever the date is valid; every source that could not be read gets a line in unavailable.md.
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
@@ -28,6 +29,9 @@ case "$rc" in
   *) prep_unavailable "calendar: calendar_fetch.sh failed (exit $rc; see $PREP_DIR/prep_errors.log)" ;;
 esac
 
+prep_write actions.md system/scripts/meeting_actions.py "$PREP_DATE" \
+  || prep_unavailable "actions: meeting_actions.py failed (see $PREP_DIR/prep_errors.log)"
+prep_meetings
 # Error telemetry (Plan 11 spec §6): a last fetch before the brief. Notes land in raw/telemetry/.
 rc=0
 system/scripts/telemetry_fetch.py > /dev/null 2>> "$PREP_DIR/prep_errors.log" || rc=$?
@@ -46,4 +50,10 @@ prep_write focus_yesterday.md system/scripts/focus_stats.sh "$yesterday" \
 # Open objectives from the latest earlier briefing, so follow-ups are not lost after one day.
 prep_write carried.md system/scripts/carry_forward.py "$PREP_DATE" \
   || prep_unavailable "carried: carry_forward.py failed (see $PREP_DIR/prep_errors.log)"
+# The Nightshift's report for this morning (Nightshift spec §6); empty when nothing ran.
+if [[ -f "system/logs/nightshift/$PREP_DATE.md" ]]; then
+  prep_write nightshift.md cat "system/logs/nightshift/$PREP_DATE.md" || prep_unavailable "nightshift: report unreadable"
+else
+  : > "$PREP_DIR/nightshift.md"
+fi
 exit 0
