@@ -61,7 +61,7 @@ One run of `system/scripts/dtcc_watch.py`:
 | `api_asset` | A new watched asset, or a changed published date or version for a known one. An asset matched only by keywords links no product. |
 | `unmapped` | A relevant notice whose product codes match no mapped product and are not all in `ignore` (§5). |
 
-A title that disappears without a replacement is logged in the run log only. Page changes are batched: one note per product per day holds every page change for that product. Every other kind is one note per change.
+A title that disappears without a replacement is logged in the run log only. Page changes are batched: one note per product per day holds every page change for that product; its `kind` is the first change's, and Evidence lists each change with its own kind. Every other kind is one note per change.
 
 ### 3.2 Version gap (`version_gap`)
 
@@ -69,7 +69,7 @@ For each mapped product with a `pin`, the published version is the highest `vNN-
 
 ### 3.3 Date conflict (`date_conflict`)
 
-Milestone dates are extracted from the release block and from each relevant notice's Implementation Dates block: a label (`PSE`, `Production`, `Decommission`, `Test`) followed by a date in any of `Month DD, YYYY`, `MM/DD/YYYY` or ISO form. Two dates with the same label from different sources conflict when they differ by 1 to 31 days. A conflict note is written once per (label, date pair). Example: notice a9809 gives Production 2027-04-15 while the release page gives 2027-04-25.
+Milestone dates are extracted from the release block and from each relevant notice's Implementation Dates block: a label (`PSE`, `Production`, `Decommission`, `Test`) followed by a date in any of `Month DD, YYYY`, `MM/DD/YYYY` or ISO form. A release-page date and a notice date with the same label conflict when they differ by 1 to 31 days and at least one of them is not yet past. Notices are not compared with each other (one release's Test date is often within a month of another's). A conflict note is written once per (label, date pair). Example: notice a9809 gives Production 2027-04-15 while the release page gives 2027-04-25.
 <!-- ponytail: the 31-day window is a heuristic for "same milestone"; replace with release-name matching if it misfires. -->
 
 ### 3.4 Notice relevance
