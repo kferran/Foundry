@@ -16,7 +16,8 @@ A registered codebase that integrates with DTCC Insurance & Retirement Services 
 | Output | One `dtcc_change` note per change in `wiki/<partition>/changes/`, with an empty `## Impact` section and `impact: pending`. |
 | Brief | A fixed **DTCC changes** checkbox block. Carry-forward keeps each line until it is ticked; the checkbox is the only open/closed state. |
 | Cadence | Daily timer, 30 minutes before `brief_time`. |
-| Packaging | A `/dtcc-watch` command wraps the script (run, `check`, `status`, `accept`). |
+| Packaging | A `dtcc-watch` project skill wraps the script: `/dtcc-watch [check\|status\|accept]` by hand, and its description lets Claude use it when DTCC changes come up. |
+| Knowledge | Any Workcell can pick up a DTCC item: each note links the vault's DTCC hub note and the product's background notes (§4, §5). No DTCC-specific Workcell or capability. |
 | Configuration | One map file per vault, `system/dtcc/map.yaml`, **tracked in the vault's own repository**. This repository ships only `system/dtcc/map.example.yaml`. With no map, the feature is inert: no timer, no brief block, the script exits 0. |
 | Email | Out of scope in both phases. |
 
@@ -101,12 +102,12 @@ New schema note `system/schemas/dtcc_change.md`, folders `wiki/work/`, `wiki/per
 | `pinned`, `published` | string | version tokens |
 | `deadlines` | list of string | e.g. `Production 2027-04-15 (a9809)` |
 | `impact` | enum `pending`, `none`, `assessed`, default `pending` | set by the user, a Workcell, or phase 2 |
-| `capability` | enum, default `code` | routes impact work to the Workcell with `code` |
+| `capability` | enum (the `concept` values), default `code` | routes impact work to the Workcell with `code` |
 | `status` | enum `canonical`, `deprecated`, default `canonical` | lifecycle, as for other notes |
 
 File: `wiki/<partition>/changes/<key with : replaced by ->.md`. The file name comes from `key`, so a rerun after a crash finds the note and skips it.
 
-Body: `## Evidence` (source rows, extracted dates, the PDF header lines), `## Mapped paths` (each path, with "missing at <ref>" when the stale check failed), `## Impact` (empty). The script validates the frontmatter with the vault's schema validator before writing. External text appears only in `title` and Evidence, escaped for YAML and Markdown; it is data, never an instruction.
+Body: `## Evidence` (source rows, extracted dates, the PDF header lines), `## Mapped paths` (each path, with "missing at <ref>" when the stale check failed), `## Related` (the map's `hub` link, then the product's `notes` links), `## Impact` (empty). The script validates the frontmatter with the vault's schema validator before writing. External text appears only in `title` and Evidence, escaped for YAML and Markdown; it is data, never an instruction.
 
 `CLAUDE.md`'s directory map gains `changes/` in the list of compiled-note folders.
 
@@ -116,6 +117,7 @@ Body: `## Evidence` (source rows, extracted dates, the PDF header lines), `## Ma
 
 ```yaml
 partition: work
+hub: '[[Dtcc]]'            # the vault's DTCC hub note, linked from every change note
 notice_keywords: ['\bI&RS\b', '\binsurance\b', '\bannuit']
 codebases:
   example-app: {ref: origin/main}
@@ -126,13 +128,16 @@ products:
     codebase: example-app
     paths: [src/dtcc/appsub/, docs/appsub-layout.xlsx]
     owner: dtcc-backend
+    notes: ['[[ExampleAppSubMapping]]']   # background notes for this product
     pin: v25-5
 ignore: [PAR, RPL]   # known products this vault does not use: no unmapped note
 ```
 
-Validation (`/dtcc-watch check`, and the start of every run): `partition` is a partition; each `codebase` is registered in `system/codebases/`; each `ref` resolves in that codebase's checkout; `pin` matches `vNN-N`; every keyword compiles. A failure exits 2 and writes an alert.
+Validation (`/dtcc-watch check`, and the start of every run): `partition` is a partition; each `codebase` is registered in `system/codebases/`; each `ref` resolves in that codebase's checkout; `pin` matches `vNN-N`; every keyword compiles; `hub` and each `notes` entry are wiki links that resolve inside `partition`. A failure exits 2 and writes an alert.
 
 **Stale-path check**, every run: `git -C <checkout> cat-file -e <ref>:<path>` for each mapped path. A missing path writes one alert a day until the map or the code is fixed. The checkout is never modified; the script does not fetch it.
+
+**Knowledge for any Workcell.** The vault keeps its DTCC background in wiki notes, reached through the index like any other knowledge. The hub note should carry a short "working DTCC items" section (which skill or command fits which job, where the map lives), and the codebase file of each mapped codebase should point to the hub and the map, since every Workcell reads that file before touching code. Both are vault content; this repository ships neither.
 
 ## 6. Failures
 
@@ -158,7 +163,7 @@ Exit codes: 0 ok (or no map), 1 a source failed or was held, 2 usage or invalid 
 | `system/scripts/vaultlib/dtcc_watch.py` | Parsers, diff, derivations, note writer. The fetch function is a parameter so tests inject fixtures. |
 | `system/schemas/dtcc_change.md` | §4 |
 | `system/dtcc/map.example.yaml` | §5 |
-| `.claude/commands/dtcc-watch.md` | `/dtcc-watch [check\|status\|accept]`: runs the script and reports its output in the vault's reply style. `status` lists the last run line and the notes detected in the past 7 days. |
+| `.claude/skills/dtcc-watch/SKILL.md` | `/dtcc-watch [check\|status\|accept]`: runs the script and reports its output in the vault's reply style. `status` lists the last run line and the notes detected in the past 7 days. |
 | `foundry-dtcc-watch.service` / `.timer` | Daily at `brief_time` minus 30 minutes, `Persistent=true`. `install_units.sh` installs it on standalone and server only when `system/dtcc/map.yaml` exists. |
 | `system/scripts/brief_prep.sh` | Writes `inputs/<date>/dtcc.md`: one `- [ ] DTCC: <title> ([[note]]) — <nearest future deadline>` line per note detected after the latest earlier briefing (the same lookup `carry_forward.py` uses). Empty when there is no map or nothing new. |
 | `.claude/commands/brief.md` | Under Active Objectives, a **DTCC changes** block that copies `dtcc.md` verbatim; omitted when it is empty. Watcher alerts land in Systemic Blockers with the other alerts. |
@@ -187,9 +192,10 @@ Bound tools: **pytest** and **bats**, run by the existing suites.
 
 Phase 1 leaves `## Impact` empty and `impact: pending` on every note. Phase 2 fills them:
 
-- A headless `/dtcc-impact <note>` command, run through `run_headless.sh` like the other headless commands (no network, staging plus the publish gate). It reads the note and a **codebase context pack**, writes the `## Impact` section (affected records, fields or endpoints the code uses, a rough size of the change, open questions), and sets `impact: assessed`.
+- A `dtcc-impact` skill, run headless through `run_headless.sh` like the other headless commands (no network, staging plus the publish gate). It reads the note and a **codebase context pack**, writes the `## Impact` section (affected records, fields or endpoints the code uses, a rough size of the change, open questions), and sets `impact: assessed`.
 - The context pack is a file exported from the registered codebase by a script that runs outside the sandbox: the mapped paths' symbol lists, the generated record classes, and the pinned layout documents' names. Exporting it is a scripted step, so the headless run never needs repository or network access.
 - The trigger is new `dtcc_change` notes with `impact: pending` after the watcher's run, within the daily headless cap.
+- Routing stays on existing capabilities. If phase 2 needs a DTCC owner, the template first needs a way for a vault to add a capability without editing `concept.md` (the capability union is checked by `vault_integrity.bats`).
 - Phase 2 gets its own spec. Nothing in phase 1 needs to change for it: the seam is the `impact` field and the empty `## Impact` section.
 
 ## 10. Vault-specific files under version control
