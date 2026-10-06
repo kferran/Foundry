@@ -158,8 +158,8 @@ def test_dead_link_messages_by_kind(vault):
     """Test that dead link messages are formatted correctly by link kind."""
     # Wikilink in body: [[Nowhere]]
     write(vault, "wiki/work/concepts/A.md", concept("work", "A", "[[Nowhere]]"))
-    # Frontmatter wikilink: sources: ["[[Ghost]]"]
-    write(vault, "wiki/work/concepts/B.md", concept("work", "B", sources='["[[Ghost]]"]'))
+    # Frontmatter wikilink outside sources: supersedes: ["[[Ghost]]"]
+    write(vault, "wiki/work/concepts/B.md", concept("work", "B", supersedes='["[[Ghost]]"]'))
     # Markdown link: [x](missing.md)
     write(vault, "wiki/work/concepts/C.md", concept("work", "C", "[x](missing.md)"))
     idx = build(vault)
@@ -169,3 +169,27 @@ def test_dead_link_messages_by_kind(vault):
         ("wiki/work/concepts/B.md", "warning", "dead-link", "dead link [[Ghost]]"),
         ("wiki/work/concepts/C.md", "warning", "dead-link", "dead link missing.md"),
     ]
+
+
+def test_links_to_a_notes_own_sources_are_not_dead(vault):
+    """Raw inputs are gitignored, so a source resolves only on the machine that compiled it (#31)."""
+    body = "Body cites [[Nowhere]].\n\n## Audit Trail\n- Source Material: [[2026-10-05-digest]]"
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", body, sources='["[[2026-10-05-digest]]"]'))
+    assert issue_messages(build(vault), "dead-link") == [
+        ("wiki/work/concepts/A.md", "warning", "dead-link", "dead link [[Nowhere]]"),
+    ]
+
+
+def test_another_notes_source_is_still_dead(vault):
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", sources='["[[digest-a]]"]'))
+    write(vault, "wiki/work/concepts/B.md", concept("work", "B", "See [[digest-a]]."))
+    assert issues(build(vault), "dead-link") == [("wiki/work/concepts/B.md", "warning", "dead-link")]
+
+
+def test_table_escaped_wikilink_resolves(vault):
+    """Inside a table Obsidian needs [[Target\\|Alias]]; the backslash is not part of the target."""
+    write(vault, "wiki/work/concepts/Target.md", concept("work", "Target"))
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", "| Who | Note |\n|---|---|\n| [[Target\\|Alias]] | x |"))
+    idx = build(vault)
+    assert issues(idx, "dead-link") == []
+    assert query(idx, "SELECT target_path FROM links WHERE src='wiki/work/concepts/A.md'") == [("wiki/work/concepts/Target.md",)]
