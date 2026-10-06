@@ -193,3 +193,14 @@ def test_table_escaped_wikilink_resolves(vault):
     idx = build(vault)
     assert issues(idx, "dead-link") == []
     assert query(idx, "SELECT target_path FROM links WHERE src='wiki/work/concepts/A.md'") == [("wiki/work/concepts/Target.md",)]
+
+
+def test_quarantined_or_staged_copy_does_not_make_a_name_ambiguous(vault):
+    """A rejected run's staged copy keeps the note's name; bare links must still resolve cleanly."""
+    write(vault, "wiki/work/concepts/Same.md", concept("work", "Same"))
+    write(vault, "system/quarantine/20261005T000000-ingest-abcd/staged/wiki/work/concepts/Same.md", concept("work", "Same"))
+    write(vault, "wiki/.staging/20261005T000001-ingest-ef01/wiki/work/concepts/Same.md", concept("work", "Same"))
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", "See [[Same]]."))
+    idx = build(vault)
+    assert issues(idx, "ambiguous-link") == []
+    assert query(idx, "SELECT target_path FROM links WHERE src='wiki/work/concepts/A.md'") == [("wiki/work/concepts/Same.md",)]
