@@ -68,8 +68,8 @@ def test_bitbucket_link_from_push_output():
 
 
 def test_push_target_for_template(vault: Path):
-    write(vault, "system/config.md", '---\ntype: config\ntimezone: "UTC"\ntemplate_remote: "https://github.com/kferran/jarvis.git"\n---\n')
-    assert nd.push_target(vault, {"repo": "template"}) == ("https://github.com/kferran/jarvis.git", "github:kferran/jarvis")
+    write(vault, "system/config.md", '---\ntype: config\ntimezone: "UTC"\ntemplate_remote: "https://github.com/acme/vault-template.git"\n---\n')
+    assert nd.push_target(vault, {"repo": "template"}) == ("https://github.com/acme/vault-template.git", "github:acme/vault-template")
 
 
 def test_research_published(vault: Path, tmp_path):
