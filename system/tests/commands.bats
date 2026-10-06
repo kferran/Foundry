@@ -429,6 +429,9 @@ self_edit_contract() {
   grep -qF 'v_production_error' "$f"
   grep -qF 'At most 10 rows per environment' "$f"
   grep -qF 'covered' "$f"
+  grep -qF 'resolved_at' "$f"
+  grep -qF 'OR resolved_at >=' "$f"
+  ! grep -qF 'coalesce(mock' "$f"
 }
 
 @test "/debrief reads the telemetry run log" {
