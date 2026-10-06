@@ -19,7 +19,7 @@ from vaultlib import frontmatter  # noqa: E402
 LOGS = VAULT / "system" / "logs"
 RUNS = LOGS / "runs"
 SINCE = LOGS / "commit_runs.since"
-RUN_ID = re.compile(r"^(\d{8}T\d{6})-(ingest|brief|debrief)-[0-9a-f]{4}$")
+RUN_ID = re.compile(r"^(\d{8}T\d{6})-(ingest|brief|debrief|nightshift)-[0-9a-f]{4}$")
 PARTITIONS = ("work", "personal", "shared")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
 SUBJECT_MAX = 72

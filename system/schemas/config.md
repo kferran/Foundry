@@ -17,6 +17,8 @@ fields:
   superpowers: {kind: list, of: string}
   machine_role: {kind: enum, values: [standalone, server, client], default: "standalone"}
   sync_interval_minutes: {kind: int, min: "1", max: "60", default: "5"}
+  nightshift_workspace: {kind: string}
+  nightshift_window: {kind: string, default: "22:00-05:00"}
 ---
 # Config
 The per-user global configuration written by `/setup` (gitignored). `system/config.example.md` is the committed example.
