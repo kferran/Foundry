@@ -1,0 +1,14 @@
+{
+  "disableAllHooks": true,
+  "permissions": {
+    "allow": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "TodoWrite"],
+    "deny": ["WebFetch", "WebSearch"]
+  },
+  "sandbox": {
+    "enabled": true,
+    "allowUnsandboxedCommands": false,
+    "network": {"strictAllowlist": true, "allowedDomains": []},
+    "filesystem": {"denyRead": ["~/.ssh", "~/.config/gh", "~/.config/foundry", "~/.claude/.credentials.json",
+                                "~/.claude.json", "~/.git-credentials", "**/.env*"]}
+  }
+}
