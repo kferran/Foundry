@@ -13,6 +13,11 @@ case "${1:-}" in
 esac
 (( $# <= 1 )) || { echo "usage: verify_setup.sh [--health]" >&2; exit 2; }
 
+# Suites' temp files go in the vault's ignored .scratch/ (Claude Code's working directory), not /tmp.
+# The ceiling keeps git in a temp dir from finding this vault's repository, as it would not under /tmp.
+export TMPDIR="$VAULT_ROOT/.scratch/tmp" GIT_CEILING_DIRECTORIES="$VAULT_ROOT/.scratch"
+mkdir -p "$TMPDIR"
+
 results=() failed=0
 # Each suite's exit status is read directly, never through a pipe, so a failing suite cannot report green.
 gate() {  # <label> <command…>

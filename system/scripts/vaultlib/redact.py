@@ -109,3 +109,21 @@ def redact(text: str) -> tuple:
     text = CANDIDATE.sub(_high_entropy, text)
     count += text.count("[REDACTED:high_entropy]") - before.count("[REDACTED:high_entropy]")
     return text, count
+
+
+ASSIGNMENT_EQUALS = re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key)\s*=\s*\S")
+
+
+def named_kinds(text: str) -> list:
+    """The named detectors that fire on text, sorted, for the drop check (meetings spec §2.2). The generic
+    high-entropy one is left out, and assignments count only as `key = value`: in speech `password: …` is common."""
+    kinds = {kind for kind, pattern in PATTERNS if pattern.search(text)}
+    if PRIVATE_OPEN.search(text):
+        kinds.add("private")
+    if _scan_pem(text)[1]:
+        kinds.add("pem")
+    if BEARER.search(text):
+        kinds.add("bearer")
+    if ASSIGNMENT_EQUALS.search(text):
+        kinds.add("assignment")
+    return sorted(kinds)

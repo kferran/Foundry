@@ -87,6 +87,11 @@ case "$role" in
   client) UNITS=() ENABLE=() ;;
   *) die 1 "unknown machine_role in system/config.md: $role" ;;
 esac
+# The meetings fetch (meetings spec §4) writes only gitignored files, so it gets no sync drop-in.
+if [[ "$role" != client && "$(config_get meetings_enabled false)" == true ]]; then
+  UNITS+=(foundry-meetings.service foundry-meetings.timer)
+  ENABLE+=(foundry-meetings.timer)
+fi
 # Error telemetry (Plan 11): standalone and server, only when a source is enabled.
 if [[ "$role" != client ]] && [[ -n "$(system/scripts/telemetry_fetch.py --list 2>/dev/null)" ]]; then
   UNITS+=(foundry-telemetry.service foundry-telemetry.timer)
