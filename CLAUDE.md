@@ -12,6 +12,7 @@
 - `system/config.md`: your configuration. `system/codebases/<name>.md`: one file per registered codebase.
 - `system/schemas/`: one schema note per note type. `system/templates/`: note templates. `system/agents/`: the Foreman persona and `workcells/`, one file per Workcell.
 - `system/scripts/`: deterministic tools. `system/logs/`: logs, prep inputs, alerts, run ledger. `system/quarantine/`: failed inputs.
+- `.scratch/`: throwaway clones, worktrees and temp files. Put scratch work here, inside the vault, so it stays in Claude Code's working directory; everything in it but its `.gitignore` is ignored, and the index, lint and Obsidian skip it.
 
 ## Agents
 1. **The Foreman**: the only role the user addresses; owns `briefings/`, the agenda and delegation. Persona: `system/agents/foreman.md`.
