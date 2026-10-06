@@ -142,6 +142,24 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
+@test "an account usage limit exits 4, alerts once, and is not reported as a failed input" {
+  STUB_MODE=usage_limit run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 4 ]
+  STUB_MODE=usage_limit run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 4 ]
+  [ "$(grep -c 'account usage limit' system/logs/alerts_*.md)" -eq 1 ]
+  [ "$(jq -s 'map(select(.exit == 4)) | length' "$LEDGER")" -eq 2 ]
+  run grep -c 'failed (exit' system/logs/alerts_*.md
+  [ "$output" = "0" ]
+}
+
+@test "an error result that is not a usage limit stays exit 1" {
+  STUB_MODE=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 1 ]
+  run grep -c 'account usage limit' system/logs/alerts_*.md
+  [ "$output" = "0" ]
+}
+
 @test "malformed ledger line is ignored" {
   mkdir -p system/logs
   printf '{"run_id":"r1","command":"ingest","started_at":"%sT01:0' "$(TZ=America/Denver date +%F)" > "$LEDGER"

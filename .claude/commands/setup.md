@@ -12,7 +12,7 @@ Read the current role with `system/scripts/vault_index.py field system/config.md
 
 Then run `system/scripts/check_deps.sh --role <role>`. List every `missing` line with its install hint, and every `optional` line as optional. If `pyyaml` is missing, stop: setup cannot continue without it. Otherwise continue, noting which features are off (no `hyprctl` on a standalone machine: no focus tracking).
 
-On a client, skip phases 3, 6 and 9, and report each as "not used on a client". Phases 5 and 5a run on a client only to remove automation and memory hooks left from an earlier role.
+On a client, skip phases 3, 6, 6a and 9, and report each as "not used on a client". Phases 5 and 5a run on a client only to remove automation and memory hooks left from an earlier role.
 
 ## 1. Existing config
 If `system/config.md` exists, show its values and ask which to change. Otherwise create it from the example's frontmatter, without the example's body text, by running exactly this: `[ -f system/config.md ] || { awk '{ print } NR > 1 && /^---$/ { exit }' system/config.example.md; printf '# Config\n\nWritten by /setup. Re-run /setup to change it.\n'; } > system/config.md`. Use its values as the defaults below. Then record the role from phase 0 with `system/scripts/vault_index.py set system/config.md machine_role <role>`.
@@ -67,7 +67,16 @@ On a client, never install the hooks. Run `system/scripts/install_hooks.sh --dry
 ## 6. Calendar
 The brief reads today's calendar from the Google Calendar connector of the Claude account this machine's `claude` is logged in with. Run `system/scripts/calendar_fetch.sh` with a Bash timeout of at least 300000 ms (a fetch takes up to about three minutes and costs about $0.20). On exit 0, report how many events it printed for today. Otherwise report its `calendar_fetch:` line and what to do: exit 3, connect Google Calendar in the account's connector settings at claude.ai (same account as this machine), or log `claude` in with a claude.ai account; exit 6, reconnect it; exit 4, try again later; any other exit, show the line from `system/logs/calendar_fetch-<YYYY-MM>.jsonl`. A calendar failure never blocks setup: the brief then lists the calendar under Unavailable Sources.
 
-## 6a. Meetings
+## 6a. Telemetry
+Optional error monitoring from Sentry and Azure Data Explorer. Skipped on a client.
+1. Show existing `system/telemetry/*.md` (except `example.md`) and ask whether to edit any. Never replace one.
+2. For each registered codebase, ask whether it reports errors to Sentry, ADX, both or neither. For Sentry: the API base URL (for example `https://us.sentry.io`), the organization slug, and the project slugs per environment. For ADX: the cluster URL, the database, and per environment the resource-attribute filter that selects it (empty for a whole database). Ask for a `rank` per environment (lower is listed first in the brief). Ask whether an ADX source `covers` its Sentry source only after the user confirms the codebase's Sentry SDK continues the OpenTelemetry traces (shares trace IDs with ADX); otherwise leave `covers` unset.
+3. Sentry needs a read-only token (`event:read`, `project:read`, `org:read`). Ask the user to write it themselves: `! mkdir -p ~/.config/foundry && (umask 077; cat > ~/.config/foundry/sentry.token)`, paste, Ctrl-D. Never ask for the token in chat. Check it is mode 0600.
+4. ADX uses the Azure CLI login: if `az account show` fails, ask the user to run `! az login`.
+5. Write each source as `system/telemetry/<name>.md` (`<codebase>-<environment>-<kind>` by default), run `system/scripts/vault_index.py validate system/telemetry/<name>.md`, then `system/scripts/telemetry_fetch.py --check <name>`. On a failed check, set `enabled: "false"` and report its line.
+6. If any source is enabled, re-run `system/scripts/install_units.sh --dry-run`, show the telemetry units, and install on an explicit yes (as in phase 5).
+
+## 6b. Meetings
 On a client, skip this phase and report "not used on a client": the server imports meetings. On a server or a standalone vault, ask, showing the current values as defaults:
 1. Fetch Gemini meeting notes from Google Drive (`meetings_enabled`, default `false`)? The fetch reads only Google Docs titled `… - Notes by Gemini`. Transcripts dropped into `meetings/drop/<partition>/` are imported either way.
 2. Which partition fetched meetings go to (`meetings_partition`: `work` or `personal`). The default is `default_partition`, or `personal` when that is `shared`; write the answer even when it is the default.
@@ -87,7 +96,14 @@ Run `system/scripts/verify_setup.sh --health` and `systemctl --user list-timers 
 For each registered codebase without one, create `wiki/<partition>/concepts/<Name>OnboardingAssignment.md`, where `<partition>` is the codebase's partition and `<Name>` its name in PascalCase. Frontmatter: `type: concept`, `tags: ["onboarding"]`, `compiled_at` today, `partition`, `codebase`, `capability: code`, `status: draft`. Body: ask the Workcell with `code` to map the codebase's layers and its logging and telemetry definitions (start from the `logging_hints` the inspection found) into `wiki/<partition>/entities/<Name>LogEventMap.md`; link `[[Index]]` and name each superpower the work serves. Run `system/scripts/lint_vault.sh` afterwards.
 
 ## 10. Report
-On a client, first set up Obsidian Git (the community plugin) and show these settings with their `data.json` keys:
+On a standalone machine or a client (any machine where you open the vault in Obsidian), install the community plugins first:
+
+1. **Quit Obsidian** if it is running: it rewrites `.obsidian/` when it exits and would undo these edits.
+2. **Install from the official repositories only.** Dataview on every role that uses Obsidian; Obsidian Git on a client only. For each plugin, run `gh release download --repo blacksmithgu/obsidian-dataview --pattern main.js --pattern manifest.json --pattern styles.css -D .obsidian/plugins/dataview --clobber` and `gh release download --repo Vinzent03/obsidian-git --pattern main.js --pattern manifest.json --pattern styles.css -D .obsidian/plugins/obsidian-git --clobber`. Check that each `manifest.json` has the `"id"` of its folder (`dataview`, `obsidian-git`); report the release tag, since a release's `manifest.json` version can lag its tag.
+3. **Enable them:** add each id to `.obsidian/community-plugins.json`, keeping existing entries, with exactly this: `[ -f .obsidian/community-plugins.json ] || echo '[]' > .obsidian/community-plugins.json; jq '. + ($ARGS.positional - .)' .obsidian/community-plugins.json --args <ids…> > .obsidian/community-plugins.json.tmp && mv .obsidian/community-plugins.json.tmp .obsidian/community-plugins.json`.
+4. **Settle what `.obsidian/` commits before anything syncs on its own.** Obsidian Git's commit-and-sync stages every change, so its first automatic run commits whatever is in `.obsidian/` at that moment. Run `git status --short --untracked-files=all .obsidian/`, show the list, and ask whether to commit the plugin files and `community-plugins.json` (other machines then get the plugins on their next sync) or to keep `.obsidian/` local (add it to `.git/info/exclude`). Do what the user chooses before the next step.
+
+On a client, then write the Obsidian Git settings into `.obsidian/plugins/obsidian-git/data.json` (merge the keys into any existing file with `jq`; create it as `{}` if missing) and show them with their `data.json` keys. Write them last: they turn on automatic commit-and-sync.
 
 | Setting | Key | Value |
 |---|---|---|
@@ -99,6 +115,8 @@ On a client, first set up Obsidian Git (the community plugin) and show these set
 | Merge strategy | `syncMethod` | `merge` |
 | Commit message on auto commit-and-sync | `autoCommitMessage` | `sync(client): {{numFiles}} files`, a blank line, `{{files}}`, a blank line, then `Foundry-Command: sync` and `Foundry-Role: client` on two lines |
 
+Then ask the user to open the vault in Obsidian and check that the `wiki/Index.md` dashboards render as tables. If a plugin does not load, tell them to turn off Restricted Mode under Settings → Community plugins.
+
 If `git ls-files --error-unmatch .obsidian/plugins/obsidian-git/data.json` succeeds, run `git rm --cached .obsidian/plugins/obsidian-git/data.json` (the file is machine-specific and gitignored). The plugin runs the pre-commit hook inside Obsidian, whose `PATH` can differ from a terminal's: ask the user to make one test edit and confirm the plugin's commit succeeds; the hook's error names any missing tool. Then give the client notes: files dropped into `raw/inbox/` on a client are not synced (write notes in today's briefing between `#wiki-ingest-start` and `#wiki-ingest-end`); disable any plugin that creates `briefings/<date>.md` (daily notes, templates), because the server creates it; `/backup` on a client runs lint and then `vault_sync.sh`; to hand a meeting transcript to the server, drop transcripts (`.vtt`, `.srt`, `.txt` or `.md`) into `meetings/drop/<partition>/`: the plugin commits them, and the pre-commit hook refuses any other file type and any file that holds a secret. Write or paste a transcript elsewhere and move the finished file in: the server imports a drop a minute after it arrives and quarantines an empty one. Obsidian mobile runs no hooks, so a drop from a phone is checked only by the server's redaction.
 
-Show a table of every item set up (role, config, each codebase, remote mode, each unit, linger, memory hooks, calendar, meetings, index, verification) with its status; on a client, the skipped items say "not used on a client". Remind the user to install the Obsidian **Dataview** plugin for the `wiki/Index.md` dashboards, and that `system/scripts/update_template.sh` pulls template updates.
+Show a table of every item set up (role, config, each codebase, remote mode, each unit, linger, memory hooks, calendar, telemetry sources, meetings, index, verification) with its status; on a client, the skipped items say "not used on a client". Include the installed plugins and their release tags, and remind the user that `system/scripts/update_template.sh` pulls template updates.

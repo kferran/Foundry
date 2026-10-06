@@ -302,7 +302,7 @@ self_edit_contract() {
 
 @test "/setup on a client skips the phases a client does not use, and says so" {
   f=.claude/commands/setup.md
-  grep -qF 'On a client, skip phases 3, 6 and 9' "$f"
+  grep -qF 'On a client, skip phases 3, 6, 6a and 9' "$f"
   # A machine re-run as a client must stop running automation and memory hooks.
   units="$(setup_section '5. Units')"
   [[ "$units" == *'On a client, run `system/scripts/install_units.sh` without asking'* ]]
@@ -383,6 +383,28 @@ self_edit_contract() {
   grep -qxF '.obsidian/plugins/obsidian-git/data.json' .gitignore
 }
 
+@test "/setup installs Dataview and Obsidian Git from their official repositories (#23)" {
+  sec="$(setup_section '10. Report')"
+  [[ "$sec" == *'gh release download --repo blacksmithgu/obsidian-dataview'* ]]
+  [[ "$sec" == *'gh release download --repo Vinzent03/obsidian-git'* ]]
+  [[ "$sec" == *'.obsidian/community-plugins.json'* ]]
+  [[ "$sec" == *'"id"'* ]]
+  [[ "$sec" == *'Restricted Mode'* ]]
+  [[ "$sec" == *'Quit Obsidian'* ]]
+}
+
+@test "/setup settles what .obsidian/ commits before it turns auto-sync on (#21)" {
+  sec="$(setup_section '10. Report')"
+  policy="$(grep -n -F 'git status --short --untracked-files=all .obsidian/' <<< "$sec" | head -1 | cut -d: -f1)"
+  settings="$(grep -n -F '`autoSaveInterval`' <<< "$sec" | head -1 | cut -d: -f1)"
+  [ -n "$policy" ] && [ -n "$settings" ]
+  [ "$policy" -lt "$settings" ]
+}
+
+@test "the plugin's machine-specific askpass helper is gitignored (#22)" {
+  grep -qxF '.obsidian/plugins/obsidian-git/obsidian_askpass.sh' .gitignore
+}
+
 @test "system_health checks the sync timer and the blocked marker on a server" {
   f=system/tests/system_health.bats
   grep -A3 'the sync timer is active' "$f" | grep -qF 'skip_unless_role server'
@@ -444,7 +466,7 @@ self_edit_contract() {
 }
 
 @test "meetings: /setup asks about meetings on a server or standalone vault and checks the Drive connector" {
-  sec="$(setup_section '6a. Meetings')"
+  sec="$(setup_section '6b. Meetings')"
   for s in 'meetings_enabled' 'meetings_partition' 'owner_names' 'system/scripts/meetings_fetch.sh --check' 'exit 3' \
       'On a client, skip this phase'; do
     [[ "$sec" == *"$s"* ]]
@@ -453,4 +475,34 @@ self_edit_contract() {
   grep -qF '`meetings/drop/<partition>/`' CLAUDE.md
   grep -qF '`wiki/<partition>/meetings/`' CLAUDE.md
   grep -qF 'meetings/drop/' README.md
+}
+
+@test "/brief lists telemetry from v_production_error, new first, capped per environment" {
+  f=".claude/commands/brief.md"
+  grep -qF 'v_production_error' "$f"
+  grep -qF 'At most 10 rows per environment' "$f"
+  grep -qF 'covered' "$f"
+  grep -qF 'resolved_at' "$f"
+  grep -qF 'OR resolved_at >=' "$f"
+  grep -qF 'UTC with a +00:00 offset' "$f"
+  ! grep -qF 'coalesce(mock' "$f"
+}
+
+@test "/debrief reads the telemetry run log" {
+  grep -qF 'system/logs/telemetry-<YYYY-MM>.jsonl' ".claude/commands/debrief.md"
+}
+
+@test "/setup has a telemetry phase that is skipped on a client and checks each source" {
+  sec="$(sed -n '/^## 6a\. Telemetry/,/^## 7\./p' ".claude/commands/setup.md")"
+  [[ "$sec" == *'telemetry_fetch.py --check'* ]]
+  [[ "$sec" == *'0600'* ]]
+  grep -qF 'skip phases 3, 6, 6a and 9' ".claude/commands/setup.md"
+}
+
+@test "/brief carries open objectives forward as checkboxes with their age" {
+  f=.claude/commands/brief.md
+  grep -qF 'carried.md' "$f"
+  grep -qF '**Carried forward**' "$f"
+  grep -qF 'stale' "$f"
+  grep -qF '`- [ ] ` checkboxes' "$f"
 }

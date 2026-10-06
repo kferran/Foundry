@@ -227,3 +227,40 @@ codebase() {  # <name> <path>
   run grep -c meetings "$IN/unavailable.md"
   [ "$output" = 1 ]
 }
+
+@test "brief_prep: telemetry exit codes become Unavailable Sources lines; exit 0 adds none" {
+  for code in 0 1 4; do
+    printf '#!/bin/bash\nexit %s\n' "$code" > "$V/system/scripts/telemetry_fetch.py"
+    chmod +x "$V/system/scripts/telemetry_fetch.py"
+    run "$V/system/scripts/brief_prep.sh" 2026-10-01
+    [ "$status" -eq 0 ]
+  done
+  grep -qxF -- '- brief_prep: telemetry: a fetch was already running' "$IN/unavailable.md"
+  run grep -c 'brief_prep: telemetry' "$IN/unavailable.md"
+  [ "$output" -eq 1 ]
+}
+
+@test "brief_prep: a failed telemetry source is recorded" {
+  printf '#!/bin/bash\nexit 1\n' > "$V/system/scripts/telemetry_fetch.py"
+  chmod +x "$V/system/scripts/telemetry_fetch.py"
+  run "$V/system/scripts/brief_prep.sh" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qxF -- '- brief_prep: telemetry: a source failed (see system/logs/telemetry-2026-10.jsonl)' "$IN/unavailable.md"
+}
+
+@test "brief_prep: open objectives from the latest earlier briefing land in carried.md" {
+  mkdir -p briefings
+  printf -- '---\ntype: briefing\n---\n### 1. Active Objectives\n- [ ] **Open item**\n- [x] **Done item**\n### 2. Unavailable Sources\n' > briefings/2026-09-29.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/carried.md")" = "- [ ] **Open item** _(open since 2026-09-29)_" ]
+}
+
+@test "brief_prep: no earlier briefing writes an empty carried.md and no unavailable line" {
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -f "$IN/carried.md" ]
+  [ ! -s "$IN/carried.md" ]
+  run grep -c 'carried' "$IN/unavailable.md"
+  [ "$output" = "0" ]
+}

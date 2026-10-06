@@ -92,6 +92,11 @@ if [[ "$role" != client && "$(config_get meetings_enabled false)" == true ]]; th
   UNITS+=(foundry-meetings.service foundry-meetings.timer)
   ENABLE+=(foundry-meetings.timer)
 fi
+# Error telemetry (Plan 11): standalone and server, only when a source is enabled.
+if [[ "$role" != client ]] && [[ -n "$(system/scripts/telemetry_fetch.py --list 2>/dev/null)" ]]; then
+  UNITS+=(foundry-telemetry.service foundry-telemetry.timer)
+  ENABLE+=(foundry-telemetry.timer)
+fi
 # A server syncs around every run (two-machine spec §5.2): one drop-in per run service, with the
 # service's own prep step and a timeout raised by two sync deadlines plus margin.
 DROPINS=()

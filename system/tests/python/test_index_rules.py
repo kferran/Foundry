@@ -158,8 +158,8 @@ def test_dead_link_messages_by_kind(vault):
     """Test that dead link messages are formatted correctly by link kind."""
     # Wikilink in body: [[Nowhere]]
     write(vault, "wiki/work/concepts/A.md", concept("work", "A", "[[Nowhere]]"))
-    # Frontmatter wikilink: sources: ["[[Ghost]]"]
-    write(vault, "wiki/work/concepts/B.md", concept("work", "B", sources='["[[Ghost]]"]'))
+    # Frontmatter wikilink outside sources: supersedes: ["[[Ghost]]"]
+    write(vault, "wiki/work/concepts/B.md", concept("work", "B", supersedes='["[[Ghost]]"]'))
     # Markdown link: [x](missing.md)
     write(vault, "wiki/work/concepts/C.md", concept("work", "C", "[x](missing.md)"))
     idx = build(vault)
@@ -177,3 +177,38 @@ def test_meeting_sources_and_drops_are_not_indexed(vault):
     idx = build(vault)
     assert query(idx, "SELECT path FROM notes WHERE path LIKE 'raw/meetings/%' OR path LIKE 'meetings/%'") == []
     assert issues(idx, "dead-link") == []
+
+
+def test_links_to_a_notes_own_sources_are_not_dead(vault):
+    """Raw inputs are gitignored, so a source resolves only on the machine that compiled it (#31)."""
+    body = "Body cites [[Nowhere]].\n\n## Audit Trail\n- Source Material: [[2026-10-05-digest]]"
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", body, sources='["[[2026-10-05-digest]]"]'))
+    assert issue_messages(build(vault), "dead-link") == [
+        ("wiki/work/concepts/A.md", "warning", "dead-link", "dead link [[Nowhere]]"),
+    ]
+
+
+def test_another_notes_source_is_still_dead(vault):
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", sources='["[[digest-a]]"]'))
+    write(vault, "wiki/work/concepts/B.md", concept("work", "B", "See [[digest-a]]."))
+    assert issues(build(vault), "dead-link") == [("wiki/work/concepts/B.md", "warning", "dead-link")]
+
+
+def test_table_escaped_wikilink_resolves(vault):
+    """Inside a table Obsidian needs [[Target\\|Alias]]; the backslash is not part of the target."""
+    write(vault, "wiki/work/concepts/Target.md", concept("work", "Target"))
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", "| Who | Note |\n|---|---|\n| [[Target\\|Alias]] | x |"))
+    idx = build(vault)
+    assert issues(idx, "dead-link") == []
+    assert query(idx, "SELECT target_path FROM links WHERE src='wiki/work/concepts/A.md'") == [("wiki/work/concepts/Target.md",)]
+
+
+def test_quarantined_or_staged_copy_does_not_make_a_name_ambiguous(vault):
+    """A rejected run's staged copy keeps the note's name; bare links must still resolve cleanly."""
+    write(vault, "wiki/work/concepts/Same.md", concept("work", "Same"))
+    write(vault, "system/quarantine/20261005T000000-ingest-abcd/staged/wiki/work/concepts/Same.md", concept("work", "Same"))
+    write(vault, "wiki/.staging/20261005T000001-ingest-ef01/wiki/work/concepts/Same.md", concept("work", "Same"))
+    write(vault, "wiki/work/concepts/A.md", concept("work", "A", "See [[Same]]."))
+    idx = build(vault)
+    assert issues(idx, "ambiguous-link") == []
+    assert query(idx, "SELECT target_path FROM links WHERE src='wiki/work/concepts/A.md'") == [("wiki/work/concepts/Same.md",)]

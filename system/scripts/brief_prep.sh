@@ -32,9 +32,22 @@ esac
 prep_write actions.md system/scripts/meeting_actions.py "$PREP_DATE" \
   || prep_unavailable "actions: meeting_actions.py failed (see $PREP_DIR/prep_errors.log)"
 prep_meetings
+# Error telemetry (Plan 11 spec §6): a last fetch before the brief. Notes land in raw/telemetry/.
+rc=0
+system/scripts/telemetry_fetch.py > /dev/null 2>> "$PREP_DIR/prep_errors.log" || rc=$?
+case "$rc" in
+  0) ;;
+  1) prep_unavailable "telemetry: a source failed (see system/logs/telemetry-${PREP_DATE:0:7}.jsonl)" ;;
+  4) prep_unavailable "telemetry: a fetch was already running" ;;
+  *) prep_unavailable "telemetry: telemetry_fetch.py failed (exit $rc; see $PREP_DIR/prep_errors.log)" ;;
+esac
 
 yesterday="$(date -d "$PREP_DATE -1 day" +%F)"
 prep_write focus_yesterday.md system/scripts/focus_stats.sh "$yesterday" \
   || prep_unavailable "focus_yesterday: focus_stats.sh failed"
 [[ -s "system/logs/obsidian_focus_$yesterday.log" ]] || prep_unavailable "focus_yesterday: no focus log for $yesterday"
+
+# Open objectives from the latest earlier briefing, so follow-ups are not lost after one day.
+prep_write carried.md system/scripts/carry_forward.py "$PREP_DATE" \
+  || prep_unavailable "carried: carry_forward.py failed (see $PREP_DIR/prep_errors.log)"
 exit 0

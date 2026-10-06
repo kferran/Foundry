@@ -178,6 +178,11 @@ wait "$cpid"
 rc=$?
 cpid=""
 set -e
+# An account spend or usage limit is not the input's fault: report it as the cap (exit 4) so the
+# daemon stops and the inputs keep their attempts.
+if (( rc != 0 )) && jq -e '.is_error == true and ((.result // "") | tostring | test("(spend|usage|rate) limit|limit resets|usage-credits"; "i"))' "$out" > /dev/null 2>&1; then
+  rc=4
+fi
 denials="$(jq -r '(.permission_denials // []) | length' "$out" 2>/dev/null || true)"
 [[ "$denials" =~ ^[0-9]+$ ]] || denials=0
 
@@ -192,7 +197,12 @@ if (( rc == 0 )); then
   fi
 else
   system/scripts/publish_staged.py abort "$run_id" >> "$LOG" 2>&1 || true
-  alert "$cmd $run_id failed (exit $rc)"
+  if (( rc == 4 )); then
+    marker="system/logs/.usage-limit-alerted-$TODAY"
+    [[ -e "$marker" ]] || { alert "account usage limit reached ($(jq -r '.result | tostring | .[0:160]' "$out" 2>/dev/null)); inputs left in place"; : > "$marker"; }
+  else
+    alert "$cmd $run_id failed (exit $rc)"
+  fi
 fi
 
 exit "$rc"
