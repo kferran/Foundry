@@ -42,8 +42,4 @@ Final verification at d76e98f: `verify_setup.sh` exit 0 (17/17) on the Debian ho
 - #42 a Doc from a colleague in another timezone gets the wrong start (2 of 10 real Docs carried `CDT` against a configured `MDT`).
 - #43 a crash on the resume path loses the `imported` log line and its notice.
 - #44 no documented way to retry a Doc skipped after three failed reads.
-
-## Findings from the acceptance (not yet issues)
-
-- A rejected ingest's staged copy in `system/quarantine/<run_id>/staged/` makes every link to that note "ambiguous" until the quarantine is cleared (older than this plan).
-- 2 of 10 real Docs had no transcript in `read_file_content`'s text (`complete: false`); the cause (another Docs tab, or cut text) is not known.
+- #46 (from the acceptance, older than this plan) a rejected run's staged copy in `system/quarantine/` makes links to that note ambiguous.

@@ -62,10 +62,9 @@ Throwaway clones under `.scratch/foundry-accept/` in the dev repo (a server clon
 
 Against D12: the text sits in `tool_use_result.structuredContent` (`fileContent` for a read, `files` and `nextPageToken` for a search), each read call's input is `fileId`, and a `ToolSearch` result names the Drive tool in a `tool_reference` block with `tool_name` (the shape the no-connector rule counts; #38's echo case did not occur). A session's `init` event can list no MCP server while the connector loads later. A connector error (exit 6) stays unconfirmed: no safe way to provoke one.
 
-## Findings for issues
+## Findings
 
-- A rejected ingest leaves its staged copy in `system/quarantine/<run_id>/staged/wiki/…`, and link resolution counts it, so every link to that note is "ambiguous" until the quarantine is cleared (older than this plan; seen here because two meetings touched one concept within 60 seconds).
-- 2 of 10 real Docs had no transcript in `read_file_content`'s text (`complete: false`, listed under Notices as designed); whether the transcript sits in another Docs tab or the text was cut is not known.
+- A rejected ingest leaves its staged copy in `system/quarantine/<run_id>/staged/wiki/…`, and link resolution counts it, so every link to that note is "ambiguous" until the quarantine is cleared (older than this plan; seen here because two meetings touched one concept within 60 seconds): #46.
 
 ## Verdict
 
