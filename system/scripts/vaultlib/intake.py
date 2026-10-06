@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import frontmatter, redact as redactmod, schema as schemamod
+from . import frontmatter, meetings, publish, redact as redactmod, schema as schemamod
 
 FRESH_SECONDS = 60
 MAX_ATTEMPTS = 3
@@ -25,6 +25,9 @@ INVALID_INPUT_EXIT = 2
 SETTINGS_EXIT = 3
 SIGNAL_EXITS = (129, 130, 143)  # SIGHUP/SIGINT/SIGTERM: a stop or shutdown, not the input
 NOT_INPUT_FAULT = (0, SETTINGS_EXIT, CAP_EXIT, 6, *SIGNAL_EXITS)  # 6 = busy lock
+MEETING_PARTITIONS = ("work", "personal")
+DROP_SUFFIXES = (".vtt", ".srt", ".txt", ".md")
+DUPLICATE_SECONDS = 15 * 60
 
 
 def _append_jsonl(path, record) -> None:
@@ -403,6 +406,211 @@ class Intake:
         except OSError as exc:
             self.alert(f"skipped {origin}: {exc.__class__.__name__}: {exc}")
 
+    # -- meetings (meetings spec §2.3) -------------------------------------
+    def import_meetings(self) -> None:
+        """Import fetched Docs and dropped transcripts, each as its own meeting run, under run.lock (no wait)."""
+        if self.config("machine_role", "standalone") == "client":
+            return
+        self._readd_meeting_inputs()
+        sources = self._meeting_sources()
+        if not sources:
+            return
+        try:
+            with self.lock("run.lock", timeout=0):
+                failed = publish.recover(self.vault).get("failed") or []
+                if failed:
+                    self.alert(f"publish recovery failed for run(s): {' '.join(failed)}")
+                for path in sources:
+                    rel = path.relative_to(self.vault).as_posix()
+                    try:
+                        self._import_meeting(path, rel)
+                    except meetings.ParseError as exc:
+                        self._quarantine_meeting(path, rel, str(exc))
+                    except Exception as exc:  # noqa: BLE001 - one source must not stop the others
+                        self._meeting_failure(path, rel, exc)
+        except TimeoutError:
+            pass  # a run holds the lock: the sources wait for the next tick
+
+    def _meeting_sources(self) -> list:
+        found = sorted((self.vault / "raw" / "meetings").glob("*.gdoc.md"))
+        drop = self.vault / "meetings" / "drop"
+        if drop.is_dir():  # every subfolder: a file outside work/ and personal/ is quarantined
+            found += sorted(p for p in drop.rglob("*") if self.eligible(p)
+                            and not any(part.startswith(".") for part in p.relative_to(drop).parts))
+        return found
+
+    def _meeting_failure(self, path: Path, rel: str, exc: Exception) -> None:
+        """Log a failed import; the third failure of the same file quarantines it."""
+        reason = f"{exc.__class__.__name__}: {exc}"
+        try:
+            digest = sha256_file(path)
+        except OSError:
+            digest = ""
+        self._meeting_log({"kind": "failed", "source": rel, "sha256": digest, "reason": reason})
+        count = sum(1 for log in sorted(self.logs.glob("meetings-*.jsonl"))[-2:] for r in self._jsonl(log)
+                    if r.get("kind") == "failed" and r.get("source") == rel and r.get("sha256") == digest)
+        if count >= MAX_ATTEMPTS and path.exists():
+            self._quarantine_meeting(path, rel, f"the import failed {count} times; the last error: {reason}")
+        else:
+            self.alert(f"meeting import of {rel} failed ({reason}); will retry")
+
+    def _meeting_log(self, record) -> None:
+        _append_jsonl(self.logs / f"meetings-{self.dt():%Y-%m}.jsonl",
+                      {"time": self.dt().isoformat(timespec="seconds"), **record})
+
+    def _quarantine_meeting(self, path: Path, rel: str, reason: str) -> None:
+        dest = unique(self.vault / "system" / "quarantine" / "meetings" / path.name)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(path), str(dest))
+        dest.with_name(dest.name + ".reason.txt").write_text(reason + "\n", encoding="utf-8")
+        self.alert(f"meeting source {rel} quarantined: {reason}")
+        self._meeting_log({"kind": "quarantined", "source": rel, "file": dest.name, "reason": reason})
+
+    def _commit_time(self, rel: str):
+        try:
+            out = subprocess.run(["git", "-C", str(self.vault), "log", "-1", "--format=%cI", "--", rel],
+                                 capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return out.stdout.strip() or None
+
+    def _parse_meeting(self, path: Path, rel: str):
+        """(meeting, partition) for one source; raises meetings.ParseError for a bad one."""
+        if rel.startswith("raw/meetings/"):
+            partition = self.config("meetings_partition", "")
+            if partition not in MEETING_PARTITIONS:
+                partition = self.config("default_partition", "personal")
+            if partition not in MEETING_PARTITIONS:
+                partition = "personal"
+            return meetings.parse_gdoc(path.read_text(encoding="utf-8", errors="replace"), self.tz), partition
+        partition = path.parent.name
+        if partition not in MEETING_PARTITIONS or path.parent.parent != self.vault / "meetings" / "drop":
+            raise meetings.ParseError("not in a partition folder (meetings/drop/work/ or meetings/drop/personal/)")
+        if path.suffix.lower() not in DROP_SUFFIXES:
+            raise meetings.ParseError(f"not a transcript file type ({', '.join(DROP_SUFFIXES)})")
+        data = path.read_bytes()
+        start = meetings.drop_start(path.name, self._commit_time(rel), path.stat().st_mtime, self.tz)
+        m = meetings.parse_drop(path.name, data, self.tz, start)
+        m.source = f"drop:{hashlib.sha256(data).hexdigest()}"
+        return m, partition
+
+    def _meeting_notes(self) -> list:
+        """(path, frontmatter) of every meeting note on disk, deprecated ones included."""
+        out = []
+        for path in sorted((self.vault / "wiki").glob("*/meetings/*.md")):
+            if path.name.endswith(".transcript.md"):
+                continue
+            try:
+                data = frontmatter.parse(path.read_text(encoding="utf-8")).data or {}
+            except (OSError, UnicodeDecodeError):
+                continue
+            if data.get("type") == "meeting":
+                out.append((path, data))
+        return out
+
+    def _import_meeting(self, path: Path, rel: str) -> None:
+        m, partition = self._parse_meeting(path, rel)
+        m = meetings.scrub(m)
+        known = self._meeting_notes()
+        same = next((p for p, d in known if d.get("source") == m.source), None)
+        if same is not None:  # published by an earlier tick: finish its hand-off
+            name, partition = same.name[:-3], same.parent.parent.name
+        else:
+            twin = next((p for p, d in known if self._same_meeting(m, d)), None)
+            if twin is not None:
+                self._archive_duplicate(path, rel, m, twin)
+                return
+            name = self._free_name(meetings.note_name(m))
+            report = self._publish_meeting(m, name, partition, rel)
+            if report["status"] != "published":
+                problems = [p["reason"] for p in report.get("problems") or []]
+                if problems and all(r.startswith("conflict:") for r in problems):
+                    return  # a target appeared meanwhile: the next tick's duplicate check finds it
+                self._quarantine_meeting(path, rel, "the publish gate rejected it: " + "; ".join(problems))
+                return
+            self._meeting_log({"kind": "imported", "source": rel, "note": f"wiki/{partition}/meetings/{name}.md",
+                               "complete": m.complete})
+        self._hand_to_compile(m, name, partition)
+        path.unlink()
+
+    def _same_meeting(self, m, data) -> bool:
+        try:
+            start = datetime.fromisoformat(str(data.get("start")))
+            if start.tzinfo is None:  # the schema allows a start without an offset: it is local time
+                start = start.replace(tzinfo=self.tz)
+        except (ValueError, TypeError):
+            return False
+        return (meetings.slug(str(data.get("title", ""))) == meetings.slug(m.title)
+                and abs((start - m.start).total_seconds()) <= DUPLICATE_SECONDS)
+
+    def _archive_duplicate(self, path: Path, rel: str, m, twin: Path) -> None:
+        archive = self.vault / "raw" / "archive"
+        archive.mkdir(parents=True, exist_ok=True)
+        path.rename(unique(archive / path.name))
+        note = twin.relative_to(self.vault).as_posix()
+        self.alert(f"meeting source {rel} archived: the same meeting is already {note} (first source wins)")
+        self._meeting_log({"kind": "duplicate", "source": rel, "note": note})
+        if m.source.startswith("gdoc:"):
+            _append_jsonl(self.logs / f"meetings_fetch-{self.dt():%Y-%m}.jsonl",
+                          {"time": self.dt().isoformat(timespec="seconds"), "step": "import",
+                           "doc": m.source[5:], "exit": 0, "reason": f"duplicate of {note}", "skipped": True})
+
+    def _free_name(self, name: str) -> str:
+        taken = {p.name for p in (self.vault / "wiki").glob("*/meetings/*.md")}
+        candidate, n = name, 1
+        while f"{candidate}.md" in taken or f"{candidate}.transcript.md" in taken:
+            n += 1
+            candidate = f"{name}-{n}"
+        return candidate
+
+    def _publish_meeting(self, m, name: str, partition: str, rel: str) -> dict:
+        run_id = f"{self.dt():%Y%m%dT%H%M%S}-meeting-{os.urandom(2).hex()}"
+        base = f"wiki/{partition}/meetings/{name}"
+        targets = [f"{base}.md", f"{base}.transcript.md"]
+        started = self.dt().isoformat(timespec="seconds")
+        publish.snapshot(self.vault, run_id, targets)
+        staging = publish.staging_dir(self.vault, run_id)
+        for target, text in zip(targets, (meetings.render_meeting(m, name, partition),
+                                          meetings.render_transcript(m, name, partition))):
+            (staging / target).parent.mkdir(parents=True, exist_ok=True)
+            (staging / target).write_text(text, encoding="utf-8")
+        report = publish.commit_run(self.vault, run_id)
+        _append_jsonl(self.logs / f"runs-{run_id[:4]}-{run_id[4:6]}.jsonl", {
+            "run_id": run_id, "command": "meeting", "started_at": started,
+            "finished_at": self.dt().isoformat(timespec="seconds"), "inputs": [rel], "input_sha256": [],
+            "partition": partition, "exit": 0 if report["status"] == "published" else 5,
+            "publish": {"status": report["status"], "published": report.get("published") or [],
+                        "rejected": sorted({p["path"] for p in report.get("problems") or []}),
+                        "conflicts": report.get("conflicts") or []}})
+        return report
+
+    def _hand_to_compile(self, m, name: str, partition: str) -> None:
+        notes = self.vault / "raw" / partition / "notes"
+        prefix = f"{name}.meeting-input"
+        for folder in (notes, self.vault / "raw" / partition / "archive",
+                       self.vault / "system" / "quarantine" / "poisoned"):
+            if folder.is_dir() and any(p.name.startswith(prefix) for p in folder.iterdir()):
+                return
+        notes.mkdir(parents=True, exist_ok=True)
+        tmp = notes / f".{prefix}.tmp"
+        tmp.write_text(meetings.render_input(m, name, partition, self.dt()), encoding="utf-8")
+        self._save_solo(self._solo() | {sha256_file(tmp)})
+        os.replace(tmp, notes / f"{prefix}.md")
+
+    def _readd_meeting_inputs(self) -> None:
+        """A meeting input restored by --retry lost its solo flag: give it back."""
+        shas = set()
+        for partition in MEETING_PARTITIONS:
+            for path in (self.vault / "raw" / partition / "notes").glob("*.md"):
+                try:
+                    if (frontmatter.parse(path.read_text(encoding="utf-8")).data or {}).get("type") == "meeting_input":
+                        shas.add(sha256_file(path))
+                except (OSError, UnicodeDecodeError):
+                    continue
+        solo = self._solo()
+        if not shas <= solo:
+            self._save_solo(solo | shas)
+
     # -- retry -----------------------------------------------------------
     def retry(self, run_id=None) -> list:
         poisoned = self.vault / "system" / "quarantine" / "poisoned"
@@ -456,6 +664,10 @@ class Intake:
         try:
             with self.lock("intake.lock", timeout=0):
                 self.extract_briefing()
+                try:
+                    self.import_meetings()
+                except Exception as exc:  # noqa: BLE001 - inbox and digests still run
+                    self.alert(f"meeting import failed ({exc.__class__.__name__}: {exc}); will retry")
                 if self.process_inbox():
                     self.process_digests()
         except TimeoutError:
