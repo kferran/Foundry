@@ -18,3 +18,10 @@ setup() {
   git check-ignore -q raw/work/notes/n.md
   git check-ignore -q raw/inbox/i.md
 }
+
+@test "nightshift.py: empty queue tick exits 0; bad subcommand exits 2" {
+  run system/scripts/nightshift.py tick
+  [ "$status" -eq 0 ]
+  run system/scripts/nightshift.py frobnicate
+  [ "$status" -eq 2 ]
+}

@@ -1,0 +1,13 @@
+#!/bin/bash
+# system/tests/stub_claude_nightshift: replays a recorded stream for nightshift tests.
+if [[ "$1" == "auth" ]]; then echo "logged in"; exit 0; fi
+if [[ -n "${NIGHTSHIFT_STUB_WRITE:-}" ]]; then
+  while IFS='=' read -r rel content; do
+    [[ -n "$rel" ]] || continue
+    mkdir -p "$(dirname "$rel")"
+    printf '%b' "$content" > "$rel"
+  done < "$NIGHTSHIFT_STUB_WRITE"
+fi
+[[ -n "${NIGHTSHIFT_STUB_SHELL:-}" ]] && bash -c "$NIGHTSHIFT_STUB_SHELL"
+cat "${NIGHTSHIFT_STUB_STREAM:?}"
+exit "${NIGHTSHIFT_STUB_EXIT:-0}"
