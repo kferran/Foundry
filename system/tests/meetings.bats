@@ -257,3 +257,60 @@ session_deny() { awk -v n="$1" '$0 == "--end--" { s++; p = 0; next } s == n - 1 
   [ "$status" -eq 0 ]
   [ ! -e "$STUB_ARGS" ]
 }
+
+@test "drops: the template carries the drop folders, and intake imports a settled drop and deletes it" {
+  [ -f "$REPO/meetings/drop/work/.gitkeep" ]
+  [ -f "$REPO/meetings/drop/personal/.gitkeep" ]
+  [ -z "$(git -C "$REPO" check-ignore meetings/drop/work/call.vtt)" ]
+  mkdir -p meetings/drop/work
+  f="meetings/drop/work/2026-10-05 1500 Vendor call.vtt"
+  printf 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Avery Sample>Hello.</v>\n' > "$f"
+  touch -d '10 minutes ago' "$f"
+  CLAUDE_BIN="$REPO/system/tests/stub_claude" run system/scripts/intake_daemon.sh
+  [ "$status" -eq 0 ]
+  [ "$(system/scripts/vault_index.py field wiki/work/meetings/2026-10-05-1500-vendor-call.md attendees)" = 'Avery Sample' ]
+  [ -f wiki/work/meetings/2026-10-05-1500-vendor-call.transcript.md ]
+  [ -f raw/work/notes/2026-10-05-1500-vendor-call.meeting-input.md ]
+  [ ! -e "$f" ]
+}
+
+# hook_commit <path> <content>: stage one file under the pre-commit hook and try to commit it.
+hook_commit() {
+  mkdir -p "$(dirname "$1")"
+  printf '%b' "$2" > "$1"
+  git add -- "$1"
+  run git commit -qm "drop"
+}
+
+@test "pre-commit: a drop with another file type or a named secret is refused" {
+  cp -r "$REPO/.githooks" .githooks
+  git config core.hooksPath .githooks
+  hook_commit meetings/drop/work/slides.pdf 'x'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"meetings/drop/work/slides.pdf is not a transcript"* ]]
+  git rm -q --cached meetings/drop/work/slides.pdf
+  hook_commit meetings/drop/personal/call.txt 'Avery Sample: the key is AKIAIOSFODNN7EXAMPLE\ntoken = hunter2\n'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"meetings/drop/personal/call.txt holds a secret (assignment,aws_key)"* ]]
+  [ -z "$(git log --oneline 2>/dev/null)" ]
+}
+
+@test "pre-commit: a Teams-style VTT whose cue IDs look high-entropy is accepted, and so is .gitkeep" {
+  cp -r "$REPO/.githooks" .githooks
+  git config core.hooksPath .githooks
+  hook_commit meetings/drop/work/.gitkeep ''
+  [ "$status" -eq 0 ]
+  hook_commit meetings/drop/work/Standup.vtt 'WEBVTT\n\n9f8Qz2LmX4vB7nR1tY6wK3pJ5sD0hG8cE2aZ/17-1\n00:00:01.000 --> 00:00:04.000\n<v Avery Sample>Hello.</v>\n'
+  [ "$status" -eq 0 ]
+  [ "$(git log --format=%s | wc -l)" -eq 2 ]
+}
+
+@test "pre-commit: a spoken 'password: …' is accepted, an api_key = … assignment is refused" {
+  cp -r "$REPO/.githooks" .githooks
+  git config core.hooksPath .githooks
+  hook_commit meetings/drop/work/call.txt 'Avery: reset your password: it expired\n'
+  [ "$status" -eq 0 ]
+  hook_commit meetings/drop/work/env.txt 'api_key = example-value-1234\n'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"meetings/drop/work/env.txt holds a secret (assignment)"* ]]
+}
