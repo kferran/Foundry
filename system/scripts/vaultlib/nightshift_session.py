@@ -95,7 +95,8 @@ def init_problem(init, kind) -> str | None:
         return f"permission mode {init.get('permissionMode')}"
     if init.get("mcp_servers"):
         return "MCP servers present"
-    extra = sorted(set(init.get("tools") or []) - set(TOOLS[kind]))
+    allowed = set(TOOLS[kind]) | ({"Task"} if "Agent" in TOOLS[kind] else set())  # Task: the Agent tool's internal name
+    extra = sorted(set(init.get("tools") or []) - allowed)
     return f"unexpected tools: {', '.join(extra)}" if extra else None
 
 

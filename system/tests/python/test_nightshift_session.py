@@ -53,3 +53,9 @@ def test_parse_limited_and_bad_init():
 
 def test_reset_epoch_units():
     assert ss.reset_epoch({"resetsAt": 1791320400}) == ss.reset_epoch({"resetsAt": 1791320400000}) == 1791320400
+
+
+def test_task_is_the_agent_alias():
+    init = {"permissionMode": "dontAsk", "mcp_servers": [], "tools": ["Read", "Task"]}
+    assert ss.init_problem(init, "plan") is None
+    assert ss.init_problem(init, "research") == "unexpected tools: Task"
