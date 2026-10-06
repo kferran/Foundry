@@ -5,6 +5,9 @@
 setup() {
   VAULT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd -P)"
   cd "$VAULT_ROOT"
+  # A linked worktree (feature branch) is not a live vault: its config and units are the main checkout's.
+  [[ "$(git rev-parse --git-dir 2>/dev/null)" == "$(git rev-parse --git-common-dir 2>/dev/null)" ]] \
+    || skip "health checks read a live vault, not a linked worktree"
 }
 
 field() { system/scripts/vault_index.py field system/config.md "$1"; }
