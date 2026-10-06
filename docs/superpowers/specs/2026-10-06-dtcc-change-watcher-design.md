@@ -33,9 +33,9 @@ All URLs are constants in the script; the map selects which products to watch.
 | Release page | `.../insurance-retirement-services/irs-current-enhancements-release.html` | The "Important Dates" text block: a SHA-256 of its normalised text plus its milestone dates (§3.3). |
 | Notices | `https://www.dtcc.com/rss-feeds/legal/all-important-notices.xml` | Items keyed on notice number (the `title`). The feed repeats some numbers under different `guid`s; the first copy wins. |
 | Notice PDF | the item's `<link>` (public) | `pdftotext` output: the `Category:`, `To:` and `Subject:` header lines, the Implementation Dates block, and product codes found in the text. |
-| API Marketplace | `https://developer.dtcc.com/inventory/viewAssetsGrid.html` | Fetched with a session cookie from the home page (stdlib `http.cookiejar`). One record per asset: its name plus a hash of its grid row text. |
+| API Marketplace | `https://developer.dtcc.com/inventory/viewAssetsGrid.html` | Fetched with a session cookie: `GET /`, then `GET /home/view.html`, then the grid (stdlib `http.cookiejar`; without the middle request the grid is empty). One record per tile (`assetCard`): full name (`tooltiptext`), `publishDate` and `Version`. An asset is watched when a product's `api_assets` names it, or when a `notice_keywords` regex matches its name; any other asset is ignored. |
 
-Fetches use stdlib `urllib` with a 30-second timeout and a fixed user agent, at most one request per second. The script follows links only to `dtcclearning.com`, `www.dtcc.com` and `developer.dtcc.com`.
+Fetches use stdlib `urllib` with a 30-second timeout and a fixed user agent, at most one request per second. The script fetches and stores links only on `dtcclearning.com`, `www.dtcc.com`, `files.dtcc.com` (notice PDFs) and `developer.dtcc.com`.
 
 ## 3. Data flow
 
@@ -58,7 +58,7 @@ One run of `system/scripts/dtcc_watch.py`:
 | `date_moved` | Same title, new date. Evidence says "date moved, body unknown". |
 | `notice` | A notice number not in the state that passes the relevance rule (§3.4). |
 | `release_dates` | The release block hash changed. Evidence lists the old and new milestone dates. |
-| `api_asset` | A new asset name, or a changed row hash for a known one. |
+| `api_asset` | A new watched asset, or a changed published date or version for a known one. An asset matched only by keywords links no product. |
 | `unmapped` | A relevant notice whose product codes match no mapped product and are not all in `ignore` (§5). |
 
 A title that disappears without a replacement is logged in the run log only. Page changes are batched: one note per product per day holds every page change for that product. Every other kind is one note per change.
@@ -129,6 +129,7 @@ products:
     paths: [src/dtcc/appsub/, docs/appsub-layout.xlsx]
     owner: dtcc-backend
     notes: ['[[ExampleAppSubMapping]]']   # background notes for this product
+    api_assets: []                         # Marketplace asset names (case-insensitive substring)
     pin: v25-5
 ignore: [PAR, RPL]   # known products this vault does not use: no unmapped note
 ```
@@ -184,7 +185,7 @@ Bound tools: **pytest** and **bats**, run by the existing suites.
   - unmapped and ignored codes;
   - the stale-path check against a temporary git repository;
   - every written note passes its schema;
-  - no link outside the three DTCC hosts is stored.
+  - no link outside the four DTCC hosts is stored.
 - `system/tests/dtcc_watch.bats`: no map exits 0 with no output; an invalid map exits 2.
 - Before the timer is enabled on a vault: one `dtcc_watch.py --dry-run` against the live sites.
 
