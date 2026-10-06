@@ -1,0 +1,9 @@
+[Unit]
+Description=The Foundry: meetings fetch every hour on workdays
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 08..18:00:00 {{TZ}}
+Persistent=false
+
+[Install]
+WantedBy=timers.target

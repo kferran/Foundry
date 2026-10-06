@@ -1,0 +1,12 @@
+[Unit]
+Description=The Foundry: meetings fetch from Google Drive
+
+[Service]
+Type=oneshot
+WorkingDirectory={{VAULT_ROOT}}
+Environment="TZ={{TZ}}"
+Environment="PATH={{UNIT_PATH}}"
+Environment="CLAUDE_BIN={{CLAUDE_BIN}}"
+# The server listing, one search session and ten read sessions, each with its kill margin (meetings spec §4).
+TimeoutStartSec=35min
+ExecStart="{{VAULT_ROOT}}/system/scripts/meetings_fetch.sh"

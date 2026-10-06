@@ -124,7 +124,7 @@ system/
   scripts/                    vault_index.py, vaultlib/, publish_staged.py, run_headless.sh,
                               intake_daemon.sh, install_units.sh, install_hooks.sh,
                               setup_remote.sh, update_template.sh, check_deps.sh, ...
-  systemd/                    foundry-{intake,brief,debrief,focus} unit templates (*.in)
+  systemd/                    foundry-{intake,brief,debrief,focus,meetings} unit templates (*.in)
   tests/                      *.bats per area (system_health.bats is advisory), python/ for pytest
   jobs/                       reserved for Sub-project 2 (gitignored)
 docs/superpowers/             specs, plans, spike results

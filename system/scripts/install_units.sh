@@ -87,6 +87,11 @@ case "$role" in
   client) UNITS=() ENABLE=() ;;
   *) die 1 "unknown machine_role in system/config.md: $role" ;;
 esac
+# The meetings fetch (meetings spec §4) writes only gitignored files, so it gets no sync drop-in.
+if [[ "$role" != client && "$(config_get meetings_enabled false)" == true ]]; then
+  UNITS+=(foundry-meetings.service foundry-meetings.timer)
+  ENABLE+=(foundry-meetings.timer)
+fi
 # A server syncs around every run (two-machine spec §5.2): one drop-in per run service, with the
 # service's own prep step and a timeout raised by two sync deadlines plus margin.
 DROPINS=()
