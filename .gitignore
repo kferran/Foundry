@@ -1,6 +1,7 @@
 .obsidian/workspace*.json
 .obsidian/graph.json
 .obsidian/plugins/obsidian-git/data.json
+.obsidian/plugins/obsidian-git/obsidian_askpass.sh
 .claude/settings.local.json
 system/config.md
 system/codebases/*.md

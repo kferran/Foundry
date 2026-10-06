@@ -77,7 +77,14 @@ Run `system/scripts/verify_setup.sh --health` and `systemctl --user list-timers 
 For each registered codebase without one, create `wiki/<partition>/concepts/<Name>OnboardingAssignment.md`, where `<partition>` is the codebase's partition and `<Name>` its name in PascalCase. Frontmatter: `type: concept`, `tags: ["onboarding"]`, `compiled_at` today, `partition`, `codebase`, `capability: code`, `status: draft`. Body: ask the Workcell with `code` to map the codebase's layers and its logging and telemetry definitions (start from the `logging_hints` the inspection found) into `wiki/<partition>/entities/<Name>LogEventMap.md`; link `[[Index]]` and name each superpower the work serves. Run `system/scripts/lint_vault.sh` afterwards.
 
 ## 10. Report
-On a client, first set up Obsidian Git (the community plugin) and show these settings with their `data.json` keys:
+On a standalone machine or a client (any machine where you open the vault in Obsidian), install the community plugins first:
+
+1. **Quit Obsidian** if it is running: it rewrites `.obsidian/` when it exits and would undo these edits.
+2. **Install from the official repositories only.** Dataview on every role that uses Obsidian; Obsidian Git on a client only. For each plugin, run `gh release download --repo blacksmithgu/obsidian-dataview --pattern main.js --pattern manifest.json --pattern styles.css -D .obsidian/plugins/dataview --clobber` and `gh release download --repo Vinzent03/obsidian-git --pattern main.js --pattern manifest.json --pattern styles.css -D .obsidian/plugins/obsidian-git --clobber`. Check that each `manifest.json` has the `"id"` of its folder (`dataview`, `obsidian-git`); report the release tag, since a release's `manifest.json` version can lag its tag.
+3. **Enable them:** add each id to `.obsidian/community-plugins.json`, keeping existing entries, with exactly this: `[ -f .obsidian/community-plugins.json ] || echo '[]' > .obsidian/community-plugins.json; jq '. + ($ARGS.positional - .)' .obsidian/community-plugins.json --args <ids…> > .obsidian/community-plugins.json.tmp && mv .obsidian/community-plugins.json.tmp .obsidian/community-plugins.json`.
+4. **Settle what `.obsidian/` commits before anything syncs on its own.** Obsidian Git's commit-and-sync stages every change, so its first automatic run commits whatever is in `.obsidian/` at that moment. Run `git status --short --untracked-files=all .obsidian/`, show the list, and ask whether to commit the plugin files and `community-plugins.json` (other machines then get the plugins on their next sync) or to keep `.obsidian/` local (add it to `.git/info/exclude`). Do what the user chooses before the next step.
+
+On a client, then write the Obsidian Git settings into `.obsidian/plugins/obsidian-git/data.json` (merge the keys into any existing file with `jq`; create it as `{}` if missing) and show them with their `data.json` keys. Write them last: they turn on automatic commit-and-sync.
 
 | Setting | Key | Value |
 |---|---|---|
@@ -89,6 +96,8 @@ On a client, first set up Obsidian Git (the community plugin) and show these set
 | Merge strategy | `syncMethod` | `merge` |
 | Commit message on auto commit-and-sync | `autoCommitMessage` | `sync(client): {{numFiles}} files`, a blank line, `{{files}}`, a blank line, then `Foundry-Command: sync` and `Foundry-Role: client` on two lines |
 
+Then ask the user to open the vault in Obsidian and check that the `wiki/Index.md` dashboards render as tables. If a plugin does not load, tell them to turn off Restricted Mode under Settings → Community plugins.
+
 If `git ls-files --error-unmatch .obsidian/plugins/obsidian-git/data.json` succeeds, run `git rm --cached .obsidian/plugins/obsidian-git/data.json` (the file is machine-specific and gitignored). The plugin runs the pre-commit hook inside Obsidian, whose `PATH` can differ from a terminal's: ask the user to make one test edit and confirm the plugin's commit succeeds; the hook's error names any missing tool. Then give the client notes: files dropped into `raw/inbox/` on a client are not synced (write notes in today's briefing between `#wiki-ingest-start` and `#wiki-ingest-end`); disable any plugin that creates `briefings/<date>.md` (daily notes, templates), because the server creates it; `/backup` on a client runs lint and then `vault_sync.sh`.
 
-Show a table of every item set up (role, config, each codebase, remote mode, each unit, linger, memory hooks, calendar, index, verification) with its status; on a client, the skipped items say "not used on a client". Remind the user to install the Obsidian **Dataview** plugin for the `wiki/Index.md` dashboards, and that `system/scripts/update_template.sh` pulls template updates.
+Show a table of every item set up (role, config, each codebase, remote mode, each unit, linger, memory hooks, calendar, index, verification) with its status; on a client, the skipped items say "not used on a client". Include the installed plugins and their release tags, and remind the user that `system/scripts/update_template.sh` pulls template updates.
