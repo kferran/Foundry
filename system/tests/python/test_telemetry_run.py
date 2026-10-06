@@ -14,8 +14,8 @@ ADX = ('---\ntype: telemetry_source\nname: "prod-adx"\ncodebase: "shop"\nenviron
        'adx_cluster: "https://example.kusto.windows.net"\nadx_database: "prod"\nadx_signals: ["logs"]\n{covers}---\n')
 SEN = ('---\ntype: telemetry_source\nname: "prod-sentry"\ncodebase: "shop"\nenvironment: "prod"\nkind: "sentry"\n'
        'sentry_url: "https://sentry.example.com"\nsentry_org: "acme"\nsentry_projects: ["api"]\n---\n')
-LOG_ROW = {"service": "api", "scope": "Shop.Orders", "event_id": "4012", "n": 3, "first": "2026-10-05T10:00:00Z",
-           "last": "2026-10-05T11:00:00Z", "traces": 2, "sample_trace": "0af7651916cd43dd8448eb211c80319c"}
+LOG_ROW = {"service": "api", "scope": "Shop.Orders", "event_id": "4012", "n": 3, "first_ts": "2026-10-05T10:00:00Z",
+           "last_ts": "2026-10-05T11:00:00Z", "traces": 2, "sample_trace": "0af7651916cd43dd8448eb211c80319c"}
 
 
 @pytest.fixture
@@ -317,8 +317,8 @@ def test_privacy_end_to_end(v, monkeypatch, capsys):
         'adx_signals: ["logs"]', 'adx_signals: ["logs", "spans"]'))
     dirty = f"ticket {GUID} user bob@example.com https://x.example.com/p?sig=AbCdEf and bob%40example.com id 0123456789abcdef01234567 3f2b8a1e9c4d4e1f8a2b1c3d4e5f6a7b"
     log = dict(LOG_ROW, scope=dirty, event_id=dirty, service=dirty)
-    span = {"service": dirty, "route": "GET /a/" + dirty, "status": "500", "n": 2, "first": "2026-10-05T10:00:00Z",
-            "last": "2026-10-05T11:00:00Z", "traces": 1, "sample_trace": dirty}
+    span = {"service": dirty, "route": "GET /a/" + dirty, "status": "500", "n": 2, "first_ts": "2026-10-05T10:00:00Z",
+            "last_ts": "2026-10-05T11:00:00Z", "traces": 1, "sample_trace": dirty}
     monkeypatch.setattr(kusto, "query", lambda c, d, kql, n: [log] if "Logs" in kql.split("\n")[0] else [span])
     issue = dict(_sentry_issue(101), title=dirty, culprit=dirty, type=dirty, environment=dirty,
                  metadata={"value": dirty, "type": dirty}, permalink="https://sentry.example.com/i/101/?sig=AbCdEf")
