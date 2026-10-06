@@ -152,6 +152,16 @@ failing_bats() { printf '#!/usr/bin/env bats\n@test "no" { false; }\n' > "$M/sys
   grep -qx 'PASS pytest system/tests/python' <<< "$output"
 }
 
+@test "verify_setup: suites write temp files under .scratch/tmp, and git discovery stops at .scratch" {
+  mini_vault
+  printf '#!/usr/bin/env bats\n@test "env" { echo "$TMPDIR|$GIT_CEILING_DIRECTORIES" > "$BATS_TEST_DIRNAME/env.txt"; }\n' > "$M/system/tests/e.bats"
+  run "$VS"
+  [ "$status" -eq 0 ]
+  real="$(cd "$M" && pwd -P)"
+  [ "$(cat "$M/system/tests/env.txt")" = "$real/.scratch/tmp|$real/.scratch" ]
+  [ -d "$M/.scratch/tmp" ]
+}
+
 @test "verify_setup: a failing bats suite fails the run and the others still run" {
   mini_vault
   failing_bats b.bats
