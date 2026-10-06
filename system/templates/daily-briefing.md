@@ -10,6 +10,8 @@ status: "{{status}}"
 
 ### 1. Active Objectives & Context Boundaries
 
+<!-- Objectives are checkboxes: tick [x] when done or [-] to drop. Open items carry into the next briefing. -->
+
 ### 2. Unavailable Sources
 
 ## 🛑 Real-Time Workflow Friction Matrix

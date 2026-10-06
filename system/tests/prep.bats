@@ -231,3 +231,20 @@ codebase() {  # <name> <path>
   [ "$status" -eq 0 ]
   grep -qxF -- '- brief_prep: telemetry: a source failed (see system/logs/telemetry-2026-10.jsonl)' "$IN/unavailable.md"
 }
+
+@test "brief_prep: open objectives from the latest earlier briefing land in carried.md" {
+  mkdir -p briefings
+  printf -- '---\ntype: briefing\n---\n### 1. Active Objectives\n- [ ] **Open item**\n- [x] **Done item**\n### 2. Unavailable Sources\n' > briefings/2026-09-29.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/carried.md")" = "- [ ] **Open item** _(open since 2026-09-29)_" ]
+}
+
+@test "brief_prep: no earlier briefing writes an empty carried.md and no unavailable line" {
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -f "$IN/carried.md" ]
+  [ ! -s "$IN/carried.md" ]
+  run grep -c 'carried' "$IN/unavailable.md"
+  [ "$output" = "0" ]
+}

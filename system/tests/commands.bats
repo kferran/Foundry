@@ -467,3 +467,11 @@ self_edit_contract() {
   [[ "$sec" == *'0600'* ]]
   grep -qF 'skip phases 3, 6, 6a and 9' ".claude/commands/setup.md"
 }
+
+@test "/brief carries open objectives forward as checkboxes with their age" {
+  f=.claude/commands/brief.md
+  grep -qF 'carried.md' "$f"
+  grep -qF '**Carried forward**' "$f"
+  grep -qF 'stale' "$f"
+  grep -qF '`- [ ] ` checkboxes' "$f"
+}
