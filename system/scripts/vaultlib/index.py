@@ -269,8 +269,15 @@ class Index:
 
         notes = {p: (t, part, act) for p, t, part, act in
                  conn.execute("SELECT path, type, partition, active FROM notes")}
-        for src, raw, target_path, line, kind, ambiguous in conn.execute(
-                "SELECT src, target_raw, target_path, line, kind, ambiguous FROM links").fetchall():
+        rows = conn.execute("SELECT src, target_raw, target_path, line, kind, ambiguous FROM links").fetchall()
+        # A note's sources are raw inputs, gitignored, so they resolve only on the machine that
+        # compiled the note: links to them are provenance and never reported dead (#31).
+        own_sources = {(src, linkmod.wiki_target(raw.strip().removeprefix("[[").removesuffix("]]")))
+                       for src, raw, _, _, kind, _ in rows if kind == "frontmatter:sources"}
+        for src, raw, target_path, line, kind, ambiguous in rows:
+            if target_path is None and kind in ("link", "frontmatter:sources") and (
+                    src, linkmod.wiki_target(raw.strip().removeprefix("[[").removesuffix("]]"))) in own_sources:
+                continue
             if target_path is None:
                 add(src, line, "warning", "dead-link", f"dead link {self._display(raw, kind)}")
                 continue

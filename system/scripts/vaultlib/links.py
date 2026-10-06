@@ -35,8 +35,8 @@ def code_free_lines(body: str, body_line: int):
 
 
 def wiki_target(raw: str) -> str | None:
-    """'A|alias' -> 'A'; 'A#h' -> 'A'; '#h' -> None (self link)."""
-    name = raw.split("|", 1)[0].split("#", 1)[0].strip()
+    """'A|alias' -> 'A'; 'A\\|alias' (escaped inside a table) -> 'A'; 'A#h' -> 'A'; '#h' -> None (self link)."""
+    name = raw.split("|", 1)[0].removesuffix("\\").split("#", 1)[0].strip()
     return name or None
 
 

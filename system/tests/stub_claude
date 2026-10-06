@@ -18,6 +18,9 @@ case "${STUB_MODE:-write}" in
   nothing) ;;
   fail) exit 1 ;;
   fail2) exit 2 ;;
+  usage_limit)  # the account's spend or usage limit: claude -p reports it as an error result and exits 1
+    printf '{"type":"result","subtype":"success","is_error":true,"result":"You'"'"'ve hit your org'"'"'s monthly spend limit · run /usage-credits to raise it · your weekly limit resets Oct 7, 12pm (America/Denver)"}\n'
+    exit 1 ;;
   sleep) sleep 5 ;;
 esac
 # leak: leave a detached grandchild behind, as a claude tool subprocess might

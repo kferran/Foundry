@@ -383,6 +383,28 @@ self_edit_contract() {
   grep -qxF '.obsidian/plugins/obsidian-git/data.json' .gitignore
 }
 
+@test "/setup installs Dataview and Obsidian Git from their official repositories (#23)" {
+  sec="$(setup_section '10. Report')"
+  [[ "$sec" == *'gh release download --repo blacksmithgu/obsidian-dataview'* ]]
+  [[ "$sec" == *'gh release download --repo Vinzent03/obsidian-git'* ]]
+  [[ "$sec" == *'.obsidian/community-plugins.json'* ]]
+  [[ "$sec" == *'"id"'* ]]
+  [[ "$sec" == *'Restricted Mode'* ]]
+  [[ "$sec" == *'Quit Obsidian'* ]]
+}
+
+@test "/setup settles what .obsidian/ commits before it turns auto-sync on (#21)" {
+  sec="$(setup_section '10. Report')"
+  policy="$(grep -n -F 'git status --short --untracked-files=all .obsidian/' <<< "$sec" | head -1 | cut -d: -f1)"
+  settings="$(grep -n -F '`autoSaveInterval`' <<< "$sec" | head -1 | cut -d: -f1)"
+  [ -n "$policy" ] && [ -n "$settings" ]
+  [ "$policy" -lt "$settings" ]
+}
+
+@test "the plugin's machine-specific askpass helper is gitignored (#22)" {
+  grep -qxF '.obsidian/plugins/obsidian-git/obsidian_askpass.sh' .gitignore
+}
+
 @test "system_health checks the sync timer and the blocked marker on a server" {
   f=system/tests/system_health.bats
   grep -A3 'the sync timer is active' "$f" | grep -qF 'skip_unless_role server'
