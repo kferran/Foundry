@@ -47,6 +47,14 @@ setup() {
   git check-ignore -q system/quarantine/x.md
 }
 
+@test "the scratch folder ships, ignores everything else in it, and CLAUDE.md names it" {
+  [ "$(git ls-files .scratch)" = ".scratch/.gitignore" ]
+  git check-ignore -q .scratch/clone/README.md
+  run git check-ignore -q .scratch/.gitignore
+  [ "$status" -eq 1 ]
+  grep -qF '`.scratch/`' CLAUDE.md
+}
+
 @test "settings files are valid JSON with the deny list and read fence" {
   for f in .claude/settings.json system/headless.settings.json; do
     jq empty "$f"

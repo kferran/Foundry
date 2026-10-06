@@ -23,6 +23,15 @@ prep_init() {  # <script name> [date]
 
 prep_unavailable() { printf -- '- %s: %s\n' "$PREP_NAME" "$1" >> "$PREP_DIR/unavailable.md"; }
 
+# prep_meetings: an unavailable line when the last Google Drive search of the day (meetings_fetch.sh) failed.
+prep_meetings() {
+  local log="system/logs/meetings_fetch-${PREP_DATE:0:7}.jsonl" last
+  [[ -f "$log" ]] || return 0
+  last="$(jq -cR --arg d "$PREP_DATE" 'fromjson? | select(.step == "search" and ((.time // "") | startswith($d)))' "$log" | tail -n 1)"
+  [[ -n "$last" && "$(jq -r .exit <<< "$last")" != 0 ]] || return 0
+  prep_unavailable "meetings: the last Google Drive search today failed (exit $(jq -r '"\(.exit): \(.reason)"' <<< "$last"))"
+}
+
 # prep_write <file> <command…>: run the command into $PREP_DIR/<file>, replacing it only on success,
 # so a failed source never leaves a partial file behind. Returns the command's status.
 prep_write() {

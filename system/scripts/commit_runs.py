@@ -19,7 +19,7 @@ from vaultlib import frontmatter  # noqa: E402
 LOGS = VAULT / "system" / "logs"
 RUNS = LOGS / "runs"
 SINCE = LOGS / "commit_runs.since"
-RUN_ID = re.compile(r"^(\d{8}T\d{6})-(ingest|brief|debrief|nightshift)-[0-9a-f]{4}$")
+RUN_ID = re.compile(r"^(\d{8}T\d{6})-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
 PARTITIONS = ("work", "personal", "shared")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
 SUBJECT_MAX = 72
@@ -109,8 +109,32 @@ def subject(prefix, items):
     return f"{prefix}{len(items)} notes"
 
 
+def ledger_partition(run_id):
+    ledger = LOGS / f"runs-{run_id[:4]}-{run_id[4:6]}.jsonl"
+    return next((r["partition"] for r in json_lines(ledger)
+                 if r.get("run_id") == run_id and r.get("partition") in PARTITIONS), None)
+
+
+def meeting_title(published):
+    for path in published:
+        if not path.endswith(".transcript.md"):
+            try:
+                title = (frontmatter.parse((VAULT / path).read_text(encoding="utf-8")).data or {}).get("title")
+            except (OSError, UnicodeDecodeError):
+                title = None
+            if isinstance(title, str) and title.strip():
+                return " ".join(CONTROL.sub(" ", title).split())
+    return Path(published[0]).stem
+
+
 def message(run_id, command, published, conflicts, role, carried=()):
-    if command == "ingest":
+    if command == "meeting":
+        partition = ledger_partition(run_id) or folder_partition(published)
+        head = f"meeting({partition}): {meeting_title(published)}"
+        if len(head) > SUBJECT_MAX:
+            head = head[:SUBJECT_MAX - 1].rstrip() + "…"
+        body = [f"published {p}" for p in published] + [f"conflict {p}" for p in conflicts]
+    elif command == "ingest":
         decisions = [r for r in json_lines(RUNS / run_id / "_decisions.jsonl")
                      if isinstance(r.get("decision"), str) and r["decision"] != "noop" and isinstance(r.get("target"), str)]
         rows, seen = [], set()
@@ -120,9 +144,7 @@ def message(run_id, command, published, conflicts, role, carried=()):
                 rows.append((r["decision"], r["target"], r["source"] if isinstance(r.get("source"), str) else ""))
         covered = {t for _, t, _ in rows}
         rows += [("update", p, "") for p in published if p not in covered]
-        ledger = LOGS / f"runs-{run_id[:4]}-{run_id[4:6]}.jsonl"
-        partition = next((r["partition"] for r in json_lines(ledger)
-                          if r.get("run_id") == run_id and r.get("partition") in PARTITIONS), None) \
+        partition = ledger_partition(run_id) \
             or folder_partition([r["target"] for r in decisions]) or folder_partition(published) \
             or config("default_partition", "personal")
         head = subject(f"ingest({partition}): ", [f"{CONTROL.sub(' ', d)} {Path(t).stem}" for d, t, _ in rows])

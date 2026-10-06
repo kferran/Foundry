@@ -2,7 +2,7 @@ import json
 import os
 import subprocess
 
-from helpers import concept, write
+from helpers import concept, meeting, transcript, write
 
 
 def test_issues_clean_fixture(cli):
@@ -224,3 +224,13 @@ def test_path_refs_resolve_from_cwd(cli, vault):
     res = cli("related", "wiki/nonexistent/foo.md")
     assert res.returncode == 2 and "not an indexed note: wiki/nonexistent/foo.md" in res.stderr
     assert cli("related", "distributed commit log").returncode == 0
+
+
+def test_related_skips_meeting_transcripts_unless_asked(vault, cli):
+    name = "2026-10-05-1500-weekly-sync"
+    write(vault, f"wiki/work/meetings/{name}.md", meeting("work", name, body="## Summary\nwombat budget"))
+    write(vault, f"wiki/work/meetings/{name}.transcript.md", transcript("work", name, "**Avery:** wombat budget"))
+    hits = json.loads(cli("related", "wombat budget", "--json").stdout)
+    assert [h["type"] for h in hits] == ["meeting"]
+    hits = json.loads(cli("related", "wombat budget", "--include-transcripts", "--json").stdout)
+    assert sorted(h["type"] for h in hits) == ["meeting", "meeting_transcript"]

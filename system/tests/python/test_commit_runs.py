@@ -7,11 +7,13 @@ import sys
 
 import pytest
 
-from helpers import REPO, concept, write
+from helpers import REPO, concept, meeting, transcript, write
 
 FIXTURE = REPO / "system" / "tests" / "fixtures" / "vault"
 ING = "20261004T120000-ingest-ab12"
 BRIEF = "20261004T060000-brief-cd34"
+MEET = "20261005T160000-meeting-ef78"
+NAME = "2026-10-05-1500-weekly-sync"
 
 
 def git(vault, *args):
@@ -287,3 +289,34 @@ def test_a_missing_cutover_is_written_and_older_runs_stay_uncommitted(vault):
 
 def test_usage_errors_exit_2(vault):
     assert run_commits(vault, "--bogus").returncode == 2
+
+
+def meeting_run(vault, title, partition="work"):
+    paths = [f"wiki/{partition}/meetings/{NAME}.md", f"wiki/{partition}/meetings/{NAME}.transcript.md"]
+    rd = vault / "system" / "logs" / "runs" / MEET
+    rd.mkdir(parents=True)
+    (rd / "publish.json").write_text(json.dumps({"run_id": MEET, "status": "published", "published": paths,
+                                                 "conflicts": [], "problems": []}))
+    with open(vault / "system" / "logs" / "runs-2026-10.jsonl", "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"run_id": MEET, "command": "meeting", "partition": partition}) + "\n")
+    write(vault, paths[0], meeting(partition, NAME, title))
+    write(vault, paths[1], transcript(partition, NAME))
+    return paths
+
+
+def test_a_meeting_run_is_committed_under_the_meeting_title(vault):
+    paths = meeting_run(vault, "Weekly sync", partition="personal")
+    p = run_commits(vault)
+    assert p.returncode == 0, p.stderr
+    assert last_message(vault) == (
+        f"meeting(personal): Weekly sync\n\npublished {paths[0]}\npublished {paths[1]}\n\n"
+        f"Foundry-Command: meeting\nFoundry-Run: {MEET}\nFoundry-Role: server\n\n")
+    assert marker(vault, MEET)["sha"] == git(vault, "rev-parse", "HEAD").strip()
+
+
+def test_a_long_meeting_title_is_cut_with_an_ellipsis_and_control_characters_go(vault):
+    meeting_run(vault, "Quarterly\tplanning " + "x" * 80)
+    assert run_commits(vault).returncode == 0
+    subject = git(vault, "log", "-1", "--format=%s").strip()
+    assert len(subject) <= 72 and subject.endswith("…")
+    assert subject.startswith("meeting(work): Quarterly planning xxx")

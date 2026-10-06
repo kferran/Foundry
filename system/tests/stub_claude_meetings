@@ -1,0 +1,14 @@
+#!/bin/bash
+# Test double for the meetings fetch's claude calls. `mcp list` prints STUB_MCP_LIST. Any other call appends
+# its argv (one per line) and a line "--end--" to STUB_ARGS, then prints STUB_STREAMS/read-<id>.jsonl when the
+# prompt names fileId "<id>", else STUB_STREAMS/search.jsonl, and exits STUB_RC.
+if [[ "${1:-}" == mcp && "${2:-}" == list ]]; then
+  printf '%s\n' "Checking MCP server health…" "" "${STUB_MCP_LIST:-claude.ai Google Drive: https://drive.example/mcp - ok Connected}"
+  exit 0
+fi
+printf '%s\n' "$@" --end-- >> "${STUB_ARGS:-/dev/null}"
+pwd >> "${STUB_CWD:-/dev/null}"
+id="$(grep -o 'fileId "[^"]*"' <<< "${2:-}" | head -n 1 | cut -d'"' -f2)"
+[[ -n "${STUB_SLEEP:-}" ]] && sleep "$STUB_SLEEP"
+if [[ -n "$id" ]]; then cat "$STUB_STREAMS/read-$id.jsonl" 2>/dev/null; else cat "$STUB_STREAMS/search.jsonl" 2>/dev/null; fi
+exit "${STUB_RC:-0}"

@@ -14,7 +14,7 @@ from . import frontmatter, links as linkmod, schema as schemamod
 INDEX_VERSION = "1"
 PRUNE = {".git", ".obsidian"}
 NOT_INDEXED = ("system/logs/", "system/quarantine/", "system/jobs/", "system/templates/",
-               "system/tests/", "docs/", "raw/inbox/", "raw/archive/")
+               "system/tests/", "docs/", "raw/inbox/", "raw/archive/", "raw/meetings/", "meetings/drop/")
 # Walked but never indexed: reachable by explicit path, never by bare [[Name]].
 NAME_EXCLUDED = ("system/tests/", "system/templates/", "system/schemas/", "system/agents/", "docs/",
                  "system/quarantine/", "wiki/.staging/")  # run copies keep their note names

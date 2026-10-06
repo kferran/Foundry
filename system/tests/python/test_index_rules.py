@@ -171,6 +171,14 @@ def test_dead_link_messages_by_kind(vault):
     ]
 
 
+def test_meeting_sources_and_drops_are_not_indexed(vault):
+    write(vault, "raw/meetings/FAKE-doc-0001.gdoc.md", '---\ndoc_id: "FAKE-doc-0001"\n---\nsee [[Nowhere]]\n')
+    write(vault, "meetings/drop/work/standup.md", "Avery: see [[Nowhere]]\n")
+    idx = build(vault)
+    assert query(idx, "SELECT path FROM notes WHERE path LIKE 'raw/meetings/%' OR path LIKE 'meetings/%'") == []
+    assert issues(idx, "dead-link") == []
+
+
 def test_links_to_a_notes_own_sources_are_not_dead(vault):
     """Raw inputs are gitignored, so a source resolves only on the machine that compiled it (#31)."""
     body = "Body cites [[Nowhere]].\n\n## Audit Trail\n- Source Material: [[2026-10-05-digest]]"

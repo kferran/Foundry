@@ -41,7 +41,7 @@ def _first_source(conn, path):
 
 
 def related(conn, terms, *, limit=10, partitions=None, codebase=None, ntype=None,
-            per_source=2, include_inactive=False, exclude=None) -> list:
+            per_source=2, include_inactive=False, exclude=None, include_transcripts=False) -> list:
     query = fts_query(terms)
     if not query:
         return []
@@ -50,6 +50,8 @@ def related(conn, terms, *, limit=10, partitions=None, codebase=None, ntype=None
     args = [query]
     if not include_inactive:
         sql += " AND n.active = 1"
+    if not include_transcripts:
+        sql += " AND coalesce(n.type, '') != 'meeting_transcript'"
     if partitions is not None:
         sql += f" AND n.partition IN ({','.join('?' * len(partitions))})"
         args += list(partitions)

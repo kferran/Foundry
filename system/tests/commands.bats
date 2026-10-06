@@ -446,6 +446,37 @@ self_edit_contract() {
   [ "$status" -eq 1 ]
 }
 
+@test "meetings: /brief reads actions.md, /debrief lists the day's meetings, /query searches transcripts" {
+  f=.claude/commands/brief.md
+  grep -qF '`system/logs/inputs/<date>/actions.md`' "$f"
+  grep -qF '**Waiting on**' "$f"
+  grep -qF 'its Notices go under Systemic Blockers' "$f"
+  grep -qF 'except `system/quarantine/meetings/`' "$f"
+  grep -qF "SELECT path, title, partition FROM v_meeting WHERE date = '<date>'" .claude/commands/debrief.md
+  grep -qF -- '--include-transcripts' .claude/commands/query.md
+}
+
+@test "meetings: /ingest compiles a meeting input into concepts that cite the meeting note, never under meetings/" {
+  f=.claude/commands/ingest.md
+  grep -qF '`type: meeting_input`' "$f"
+  grep -qF 'put the meeting note (its `meeting` field) in `sources` and leave the input out' "$f"
+  grep -qF 'Never stage anything under `wiki/<p>/meetings/`' "$f"
+  grep -qF 'a `wiki/shared/` note never cites a meeting' "$f"
+  grep -qF 'only when the summary and details leave a fact unclear' "$f"
+}
+
+@test "meetings: /setup asks about meetings on a server or standalone vault and checks the Drive connector" {
+  sec="$(setup_section '6b. Meetings')"
+  for s in 'meetings_enabled' 'meetings_partition' 'owner_names' 'system/scripts/meetings_fetch.sh --check' 'exit 3' \
+      'On a client, skip this phase'; do
+    [[ "$sec" == *"$s"* ]]
+  done
+  grep -qF 'drop transcripts (`.vtt`, `.srt`, `.txt` or `.md`) into `meetings/drop/<partition>/`' .claude/commands/setup.md
+  grep -qF '`meetings/drop/<partition>/`' CLAUDE.md
+  grep -qF '`wiki/<partition>/meetings/`' CLAUDE.md
+  grep -qF 'meetings/drop/' README.md
+}
+
 @test "/brief lists telemetry from v_production_error, new first, capped per environment" {
   f=".claude/commands/brief.md"
   grep -qF 'v_production_error' "$f"
