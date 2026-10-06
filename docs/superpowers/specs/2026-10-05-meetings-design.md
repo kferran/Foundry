@@ -65,7 +65,7 @@ Runs on `server` and `standalone` vaults when `meetings_enabled` is true; exits 
 
 ### 2.2 Drops: `meetings/drop/<partition>/`
 
-- A committed folder with `work/` and `personal/` (each with a `.gitkeep`), so a client's Obsidian Git or `/backup` carries a dropped file to the server. Accepted files: `.vtt`, `.srt`, `.txt`, `.md`.
+- A committed folder with `work/` and `personal/` (each with a `.gitkeep`), so a client's Obsidian Git or `/backup` carries a dropped file to the server. Accepted files: `.vtt`, `.srt`, `.txt`, `.md`, plus the folders' `.gitkeep`.
 - `.githooks/pre-commit` rejects a staged file under `meetings/drop/` with any other extension, or one in which a **named** secret detector fires (PEM, AWS, GitHub, GitLab, Slack, Anthropic, OpenAI, JWT, bearer, `key = value` assignments, `<private>`); the generic high-entropy detector is not used here, since transcript cue IDs and long links trip it, and the server's redaction (§2.3 step 2) catches those before publish. `vaultlib/redact.py` gains a function that returns the detector kinds that fired, for the hook to call. The check runs before the hook's early exit for paths outside its lint pattern. It runs on the desktop client through Obsidian Git; Obsidian mobile's git runs no hooks, so a mobile drop is guarded only by the server's redaction.
 - On the server and on a standalone vault, the intake tick takes each drop older than 60 seconds and imports it (§2.3); an unaccepted extension found there is quarantined. A client never imports.
 
@@ -88,7 +88,7 @@ For each source, in this order, so a crash at any point is completed by the next
 6. **Stage and publish** through the existing gate as its own run: `run_id` `<ts>-meeting-<rand4>`; snapshot targets the two exact paths below; ledger line with `run_id`, `command: "meeting"`, `partition`, `started_at`, `finished_at`, `inputs` (the source path), `exit` and `publish` (`status`, `published`, `rejected`, `conflicts`), the fields `/debrief` and `commit_runs.py` read; `system/logs/runs/<run_id>/publish.json`. It publishes `wiki/<p>/meetings/<name>.md` (`meeting`) and `wiki/<p>/meetings/<name>.transcript.md` (`meeting_transcript`). The gate stamps `provenance: [headless]` on both. No decisions file is needed (not an ingest run).
 7. **Hand to compile:** build `raw/<p>/notes/<name>.meeting-input.md` (`meeting_input`: the meeting note's link, partition, `created_at`, and the summary, decisions and details as body) in a temp file, add its sha256 to `system/logs/intake_solo.json`, then rename it into place, so intake ingests it alone. An input already present for this note in `raw/<p>/notes/`, `raw/<p>/archive/` or `system/quarantine/poisoned/` is not written again. Every tick also re-adds to `intake_solo.json` the sha of any meeting input sitting in `raw/<p>/notes/`, so an input restored by `--retry` (which clears its solo flag) is still ingested alone.
 8. **Remove the source:** delete `raw/meetings/<id>.gdoc.md`, or the drop file (the next sync commit records the deletion).
-9. A gate rejection whose cause is a target that already exists is not a failure: the next tick's step 5 finds it. On a parse or schema failure: the source moves to `system/quarantine/meetings/` with a reason file (unredacted, local only, never committed), an alert, and a briefing line; other sources in the tick continue.
+9. The import picks a free name before the snapshot (step 4), so an existing target is never staged over; a target created by another run during this one is a gate conflict, not a failure, and the next tick's step 5 finds it (planning, D4). On a parse or schema failure: the source moves to `system/quarantine/meetings/` with a reason file (unredacted, local only, never committed), an alert, and a briefing line; other sources in the tick continue.
 
 Changes this needs in existing code:
 - `vaultlib/publish.py` `RUN_ID` and `commit_runs.py`'s run-id pattern accept `meeting`.
@@ -146,7 +146,7 @@ A meeting input lives in `raw/<p>/notes/`, so intake ingests it like a session d
 
 ## 6. Tests
 
-Hermetic: synthetic fixtures (no real meeting content), stubs on `PATH`, no network, no `claude`. Bats ruling R1 and the tool floor apply. `meetings.bats` is a new gated suite (17 suites).
+Hermetic: synthetic fixtures (no real meeting content), stubs on `PATH`, no network, no `claude`. Bats ruling R1 and the tool floor apply. `meetings.bats` is a new gated suite (17 suites); unit tests stay in `units.bats`, and the import tests call it in-process (planning, D2 and D18).
 
 - **pytest `test_meetings.py`** (parser and import): synthetic Gemini Docs (every section; no Decisions; cut short; `Meeting started …`; an event title containing ` - `; `Invited` names that cannot be split), `.vtt`, `.srt`, `.txt`, `.md`; exact fields and action lines; drop start times from file names and commit time, never cue offsets; `[[` escaped and Drive links removed; the Doc ID surviving redaction while a secret in the body is redacted; partition by drop folder and by `meetings_partition`; first source wins both ways; `drop:<sha256>` keeps two `transcript.vtt` drops apart; the slug rule and its `-2` suffix; the run's ledger line, `publish.json` and commit subject; a meeting input in `raw/<p>/notes/` with its sha in `intake_solo.json`; a crash after publish completed on the next call; an existing target not quarantined; the solo sha re-added for a restored input; quarantine on a bad source.
 - **pytest for existing code:** `RUN_ID` and `commit_runs.py` accept `meeting` runs and build the subject; the daily cap ignores meeting runs; the gate refuses an ingest that stages any target under `wiki/*/meetings/`, including one typed `concept`; `related()` skips transcripts unless asked; `raw/meetings/` and `meetings/drop/` are not indexed.
@@ -166,7 +166,7 @@ Hermetic: synthetic fixtures (no real meeting content), stubs on `PATH`, no netw
 
 ## 8. Docs
 
-README (machine roles and the vault layout name `meetings/drop/`), the `CLAUDE.md` directory map, `/setup`'s client notes (drop transcripts into `meetings/drop/<partition>/`), and the roadmap's Plan 11 row.
+README (machine roles and the vault layout name `meetings/drop/`), the `CLAUDE.md` directory map, `/setup`'s client notes (drop transcripts into `meetings/drop/<partition>/`), and a new Plan 11 row in the roadmap (it had none).
 
 ## 9. Out of scope
 
