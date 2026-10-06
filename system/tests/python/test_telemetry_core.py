@@ -94,3 +94,15 @@ def test_kql_reopen_spans_no_duplicate_starttime():
     # Verify error conditions are present
     assert "SpanStatus" in where_line or "http.response.status_code" in where_line
     assert "datetime(" in where_line and "and StartTime <" in where_line
+
+
+def test_kql_aliases_avoid_reserved_words():
+    """ADX rejects reserved words as column aliases (live: `first =` gave HTTP 400)."""
+    import re
+    reserved = {"first", "last", "count", "sum", "min", "max", "take", "top", "where", "by", "on", "in", "and", "or",
+                "not", "let", "range", "print", "set", "as", "of", "with", "to", "between", "has", "contains"}
+    src = adx(adx_filter={"deployment.instance": "uat"}, adx_group_keys=["app.module"])
+    for q in (t.kql_logs(src, NOW - timedelta(hours=1), NOW), t.kql_spans(src, NOW - timedelta(hours=1), NOW)):
+        aliases = re.findall(r"(?:summarize|extend|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)", q)
+        assert aliases, q
+        assert not reserved & set(aliases), sorted(reserved & set(aliases))

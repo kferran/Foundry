@@ -69,8 +69,8 @@ def _adx_groups(src, start, end, counters):
             fp = t.fingerprint(src.name, kind, keys)
             groups.append({"fingerprint": fp, "source": src.name, "environment": src.environment, "codebase": src.codebase,
                            "partition": src.partition, "kind": kind, "service": keys["service"], "exception": exception,
-                           "operation_id": t.trace_id(r.get("sample_trace")), "detected_at": str(r.get("first")),
-                           "last_seen": str(r.get("last")), "count": int(r.get("n") or 0), "keys": keys,
+                           "operation_id": t.trace_id(r.get("sample_trace")), "detected_at": str(r.get("first_ts")),
+                           "last_seen": str(r.get("last_ts")), "count": int(r.get("n") or 0), "keys": keys,
                            "filters": t._filters(src)})
     return groups
 

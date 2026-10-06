@@ -118,7 +118,7 @@ def kql_logs(src: Source, start: datetime, end: datetime, limit: int = 500) -> s
                       "| extend service = tostring(ResourceAttributes[\"service.name\"]), "
                       "scope = tostring(LogsAttributes[\"scope.name\"]), event_id = tostring(LogsAttributes[\"logrecord.event.id\"])"
                       + (", " + ", ".join(extra) if extra else ""),
-                      f"| summarize n = count(), first = min(Timestamp), last = max(Timestamp), traces = dcount(TraceID), "
+                      f"| summarize n = count(), first_ts = min(Timestamp), last_ts = max(Timestamp), traces = dcount(TraceID), "
                       f"sample_trace = take_any(TraceID) by {', '.join(by)}",
                       "| order by n desc",
                       f"| take {limit}"])
@@ -132,7 +132,7 @@ def kql_spans(src: Source, start: datetime, end: datetime, limit: int = 500) -> 
                       "| where SpanStatus == \"STATUS_CODE_ERROR\" or status >= 500",
                       "| extend service = tostring(ResourceAttributes[\"service.name\"]), "
                       "route = coalesce(tostring(TraceAttributes[\"http.route\"]), SpanName)",
-                      "| summarize n = count(), first = min(StartTime), last = max(StartTime), traces = dcount(TraceID), "
+                      "| summarize n = count(), first_ts = min(StartTime), last_ts = max(StartTime), traces = dcount(TraceID), "
                       "sample_trace = take_any(TraceID) by service, route, status",
                       "| order by n desc",
                       f"| take {limit}"])

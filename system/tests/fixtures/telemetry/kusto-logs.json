@@ -1,5 +1,5 @@
 [{"FrameType":"DataSetHeader"},
  {"FrameType":"DataTable","TableKind":"PrimaryResult",
-  "Columns":[{"ColumnName":"service"},{"ColumnName":"scope"},{"ColumnName":"event_id"},{"ColumnName":"n"},{"ColumnName":"first"},{"ColumnName":"last"},{"ColumnName":"traces"},{"ColumnName":"sample_trace"}],
+  "Columns":[{"ColumnName":"service"},{"ColumnName":"scope"},{"ColumnName":"event_id"},{"ColumnName":"n"},{"ColumnName":"first_ts"},{"ColumnName":"last_ts"},{"ColumnName":"traces"},{"ColumnName":"sample_trace"}],
   "Rows":[["api","Shop.Orders","4012",3,"2026-10-05T10:00:00Z","2026-10-05T11:00:00Z",2,"0af7651916cd43dd8448eb211c80319c"]]},
  {"FrameType":"DataSetCompletion","HasErrors":false}]
