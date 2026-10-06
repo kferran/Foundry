@@ -322,7 +322,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qxF "ExecStart=\"$VP/system/scripts/meetings_fetch.sh\"" "$UD/foundry-meetings.service"
   grep -qx 'TimeoutStartSec=35min' "$UD/foundry-meetings.service"
   grep -qxF "Environment=\"CLAUDE_BIN=$STUBS/claude\"" "$UD/foundry-meetings.service"
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-meetings.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-meetings.timer foundry-nightshift.timer' "$STUB_SYSTEMCTL_LOG"
   set_role server
   run "$IU"
   [ "$status" -eq 0 ]
