@@ -97,6 +97,11 @@ if [[ "$role" != client ]] && [[ -n "$(system/scripts/telemetry_fetch.py --list 
   UNITS+=(foundry-telemetry.service foundry-telemetry.timer)
   ENABLE+=(foundry-telemetry.timer)
 fi
+# Nightshift: standalone and server (Nightshift spec §2).
+if [[ "$role" != client ]]; then
+  UNITS+=(foundry-nightshift.service foundry-nightshift.timer)
+  ENABLE+=(foundry-nightshift.timer)
+fi
 # A server syncs around every run (two-machine spec §5.2): one drop-in per run service, with the
 # service's own prep step and a timeout raised by two sync deadlines plus margin.
 DROPINS=()

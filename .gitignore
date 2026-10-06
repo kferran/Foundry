@@ -15,6 +15,9 @@ raw/**
 !raw/inbox/
 !raw/archive/
 !raw/telemetry/
+!raw/*/
+!raw/*/nightshift/
+!raw/*/nightshift/*.md
 !raw/*/.gitkeep
 system/index.db
 wiki/.staging/

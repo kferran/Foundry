@@ -264,3 +264,13 @@ codebase() {  # <name> <path>
   run grep -c 'carried' "$IN/unavailable.md"
   [ "$output" = "0" ]
 }
+
+@test "brief_prep: nightshift.md copies that morning's report, empty when there is none" {
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -e "$IN/nightshift.md" ] && [ ! -s "$IN/nightshift.md" ]
+  mkdir -p system/logs/nightshift
+  printf '# Nightshift: 2026-10-01\n> Health: claude ok\n\nNothing ran.\n' > system/logs/nightshift/2026-10-01.md
+  run "$BP" 2026-10-01
+  grep -qx '# Nightshift: 2026-10-01' "$IN/nightshift.md"
+}

@@ -20,6 +20,8 @@ fields:
   meetings_enabled: {kind: bool, default: "false"}
   meetings_partition: {kind: enum, values: [work, personal]}
   owner_names: {kind: list, of: string}
+  nightshift_workspace: {kind: string}
+  nightshift_window: {kind: string, default: "22:00-05:00"}
 ---
 # Config
 The per-user global configuration written by `/setup` (gitignored). `system/config.example.md` is the committed example.

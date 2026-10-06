@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","permissionMode":"dontAsk","mcp_servers":[],"tools":["Read","Glob","Grep","Edit","Write","Bash","Skill","Agent","TodoWrite"],"session_id":"s1"}
+{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1791320400,"unifiedWindows":{"five_hour":{"utilization":0.12},"seven_day":{"utilization":0.48}}}}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"CURL_EXIT=6"}]}}
+{"type":"result","subtype":"success","is_error":false,"session_id":"s1","total_cost_usd":0.5}

@@ -11,7 +11,7 @@ from pathlib import Path
 from . import frontmatter, links as linkmod, schema as schemamod
 from .index import NAME_EXCLUDED, Index, wall_blocked
 
-RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting)-[0-9a-f]{4}$")
+RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
 MEETINGS = re.compile(r"^wiki/[^/]+/meetings/")
 DECISION_KINDS = {"noop", "patch", "create", "deprecate", "supersede"}
 SHRINK_EXEMPT = {"deprecate", "supersede"}
