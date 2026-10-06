@@ -1,5 +1,6 @@
 #!/bin/bash
-# Calendar and yesterday's focus stats into system/logs/inputs/<date>/ (spec §6.5; calendar spec §5).
+# Calendar, meeting actions and yesterday's focus stats into system/logs/inputs/<date>/ (spec §6.5; calendar
+# spec §5; meetings spec §2.5).
 # Exits 0 whenever the date is valid; every source that could not be read gets a line in unavailable.md.
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
@@ -27,6 +28,10 @@ case "$rc" in
   127) prep_unavailable "calendar: claude is not on PATH" ;;
   *) prep_unavailable "calendar: calendar_fetch.sh failed (exit $rc; see $PREP_DIR/prep_errors.log)" ;;
 esac
+
+prep_write actions.md system/scripts/meeting_actions.py "$PREP_DATE" \
+  || prep_unavailable "actions: meeting_actions.py failed (see $PREP_DIR/prep_errors.log)"
+prep_meetings
 
 yesterday="$(date -d "$PREP_DATE -1 day" +%F)"
 prep_write focus_yesterday.md system/scripts/focus_stats.sh "$yesterday" \

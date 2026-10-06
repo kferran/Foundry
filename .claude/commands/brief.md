@@ -22,20 +22,21 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - Config: `system/scripts/vault_index.py field system/config.md <key>` for `brief_time`, `debrief_time` and `superpowers`.
 - `system/logs/inputs/<date>/calendar.tsv`: today's events, one per line (start date, start time, end date, end time, title).
 - `system/logs/inputs/<date>/focus_yesterday.md`: yesterday's top notes and Focus Fragmentation Warnings.
+- `system/logs/inputs/<date>/actions.md`: open action items from meeting notes, in three sections: **Yours**, **Waiting on** (everyone else's, by owner) and **Notices** (meetings cut short, quarantined meeting sources, archived duplicates).
 - `system/logs/inputs/<date>/unavailable.md`: sources the prep script could not read.
 - `system/logs/alerts_<date>.md` and the previous day's alerts file: pipeline alerts.
 - `raw/telemetry/`: production-error notes. Each is critical and routes to the Workcell with `telemetry`.
 - Friction notes: `system/scripts/vault_index.py query "SELECT path, title FROM v_concept WHERE is_friction = 1"`.
-- Quarantined inputs: Glob `system/quarantine/**/*` and list the file names only.
+- Quarantined inputs: Glob `system/quarantine/**/*` except `system/quarantine/meetings/` and list the file names only (the Notices in `actions.md` cover meeting sources).
 - Mail and chat: only if a Gmail or Slack tool is available in this session (never in a headless run). Otherwise write one line: "Mail and chat skipped: no connector in this session."
 
 ## Write the briefing
 
 - If `briefings/<date>.md` exists: headless, run `system/scripts/vault_index.py stage briefings/<date>.md <run_id>` and Edit `wiki/.staging/<run_id>/briefings/<date>.md`; interactive, edit the file. Update the sections below and keep everything the user wrote.
 - Otherwise create it from `system/templates/daily-briefing.md`: replace `{{date}}`, set `{{status}}` to `active`, and fill `{{brief_time}}` and `{{debrief_time}}` from config. Keep the `![[<date>.debrief]]` line.
-- **🌅 Morning Alignment → Active Objectives:** today's fixed commitments from the calendar, then 3–5 objectives. Tie each to a superpower from config where one fits, and hand each concrete slice to a capability: one of the `capability` values in `system/schemas/concept.md` (the Workcell that declares it does the work).
+- **🌅 Morning Alignment → Active Objectives:** today's fixed commitments from the calendar, then 3–5 objectives. Tie each to a superpower from config where one fits, and hand each concrete slice to a capability: one of the `capability` values in `system/schemas/concept.md` (the Workcell that declares it does the work). Then list your open meeting actions from `actions.md` (**Yours**) with their meeting links and days open, and then a **Waiting on** block with everyone else's, by owner.
 - **🌅 Morning Alignment → Unavailable Sources:** one bullet per missing source, or "None."
-- **🛑 Real-Time Workflow Friction Matrix:** Systemic Blockers (friction notes, telemetry, alerts, quarantine), Focus Drift Analysis (yesterday's Focus Fragmentation Warnings), Communication Debt (mail and chat, or the skipped line).
+- **🛑 Real-Time Workflow Friction Matrix:** Systemic Blockers (friction notes, telemetry, alerts, quarantine; when `actions.md` has Notices, its Notices go under Systemic Blockers too), Focus Drift Analysis (yesterday's Focus Fragmentation Warnings), Communication Debt (mail and chat, or the skipped line).
 - Frontmatter: `type: briefing`, `date: "<date>"`, `status: active`. Never add, change or remove `provenance`; the gate stamps it.
 
 ## Self-edit

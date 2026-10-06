@@ -211,3 +211,19 @@ codebase() {  # <name> <path>
   [ "$status" -eq 1 ]
   grep -qx '## vault' "$IN/git.md"
 }
+
+@test "brief_prep: actions.md lists open meeting actions, and a failed Drive search today is an unavailable source" {
+  system/scripts/vault_index.py set system/config.md meetings_enabled true > /dev/null
+  mkdir -p wiki/work/meetings
+  printf -- '---\ntype: meeting\ntitle: "Sync"\ndate: "2026-09-30"\nstart: "2026-09-30T09:00:00-06:00"\npartition: work\nsource: "gdoc:FAKE-x"\ntranscript: "[[s.transcript]]"\n---\n# Sync\n\n## Action items\n- [ ] [Blake Sample] Slides: Prepare them.\n' > wiki/work/meetings/s.md
+  printf '{"time":"2026-10-01T08:00:00-06:00","step":"search","doc":"search","exit":0,"reason":""}\n{"time":"2026-10-01T09:00:00-06:00","step":"search","doc":"search","exit":3,"reason":"no Google Drive connector reachable"}\n' > system/logs/meetings_fetch-2026-10.jsonl
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qxF -- '- Slides: Prepare them. ([[s]], 2026-09-30)' "$IN/actions.md"
+  grep -qxF -- '- brief_prep: meetings: the last Google Drive search today failed (exit 3: no Google Drive connector reachable)' "$IN/unavailable.md"
+  printf '{"time":"2026-10-01T10:00:00-06:00","step":"search","doc":"search","exit":0,"reason":""}\n' >> system/logs/meetings_fetch-2026-10.jsonl
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  run grep -c meetings "$IN/unavailable.md"
+  [ "$output" = 1 ]
+}

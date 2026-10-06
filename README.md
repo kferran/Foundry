@@ -32,6 +32,7 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 | 8c. Sync | `vault_sync.sh`, server sync units, conflicts, client setup. The real vault is set up after this plan | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8c-sync.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8c-acceptance.md) |
 | 8e. Real-use fixes | Brief and debrief wait out an ingest backlog; `/debrief` reads the ledger's publish fields | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-8e-real-use-fixes.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-8e-acceptance.md) |
 | 9. Product rename | The Foundry names and the capability seam | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-9-foundry-rename.md), [spec](docs/superpowers/specs/2026-10-05-foundry-rename-design.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-9-acceptance.md) |
+| 11. Meetings | Gemini notes fetched from Google Drive and dropped transcripts become meeting notes, tracked actions and searchable transcripts | In progress: [plan](docs/superpowers/plans/2026-10-05-plan-11-meetings.md), [spec](docs/superpowers/specs/2026-10-05-meetings-design.md) |
 | 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
 | Sub-project 2 | the Foreman orchestrator | Separate spec, after Plans 7 and 5 |
@@ -46,7 +47,7 @@ Plans are numbered in the order they were defined, not the order they run; the t
 
 The intended loop is **capture → compile → index → recall → correct**:
 
-1. **Capture.** Files you drop in go to `raw/inbox/`. Once the memory hooks are installed, sessions in the vault and in registered codebases also leave short, redacted session digests in `raw/<partition>/notes/` (see [Memory](#memory) below).
+1. **Capture.** Files you drop in go to `raw/inbox/`, and meeting transcripts to `meetings/drop/<partition>/` (a server with `meetings_enabled` also fetches Gemini notes from Google Drive); each meeting becomes a meeting note with tracked action items and a searchable transcript. Once the memory hooks are installed, sessions in the vault and in registered codebases also leave short, redacted session digests in `raw/<partition>/notes/` (see [Memory](#memory) below).
 2. **Compile.** The intake timer batches up to 5 inputs from one partition into an isolated headless `/ingest` run. For each fact, the run records an explicit noop, patch or create decision and writes its output to `wiki/.staging/<run_id>/`.
 3. **Publish.** The publish gate validates schemas and partition walls and rejects changes that shrink existing notes. It also checks each target against a snapshot taken at the start of the run. If every check passes, it publishes everything at once. If any check fails, it publishes nothing and the run is quarantined. If you edited a note while the run was going, your edit is kept.
 4. **Index.** Markdown is the source of truth. `system/index.db` is a gitignored SQLite FTS5 index that can be rebuilt at any time. Agents run `related`, `query`, `show` and `backlinks` against it before reading any notes.
@@ -101,10 +102,13 @@ CLAUDE.md                     generic rules; imports @system/config.md
 .githooks/pre-commit          deterministic linter (lint_vault.sh --staged)
 raw/                          contents gitignored
   inbox/ archive/ telemetry/  manual drops, compiled drops, production-error notes
-  <partition>/notes|archive/  session digests (created on demand)
+  <partition>/notes|archive/  session digests and meeting inputs (created on demand)
+  meetings/                   fetched Gemini notes awaiting import
+meetings/drop/work|personal/  dropped meeting transcripts (committed and synced; imported, then removed)
 wiki/
   Index.md                    cross-partition index, Dataview dashboards
   work/ personal/ shared/     concepts/ entities/ summaries/ preferences/
+  work/ personal/meetings/    meeting notes and their transcripts
   .staging/                   headless output awaiting publish (gitignored)
 briefings/                    daily brief and debrief notes
 system/
@@ -132,14 +136,14 @@ Each machine that holds the vault has a `machine_role` in its own `system/config
 
 | Role | Runs | Use it for |
 |---|---|---|
-| `standalone` (default) | intake, brief, debrief and focus units; memory hooks; codebases | one machine that does everything |
-| `server` | intake, brief and debrief units; memory hooks; codebases | an always-on machine that runs the automation and your coding sessions |
+| `standalone` (default) | intake, brief, debrief and focus units, and the meetings fetch when enabled; memory hooks; codebases | one machine that does everything |
+| `server` | intake, brief and debrief units, and the meetings fetch when enabled; memory hooks; codebases | an always-on machine that runs the automation and your coding sessions |
 | `client` | nothing automated | reading and editing the vault in Obsidian on another machine |
 
 A server and its clients share the vault through a private `origin` (`remote_mode: private`):
 
 - **Server.** `vault_sync.sh` runs every `sync_interval_minutes` (`foundry-sync.timer`) and before and after every run: it commits headless runs and other changes with scripted messages, merges `origin` and pushes. Network and credential failures never stop the runs; they are alerted once a day until sync works again.
-- **Client.** The Obsidian Git plugin commits and syncs every few minutes; `/setup` prints its settings. Write notes in today's briefing between `#wiki-ingest-start` and `#wiki-ingest-end`: the server compiles each new block and leaves the briefing as it is (on every role, blocks stay in the briefing after compiling). Files in `raw/inbox/` on a client are not synced.
+- **Client.** The Obsidian Git plugin commits and syncs every few minutes; `/setup` prints its settings. Write notes in today's briefing between `#wiki-ingest-start` and `#wiki-ingest-end`: the server compiles each new block and leaves the briefing as it is (on every role, blocks stay in the briefing after compiling). Files in `raw/inbox/` on a client are not synced. Meeting transcripts dropped into `meetings/drop/<partition>/` are synced, and the server imports them.
 
 ### Sync conflicts
 
