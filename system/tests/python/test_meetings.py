@@ -400,6 +400,16 @@ def test_first_source_wins_a_doc_after_a_drop_is_archived_and_skipped_by_the_fet
     assert [(r["doc"], r["skipped"]) for r in log] == [(DOC_ID, True)]
 
 
+def test_two_docs_with_the_same_title_minutes_apart_are_two_meetings(iv):
+    config(iv, meetings_partition="work")
+    fetched(iv, doc_id="FAKE-doc-a", title="Meeting started 2026/10/05 10:00 MDT - Notes by Gemini")
+    tick(iv)
+    fetched(iv, doc_id="FAKE-doc-b", title="Meeting started 2026/10/05 10:12 MDT - Notes by Gemini")
+    tick(iv)
+    assert len(meeting_runs(iv)) == 2
+    assert not list((iv / "raw/archive").glob("*.gdoc.md"))
+
+
 def test_a_name_taken_by_another_meeting_gets_a_suffix(iv):
     config(iv, meetings_partition="work")
     write(iv, f"wiki/work/meetings/{NAME}.md", meeting("work", NAME, "Weekly sync - Planning",

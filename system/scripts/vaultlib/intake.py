@@ -534,6 +534,8 @@ class Intake:
         path.unlink()
 
     def _same_meeting(self, m, data) -> bool:
+        if m.source.startswith("gdoc:") and str(data.get("source", "")).startswith("gdoc:"):
+            return False  # one Gemini Doc per meeting (spec §1.1): two Docs are two meetings
         try:
             start = datetime.fromisoformat(str(data.get("start")))
             if start.tzinfo is None:  # the schema allows a start without an offset: it is local time
