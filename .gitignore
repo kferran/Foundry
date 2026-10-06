@@ -23,3 +23,7 @@ system/*.lock
 system/jobs/
 __pycache__/
 .pytest_cache/
+meetings/drop/**/.*
+!meetings/drop/*/.gitkeep
+meetings/drop/**/Thumbs.db
+meetings/drop/**/desktop.ini

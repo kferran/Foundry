@@ -291,6 +291,16 @@ session_deny() { awk -v n="$1" '$0 == "--end--" { s++; p = 0; next } s == n - 1 
   [ ! -e "$f" ]
 }
 
+@test "drops: Finder and Explorer system files in a drop folder are gitignored, transcripts and .gitkeep are not" {
+  for f in .DS_Store ._call.vtt Thumbs.db desktop.ini; do
+    git -C "$REPO" check-ignore -q "meetings/drop/work/$f"
+  done
+  for f in .gitkeep call.vtt; do
+    run git -C "$REPO" check-ignore -q --no-index "meetings/drop/personal/$f"
+    [ "$status" -eq 1 ]
+  done
+}
+
 # hook_commit <path> <content>: stage one file under the pre-commit hook and try to commit it.
 hook_commit() {
   mkdir -p "$(dirname "$1")"
