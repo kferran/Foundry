@@ -10,7 +10,7 @@ setup() {
   for c in git jq bats systemctl python3 flock timeout systemd-analyze; do
     ln -s "$(command -v "$c")" "$BIN/$c"
   done
-  for c in claude hyprctl pacman; do
+  for c in claude hyprctl pacman az; do
     printf '#!/bin/bash\n' > "$BIN/$c"
     chmod +x "$BIN/$c"
   done
@@ -19,7 +19,7 @@ setup() {
 @test "check_deps: every item present reports ok and --strict passes" {
   run env PATH="$BIN" "$CD" --strict
   [ "$status" -eq 0 ]
-  for item in claude git jq bats systemctl hyprctl python3 flock timeout pyyaml pytest fts5 systemd-analyze; do
+  for item in claude git jq bats systemctl hyprctl python3 flock timeout pyyaml pytest fts5 systemd-analyze az; do
     grep -qx "ok $item" <<< "$output"
   done
 }
@@ -40,6 +40,13 @@ setup() {
   [ "$status" -eq 0 ]
   grep -qx 'ok tmux' <<< "$output"
   grep -q '^optional herdr ' <<< "$output"
+}
+
+@test "check_deps: az is optional and never fails --strict" {
+  rm "$BIN/az"
+  run env PATH="$BIN" "$CD" --strict --role standalone
+  [ "$status" -eq 0 ]
+  grep -q '^optional az ' <<< "$output"
 }
 
 @test "check_deps: python module checks run against the python3 on PATH" {
