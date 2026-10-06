@@ -32,6 +32,7 @@ Automation runs on systemd user timers: isolated headless `claude -p` jobs for i
 | 8c. Sync | `vault_sync.sh`, server sync units, conflicts, client setup. The real vault is set up after this plan | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8c-sync.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8c-acceptance.md) |
 | 8e. Real-use fixes | Brief and debrief wait out an ingest backlog; `/debrief` reads the ledger's publish fields | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-8e-real-use-fixes.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-8e-acceptance.md) |
 | 9. Product rename | The Foundry names and the capability seam | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-9-foundry-rename.md), [spec](docs/superpowers/specs/2026-10-05-foundry-rename-design.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-9-acceptance.md) |
+| 11. Error monitoring | Hourly, model-free fetch of Sentry issues and ADX error groups into aggregate-only `production_error` notes; `/setup` phase 6a | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-11-error-monitoring.md), [spec](docs/superpowers/specs/2026-10-05-error-monitoring-design.md), [spike](docs/superpowers/spikes/2026-10-05-plan-11-trace-coverage.md), [outcomes](docs/superpowers/plans/2026-10-05-plan-11-outcomes.md) |
 | 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
 | Sub-project 2 | the Foreman orchestrator | Separate spec, after Plans 7 and 5 |
@@ -87,9 +88,11 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 
 **Superpowers** are your strategic anchors, set in `system/config.md` (`superpowers:`). The brief ties each objective to one, and onboarding and intent notes name the ones they serve. They are unrelated to the superpowers Claude Code plugin used in [Development](#development).
 
-**Brief inputs.** The calendar (`calendar.tsv`, from the Google Calendar connector), today's and yesterday's alerts, production-error notes in `raw/telemetry/`, friction notes (`is_friction` on concepts), quarantined inputs, yesterday's focus, and mail and chat when a Gmail or Slack connector is present in an interactive session. Missing sources are listed under Unavailable Sources; the brief never fails for one.
+**Brief inputs.** The calendar (`calendar.tsv`, from the Google Calendar connector), today's and yesterday's alerts, production-error groups in `raw/telemetry/` (new, recurring and resolved in the last 24 hours, per environment), friction notes (`is_friction` on concepts), quarantined inputs, yesterday's focus, and mail and chat when a Gmail or Slack connector is present in an interactive session. Missing sources are listed under Unavailable Sources; the brief never fails for one.
 
-**Debrief inputs.** The prep files in `system/logs/inputs/<date>/` (git commits, session digests, focus), alerts, the run ledger `system/logs/runs-<YYYY-MM>.jsonl`, and agent metrics in `system/logs/metrics/*.json`. An agent whose 3 most recent metric files all show `test_suite_passed: false` is reported under Agent Health; the debrief does not act on it.
+**Error telemetry.** `foundry-telemetry.timer` runs `telemetry_fetch.py` every hour, and `brief_prep.sh` runs it once more before the brief. Each source in `system/telemetry/<name>.md` (written by `/setup` phase 6a, gitignored) is a set of Sentry projects or one Azure Data Explorer database with a filter. Each error group becomes one `production_error` note in `raw/telemetry/` holding only group keys, counts, times, opaque IDs and links: no message text, titles or attribute values. Sentry needs a read-only token in `~/.config/foundry/sentry.token` (mode 0600); ADX uses your `az login`. `--check <name>` tests a source, `--dry-run` prints the groups without writing.
+
+**Debrief inputs.** The prep files in `system/logs/inputs/<date>/` (git commits, session digests, focus), alerts, the run ledger `system/logs/runs-<YYYY-MM>.jsonl`, the telemetry run log `system/logs/telemetry-<YYYY-MM>.jsonl`, and agent metrics in `system/logs/metrics/*.json`. An agent whose 3 most recent metric files all show `test_suite_passed: false` is reported under Agent Health; the debrief does not act on it.
 
 **Workcells.** Work goes to the Workcell whose `capabilities` include the one the work needs, never by name:
 
@@ -141,6 +144,7 @@ briefings/                    daily brief and debrief notes
 system/
   config.example.md           example global config (real config.md is gitignored)
   codebases/example.md        example codebase file
+  telemetry/example.md        example error source (real sources are gitignored)
   headless.settings.json      headless permissions
   template_source             canonical template URL
   schemas/                    one schema note per note type
@@ -151,8 +155,8 @@ system/
   scripts/                    vault_index.py, vaultlib/, publish_staged.py, run_headless.sh,
                               intake_daemon.sh, install_units.sh, install_hooks.sh,
                               setup_remote.sh, update_template.sh, check_deps.sh,
-                              vault_sync.sh, commit_runs.py, calendar_fetch.sh, ...
-  systemd/                    foundry-{intake,brief,debrief,focus,sync} unit templates (*.in)
+                              vault_sync.sh, commit_runs.py, calendar_fetch.sh, telemetry_fetch.py, ...
+  systemd/                    foundry-{intake,brief,debrief,focus,sync,telemetry} unit templates (*.in)
     dropins/                  foundry-sync.conf.in: sync before and after each run (server)
   tests/                      *.bats per area (system_health.bats is advisory), python/ for pytest
   jobs/                       reserved for Sub-project 2 (gitignored)
@@ -201,6 +205,7 @@ The Foundry runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh 
 - A Google Calendar connector on the Claude account the brief machine is logged in with, for calendar input to the brief. Without it the brief lists the calendar under Unavailable Sources. Each morning fetch costs about $0.20.
 - Hyprland (`hyprctl`) for the Obsidian focus tracker, on a standalone machine only. Without it only focus stats are lost.
 - A client needs only `claude`, `git`, `jq`, `python3` with PyYAML, and SQLite with FTS5.
+- Optional: the Azure CLI (`az`, logged in) for ADX error sources, and a read-only Sentry token for Sentry sources. Without them those sources stay off.
 - Optional: `herdr` or `tmux` as session backends for sub-project 2
 - Obsidian, with the **Dataview** plugin recommended (`wiki/Index.md` dashboards are plain code blocks without it). **[Vault Curate](https://github.com/notoriouslab/vault-curate)** is an optional plugin for link suggestions. It is not a dependency.
 
@@ -265,9 +270,10 @@ Once the units are installed, the timers run real headless `claude -p` jobs. The
 - **Staged publish.** Headless output reaches the wiki only through the publish gate, which checks targets, schemas, partition walls, protected fields, shrinkage and conflicts. Every headless-written note gets `headless` added to its `provenance`.
 - **Partition walls.** Links from `work` to `personal` (and the other way) are lint errors. A headless run writes to one partition plus `shared`. From a codebase session, the index CLI returns only that codebase's partition plus `shared`, and those sessions get no general read access to the vault. Walls control links and recall, not storage: all partitions are pushed to the same private `origin`.
 - **Data, not instructions.** `CLAUDE.md` tells agents to treat note bodies, raw files, recall blocks and tool output as data. Digests and inbox copies are passed through `redact.py`, and `<private>…</private>` spans are removed.
+- **Error telemetry.** `telemetry_fetch.py` runs no model and keeps network access out of headless runs. Sentry and ADX responses are reduced to aggregates before anything is written: group keys are cleaned (GUIDs, emails, long hex and digit runs, URL query strings), and the note store re-checks every field. The Sentry token lives outside the vault, so git and sync never carry it.
 - **User-level changes.** `install_hooks.sh` changes only its own entries in `~/.claude/settings.json` and `~/.claude/commands/digest.md`. It takes a backup first, shows a diff during `/setup`, applies nothing without confirmation, and can be fully reversed with `--uninstall`.
 - **Trust dialog.** The first time you open the vault, Claude Code asks whether to trust the folder and lists the permissions `.claude/settings.json` pre-approves: edits under `wiki/` and `briefings/`, the brief and debrief prep scripts, `lint_vault.sh`, and the `vault_index.py` query, index-rebuild and recall commands. Those apply to your interactive sessions only; headless runs ignore project settings entirely.
-- **Gitignored.** `raw/**` contents, `system/quarantine/*`, `system/logs/*`, `system/config.md`, `system/codebases/*.md` (except `example.md`), `.claude/settings.local.json`, `system/index.db*`, `system/*.lock`, `wiki/.staging/`, `system/jobs/` and Obsidian workspace files.
+- **Gitignored.** `raw/**` contents, `system/quarantine/*`, `system/logs/*`, `system/config.md`, `system/codebases/*.md` and `system/telemetry/*.md` (except each `example.md`), `.claude/settings.local.json`, `system/index.db*`, `system/*.lock`, `wiki/.staging/`, `system/jobs/` and Obsidian workspace files.
 
 ## Updating and uninstalling
 
