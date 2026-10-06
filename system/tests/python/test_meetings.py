@@ -536,6 +536,14 @@ def test_a_note_whose_start_has_no_offset_is_read_in_the_config_timezone(iv):
     assert meeting_runs(iv) == [] and not src.exists() and (iv / "raw/archive" / src.name).is_file()
 
 
+@pytest.mark.parametrize("name, text", [("Untitled.md", ""), ("call.vtt", "WEBVTT\n\n"), ("notes.txt", " \n\n ")])
+def test_a_drop_with_no_transcript_text_is_quarantined_not_published(iv, name, text):
+    dropped(iv, f"work/{name}", text)
+    tick(iv)
+    assert meeting_runs(iv) == []
+    assert "no transcript text" in (iv / "system/quarantine/meetings" / f"{name}.reason.txt").read_text()
+
+
 def test_a_source_that_keeps_failing_is_quarantined_on_the_third_tick(iv, monkeypatch):
     src = dropped(iv, "work/2026-10-05 1500 Vendor call.vtt", VTT)
     monkeypatch.setattr(meetings, "render_meeting", lambda *a: (_ for _ in ()).throw(RuntimeError("boom")))

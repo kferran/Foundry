@@ -219,6 +219,8 @@ def parse_drop(name: str, data: bytes, tz, start: datetime) -> Meeting:
         turns = _line_turns(text)
     else:
         raise ParseError(f"not a transcript file type: {suffix or name}")
+    if not turns:  # an empty file (a new note not yet filled in) is not a meeting
+        raise ParseError("the drop has no transcript text")
     return replace(meeting, attendees=_speakers(turns), turns=turns)
 
 
