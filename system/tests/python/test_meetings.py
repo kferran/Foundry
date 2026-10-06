@@ -198,6 +198,11 @@ def test_safe_escapes_wiki_links_and_markdown_links_and_drops_drive_urls():
     assert "(00:01:10)" in text
 
 
+@pytest.mark.parametrize("said", ["[[[Foo]]", "[[[[x]]]]", "a [[[b]] [[c]]", "[ [[d]]"])
+def test_safe_escapes_runs_of_brackets(said):
+    assert links.extract(meetings.safe(said), 1) == ([], set())
+
+
 def test_scrub_strips_drive_urls_then_redacts_then_escapes():
     m = meetings.Meeting("Sync", datetime(2026, 10, 5, 15, 0, tzinfo=TZ), "drop:x", "s.txt", turns=[
         ("00:00:00", "Avery Sample", "AKIAIOSFODNN7EXAMPLE(../personal/a.md) https://docs.google.com/document/d/FAKE/edit")])

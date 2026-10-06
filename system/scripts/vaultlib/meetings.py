@@ -230,7 +230,8 @@ def _strip_drive(text: str) -> str:
 
 
 def _escape(text: str) -> str:
-    return text.replace("[[", "\\[\\[").replace("](", "]\\(")
+    """Every "[" that touches another "[" is escaped (so "[[[x]]" leaves no "[[" behind), and every "](" too."""
+    return re.sub(r"\[(?=\[)|(?<=\[)\[", r"\\[", text).replace("](", "]\\(")
 
 
 def safe(text: str) -> str:
