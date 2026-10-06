@@ -33,6 +33,7 @@ Automation runs as isolated headless `claude -p` jobs on systemd user timers: in
 | 8e. Real-use fixes | Brief and debrief wait out an ingest backlog; `/debrief` reads the ledger's publish fields | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-8e-real-use-fixes.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-8e-acceptance.md) |
 | 9. Product rename | The Foundry names and the capability seam | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-9-foundry-rename.md), [spec](docs/superpowers/specs/2026-10-05-foundry-rename-design.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-9-acceptance.md) |
 | 11. Meetings | Gemini notes fetched from Google Drive and dropped transcripts become meeting notes, tracked actions and searchable transcripts | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-11-meetings.md), [spec](docs/superpowers/specs/2026-10-05-meetings-design.md), [acceptance](docs/superpowers/spikes/2026-10-06-plan-11-acceptance.md) |
+| 12. minutes plugin | Meeting notes and the confined connector fetch as a public Claude Code plugin (its own repo), then vendored here like humanizer | In progress: spec revised after two reviews; plan next |
 | 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
 | Sub-project 2 | the Foreman orchestrator | Separate spec, after Plans 7 and 5 |
@@ -100,6 +101,7 @@ CLAUDE.md                     generic rules; imports @system/config.md
 .claude/commands/             setup brief debrief ingest query lint backup impact
 .claude/skills/humanizer/     vendored humanizer v3.0.0 (MIT): /humanizer, headless self-edit
 .githooks/pre-commit          deterministic linter (lint_vault.sh --staged)
+.scratch/                     throwaway clones, worktrees and temp files (ignored; the gate's temp files go here)
 raw/                          contents gitignored
   inbox/ archive/ telemetry/  manual drops, compiled drops, production-error notes
   <partition>/notes|archive/  session digests and meeting inputs (created on demand)
