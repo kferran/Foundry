@@ -89,7 +89,7 @@ def results(stream, step):
 def search(stream):
     """The listed files. A result in any shape but a files list fails closed (exit 1), so a changed stream
     shows as an unavailable source instead of an empty listing that moves .since on."""
-    keys, files = ("id", "title", "createdTime", "modifiedTime"), []
+    keys, files, seen = ("id", "title", "createdTime", "modifiedTime"), [], set()
     got = results(stream, "search")[0]
     if not got:
         raise Fail(1, "the search call has no result")
@@ -100,7 +100,10 @@ def search(stream):
         ok = [f for f in listed if isinstance(f, dict) and all(isinstance(f.get(k), str) for k in keys)]
         if listed and not ok:
             raise Fail(1, "no listed file has an id, title, createdTime and modifiedTime")
-        files += [{k: f[k] for k in keys} for f in ok]
+        for f in ok:  # several search calls (pages, retries) can list a Doc again: keep its first entry
+            if f["id"] not in seen:
+                seen.add(f["id"])
+                files.append({k: f[k] for k in keys})
     return files
 
 

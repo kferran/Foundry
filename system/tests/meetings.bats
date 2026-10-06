@@ -75,6 +75,16 @@ session_deny() { awk -v n="$1" '$0 == "--end--" { s++; p = 0; next } s == n - 1 
   [ -s system/logs/meetings_fetch.since ]
 }
 
+@test "fetch: a Doc listed twice (two search calls or pages) is read once" {
+  search_says "$(doc FAKE-doc-0001)" "$(doc FAKE-doc-0001)" "$(doc FAKE-doc-0002)"
+  read_says FAKE-doc-0001
+  read_says FAKE-doc-0002
+  run "$MF"
+  [ "$status" -eq 0 ]
+  [ "$(sessions)" -eq 3 ]
+  [ "$(jq -c 'select(.step == "read") | .doc' "$LOG" | tr '\n' ' ')" = '"FAKE-doc-0001" "FAKE-doc-0002" ' ]
+}
+
 @test "fetch: a search result in another shape fails closed with exit 1 and keeps .since; an empty files list is fine" {
   search_says "$(doc FAKE-doc-0001)"
   cp "$STUB_STREAMS/search.jsonl" "$BATS_TEST_TMPDIR/good.jsonl"
