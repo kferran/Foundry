@@ -3563,12 +3563,12 @@ index 0000000..3ad0fbb
 - Create: `docs/superpowers/spikes/<date>-plan-11-acceptance.md`, `docs/superpowers/plans/<date>-plan-11-outcomes.md`
 - Modify: `README.md` (Plan 11 row: "Complete" with the acceptance link), `docs/superpowers/plans/2026-09-30-jarvis-roadmap.md` (Plan 11 row: "Complete (<date>)" with the acceptance file)
 
-Spec §7, in throwaway clones under `~/.cache/foundry-accept/` with a local bare origin, with `claude` on `PATH` (a login shell). No units are installed. The steps call the real `claude` and the user's Google Drive connector, so they run only when the user starts them. The record holds shapes and counts, never meeting content, titles, names or Doc IDs.
+Spec §7, in throwaway clones under `.scratch/foundry-accept/` in the dev repo's root (a folder that ignores itself; dot-folders are skipped by the index, lint and Obsidian) with a local bare origin, with `claude` on `PATH` (a login shell). No units are installed. The steps call the real `claude` and the user's Google Drive connector, so they run only when the user starts them. The record holds shapes and counts, never meeting content, titles, names or Doc IDs.
 
 - [ ] **Step 1: Server and client clones, and two `claude` wrappers.** `claude-tee` passes every call to the real `claude` and keeps only the shapes of each stream (key names and tool names, never values) in `$A/streams/shapes.jsonl`; `claude-noconn` runs it with no MCP server at all.
 
 ```bash
-A=${XDG_CACHE_HOME:-$HOME/.cache}/foundry-accept; rm -rf "$A"; mkdir -p "$A/streams"
+A="$(git rev-parse --show-toplevel)/.scratch/foundry-accept"; rm -rf "$A"; mkdir -p "$A/streams"
 git clone -q --bare -b feat/plan-11 "$(git rev-parse --show-toplevel)" "$A/origin.git"
 git clone -q "$A/origin.git" "$A/s"; git clone -q "$A/origin.git" "$A/c"
 for d in s c; do cp "$A/$d/system/config.example.md" "$A/$d/system/config.md"; git -C "$A/$d" config core.hooksPath .githooks; done
