@@ -122,9 +122,12 @@ class Store:
                 g["last_seen"] = old["last_seen"]
         else:
             count, first, regressed = int(g["count"]), g["detected_at"], False
-        note_status = None
+        note_status, prev = None, {}
         if (self.vault / rel).exists():
-            note_status = (frontmatter.parse((self.vault / rel).read_text(encoding="utf-8")).data or {}).get("status")
+            prev = frontmatter.parse((self.vault / rel).read_text(encoding="utf-8")).data or {}
+            note_status = prev.get("status")
+        if not g.get("covered") and prev.get("covered") == "true":
+            g["covered"], g["sentry_issue"] = True, g.get("sentry_issue") or prev.get("sentry_issue")
         status = "deprecated" if "deprecated" in (note_status, old and old.get("status")) else "active"
         regressed = regressed or g.get("substatus") == "regressed"
         fm = {"type": "production_error", "service": g["service"], "exception": g["exception"],
@@ -137,7 +140,8 @@ class Store:
         self._write_note(rel, fm, self._body(g, fm))
         self.state["groups"][key] = {"note": rel, "first_seen": first, "last_seen": g["last_seen"], "count": count,
                                      "status": status, "kind": g["kind"], "regressed": regressed,
-                                     "sentry_id": g["fingerprint"][2:] if g["kind"] == "sentry" else None}
+                                     "sentry_id": g["fingerprint"][2:] if g["kind"] == "sentry" else None,
+                                     "cover_pending": bool(old and old.get("cover_pending"))}
         return "updated" if old else "new"
 
     def set_status(self, key: str, status: str, now: datetime) -> None:
@@ -152,6 +156,17 @@ class Store:
             grp["regressed"] = False
         self._write_note(grp["note"], fm, note.body)
         grp["status"] = status
+
+    def operation_id(self, key: str) -> str:
+        grp = self.state["groups"][key]
+        return str((frontmatter.parse((self.vault / grp["note"]).read_text(encoding="utf-8")).data or {}).get("operation_id") or "")
+
+    def set_covered(self, key: str, short_id: str) -> None:
+        grp = self.state["groups"][key]
+        note = frontmatter.parse((self.vault / grp["note"]).read_text(encoding="utf-8"))
+        fm = dict(note.data or {})
+        fm["covered"], fm["sentry_issue"] = "true", short_id
+        self._write_note(grp["note"], fm, note.body)
 
     def resolve_stale(self, source: str, now: datetime) -> int:
         n = 0

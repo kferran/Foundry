@@ -19,10 +19,6 @@ MAX_STATUS = 20
 FAIL_ALERT = 3
 
 
-class Usage(Exception):
-    pass
-
-
 def _parser():
     p = argparse.ArgumentParser(prog="telemetry_fetch.py", add_help=True)
     g = p.add_mutually_exclusive_group()
@@ -51,14 +47,14 @@ def _log(vault: Path, now: datetime, line: dict) -> None:
         f.write(json.dumps(line, sort_keys=True) + "\n")
 
 
-def _adx_groups(src, start, end, by_name, counters):
+def _adx_groups(src, start, end, counters):
     groups = []
     for signal in src.adx_signals:
         kql = t.kql_logs(src, start, end, MAX_GROUPS) if signal == "logs" else t.kql_spans(src, start, end, MAX_GROUPS)
         rows = kusto.query(src.adx_cluster, src.adx_database, kql, MAX_GROUPS)
         if len(rows) >= MAX_GROUPS:
             total = kusto.query(src.adx_cluster, src.adx_database, t.kql_count(kql), 1)
-            counters["truncated"] = int((total[0] if total else {}).get("Count", len(rows)))
+            counters["truncated"] += int((total[0] if total else {}).get("Count", len(rows)))
         for r in rows:
             if signal == "logs":
                 keys = {"service": t.sanitize(r.get("service")), "scope": t.sanitize(r.get("scope")),
@@ -80,21 +76,38 @@ def _adx_groups(src, start, end, by_name, counters):
     return groups
 
 
-def _cover(src, groups, by_name, store, counters):
+def _cover(src, groups, by_name, store, counters, dry):
+    """Look up Sentry issues for ADX groups; returns keys of new groups skipped by the cap (retried next run)."""
     target = by_name.get(src.covers) if src.covers else None
     if not target:
-        return
-    lookups = 0
+        return set()
+    budget = MAX_LOOKUPS
+    if not dry:
+        for key, grp in list(store.state["groups"].items()):
+            if not key.startswith(src.name + "/") or not grp.get("cover_pending"):
+                continue
+            if budget <= 0:
+                break
+            budget -= 1
+            hit = sentry.issue_for_trace(target.sentry_url, target.sentry_org, store.operation_id(key))
+            grp["cover_pending"] = False
+            if hit:
+                store.set_covered(key, hit["shortId"])
+                counters["covered"] += 1
+    skipped = set()
     for g in groups:
-        if f"{g['source']}/{g['fingerprint']}" in store.state["groups"]:
+        key = f"{g['source']}/{g['fingerprint']}"
+        if key in store.state["groups"]:
             continue
-        if lookups >= MAX_LOOKUPS:
-            break
-        lookups += 1
+        if budget <= 0:
+            skipped.add(key)
+            continue
+        budget -= 1
         hit = sentry.issue_for_trace(target.sentry_url, target.sentry_org, g["operation_id"])
         if hit:
             g["covered"], g["sentry_issue"] = True, hit["shortId"]
             counters["covered"] += 1
+    return skipped
 
 
 def _sentry_groups(src, start, store):
@@ -115,19 +128,21 @@ def _sentry_groups(src, start, store):
     return out
 
 
-def _run_source(vault, src, store, by_name, now, dry):
+def _run_source(vault, src, store, by_name, now, dry, line):
     st = store.state["sources"].setdefault(src.name, {})
     start, end, moved = t.window(st.get("checkpoint"), now, src.kind)
+    line["window"] = {"from": start.isoformat(), "to": end.isoformat()}
     counters = {"new": 0, "updated": 0, "resolved": 0, "covered": 0, "truncated": 0}
-    groups = _adx_groups(src, start, end, by_name, counters) if src.kind == "adx" else _sentry_groups(src, start, store)
-    if src.kind == "adx":
-        _cover(src, groups, by_name, store, counters)
+    groups = _adx_groups(src, start, end, counters) if src.kind == "adx" else _sentry_groups(src, start, store)
+    skipped = _cover(src, groups, by_name, store, counters, dry) if src.kind == "adx" else set()
     if dry:
         for g in groups:
             print(json.dumps({k: g[k] for k in ("source", "fingerprint", "kind", "service", "exception", "count")}))
         return start, end, moved, counters
     for g in groups:
         counters[store.upsert(g, now)] += 1
+    for key in skipped:
+        store.state["groups"][key]["cover_pending"] = True
     if src.kind == "sentry":
         seen = {g["fingerprint"] for g in groups}
         stale = sorted((g for g in store.active(src.name) if g["key"].split("/", 1)[1] not in seen),
@@ -186,22 +201,27 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
             for w in store.load():
                 _alert(vault, store, now, "state", w)
         rc = 0
-        for src in [by_name[wanted]] if wanted else list(by_name.values()):
-            line = {"started_at": now.isoformat(), "source": src.name}
-            try:
-                start, end, moved, counters = _run_source(vault, src, store, by_name, now, args.dry_run)
-                line.update(window={"from": start.isoformat(), "to": end.isoformat()}, moved=moved, exit=0, **counters)
-                if counters["truncated"]:
-                    _alert(vault, store, now, f"{src.name}/truncated", f"{src.name}: {counters['truncated']} groups; only {MAX_GROUPS} kept")
-            except TelemetryError as exc:
-                rc = 1
-                st = store.state["sources"].setdefault(src.name, {})
-                st["failures"] = st.get("failures", 0) + 1
-                line.update(exit=1, error=f"{exc.kind}: {exc.reason}")
-                if exc.kind == "auth" or st["failures"] >= FAIL_ALERT:
-                    _alert(vault, store, now, f"{src.name}/{exc.kind}", f"{src.name}: {exc.reason}")
-            if not args.dry_run:
-                _log(vault, now, line)
-        if not args.dry_run:
-            store.save()
+        dry = args.dry_run
+        try:
+            for src in [by_name[wanted]] if wanted else list(by_name.values()):
+                line = {"started_at": now.isoformat(), "source": src.name}
+                try:
+                    start, end, moved, counters = _run_source(vault, src, store, by_name, now, dry, line)
+                    line.update(moved=moved, exit=0, **counters)
+                    if counters["truncated"] and not dry:
+                        _alert(vault, store, now, f"{src.name}/truncated", f"{src.name}: {counters['truncated']} groups; only {MAX_GROUPS} kept")
+                except Exception as exc:
+                    rc = 1
+                    kind = exc.kind if isinstance(exc, TelemetryError) else "error"
+                    reason = exc.reason if isinstance(exc, TelemetryError) else type(exc).__name__
+                    st = store.state["sources"].setdefault(src.name, {})
+                    st["failures"] = st.get("failures", 0) + 1
+                    line.update(exit=1, error=f"{kind}: {reason}", new=0, updated=0, resolved=0, covered=0, truncated=0)
+                    if not dry and (kind == "auth" or st["failures"] >= FAIL_ALERT):
+                        _alert(vault, store, now, f"{src.name}/{kind}", f"{src.name}: {reason}")
+                if not dry:
+                    _log(vault, now, line)
+        finally:
+            if not dry:
+                store.save()
         return rc
