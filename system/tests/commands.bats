@@ -302,7 +302,7 @@ self_edit_contract() {
 
 @test "/setup on a client skips the phases a client does not use, and says so" {
   f=.claude/commands/setup.md
-  grep -qF 'On a client, skip phases 3, 6 and 9' "$f"
+  grep -qF 'On a client, skip phases 3, 6, 6a and 9' "$f"
   # A machine re-run as a client must stop running automation and memory hooks.
   units="$(setup_section '5. Units')"
   [[ "$units" == *'On a client, run `system/scripts/install_units.sh` without asking'* ]]
@@ -444,4 +444,26 @@ self_edit_contract() {
   grep -qx 'GROUP BY capability' wiki/Index.md
   run grep -rnE '(Coding|Maintenance) Workcell' CLAUDE.md .claude/commands wiki/Index.md
   [ "$status" -eq 1 ]
+}
+
+@test "/brief lists telemetry from v_production_error, new first, capped per environment" {
+  f=".claude/commands/brief.md"
+  grep -qF 'v_production_error' "$f"
+  grep -qF 'At most 10 rows per environment' "$f"
+  grep -qF 'covered' "$f"
+  grep -qF 'resolved_at' "$f"
+  grep -qF 'OR resolved_at >=' "$f"
+  grep -qF 'UTC with a +00:00 offset' "$f"
+  ! grep -qF 'coalesce(mock' "$f"
+}
+
+@test "/debrief reads the telemetry run log" {
+  grep -qF 'system/logs/telemetry-<YYYY-MM>.jsonl' ".claude/commands/debrief.md"
+}
+
+@test "/setup has a telemetry phase that is skipped on a client and checks each source" {
+  sec="$(sed -n '/^## 6a\. Telemetry/,/^## 7\./p' ".claude/commands/setup.md")"
+  [[ "$sec" == *'telemetry_fetch.py --check'* ]]
+  [[ "$sec" == *'0600'* ]]
+  grep -qF 'skip phases 3, 6, 6a and 9' ".claude/commands/setup.md"
 }

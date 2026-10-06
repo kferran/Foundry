@@ -25,6 +25,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - `system/logs/inputs/<date>/unavailable.md`: sources the prep script could not read.
 - `system/logs/alerts_<date>.md`: pipeline alerts.
 - Headless runs: the lines of `system/logs/runs-<YYYY-MM>.jsonl` whose `started_at` begins with the date: `command`, `exit`, `.publish.status`, `.publish.published`, `.publish.rejected`, `.publish.conflicts` (the publish lists sit under `publish`, not at the top level).
+- Telemetry runs: the lines of `system/logs/telemetry-<YYYY-MM>.jsonl` whose `started_at` begins with the date: per `source`, the sums of `new`, `updated`, `resolved`, and any line with `exit` 1 and its `error`.
 - Agent metrics: Glob `system/logs/metrics/*.json`; each file has `agent`, `timestamp` and `verification_gates.test_suite_passed`.
 
 ## Write the debrief
@@ -32,7 +33,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - If `briefings/<date>.debrief.md` exists: headless, run `system/scripts/vault_index.py stage briefings/<date>.debrief.md <run_id>` and Edit `wiki/.staging/<run_id>/briefings/<date>.debrief.md`; interactive, edit the file. Keep everything already there.
 - Otherwise create it from `system/templates/daily-debrief.md`, replacing `{{date}}`.
 - **1. Execution Logs & Results:** what got done, per repo from `git.md`, and the Outcome and Follow-ups of each digest, summarized across partitions (the debrief may cite any partition).
-- **2. System State Deltas:** headless runs (published, rejected, conflicts), alerts, quarantined inputs, and focus: top notes plus every Focus Fragmentation Warning.
+- **2. System State Deltas:** headless runs (published, rejected, conflicts), telemetry runs per source (groups new, updated, resolved; failures), alerts, quarantined inputs, and focus: top notes plus every Focus Fragmentation Warning.
 - **3. Agent Health:** every agent whose 3 most recent metric files all show `test_suite_passed: false`, with the files. Report only; the user decides what to do. Otherwise "No repeated failures."
 - **4. Unavailable Sources:** one bullet per missing source, or "None."
 - Frontmatter: `type: debrief`, `date: "<date>"`. Never add, change or remove `provenance`; the gate stamps it.

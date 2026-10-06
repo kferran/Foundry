@@ -1,0 +1,11 @@
+[Unit]
+Description=The Foundry: error telemetry fetch
+
+[Service]
+Type=oneshot
+WorkingDirectory={{VAULT_ROOT}}
+Environment="TZ={{TZ}}"
+Environment="PATH={{UNIT_PATH}}"
+TimeoutStartSec=20min
+SuccessExitStatus=1 4
+ExecStart="{{VAULT_ROOT}}/system/scripts/telemetry_fetch.py"

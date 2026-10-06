@@ -24,7 +24,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - `system/logs/inputs/<date>/focus_yesterday.md`: yesterday's top notes and Focus Fragmentation Warnings.
 - `system/logs/inputs/<date>/unavailable.md`: sources the prep script could not read.
 - `system/logs/alerts_<date>.md` and the previous day's alerts file: pipeline alerts.
-- `raw/telemetry/`: production-error notes. Each is critical and routes to the Workcell with `telemetry`.
+- Telemetry: `system/scripts/vault_index.py query "SELECT path, environment, source, service, exception, count, detected_at, last_seen, resolved_at, substatus, regressed, sentry_issue, covered, mock FROM v_production_error WHERE status = 'active' OR resolved_at >= '<now minus 24 hours, ISO 8601>'"`. Write the cutoff in UTC with a +00:00 offset, for example 2026-10-05T06:00:00+00:00, because notes store UTC +00:00 timestamps. Each is critical and routes to the Workcell with `telemetry`. Order environments by their source's `rank` (`SELECT name, environment, rank FROM v_telemetry_source`). Mock notes stay in the list: mark their rows "(mock)".
 - Friction notes: `system/scripts/vault_index.py query "SELECT path, title FROM v_concept WHERE is_friction = 1"`.
 - Quarantined inputs: Glob `system/quarantine/**/*` and list the file names only.
 - Mail and chat: only if a Gmail or Slack tool is available in this session (never in a headless run). Otherwise write one line: "Mail and chat skipped: no connector in this session."
@@ -35,7 +35,13 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - Otherwise create it from `system/templates/daily-briefing.md`: replace `{{date}}`, set `{{status}}` to `active`, and fill `{{brief_time}}` and `{{debrief_time}}` from config. Keep the `![[<date>.debrief]]` line.
 - **🌅 Morning Alignment → Active Objectives:** today's fixed commitments from the calendar, then 3–5 objectives. Tie each to a superpower from config where one fits, and hand each concrete slice to a capability: one of the `capability` values in `system/schemas/concept.md` (the Workcell that declares it does the work).
 - **🌅 Morning Alignment → Unavailable Sources:** one bullet per missing source, or "None."
-- **🛑 Real-Time Workflow Friction Matrix:** Systemic Blockers (friction notes, telemetry, alerts, quarantine), Focus Drift Analysis (yesterday's Focus Fragmentation Warnings), Communication Debt (mail and chat, or the skipped line).
+- **🛑 Real-Time Workflow Friction Matrix:** Systemic Blockers (friction notes, telemetry (rules below), alerts, quarantine), Focus Drift Analysis (yesterday's Focus Fragmentation Warnings), Communication Debt (mail and chat, or the skipped line).
+  - Telemetry, per environment. **New**: active groups with `detected_at` in the last 24 hours, `substatus` regressed or escalating, or `regressed` true.
+  - **Recurring**: other active groups with `last_seen` in the last 24 hours, with their `count`.
+  - **Resolved**: one line with the number of groups whose `resolved_at` is in the last 24 hours.
+  - At most 10 rows per environment, then "and N more".
+  - Skip groups with `covered` true. Their Sentry issue is listed.
+  - Each row: environment, service, exception, `count`, and the `sentry_issue` short ID or the note path.
 - Frontmatter: `type: briefing`, `date: "<date>"`, `status: active`. Never add, change or remove `provenance`; the gate stamps it.
 
 ## Self-edit

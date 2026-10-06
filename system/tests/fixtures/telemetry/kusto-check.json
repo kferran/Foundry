@@ -1,0 +1,3 @@
+[{"FrameType":"DataSetHeader"},
+ {"FrameType":"DataTable","TableKind":"PrimaryResult","Columns":[{"ColumnName":"ok"}],"Rows":[[1]]},
+ {"FrameType":"DataSetCompletion","HasErrors":false}]

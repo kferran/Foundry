@@ -49,6 +49,7 @@ hint() {
     timeout) pkg_pacman=coreutils pkg_apt=coreutils ;;
     pyyaml) pkg_pacman=python-yaml pkg_apt=python3-yaml ;;
     pytest) pkg_pacman=python-pytest pkg_apt=python3-pytest ;;
+    az) pkg_pacman=azure-cli pkg_apt=azure-cli ;;
   esac
   case "$pm" in
     pacman) echo "sudo pacman -S $pkg_pacman" ;;
@@ -79,6 +80,7 @@ present() {  # <item>: 1 when the item is available
 
 for item in "${REQUIRED[@]}"; do report "$item" "$(present "$item")"; done
 for c in herdr tmux; do report "$c" "$(has "$c")" optional; done
+if [[ "$role" != client ]]; then report az "$(has az)" optional; fi
 
 (( strict && missing )) && exit 1
 exit 0
