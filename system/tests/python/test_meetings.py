@@ -1,4 +1,6 @@
 """vaultlib/meetings.py: parsing Gemini Docs and dropped transcripts (meetings spec §2.3 step 1, §6)."""
+import re
+from dataclasses import replace
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -79,6 +81,33 @@ def test_gemini_doc_every_section():
                        ("00:00:00", "Blake Sample", "Hi. The token = hunter2 is in [[Secrets]]."),
                        ("00:05:00", "Avery Sample", "Let's wrap up.")]
     assert m.complete is True
+
+
+def as_gemini_writes_it(text):
+    """The layout of real Docs (Plan 11 acceptance probe, 2026-10-06): every heading's text in bold, bullets
+    indented two spaces, and a Quick notes block first whose level-2 Next steps repeats the actions."""
+    text = re.sub(r"^(#{1,6}) (.+)$", r"\1 **\2**", text, flags=re.M)
+    text = re.sub(r"^- ", "  - ", text, flags=re.M)
+    quick = ("# **✍️ Quick notes**  \n\n## **Next steps**\n\n  - \\[Avery Sample\\] Draft plan: Send the draft.\n\n"
+             "# **📝 Full notes***  \n\n")
+    return quick + text.replace("📖 Transcript", "# **📖 Transcript***  ")
+
+
+def test_gemini_doc_as_gemini_writes_it_parses_like_the_plain_layout():
+    plain = meetings.parse_gdoc(gdoc(), TZ)
+    real = meetings.parse_gdoc(gdoc(as_gemini_writes_it(NOTES + TRANSCRIPT + END)), TZ)
+    # The real "# **📖 Transcript***" heading ends Details; the plain fixture's bare "📖 Transcript" line does not.
+    assert real.details == plain.details.split("\n\n")[0]
+    assert replace(real, details=plain.details) == plain
+
+
+def test_topic_headings_inside_a_section_stay_in_it_as_bold_lines():
+    body = NOTES.replace("### Decisions\n\n- The launch moves to Friday.\n",
+                         "### **Decisions**\n\n## **Launch**\n\n  - **Date** The launch moves to Friday.\n\n"
+                         "### **Pricing**\n\n  - **Tiers** Two tiers stay.\n")
+    m = meetings.parse_gdoc(gdoc(body + "\n# **📖 Transcript***\n" + TRANSCRIPT + END), TZ)
+    assert m.decisions == "**Launch**\n\n  - **Date** The launch moves to Friday.\n\n**Pricing**\n\n  - **Tiers** Two tiers stay."
+    assert len(m.actions) == 2 and m.details.startswith("- **Plan**")
 
 
 def test_gemini_doc_without_decisions_and_cut_short():

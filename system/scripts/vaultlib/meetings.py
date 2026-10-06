@@ -7,14 +7,14 @@ from pathlib import Path
 
 from . import frontmatter, redact as redactmod
 
-HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+HEADING = re.compile(r"^(#{1,6})\s+\**(.*?)\**\s*$")  # real Docs bold every heading: "### **Summary**"
 DOC_TITLE = re.compile(r"^(.*) - (\d{4})/(\d{2})/(\d{2}) (\d{2}):(\d{2}) \S+ - Notes by Gemini$")
 IMPROMPTU = re.compile(r"^(Meeting started) (\d{4})/(\d{2})/(\d{2}) (\d{2}):(\d{2}) \S+ - Notes by Gemini$")
 MAILTO = re.compile(r"\[([^\]]+)\]\(mailto:[^)]*\)")
 ACTION = re.compile(r"^\s*[-*]\s+(?:\[ \]\s+)?\\?\[(.+?)\\?\]\s*(.*)$")
 BULLET = re.compile(r"^\s*[-*]\s+(.*)$")
 TIMESTAMP = re.compile(r"^\d{2}:\d{2}:\d{2}$")
-ENDED = re.compile(r"^#{1,6}\s+Transcription ended after\b")
+ENDED = re.compile(r"^#{1,6}\s+\**Transcription ended after\b")
 BOLD_TURN = re.compile(r"^\*\*([^*\n]{1,80}?):\*\*\s*(.*)$")
 NAME_TURN = re.compile(r"^([A-Z][\w.'’-]*(?: [A-Z][\w.'’-]*){0,3}):\s+(.+)$")
 CUE_TIME = re.compile(r"^(?:(\d+):)?(\d{2}):(\d{2})[.,]\d{3}\s+-->")
@@ -91,10 +91,15 @@ def _gemini_body(text: str):
             continue
         if match:
             title = match.group(2)
+            level = len(match.group(1))
             if title.endswith(" - Transcript"):
                 in_transcript, current = True, None
-            else:
-                current = SECTIONS.get(title.lower()) if len(match.group(1)) >= 3 else None
+            elif level >= 3 and title.lower() in SECTIONS:
+                current = SECTIONS[title.lower()]
+            elif level == 1 or not current:
+                current = None
+            else:  # a topic heading inside a section (real Docs group Decisions under "## **Topic**")
+                sections[current].append(f"**{title}**")
             continue
         if line.startswith("Invited "):
             invited = MAILTO.findall(line)
