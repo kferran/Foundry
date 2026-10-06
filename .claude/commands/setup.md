@@ -12,7 +12,7 @@ Read the current role with `system/scripts/vault_index.py field system/config.md
 
 Then run `system/scripts/check_deps.sh --role <role>`. List every `missing` line with its install hint, and every `optional` line as optional. If `pyyaml` is missing, stop: setup cannot continue without it. Otherwise continue, noting which features are off (no `hyprctl` on a standalone machine: no focus tracking).
 
-On a client, skip phases 3, 6 and 9, and report each as "not used on a client". Phases 5 and 5a run on a client only to remove automation and memory hooks left from an earlier role.
+On a client, skip phases 3, 6, 6a and 9, and report each as "not used on a client". Phases 5 and 5a run on a client only to remove automation and memory hooks left from an earlier role.
 
 ## 1. Existing config
 If `system/config.md` exists, show its values and ask which to change. Otherwise create it from the example's frontmatter, without the example's body text, by running exactly this: `[ -f system/config.md ] || { awk '{ print } NR > 1 && /^---$/ { exit }' system/config.example.md; printf '# Config\n\nWritten by /setup. Re-run /setup to change it.\n'; } > system/config.md`. Use its values as the defaults below. Then record the role from phase 0 with `system/scripts/vault_index.py set system/config.md machine_role <role>`.
@@ -67,6 +67,15 @@ On a client, never install the hooks. Run `system/scripts/install_hooks.sh --dry
 ## 6. Calendar
 The brief reads today's calendar from the Google Calendar connector of the Claude account this machine's `claude` is logged in with. Run `system/scripts/calendar_fetch.sh` with a Bash timeout of at least 300000 ms (a fetch takes up to about three minutes and costs about $0.20). On exit 0, report how many events it printed for today. Otherwise report its `calendar_fetch:` line and what to do: exit 3, connect Google Calendar in the account's connector settings at claude.ai (same account as this machine), or log `claude` in with a claude.ai account; exit 6, reconnect it; exit 4, try again later; any other exit, show the line from `system/logs/calendar_fetch-<YYYY-MM>.jsonl`. A calendar failure never blocks setup: the brief then lists the calendar under Unavailable Sources.
 
+## 6a. Telemetry
+Optional error monitoring from Sentry and Azure Data Explorer (Plan 11). Skipped on a client.
+1. Show existing `system/telemetry/*.md` (except `example.md`) and ask whether to edit any. Never replace one.
+2. For each registered codebase, ask whether it reports errors to Sentry, ADX, both or neither. For Sentry: the API base URL (for example `https://us.sentry.io`), the organization slug, and the project slugs per environment. For ADX: the cluster URL, the database, and per environment the resource-attribute filter that selects it (empty for a whole database). Ask for a `rank` per environment (lower is listed first in the brief). Ask whether an ADX source `covers` its Sentry source only after the user confirms the codebase's Sentry SDK continues the OpenTelemetry traces (shares trace IDs with ADX); otherwise leave `covers` unset.
+3. Sentry needs a read-only token (`event:read`, `project:read`, `org:read`). Ask the user to write it themselves: `! mkdir -p ~/.config/foundry && (umask 077; cat > ~/.config/foundry/sentry.token)`, paste, Ctrl-D. Never ask for the token in chat. Check it is mode 0600.
+4. ADX uses the Azure CLI login: if `az account show` fails, ask the user to run `! az login`.
+5. Write each source as `system/telemetry/<name>.md` (`<codebase>-<environment>-<kind>` by default), run `system/scripts/vault_index.py validate system/telemetry/<name>.md`, then `system/scripts/telemetry_fetch.py --check <name>`. On a failed check, set `enabled: "false"` and report its line.
+6. If any source is enabled, re-run `system/scripts/install_units.sh --dry-run`, show the telemetry units, and install on an explicit yes (as in phase 5).
+
 ## 7. Index
 Run `system/scripts/vault_index.py rebuild`, then `system/scripts/vault_index.py issues`, and report any error. Then run `system/scripts/commit_runs.py --init-cutover`: it records the time from which `/backup` commits each headless run on its own; runs from before it are committed with the rest of the vault.
 
@@ -91,4 +100,4 @@ On a client, first set up Obsidian Git (the community plugin) and show these set
 
 If `git ls-files --error-unmatch .obsidian/plugins/obsidian-git/data.json` succeeds, run `git rm --cached .obsidian/plugins/obsidian-git/data.json` (the file is machine-specific and gitignored). The plugin runs the pre-commit hook inside Obsidian, whose `PATH` can differ from a terminal's: ask the user to make one test edit and confirm the plugin's commit succeeds; the hook's error names any missing tool. Then give the client notes: files dropped into `raw/inbox/` on a client are not synced (write notes in today's briefing between `#wiki-ingest-start` and `#wiki-ingest-end`); disable any plugin that creates `briefings/<date>.md` (daily notes, templates), because the server creates it; `/backup` on a client runs lint and then `vault_sync.sh`.
 
-Show a table of every item set up (role, config, each codebase, remote mode, each unit, linger, memory hooks, calendar, index, verification) with its status; on a client, the skipped items say "not used on a client". Remind the user to install the Obsidian **Dataview** plugin for the `wiki/Index.md` dashboards, and that `system/scripts/update_template.sh` pulls template updates.
+Show a table of every item set up (role, config, each codebase, remote mode, each unit, linger, memory hooks, calendar, telemetry sources, index, verification) with its status; on a client, the skipped items say "not used on a client". Remind the user to install the Obsidian **Dataview** plugin for the `wiki/Index.md` dashboards, and that `system/scripts/update_template.sh` pulls template updates.
