@@ -3578,7 +3578,7 @@ printf '%s\n' '#!/bin/bash' '[[ "${1:-}" == mcp ]] && exec "$REAL_CLAUDE" "$@"' 
   'exit "${PIPESTATUS[0]}"' > "$A/claude-tee"
 printf '%s\n' '#!/bin/bash' '[[ "${1:-}" == mcp ]] && exec "$REAL_CLAUDE" "$@"' \
   'exec "$A_TEE" --strict-mcp-config --mcp-config '"'"'{"mcpServers":{}}'"'"' "$@"' > "$A/claude-noconn"
-printf '%s\n' 'select(.type == "system") | {mcp_servers: [.mcp_servers[]?.name]}' \
+printf '%s\n' '(select(.type == "system") | {mcp_servers: [.mcp_servers[]?.name]})' \
   ', (select(.type == "user" and .tool_use_result != null) | {result: (.tool_use_result | if type == "object" then keys else type end), structured: ((.tool_use_result | objects | .structuredContent // {}) | keys)})' \
   ', (select(.type == "assistant") | .message.content[]? | select(.type == "tool_use") | {tool: .name, input: (.input | keys)})' > "$A/shape.jq"
 chmod +x "$A/claude-tee" "$A/claude-noconn"
