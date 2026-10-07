@@ -124,3 +124,44 @@ def test_research_rejected_by_gate_publishes_nothing(vault: Path, tmp_path):
     ok, detail = nd.publish_research(vault, {"output": "wiki/work/concepts/B.md", "partition": "work"}, findings)
     assert not ok and detail
     assert not (vault / "wiki/work/concepts/B.md").exists()
+
+
+def _protected(clone: Path, rel: str, text: str) -> None:
+    p = clone / ".nightshift" / "protected" / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text)
+
+
+def test_protected_files_are_committed_by_the_runner(tmp_path):
+    src = repo_with_commit(tmp_path / "src")
+    sha = git(src, "rev-parse", "HEAD").strip()
+    runner = tmp_path / "runner.git"
+    assert nd.fetch_branch(runner, src, "master", sha)[0]
+    _protected(src, ".claude/skills/demo/SKILL.md", "---\nname: demo\n---\n")
+    files, problems = nd.protected_files(src)
+    assert problems == [] and [r for r, _ in files] == [".claude/skills/demo/SKILL.md"]
+    ok, new = nd.apply_protected(runner, sha, "master", files, tmp_path)
+    assert ok and new != sha
+    assert git(runner, "show", f"{new}:.claude/skills/demo/SKILL.md") == "---\nname: demo\n---\n"
+    assert git(runner, "rev-parse", f"{new}^").strip() == sha
+    assert git(runner, "rev-parse", "master").strip() == new
+    assert git(runner, "show", f"{new}:a.txt") == "a"
+
+
+def test_protected_files_outside_the_allowed_folders_are_refused(tmp_path):
+    clone = tmp_path / "c"
+    _protected(clone, ".claude/settings.json", "{}")
+    _protected(clone, "system/scripts/x.sh", "echo")
+    (tmp_path / "secret").write_text("s")
+    link = clone / ".nightshift" / "protected" / ".claude" / "commands" / "x.md"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(tmp_path / "secret")
+    files, problems = nd.protected_files(clone)
+    assert files == [] and len(problems) == 3
+
+
+def test_no_protected_files_keeps_the_commit(tmp_path):
+    src = repo_with_commit(tmp_path / "src")
+    sha = git(src, "rev-parse", "HEAD").strip()
+    assert nd.protected_files(src) == ([], [])
+    assert nd.apply_protected(tmp_path / "runner.git", sha, "master", [], tmp_path) == (True, sha)
