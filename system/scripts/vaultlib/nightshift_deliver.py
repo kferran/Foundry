@@ -74,6 +74,64 @@ def fetch_branch(runner_repo, clone, branch: str, sha: str) -> tuple:
     return (True, "") if tip == sha else (False, f"branch moved after the check ({sha[:8]} -> {tip[:8]})")
 
 
+PROTECTED_DIRS = (".claude/skills/", ".claude/commands/", ".claude/agents/")
+PROTECTED_MAX = 256 * 1024
+
+
+def protected_files(clone) -> tuple:
+    """Files the session proposed under .nightshift/protected/ for paths it cannot write (.claude/).
+    Returns ([(path, bytes)], [problem]); only regular files under PROTECTED_DIRS are accepted."""
+    root = Path(clone) / ".nightshift" / "protected"
+    files, problems = [], []
+    if not root.is_dir():
+        return files, problems
+    real_root = os.path.realpath(root)
+    for p in sorted(root.rglob("*")):
+        rel = p.relative_to(root).as_posix()
+        if p.is_symlink() or not os.path.realpath(p).startswith(real_root + os.sep):
+            problems.append(f"{rel}: symlink refused")
+        elif p.is_dir():
+            continue
+        elif not rel.startswith(PROTECTED_DIRS) or ".." in rel.split("/"):
+            problems.append(f"{rel}: only {', '.join(PROTECTED_DIRS)} may be proposed")
+        elif not p.is_file() or p.stat().st_size > PROTECTED_MAX:
+            problems.append(f"{rel}: not a regular file under {PROTECTED_MAX // 1024} KB")
+        else:
+            files.append((rel, p.read_bytes()))
+    return files, problems
+
+
+def apply_protected(runner_repo, sha: str, branch: str, files, workdir) -> tuple:
+    """Commit the proposed files on top of sha inside the runner's own repository (plumbing only, so nothing in the
+    session-writable clone's git config or hooks runs). Returns (ok, new sha or reason)."""
+    if not files:
+        return True, sha
+    runner = str(runner_repo)
+    env = dict(_git_env(), GIT_INDEX_FILE=str(Path(workdir) / "protected.index"), GIT_AUTHOR_NAME="Nightshift",
+               GIT_AUTHOR_EMAIL="nightshift@localhost", GIT_COMMITTER_NAME="Nightshift",
+               GIT_COMMITTER_EMAIL="nightshift@localhost")
+
+    def git(*args, data=None):
+        r = subprocess.run(["git", "-C", runner, *args], input=data, capture_output=True, env=env)
+        if r.returncode:
+            raise RuntimeError(r.stderr.decode(errors="replace").strip())
+        return r.stdout.decode().strip()
+    try:
+        git("read-tree", sha)
+        for rel, data in files:
+            blob = git("hash-object", "-w", "--stdin", data=data)
+            git("update-index", "--add", "--cacheinfo", f"100644,{blob},{rel}")
+        tree = git("write-tree")
+        msg = "Add files the session proposed for protected paths\n\n" + "\n".join(f"- {r}" for r, _ in files) + "\n"
+        new = git("commit-tree", tree, "-p", sha, data=msg.encode())
+        git("update-ref", f"refs/heads/{branch}", new, sha)
+    except RuntimeError as exc:
+        return False, str(exc)
+    finally:
+        Path(env["GIT_INDEX_FILE"]).unlink(missing_ok=True)
+    return True, new
+
+
 def verify_sha(runner_repo, sha: str, vdir, cmds, log_path) -> tuple:
     """Run the verify commands on a private checkout of sha, so nothing they do reaches the commit that is pushed."""
     vdir = Path(vdir)

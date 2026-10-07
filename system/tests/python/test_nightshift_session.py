@@ -71,3 +71,7 @@ def test_profile_denies_common_credentials_and_extra_paths():
 
 def test_research_prompt_points_at_context():
     assert "context/" in ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")
+
+
+def test_plan_prompt_routes_protected_files():
+    assert ".nightshift/protected/" in ss.plan_prompt({"plan": "docs/p.md", "tasks": "1-2"})
