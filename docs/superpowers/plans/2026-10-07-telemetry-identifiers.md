@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `production_error` notes keep the Sentry issue title and one sample ADX log message, ticket identifiers included, mask only credentials and emails, and stop showing `[REDACTED:high_entropy]` in group keys, without changing any stored fingerprint.
+**Goal:** `production_error` notes keep the Sentry issue title and one sample ADX log message, ticket identifiers included, mask only credentials and emails, and group errors by their real route shapes and type names: no group key holds `[REDACTED:high_entropy]` any more, and only the groups whose keys held it change fingerprint.
 
-**Architecture:** `redact.py` gains `redact_credentials()`: the named detectors plus bare bearer tokens, URL passwords, connection-string keys and JSON secret fields, without the generic high-entropy guess. `telemetry.py` splits key cleaning in two: `group_key()` is today's `sanitize()` frozen byte for byte and feeds only the fingerprint, and `sanitize()` (what notes show) and the new `mask()` (free text) use `redact_credentials()`. The fetch carries Sentry `title` and an ADX `message = take_any(body)` column into a new optional `message` field, and the note store masks it at the same trust boundary that already re-checks every field.
+**Architecture:** `redact.py` gains `redact_credentials()`: the named detectors plus bare bearer tokens, URL passwords, connection-string keys and JSON secret fields, without the generic high-entropy guess. `telemetry.sanitize()` switches to it, so one key cleaning feeds both the fingerprint and the note: credentials and emails masked, GUIDs, long digit runs and hex ids collapsed to `<guid>`, `<n>`, `<hex>`, route shapes and type names kept. The new `mask()` cleans free text the same way without collapsing identifiers. The fetch carries Sentry `title` and an ADX `message = take_any(body)` column into a new optional `message` field, and the note store masks it at the same trust boundary that already re-checks every field.
 
 **Tech Stack:** Python 3 stdlib (`re`, `urllib.parse`), pytest, bats. No new dependency.
 
@@ -16,13 +16,14 @@
 
 - **Routes.** `/` and `-` are token characters, so a span route with no spaces is one token. A bare GUID is 36 characters at 3.88 bits and survives; joined into a path (`api/orders/<GUID>/credential-check`, 64 characters, above 4.0) the whole route is replaced, and the `GUID → <guid>` step never sees it.
 - **Type names.** `.` is not a token character, so the namespace survives, but a PascalCase type name of 32 or more characters clears 4.0 alone (`EDJAnnuitySuitabilitySubmissionFetchXML`: 39 characters, 4.23 bits). In the ultron codebase, many `EDJ…` and `…Dashboard…` class names do.
-- **Evidence in the vault.** 5 of 29 notes in `raw/telemetry/` carry the marker: `ultron-prod-adx-a-c79f07df3017` (`exception: "[REDACTED:high_entropy] 500"`, route key redacted, so its reopen KQL drops the route condition), `ultron-uat-adx-a-57a6beae009d` (`Porch.Core.Plugins.EDJ.[REDACTED:high_entropy]#9908`) and three `porch.slice` keys `Porch.Core.Partitions.ApplicationProjectDashboard.[REDACTED:high_entropy]`. `fingerprint("ultron-uat-adx", "log", {service: core-worker, scope: "Porch.Core.Plugins.EDJ.[REDACTED:high_entropy]", event_id: 9908, porch.partition: "", porch.slice: ""})` reproduces `a-57a6beae009d` exactly. `a-c79f07df3017` is reproduced by any long core-api route with status 500, because the hashed key is the literal marker: every such route has been counted in that one note.
+- **Evidence in the vault.** 5 of 29 notes in `raw/telemetry/` carry the marker: `ultron-prod-adx-a-c79f07df3017` (`exception: "[REDACTED:high_entropy] 500"`, route key redacted, so its reopen KQL drops the route condition), `ultron-uat-adx-a-57a6beae009d` (`Porch.Core.Plugins.EDJ.[REDACTED:high_entropy]#9908`) and three `porch.slice` keys `Porch.Core.Partitions.ApplicationProjectDashboard.[REDACTED:high_entropy]`. `fingerprint("ultron-uat-adx", "log", {service: core-worker, scope: "Porch.Core.Plugins.EDJ.[REDACTED:high_entropy]", event_id: 9908, porch.partition: "", porch.slice: ""})` reproduces `a-57a6beae009d` exactly. `a-c79f07df3017` is reproduced by any long core-api route with status 500, because the hashed key is the literal marker: every such route has been counted in that one note. Task 2 removes the guess from key cleaning, so these groups split into their real errors (user decision, 2026-10-07).
 
 ## Global Constraints
 
 - User decision (2026-10-07), verbatim: "Ticket identifiers are needed and maintaining which env can show them in logs is unnecessary. This isn't PII data." It applies to every source and environment.
 - Mask only credential-shaped strings (API keys, bearer tokens, connection strings, passwords) and email addresses. GUIDs, application IDs such as `K7-55Q0R-A-01`, numbers, long type names and URL paths stay.
-- Fingerprints must not change for any group: `group_key()` stays byte-identical to the pre-change `sanitize()`, high-entropy guess included. Known ceiling: the guess still runs on every new row, so any key it hits (a long route, a type name of 32 or more characters) keeps hashing to the marker, and distinct values with otherwise equal keys share one group, now and later. Dropping the guess from `group_key()` would split only the groups whose keys hold the marker (5 notes in the vault today); that is the user's call, not this plan's.
+- Group keys drop the high-entropy guess (user decision, 2026-10-07: fix the grouping key). `sanitize` ran `redact()` before its shape steps (query strip, `<guid>`, `<email>`, `<hex>`, `<n>`, 200-character cut); it now runs `redact_credentials()`, which is `redact()` without the guess plus four patterns. A fingerprint therefore changes only where the guess fired (the key held the marker) or where one of the four patterns fires on a raw key (a credential in clear inside a route, scope or module value; none of the 29 vault notes has one). Every other fingerprint stays byte-identical; `test_vault_fingerprints_without_the_marker_do_not_change` pins three from the vault.
+- The 5 marker notes (`ultron-prod-adx-a-c79f07df3017`, `ultron-uat-adx-a-57a6beae009d`, `-a-8ee692ba7175`, `-a-a3850c69052e`, `-a-a901bbb809ca`) get no migration. No row hashes to their fingerprints after Task 2, so their `last_seen` stops moving and `resolve_stale` marks them `resolved` after the existing 7-day quiet rule; they are never deleted. The split groups start as new notes with counts from the next fetch window (no backfill) and go through the capped Sentry cover lookup like any new group.
 - `redact()` called with its default argument behaves exactly as before (digests, inbox copies and meeting notes use it).
 - Group keys in notes keep their shape (`<guid>`, `<n>`, `<hex>`, `<email>`, query strings dropped) so one group covers many tickets and the reopen KQL keeps dropping placeholder conditions.
 - `message` is masked, folded to one line and cut at 500 characters after masking. State and the run log hold no free text.
@@ -30,22 +31,23 @@
 
 ## Review Focus
 
-1. A log row with a null or missing `Body`, and every span: no `message:` line, and the note still validates (Task 2, `test_span_group_keeps_fingerprint_and_shows_route_shape`; Task 3, `test_existing_note_gains_message_and_keeps_it`).
-2. A message with newlines, tabs, double quotes or backslashes: one frontmatter line that parses back to the folded text (Task 3, `test_message_is_one_line_and_round_trips`).
-3. A credential next to the 500-character cut: masked before the cut, so no fragment survives (Task 2, `test_mask_edges`).
-4. A structured or JSON `Body` (`{"password":"…"}`), and `<private>` tags in a body, unterminated included: the secret field and the private span are masked (Task 1 parametrize row, Task 2 `test_mask_edges`).
-5. A later row or issue with no message after one with a message, and a status change by the run: the earlier message stays (Task 3, `test_existing_note_gains_message_and_keeps_it`).
+1. Fingerprints: the three vault groups without the marker keep their note file names, and the two long GUID routes that both landed in `a-c79f07df3017` now land in two notes with `<guid>` route shapes (Task 2, `test_vault_fingerprints_without_the_marker_do_not_change`, `test_marker_groups_split_into_real_routes_and_type_names`).
+2. A log row with a null or missing `Body`, and every span: no `message:` line, and the note still validates (Task 2, `test_marker_groups_split_into_real_routes_and_type_names`; Task 3, `test_existing_note_gains_message_and_keeps_it`).
+3. A message with newlines, tabs, double quotes or backslashes: one frontmatter line that parses back to the folded text (Task 3, `test_message_is_one_line_and_round_trips`).
+4. A credential next to the 500-character cut: masked before the cut, so no fragment survives (Task 2, `test_mask_edges`).
+5. A structured or JSON `Body` (`{"password":"…"}`), and `<private>` tags in a body, unterminated included: the secret field and the private span are masked (Task 1 parametrize row, Task 2 `test_mask_edges`).
+6. A later row or issue with no message after one with a message, and a status change by the run: the earlier message stays (Task 3, `test_existing_note_gains_message_and_keeps_it`).
 
 ## File Structure
 
 | File | Change |
 |---|---|
 | `system/scripts/vaultlib/redact.py` | `redact(text, high_entropy=True)`; new `redact_credentials(text)` and its four patterns |
-| `system/scripts/vaultlib/telemetry.py` | `_text`, `_shape`, `group_key`, `sanitize` (credentials only), `mask`, `event_id(value, clean)`, `keys_of`; `kql_logs` returns `message` |
+| `system/scripts/vaultlib/telemetry.py` | `sanitize` (credentials and emails masked, no high-entropy guess), `mask`; `kql_logs` returns `message` |
 | `system/scripts/vaultlib/telemetry_store.py` | `message` in `NOTE_FIELDS`, `_clean` and `upsert` |
 | `system/schemas/production_error.md` | optional `message` field; body text |
 | `system/scripts/vaultlib/sentry.py` | keep `title` |
-| `system/scripts/vaultlib/telemetry_run.py` | fingerprint from `group_key`, keys from `sanitize` (Task 2); `message` from the row or issue (Task 4) |
+| `system/scripts/vaultlib/telemetry_run.py` | `message` from the row or issue (Task 4); keys and fingerprints keep calling `t.sanitize` |
 | `system/tests/fixtures/telemetry/kusto-logs.json`, `system/tests/telemetry.bats` | a `message` column and one end-to-end check |
 | `system/tests/python/test_redact.py`, `test_telemetry_core.py`, `test_telemetry_store.py`, `test_telemetry_schema.py`, `test_sentry.py`, `test_telemetry_run.py` | tests below |
 | `docs/superpowers/specs/2026-10-05-error-monitoring-design.md`, `README.md` | data policy text |
@@ -173,18 +175,17 @@ git add system/scripts/vaultlib/redact.py system/tests/python/test_redact.py
 git commit -m "feat(redact): redact_credentials masks credential shapes only, no high-entropy guess"
 ```
 
-### Task 2: Key cleaning split, `mask`, and the log message column
+### Task 2: Group keys without the high-entropy guess, `mask`, and the log message column
 
 **Files:**
-- Modify: `system/scripts/vaultlib/telemetry.py:10` (import), `:112-124` (`kql_logs`), `:175-188` (`sanitize`, `event_id`)
-- Modify: `system/scripts/vaultlib/telemetry_run.py:59-74` (`_adx_groups` loop)
+- Modify: `system/scripts/vaultlib/telemetry.py:10` (import), `:112-124` (`kql_logs`), `:175-182` (`sanitize`)
 - Test: `system/tests/python/test_telemetry_core.py`, `system/tests/python/test_telemetry_store.py`, `system/tests/python/test_telemetry_run.py`
 
 **Interfaces:**
-- Consumes: `redact(text, high_entropy=True)`, `redact_credentials(text) -> str` (Task 1).
-- Produces: `group_key(value) -> str` (fingerprint input, frozen); `sanitize(value) -> str` (key as shown); `mask(value, limit: int = 500) -> str`; `event_id(value, clean=None) -> str`; `keys_of(raw: dict, clean=None) -> dict`; `kql_logs` rows carry a `message` column; `_adx_groups` hashes `keys_of(raw, group_key)` and shows `keys_of(raw)`.
+- Consumes: `redact_credentials(text) -> str` (Task 1).
+- Produces: `sanitize(value) -> str`, the one key cleaning that both the fingerprint and the note use, now without the high-entropy guess; `mask(value, limit: int = 500) -> str`; `kql_logs` rows carry a `message` column. `_adx_groups`, `_sentry_groups`, `event_id` and `Store._clean` keep calling `sanitize` unchanged.
 
-`sanitize` changes meaning in this task, and `_adx_groups` hashes what it returns today, so the fingerprint switch to `group_key` lands in the same commit: no commit of this plan changes a stored fingerprint.
+This task changes the fingerprint of every group whose key held `[REDACTED:high_entropy]` and of no other group (Global Constraints).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -207,21 +208,7 @@ def test_sanitize_keeps_long_type_names_and_route_shapes():
     assert t.sanitize(GUID_ROUTE) == "api/orders/<guid>/credential-check"
     assert t.sanitize("K7-55Q0R-A-01") == "K7-55Q0R-A-01"
     assert t.sanitize("db password=hunter2") == "db password=[REDACTED:assignment]"
-
-
-def test_group_key_is_frozen_so_existing_groups_keep_their_fingerprints():
-    # the values the pre-2026-10-07 sanitize produced, and the fingerprints stored under them
-    assert t.group_key(GUID_ROUTE) == "[REDACTED:high_entropy]"
-    assert t.group_key(LONG_SCOPE) == "Shop.Plugins.[REDACTED:high_entropy]"
-    span = {"service": "api", "route": GUID_ROUTE, "status": "500"}
-    log = {"service": "worker", "scope": LONG_SCOPE, "event_id": "9908"}
-    assert t.fingerprint("prod-adx", "span", t.keys_of(span, t.group_key)) == "a-8ad53f34a72b"
-    assert t.fingerprint("prod-adx", "log", t.keys_of(log, t.group_key)) == "a-84a0e06c0acd"
-    assert t.fingerprint("prod-adx", "log", t.keys_of({"service": "api", "scope": "Shop.Orders", "event_id": "4012"},
-                                                      t.group_key)) == "a-9452027847c1"
-    assert t.fingerprint("prod-adx", "span", t.keys_of({"service": "api", "route": "GET /items/12345?sig=abc",
-                                                        "status": "500"}, t.group_key)) == "a-c8c59b936a68"
-    assert t.keys_of(log) == {"service": "worker", "scope": LONG_SCOPE, "event_id": "9908"}
+    assert t.sanitize("call Bearer Zm9vYmFyYmF6cXV4MTIzNDU2") == "call Bearer [REDACTED:bearer]"
 
 
 def test_mask_keeps_identifiers_and_masks_credentials_and_emails():
@@ -264,30 +251,69 @@ def test_long_type_names_are_not_redacted(vault):
 Append to `system/tests/python/test_telemetry_run.py` (it uses the module's existing `GUID` constant):
 
 ```python
-def test_span_group_keeps_fingerprint_and_shows_route_shape(v, monkeypatch):
-    write(v, "system/telemetry/prod-adx.md", ADX.format(covers="").replace('adx_signals: ["logs"]', 'adx_signals: ["spans"]'))
-    span = {"service": "api", "route": f"api/orders/{GUID}/credential-check", "status": 500, "n": 1,
-            "first_ts": "2026-10-05T10:00:00Z", "last_ts": "2026-10-05T11:00:00Z", "traces": 1,
-            "sample_trace": "0af7651916cd43dd8448eb211c80319c"}
-    monkeypatch.setattr(kusto, "query", lambda *a, **k: [span])
+def _ultron(v, name):
+    write(v, f"system/telemetry/{name}.md", ADX.format(covers="").replace('"prod-adx"', f'"{name}"').replace(
+        'adx_signals: ["logs"]', 'adx_signals: ["logs", "spans"]\nadx_group_keys: ["porch.partition", "porch.slice"]'))
+
+
+def _rows(logs, spans):
+    return lambda c, d, kql, n: logs if kql.startswith("Logs") else spans
+
+
+SPAN_ROW = {"service": "core-api", "status": 500, "n": 1, "first_ts": "2026-10-05T10:00:00Z",
+            "last_ts": "2026-10-05T11:00:00Z", "traces": 1, "sample_trace": "0af7651916cd43dd8448eb211c80319c"}
+
+
+def test_vault_fingerprints_without_the_marker_do_not_change(v, monkeypatch):
+    """Three groups from the vault's raw/telemetry notes, stored before 2026-10-07 with no [REDACTED:high_entropy] in
+    their keys: their fingerprints, and so their note file names, must not move. Passes before and after Task 2."""
+    _ultron(v, "ultron-uat-adx")
+    _ultron(v, "ultron-prod-adx")
+    logs = [dict(LOG_ROW, service="core-worker", scope="Porch.Bedrock.Services.PostmarkEmailService", event_id="1800",
+                 module_0="Porch.Core.Partitions.ApplicationProject.ApplicationProjectPartition",
+                 module_1="Porch.Core.Partitions.ApplicationProject.ApplicationProjectEmailNotificationSlice"),
+            dict(LOG_ROW, service="dtcc-worker", scope="Quartz.Impl.AdoJobStore.ClusterManager", event_id="",
+                 module_0="", module_1="")]
+    spans = [dict(SPAN_ROW, route="api/edj/advisor-credentials/ticket-credential-check")]
+    monkeypatch.setattr(kusto, "query", _rows(logs, spans))
     assert telemetry_run.main([], v, NOW) == 0
-    # a-8ad53f34a72b is the fingerprint the code before this plan gave this group: the note does not split
-    note = (v / "raw/telemetry/prod-adx-a-8ad53f34a72b.md").read_text()
-    assert 'exception: "api/orders/<guid>/credential-check 500"' in note and "high_entropy" not in note
-    assert "message:" not in note
+    for rel in ["ultron-uat-adx-a-c3e2f52dc29b.md", "ultron-uat-adx-a-3b5cb41c814c.md", "ultron-prod-adx-a-626b0a509922.md"]:
+        assert (v / "raw/telemetry" / rel).is_file(), rel
+
+
+def test_marker_groups_split_into_real_routes_and_type_names(v, monkeypatch):
+    """Before 2026-10-07 both routes hashed to a-c79f07df3017 (route key "[REDACTED:high_entropy]") and the long scope
+    to a-57a6beae009d; now each lands in its own group under its real shape."""
+    _ultron(v, "ultron-uat-adx")
+    _ultron(v, "ultron-prod-adx")
+    spans = [dict(SPAN_ROW, route=f"api/orders/{GUID}/credential-check"),
+             dict(SPAN_ROW, route=f"api/edj/advisor-credentials/{GUID}/ticket-credential-check")]
+    log = dict(LOG_ROW, service="core-worker", scope="Porch.Core.Plugins.EDJ.EDJAnnuitySuitabilitySubmissionFetchXML",
+               event_id="9908", module_0="", module_1="")
+    monkeypatch.setattr(kusto, "query", _rows([log], spans))
+    assert telemetry_run.main([], v, NOW) == 0
+    tele = v / "raw/telemetry"
+    assert not (tele / "ultron-prod-adx-a-c79f07df3017.md").exists()
+    assert not (tele / "ultron-uat-adx-a-57a6beae009d.md").exists()
+    notes = [p.read_text() for p in tele.glob("ultron-prod-adx-a-*.md")]
+    assert sorted(l for n in notes for l in n.splitlines() if l.startswith("exception:")) == [
+        'exception: "Porch.Core.Plugins.EDJ.EDJAnnuitySuitabilitySubmissionFetchXML#9908"',
+        'exception: "api/edj/advisor-credentials/<guid>/ticket-credential-check 500"',
+        'exception: "api/orders/<guid>/credential-check 500"']
+    assert all("high_entropy" not in n and "message:" not in n for n in notes)
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `python3 -m pytest system/tests/python/test_telemetry_core.py system/tests/python/test_telemetry_run.py -q`
-Expected: FAIL. `test_kql_filter_and_group_keys_are_quoted` (no `body =`), `test_sanitize_keeps_long_type_names_and_route_shapes` (`Shop.Plugins.[REDACTED:high_entropy]` != the scope), `AttributeError: module 'vaultlib.telemetry' has no attribute 'group_key'` / `'mask'` in the others, `test_long_type_names_are_not_redacted` (the store's `_clean` still redacts the scope), and `test_span_group_keeps_fingerprint_and_shows_route_shape` on its `exception` assertion (the note holds `[REDACTED:high_entropy] 500`).
+Run: `python3 -m pytest system/tests/python/test_telemetry_core.py system/tests/python/test_telemetry_store.py system/tests/python/test_telemetry_run.py -q`
+Expected: FAIL. `test_kql_filter_and_group_keys_are_quoted` (no `body =`), `test_sanitize_keeps_long_type_names_and_route_shapes` (`Shop.Plugins.[REDACTED:high_entropy]` != the scope), `AttributeError: module 'vaultlib.telemetry' has no attribute 'mask'` in the two mask tests, `test_long_type_names_are_not_redacted` (the store's `_clean` still redacts the scope), and `test_marker_groups_split_into_real_routes_and_type_names` on its first `assert not` (the old code writes `ultron-prod-adx-a-c79f07df3017.md`). `test_vault_fingerprints_without_the_marker_do_not_change` passes: it guards the step below.
 
 - [ ] **Step 3: Implement**
 
 In `system/scripts/vaultlib/telemetry.py`, change the import (`:10`):
 
 ```python
-from .redact import redact, redact_credentials
+from .redact import redact_credentials
 ```
 
 In `kql_logs`, replace the `extend` and `summarize` lines so the function reads:
@@ -309,14 +335,18 @@ def kql_logs(src: Source, start: datetime, end: datetime, limit: int = 500) -> s
                       f"| take {limit}"])
 ```
 
-Replace `sanitize` and `event_id` (`:175-188`) with:
+Replace `sanitize` (`:175-182`) with:
 
 ```python
 def _text(value) -> str:
     return urllib.parse.unquote(str(value if value is not None else ""))
 
 
-def _shape(text: str) -> str:
+def sanitize(value) -> str:
+    """One group key, as the fingerprint hashes it and the note shows it: credentials and emails masked, IDs and
+    numbers collapsed to their shape. No high-entropy guess (dropped 2026-10-07): it hit GUID-bearing routes and long
+    type names and merged unrelated errors into one group."""
+    text = redact_credentials(_text(value))
     text = QUERY.sub("", text)
     text = GUID.sub("<guid>", text)
     text = EMAIL.sub("<email>", text)
@@ -325,60 +355,14 @@ def _shape(text: str) -> str:
     return text[:200]
 
 
-def group_key(value) -> str:
-    """One key as the fingerprint sees it. Frozen: it is the pre-2026-10-07 sanitize, high-entropy guess included, so
-    stored groups keep their fingerprints. Changing it splits groups. Never written to a note."""
-    return _shape(redact(_text(value))[0])
-
-
-def sanitize(value) -> str:
-    """One key as notes show it: credentials and emails masked, IDs and numbers collapsed to their shape."""
-    return _shape(redact_credentials(_text(value)))
-
-
 def mask(value, limit: int = 500) -> str:
     """Free text kept for triage (Sentry title, sample log message): credentials and emails masked, identifiers kept,
     whitespace folded to single spaces, cut at `limit` after masking."""
     text = EMAIL.sub("<email>", redact_credentials(_text(value)))
     return " ".join(text.split())[:limit]
-
-
-def event_id(value, clean=None) -> str:
-    """A logger EventId is a code constant, the grouping key itself: keep a plain integer, clean anything else."""
-    v = str(value if value is not None else "")
-    return v if re.fullmatch(r"-?\d{1,9}", v) else (clean or sanitize)(v)
-
-
-def keys_of(raw: dict, clean=None) -> dict:
-    """Every group key cleaned by `clean` (default `sanitize`); `event_id` keeps a plain integer."""
-    clean = clean or sanitize
-    return {k: event_id(v, clean) if k == "event_id" else clean(v) for k, v in raw.items()}
 ```
 
-`trace_id` and `fingerprint` stay as they are.
-
-In `system/scripts/vaultlib/telemetry_run.py`, replace the `for r in rows:` loop in `_adx_groups` (`:59-74`) with:
-
-```python
-        for r in rows:
-            if signal == "logs":
-                raw = {"service": r.get("service"), "scope": r.get("scope"), "event_id": r.get("event_id")}
-                raw.update({k: r.get(f"module_{i}") for i, k in enumerate(src.adx_group_keys)})
-                kind = "log"
-            else:
-                raw, kind = {"service": r.get("service"), "route": r.get("route"), "status": r.get("status")}, "span"
-            keys = t.keys_of(raw)
-            exception = f"{keys['scope']}#{keys['event_id']}" if kind == "log" else f"{keys['route']} {keys['status']}"
-            # the fingerprint hashes the frozen key form, so groups stored before 2026-10-07 keep their notes.
-            # ponytail: group_key still applies the high-entropy guess, so keys it hits (long routes, long type names)
-            # share one group, now and for new rows; dropping it there splits only the groups whose keys hold the marker.
-            fp = t.fingerprint(src.name, kind, t.keys_of(raw, t.group_key))
-            groups.append({"fingerprint": fp, "source": src.name, "environment": src.environment, "codebase": src.codebase,
-                           "partition": src.partition, "kind": kind, "service": keys["service"], "exception": exception,
-                           "operation_id": t.trace_id(r.get("sample_trace")), "detected_at": str(r.get("first_ts")),
-                           "last_seen": str(r.get("last_ts")), "count": int(r.get("n") or 0), "keys": keys,
-                           "filters": t._filters(src)})
-```
+`event_id`, `trace_id` and `fingerprint` stay as they are, and so does `telemetry_run.py`: `_adx_groups` already hashes the keys `sanitize` returns.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -388,8 +372,8 @@ Expected: all pass, including `test_kql_aliases_avoid_reserved_words` (`body` an
 - [ ] **Step 5: Commit**
 
 ```bash
-git add system/scripts/vaultlib/telemetry.py system/scripts/vaultlib/telemetry_run.py system/tests/python/test_telemetry_core.py system/tests/python/test_telemetry_store.py system/tests/python/test_telemetry_run.py
-git commit -m "fix(telemetry): keys keep long names and route shapes; fingerprints hash the frozen key form"
+git add system/scripts/vaultlib/telemetry.py system/tests/python/test_telemetry_core.py system/tests/python/test_telemetry_store.py system/tests/python/test_telemetry_run.py
+git commit -m "fix(telemetry): group keys drop the high-entropy guess; marker groups split into real routes and type names"
 ```
 
 ### Task 3: `message` in the note store and the schema
@@ -400,7 +384,7 @@ git commit -m "fix(telemetry): keys keep long names and route shapes; fingerprin
 - Test: `system/tests/python/test_telemetry_store.py`, `system/tests/python/test_telemetry_schema.py`
 
 **Interfaces:**
-- Consumes: `mask`, `keys_of`, `event_id`, `sanitize`, `trace_id`, `kql_reopen` (Task 2).
+- Consumes: `mask` (Task 2); `event_id`, `sanitize`, `trace_id`, `kql_reopen` as before.
 - Produces: `Store.upsert(g, now)` accepts an optional raw `g["message"]` (masked here, the trust boundary) and writes frontmatter `message`; a later upsert without one keeps the note's earlier `message`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -475,14 +459,14 @@ def test_production_error_message_field_is_known(vault):
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `python3 -m pytest system/tests/python/test_telemetry_store.py system/tests/python/test_telemetry_schema.py -q`
-Expected: FAIL. `KeyError: 'message'` in the privacy and round-trip tests (the store drops the field), `test_existing_note_gains_message_and_keeps_it` fails on its second `read`, and the schema test lists an `unknown-field` row for `message`.
+Expected: FAIL. `KeyError: 'message'` in the privacy test (the store drops the field), `assert 0 == 1` (no `message:` line) in the round-trip test, `KeyError: 'message'` on the second `read` of `test_existing_note_gains_message_and_keeps_it`, and the schema test lists an `unknown-field` row for `message`.
 
 - [ ] **Step 3: Implement**
 
 In `system/scripts/vaultlib/telemetry_store.py`, change the import (`:11`):
 
 ```python
-from .telemetry import event_id, keys_of, kql_reopen, mask, sanitize, trace_id
+from .telemetry import event_id, kql_reopen, mask, sanitize, trace_id
 ```
 
 Replace `NOTE_FIELDS` (`:15-17`):
@@ -493,11 +477,9 @@ NOTE_FIELDS = ("type", "service", "exception", "message", "operation_id", "detec
                "regressed", "sentry_issue", "covered", "culprit", "link")
 ```
 
-In `_clean`, replace the `g["keys"] = …` line and add the `message` check after the `culprit` one:
+In `_clean`, add the `message` check after the `culprit` one:
 
 ```python
-    g["keys"] = keys_of(g.get("keys") or {})
-    g["service"] = sanitize(g.get("service"))
     if g.get("culprit"):
         g["culprit"] = sanitize(g["culprit"])
     if g.get("message"):
@@ -543,7 +525,7 @@ git commit -m "feat(telemetry): production_error notes keep a masked message"
 - Test: `system/tests/python/test_sentry.py`, `system/tests/python/test_telemetry_run.py`
 
 **Interfaces:**
-- Consumes: `_adx_groups` as rewritten in Task 2; `kql_logs` `message` column (Task 2); `Store.upsert` with `message` (Task 3).
+- Consumes: `kql_logs` `message` column (Task 2); `Store.upsert` with `message` (Task 3).
 - Produces: ADX log groups and Sentry groups carry a raw `message`, masked by the store.
 
 - [ ] **Step 1: Write the failing tests**
@@ -554,7 +536,7 @@ In `system/tests/python/test_sentry.py`, replace line 48:
     assert got[0]["title"] == ISSUE["title"] and "bob@example.com" not in json.dumps(got)
 ```
 
-In `system/tests/python/test_telemetry_run.py`, replace the block from `GUID = "3f2b8a1e-…"` (`:310`) through the end of `test_privacy_end_to_end` (`:335`; Task 2's span test stays after it) with:
+In `system/tests/python/test_telemetry_run.py`, replace the block from `GUID = "3f2b8a1e-…"` (`:310`) through the end of `test_privacy_end_to_end` (`:335`; Task 2's tests stay after it) with:
 
 ```python
 GUID = "3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b"
@@ -597,14 +579,13 @@ def test_privacy_end_to_end(v, monkeypatch, capsys):
         assert GUID in msg and APP in msg and "Ticket " in msg
 
 
-def test_log_group_keeps_fingerprint_shows_real_scope_and_message(v, monkeypatch):
+def test_log_group_shows_real_scope_and_message(v, monkeypatch):
     write(v, "system/telemetry/prod-adx.md", ADX.format(covers=""))
     scope = "Shop.Plugins.EDJAnnuitySuitabilitySubmissionFetchXML"
     row = dict(LOG_ROW, service="worker", scope=scope, event_id="9908", message=f"Ticket {GUID} failed")
     monkeypatch.setattr(kusto, "query", lambda *a, **k: [row])
     assert telemetry_run.main([], v, NOW) == 0
-    # a-84a0e06c0acd is the fingerprint the code before this plan gave this group: the note does not split
-    note = (v / "raw/telemetry/prod-adx-a-84a0e06c0acd.md").read_text()
+    [note] = [p.read_text() for p in (v / "raw/telemetry").glob("prod-adx-a-*.md")]
     assert f'exception: "{scope}#9908"' in note and "high_entropy" not in note
     assert f'message: "Ticket {GUID} failed"' in note
 
@@ -644,7 +625,7 @@ In `system/tests/telemetry.bats`, add after the first test:
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `python3 -m pytest system/tests/python/test_sentry.py system/tests/python/test_telemetry_run.py -q && bats system/tests/telemetry.bats`
-Expected: FAIL. `KeyError: 'title'` in `test_issues_keep_only_allowed_fields_and_follow_cursor`; `IndexError` (no `message:` line) in `test_privacy_end_to_end`; `test_log_group_keeps_fingerprint_shows_real_scope_and_message` and `test_sentry_title_becomes_the_message` fail on their `message:` assertions (the note file name already matches, from Task 2); the new bats test fails on `grep -qF`.
+Expected: FAIL. `KeyError: 'title'` in `test_issues_keep_only_allowed_fields_and_follow_cursor`; `IndexError` (no `message:` line) in `test_privacy_end_to_end`; `test_log_group_shows_real_scope_and_message` and `test_sentry_title_becomes_the_message` fail on their `message:` assertions; the new bats test fails on `grep -qF`.
 
 - [ ] **Step 3: Implement**
 
@@ -661,7 +642,7 @@ KEEP = ("id", "shortId", "permalink", "project", "level", "status", "substatus",
 
 `_slim` already copies every `KEEP` key present in the issue, so `title` comes through; `metadata.value` and other tags are still dropped.
 
-In `system/scripts/vaultlib/telemetry_run.py`, in the `groups.append({...})` call of `_adx_groups` (as rewritten in Task 2), add after `"exception": exception,`:
+In `system/scripts/vaultlib/telemetry_run.py`, in the `groups.append({...})` call of `_adx_groups`, add after `"exception": exception,`:
 
 ```python
                            "message": r.get("message"),
@@ -680,13 +661,13 @@ The message stays raw in memory; `Store._clean` masks it before anything is writ
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m pytest system/tests/python -q && bats system/tests/telemetry.bats`
-Expected: all pass (681 before this plan plus the new tests), and 6 bats tests ok.
+Expected: 703 passed (681 before this plan), and 6 bats tests ok.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add system/scripts/vaultlib/sentry.py system/scripts/vaultlib/telemetry_run.py system/tests/fixtures/telemetry/kusto-logs.json system/tests/telemetry.bats system/tests/python/test_sentry.py system/tests/python/test_telemetry_run.py
-git commit -m "feat(telemetry): notes carry the Sentry title and a sample log message; fingerprints unchanged"
+git commit -m "feat(telemetry): notes carry the Sentry title and a sample log message"
 ```
 
 ### Task 5: Spec and README follow the new data policy
@@ -747,7 +728,7 @@ It also returns `message = take_any(body)` (`body = tostring(Body)`), outside th
 At the end of the Fingerprint sentence (`:94`), add:
 
 ```markdown
-The fingerprint hashes the keys through `group_key`, the key cleaning in use before 2026-10-07 (it still applies the high-entropy guess), so stored groups keep their notes; notes show the keys through `sanitize`, which masks only credentials and emails before collapsing IDs to their shape.
+The fingerprint hashes the keys as notes show them (`sanitize`: credentials and emails masked, IDs collapsed to their shape). Since 2026-10-07 key cleaning skips the generic high-entropy guess, which had merged long GUID-bearing routes and long type names into one `[REDACTED:high_entropy]` group; those groups split into their real errors, and their old notes stop updating and resolve after 7 quiet days. Every other fingerprint is unchanged.
 ```
 
 In the §4 table, add after the `exception` row (`:125`):
@@ -784,7 +765,7 @@ In `README.md`:
 - [ ] **Step 4: Run the full suites**
 
 Run: `python3 -m pytest system/tests/python -q && bats system/tests/telemetry.bats`
-Expected: all pass.
+Expected: 704 passed, and 6 bats tests ok.
 
 - [ ] **Step 5: Commit**
 
