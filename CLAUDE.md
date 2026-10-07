@@ -6,7 +6,7 @@
 - `raw/inbox/`: manual drops (unstructured). `raw/archive/`: compiled drops. `raw/telemetry/`: production-error notes (not ingested).
 - `raw/<partition>/notes/`: pending session digests; `raw/<partition>/archive/`: compiled digests.
 - `raw/<partition>/nightshift/`: Nightshift queue notes (tracked; never ingested).
-- `wiki/work/`, `wiki/personal/`, `wiki/shared/`: compiled notes in `concepts/`, `entities/`, `summaries/` (and `preferences/` outside `shared`). `wiki/Index.md` is the cross-partition index.
+- `wiki/work/`, `wiki/personal/`, `wiki/shared/`: compiled notes in `concepts/`, `entities/`, `summaries/` (and `preferences/` outside `shared`), and `changes/` (`dtcc_change` notes from the DTCC watcher). `wiki/Index.md` is the cross-partition index.
 - `wiki/<partition>/meetings/`: meeting notes and their `.transcript.md` notes, written only by the meeting import (tick an action item's checkbox to close it). `meetings/drop/<partition>/`: drop meeting transcripts here (`.vtt`, `.srt`, `.txt`, `.md`); the server imports and removes them. `raw/meetings/`: fetched Gemini notes awaiting import.
 - `wiki/.staging/<run_id>/`: headless output awaiting publish. Never edit it by hand.
 - `briefings/`: `<date>.md` (morning briefing) and `<date>.debrief.md` (evening debrief, embedded in the briefing). Write your own notes in the briefing's 📝 Notes section. Each brief moves earlier days to `briefings/archive/<YYYY-MM>/`.

@@ -318,3 +318,10 @@ codebase() {  # <name> <path>
   run "$BP" 2026-10-01
   grep -qx '# Nightshift: 2026-10-01' "$IN/nightshift.md"
 }
+
+@test "brief_prep: dtcc.md is written, empty without a map" {
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -e "$IN/dtcc.md" ]
+  [ ! -s "$IN/dtcc.md" ]
+}

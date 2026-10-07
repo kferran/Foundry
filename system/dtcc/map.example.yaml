@@ -1,0 +1,18 @@
+# Copy to system/dtcc/map.yaml and commit it to your vault (never to the template).
+# Spec: docs/superpowers/specs/2026-10-06-dtcc-change-watcher-design.md §5
+partition: work
+hub: '[[Dtcc]]'            # the vault's DTCC hub note, linked from every change note
+notice_keywords: ['\bI&RS\b', '\binsurance\b', '\bannuit']
+codebases:
+  example-app: {ref: origin/main}   # a registered codebase (system/codebases/example-app.md)
+products:
+  app-sub:
+    page: app-sub                   # Learning Center slug under insurance-retirement-services/
+    notice_codes: [APP, SUB]
+    codebase: example-app
+    paths: [src/dtcc/appsub/, docs/appsub-layout.xlsx]
+    owner: dtcc-backend
+    pin: v25-5
+    notes: ['[[ExampleAppSubMapping]]']   # background notes for this product
+    api_assets: []                        # Marketplace asset names (case-insensitive substring)
+ignore: [PAR, RPL]   # known products this vault does not use: no unmapped note

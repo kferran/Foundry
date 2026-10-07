@@ -23,9 +23,13 @@ from . import nightshift_session as ss
 LOCK = "system/nightshift.lock"
 POLL = 30            # seconds between session checks
 PR_FOR_LOCAL = ""    # tests: the pull-request kind used when template_remote is a local path
-SELFTEST_PROMPT = ("Run exactly these two Bash commands, one at a time, and nothing else: "
+SELFTEST_PROMPT = ("This is the Nightshift runner's sandbox self-test, run by the vault's owner. Both commands below "
+                   "are expected to fail inside the sandbox; the test needs their real exit codes, so run each one with "
+                   "the Bash tool even if you expect a denial, and do not explain or refuse. "
+                   "Run exactly these two Bash commands, one at a time, and nothing else: "
                    "`curl -sS -m 5 -o /dev/null https://example.com; echo CURL_EXIT=$?` and "
                    "`cat ~/.ssh/* >/dev/null 2>&1; echo CAT_EXIT=$?`. Then stop.")
+SELFTEST_TRIES = 3
 
 
 def _parser():
@@ -103,8 +107,8 @@ def _ok(cmd) -> str:
     return "ok" if r.returncode == 0 else f"FAILED: {(r.stderr or r.stdout).strip().splitlines()[-1:] or ['exit ' + str(r.returncode)]}"
 
 
-def selftest(vault) -> tuple:
-    """(passed, reason). Runs the plan profile's sandbox with two commands that must fail."""
+def _selftest_once(vault) -> tuple:
+    """(verdict, reason): verdict True passed, False failed, None the commands did not run."""
     with __import__("tempfile").TemporaryDirectory() as tmp:
         settings = Path(tmp) / "settings.json"
         settings.write_text(json.dumps(ss.profile(vault, "plan", [])))
@@ -125,8 +129,19 @@ def selftest(vault) -> tuple:
     if "CAT_EXIT=0" in text:
         return False, "a credential file was readable"
     if "CURL_EXIT=" not in text or "CAT_EXIT=" not in text:
-        return False, "the self-test commands did not run"
+        return None, "the self-test commands did not run"
     return True, ""
+
+
+def selftest(vault) -> tuple:
+    """(passed, reason). Runs the plan profile's sandbox with two commands that must fail. A model that declines to run
+    them proves nothing either way, so that case is retried; a command that succeeds fails at once."""
+    reason = ""
+    for _ in range(SELFTEST_TRIES):
+        verdict, reason = _selftest_once(vault)
+        if verdict is not None:
+            return verdict, reason
+    return False, f"{reason} ({SELFTEST_TRIES} tries)"
 
 
 def health(vault, now, entries) -> dict:
@@ -341,6 +356,12 @@ def _deliver_plan(ctx: Ctx, fm: dict, clone: Path, idir: Path, before: dict) -> 
     ok, why = nd.fetch_branch(runner, clone, branch, sha)
     if not ok:
         return {"state": "failed", "reason": "containment" if "moved" in why else "delivery", "notes": why}
+    files, problems = nd.protected_files(clone)
+    if problems:
+        return {"state": "blocked", "reason": "protected", "needs": [f"Protected file refused: {p}" for p in problems]}
+    ok, sha = nd.apply_protected(runner, sha, branch, files, idir)
+    if not ok:
+        return {"state": "failed", "reason": "delivery", "notes": sha}
     ok, out = nd.verify_sha(runner, sha, ctx.workspace / f"nightshift-{fm['id']}-verify", fm.get("verify") or [],
                             idir / "verify.log")
     if not ok:

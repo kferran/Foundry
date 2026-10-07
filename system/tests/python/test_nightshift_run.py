@@ -285,3 +285,38 @@ def test_research_runs_on_a_context_copy_and_publishes(env, monkeypatch, tmp_pat
     assert only_item(vault)[1]["state"] == "done"
     assert (vault / "wiki/work/concepts/Answer.md").is_file()
     assert "--add-dir" not in (tmp_path / "args.txt").read_text()
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_protected_files_reach_the_pushed_branch(env, monkeypatch, tmp_path):
+    vault, tmp = env
+    writes = tmp_path / "pw.txt"
+    writes.write_text(f"done.txt=yes\n.nightshift/protected/.claude/skills/demo/SKILL.md=hello\\n\n"
+                      f".nightshift/result.json={RESULT}\n")
+    monkeypatch.setenv("NIGHTSHIFT_STUB_WRITE", str(writes))
+    assert add(vault, "--now") == 0
+    assert nr.main(["tick"], vault, NOW) == 0
+    branch = git(tmp / "remote.git", "branch", "--list").split()[-1]
+    assert git(tmp / "remote.git", "show", f"{branch}:.claude/skills/demo/SKILL.md") == "hello\n"
+    assert git(tmp / "remote.git", "show", f"{branch}:done.txt") == "yes"
+
+
+def test_selftest_retries_when_the_model_declines(env, monkeypatch, tmp_path):
+    vault, _ = env
+    declined = tmp_path / "declined.jsonl"
+    declined.write_text((FX / "ok.jsonl").read_text().replace('"content":"CURL_EXIT=6"', '"content":"no"'))
+    good = tmp_path / "good.jsonl"
+    good.write_text((FX / "ok.jsonl").read_text().replace("CURL_EXIT=6", "CURL_EXIT=6 CAT_EXIT=1"))
+    stream = tmp_path / "s.jsonl"
+    shutil.copy(declined, stream)
+    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(stream))
+    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", f"if [ -f {tmp_path}/once ]; then cp {good} {stream}; else touch {tmp_path}/once; fi")
+    assert nr.selftest(vault)[0] is True
+    shutil.copy(declined, stream)
+    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "true")
+    ok, why = nr.selftest(vault)
+    assert ok is False and "did not run" in why
+
+
+def test_selftest_prompt_says_failures_are_expected():
+    assert "expected" in nr.SELFTEST_PROMPT and "self-test" in nr.SELFTEST_PROMPT

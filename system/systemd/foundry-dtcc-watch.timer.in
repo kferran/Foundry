@@ -1,0 +1,9 @@
+[Unit]
+Description=The Foundry: DTCC change watch at {{DTCC_TIME}}
+
+[Timer]
+OnCalendar=*-*-* {{DTCC_TIME}}:00 {{TZ}}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

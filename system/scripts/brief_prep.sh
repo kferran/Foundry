@@ -56,9 +56,12 @@ if [[ -f "system/logs/nightshift/$PREP_DATE.md" ]]; then
 else
   : > "$PREP_DIR/nightshift.md"
 fi
+# New DTCC changes since the latest earlier briefing (DTCC watcher spec §7); empty without a map.
+prep_write dtcc.md system/scripts/dtcc_watch.py --brief "$PREP_DATE" \
+  || prep_unavailable "dtcc: dtcc_watch.py --brief failed (see $PREP_DIR/prep_errors.log)"
 
-# Briefings and debriefs dated before today move to briefings/archive/<YYYY-MM>/, after carried.md is
-# written (carry_forward.py reads the archive too). The sync commit records the moves. Only a run for
+# Briefings and debriefs dated before today move to briefings/archive/<YYYY-MM>/, after carried.md and
+# dtcc.md are written (carry_forward.py and dtcc_watch.py read the archive too). The sync commit records the moves. Only a run for
 # today archives: /brief <past date> must find that day's briefing where it is.
 today="$(date +%F)"
 for f in briefings/*.md; do

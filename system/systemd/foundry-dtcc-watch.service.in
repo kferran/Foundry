@@ -1,0 +1,11 @@
+[Unit]
+Description=The Foundry: DTCC change watch
+
+[Service]
+Type=oneshot
+WorkingDirectory={{VAULT_ROOT}}
+Environment="TZ={{TZ}}"
+Environment="PATH={{UNIT_PATH}}"
+TimeoutStartSec=15min
+SuccessExitStatus=1 4
+ExecStart="{{VAULT_ROOT}}/system/scripts/dtcc_watch.py"

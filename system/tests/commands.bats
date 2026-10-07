@@ -110,11 +110,12 @@ headless_contract() {
   grep -qF 'system/scripts/lint_vault.sh' .claude/commands/lint.md
 }
 
-@test "the committed example config and codebase validate, and only the example is tracked" {
+@test "the committed example config and codebase validate, and a vault's own codebase files are trackable" {
   system/scripts/vault_index.py validate system/config.example.md system/codebases/example.md
   [ "$(system/scripts/vault_index.py field system/config.example.md remote_mode)" = none ]
   [ "$(system/scripts/vault_index.py field system/codebases/example.md default)" = false ]
-  git check-ignore -q system/codebases/mine.md
+  run git check-ignore -q system/codebases/mine.md
+  [ "$status" -eq 1 ]
   run git check-ignore -q system/codebases/example.md
   [ "$status" -eq 1 ]
 }
