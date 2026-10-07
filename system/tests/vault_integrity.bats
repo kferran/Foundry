@@ -81,6 +81,12 @@ setup() {
   [ "$(jq '.hooks // {} | length' "$f")" = "0" ]
 }
 
+@test "interactive settings end with the read-only status rules a vault merges against, in order" {
+  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(system/scripts/telemetry_fetch.py --list)","Bash(system/scripts/telemetry_fetch.py --check *)","Bash(system/scripts/dtcc_watch.py --check)","Bash(systemctl --user list-timers *)"]'
+  run jq -c '.permissions.allow[-8:]' .claude/settings.json
+  [ "$output" = "$want" ]
+}
+
 @test "unit templates: only *.in files, services carry {{VAULT_ROOT}}, no machine paths" {
   shopt -s nullglob
   files=(system/systemd/*.in system/systemd/dropins/*.in)
