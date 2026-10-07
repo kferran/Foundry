@@ -38,3 +38,38 @@ def test_example_map_is_generic():
     assert "example-app" in text
     for word in ("ultron", "porch", "edj"):
         assert word not in text.lower()
+
+from vaultlib import dtcc_notes
+
+
+def fm(**extra):
+    base = {"type": "dtcc_change", "partition": "work", "detected_at": "2026-10-06T11:30:00+00:00",
+            "kind": "notice", "key": "notice:a9809", "title": "Notice a9809: [[evil]] <b>x</b>",
+            "impact": "pending", "capability": "code", "paths": ["src/x/"], "deadlines": ["Production 2027-04-15 (a9809)"]}
+    base.update(extra)
+    return base
+
+
+def test_rel_path():
+    assert dtcc_notes.rel_path("work", "notice:a9809") == "wiki/work/changes/dtcc-notice-a9809.md"
+    assert dtcc_notes.rel_path("work", "api:Profile Management: OAuth2:1.0.3") == \
+        "wiki/work/changes/dtcc-api-profile-management-oauth2-1.0.3.md"
+
+
+def test_render_is_valid_and_inert(vault: Path):
+    f = fm(title=dtcc_notes.clean("Notice a9809: [[evil]] <b>x</b>"))
+    text = dtcc_notes.render(f, ["Category: [[x]] INSURANCE"], ["src/x/ (missing at origin/main)"], ["[[Dtcc]]"])
+    assert "[[evil]]" not in text and "<b>" not in text and "[[x]]" not in text
+    assert "## Evidence" in text and "## Mapped paths" in text and "## Related\n- [[Dtcc]]" in text
+    assert text.rstrip().endswith("## Impact")
+    rel = dtcc_notes.rel_path("work", f["key"])
+    assert dtcc_notes.create(vault, rel, text, schema.load_schemas(vault)) is True
+    assert dtcc_notes.create(vault, rel, text, schema.load_schemas(vault)) is False
+
+
+def test_create_refuses_an_invalid_note(vault: Path):
+    import pytest
+    text = dtcc_notes.render(fm(kind="bogus"), [], [], [])
+    with pytest.raises(ValueError):
+        dtcc_notes.create(vault, "wiki/work/changes/dtcc-x.md", text, schema.load_schemas(vault))
+    assert not (vault / "wiki/work/changes/dtcc-x.md").exists()
