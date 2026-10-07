@@ -2,7 +2,7 @@
 
 An Obsidian + Claude Code "second brain" vault template.
 
-> **Status:** built and tested on one machine. The headless brief, debrief and intake pipeline passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md)) and passed again with the humanizer self-edit step ([record](docs/superpowers/spikes/2026-10-02-plan-6-acceptance.md)). Memory capture and recall passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md)) and stay off until you install their hooks, which `/setup` offers. A full `/setup` on a Debian server (units, sync, memory hooks, calendar, one codebase) ran end to end on 2026-10-05. Style lint, preferences, the Foreman orchestrator and the migration are still to come (see [Status](#status)).
+> **Status:** in daily use since 2026-10-05 on one Debian server and a laptop client. The headless brief, debrief and intake pipeline passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md)), as did memory capture and recall ([record](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md)), two-machine sync ([record](docs/superpowers/spikes/2026-10-04-plan-8c-acceptance.md)) and meetings ([record](docs/superpowers/spikes/2026-10-06-plan-11-acceptance.md)). Preferences, style lint and the Foreman orchestrator are still to come (see [Status](#status)).
 
 ## What The Foundry is
 
@@ -16,34 +16,21 @@ Automation runs on systemd user timers: isolated headless `claude -p` jobs for i
 
 ## Status
 
-| Plan | Scope | Status |
-|---|---|---|
-| 0. Spike gate | Check headless isolation and hook behavior against the real `claude` binary (spec §7.4) | Complete: [plan](docs/superpowers/plans/2026-09-30-plan-0-spike.md), [results](docs/superpowers/spikes/2026-09-30-headless-and-hooks.md) |
-| 1. Foundation | Baseline commit, `vaultlib`, schemas, linter, pre-commit hook, index | Complete: [plan](docs/superpowers/plans/2026-09-30-plan-1-foundation.md) |
-| 2a. Headless core | Staged publish, `run_headless.sh`, intake daemon, redaction, settings files | Complete: [plan](docs/superpowers/plans/2026-10-01-plan-2a-headless-core.md) |
-| 2b. Operations | Prep scripts, focus stats, unit templates and installer, remotes, codebase discovery | Complete: [plan](docs/superpowers/plans/2026-10-01-plan-2b-operations.md) |
-| 4a. Commands and setup | `CLAUDE.md`, commands, personas, `/setup` (without memory), health suite | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-4a-commands-setup.md) |
-| 3. Memory | Capture/recall hooks, hook installer, `/digest` | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-3-memory.md), [acceptance](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md) |
-| 4b. Memory integration, renames | `/setup` memory step, README memory sections, final renames | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-4b-memory-integration.md), [live check](docs/superpowers/spikes/2026-10-02-plan-4b-acceptance.md) |
-| 6. Communication | `CLAUDE.md` Writing section, vendored humanizer skill, headless self-edit pass | Complete: [plan](docs/superpowers/plans/2026-10-02-plan-6-communication.md), [acceptance](docs/superpowers/spikes/2026-10-02-plan-6-acceptance.md) |
-| 8a. Machine roles and Debian | `machine_role` (standalone, server, client), `check_deps --role` with apt hints, units by role, Debian proven natively | Complete: [plan](docs/superpowers/plans/2026-10-03-plan-8a-roles-debian.md), [acceptance](docs/superpowers/spikes/2026-10-03-plan-8a-acceptance.md) |
-| 8d. Calendar from the connector | Brief calendar from the installed Google Calendar connector | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8d-calendar-connector.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8d-acceptance.md) |
-| 8b. Commit history | Scripted commit messages, one commit per headless run | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8b-commit-history.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8b-acceptance.md) |
-| 8c. Sync | `vault_sync.sh`, server sync units, conflicts, client setup. The real vault is set up after this plan | Complete: [plan](docs/superpowers/plans/2026-10-04-plan-8c-sync.md), [acceptance](docs/superpowers/spikes/2026-10-04-plan-8c-acceptance.md) |
-| 8e. Real-use fixes | Brief and debrief wait out an ingest backlog; `/debrief` reads the ledger's publish fields | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-8e-real-use-fixes.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-8e-acceptance.md) |
-| 9. Product rename | The Foundry names and the capability seam | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-9-foundry-rename.md), [spec](docs/superpowers/specs/2026-10-05-foundry-rename-design.md), [acceptance](docs/superpowers/spikes/2026-10-05-plan-9-acceptance.md) |
-| 11a. Error monitoring | Hourly, model-free fetch of Sentry issues and ADX error groups into aggregate-only `production_error` notes; `/setup` phase 6a | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-11-error-monitoring.md), [spec](docs/superpowers/specs/2026-10-05-error-monitoring-design.md), [spike](docs/superpowers/spikes/2026-10-05-plan-11-trace-coverage.md), [outcomes](docs/superpowers/plans/2026-10-05-plan-11-outcomes.md) |
-| 11b. Meetings | Gemini notes fetched from Google Drive and dropped transcripts become meeting notes, tracked actions and searchable transcripts | Complete: [plan](docs/superpowers/plans/2026-10-05-plan-11-meetings.md), [spec](docs/superpowers/specs/2026-10-05-meetings-design.md), [acceptance](docs/superpowers/spikes/2026-10-06-plan-11-acceptance.md), [outcomes](docs/superpowers/plans/2026-10-06-plan-11-outcomes.md) |
-| 12. minutes plugin | Meeting notes and the confined connector fetch as a public Claude Code plugin (its own repo), then vendored here like humanizer | In progress: spec revised after two reviews; plan next |
-| 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
-| 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
-| Sub-project 2 | the Foreman orchestrator | Separate spec, after Plans 7 and 5 |
-| 10. Migrate Cerebro and Wong | Import both older systems, then decommission them (Sub-project 3) | Complete (2026-10-06): content migrated outside this repo's plans |
+**Works today:**
+- Headless intake, morning brief and evening debrief, published through a deterministic gate
+- Memory: session digest capture and bounded recall (optional hooks)
+- Two machines: a server runs the automation and syncs through a private `origin`; clients read and edit in Obsidian
+- Calendar input to the brief from the Google Calendar connector
+- Error telemetry from Sentry and Azure Data Explorer
+- Meetings: Gemini notes and dropped transcripts become meeting notes, tracked actions and searchable transcripts
+- The Nightshift: queued plans and research briefs run unattended overnight
+- DTCC change watcher (phase 1)
+- Active Projects in the brief, and an archive of past briefings
 
+**Next:** fewer permission prompts, a Nightshift fix, RCA-to-Jira (phase 1), preference notes from `/ingest`, then the Foreman orchestrator (Sub-project 2). Preferences (Plan 5) and style lint (Plan 7) wait for a few weeks of real use.
+
+- Roadmap, with every plan, its records and its status: [docs/superpowers/roadmap.md](docs/superpowers/roadmap.md)
 - Design spec: [docs/superpowers/specs/2026-09-30-vault-template-design.md](docs/superpowers/specs/2026-09-30-vault-template-design.md)
-- Roadmap: [docs/superpowers/plans/2026-09-30-jarvis-roadmap.md](docs/superpowers/plans/2026-09-30-jarvis-roadmap.md)
-
-Plans are numbered in the order they were defined, not the order they run; the table is in run order. Each plan is written only after the previous one is finished, because results carry forward. For example, the spike can change the permission model (spec §7), and that affects Plans 2–4.
 
 ## How it works
 
@@ -78,13 +65,15 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 
 | Command | What it does |
 |---|---|
-| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Earlier days' briefings and debriefs move to `briefings/archive/<YYYY-MM>/` |
+| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, a DTCC changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Earlier days' briefings and debriefs move to `briefings/archive/<YYYY-MM>/` |
 | `/debrief [date]` | The Foreman writes `briefings/<date>.debrief.md` (embedded in the briefing): commits per repo, digest outcomes, headless runs, alerts, focus and agent health |
 | `/ingest <raw file>` | Compiles one raw input into `wiki/`; the intake timer runs it headless in batches |
 | `/query <question>` | Answers from compiled `wiki/` notes only, through the index |
 | `/lint` | Integrity report plus link, duplicate, contradiction and staleness suggestions |
 | `/impact <component> [--repo name]` | Read-only blast-radius table across registered codebases and the wiki; offers to draft an intent proposal |
 | `/backup` | Runs the gating suites (lint only on a client), commits each headless run on its own, then commits and pushes the rest according to `remote_mode` (through `vault_sync.sh` in `private`) |
+| `/nightshift add\|ask\|list\|cancel\|status` | Queues an approved plan (or a task range of one) or a research brief for an unattended run; lists, cancels and reports on queued items |
+| `/dtcc-watch [check\|status\|accept]` | Runs the DTCC change watcher by hand, checks its map, reports recent changes, or accepts held changes as the new baseline |
 | `/setup` | Onboarding; safe to re-run |
 | `/humanizer`, `/digest` | Edit prose against the vendored skill; write a session digest on demand |
 
@@ -93,6 +82,12 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 **Brief inputs.** The calendar (`calendar.tsv`, from the Google Calendar connector), today's and yesterday's alerts, production-error groups in `raw/telemetry/` (new, recurring and resolved in the last 24 hours, per environment), friction notes (`is_friction` on concepts), quarantined inputs, yesterday's focus, and mail and chat when a Gmail or Slack connector is present in an interactive session. Missing sources are listed under Unavailable Sources; the brief never fails for one.
 
 **Error telemetry.** `foundry-telemetry.timer` runs `telemetry_fetch.py` every hour, and `brief_prep.sh` runs it once more before the brief. Each source in `system/telemetry/<name>.md` (written by `/setup` phase 6a, gitignored) is a set of Sentry projects or one Azure Data Explorer database with a filter. Each error group becomes one `production_error` note in `raw/telemetry/` holding only group keys, counts, times, opaque IDs and links: no message text, titles or attribute values. Sentry needs a read-only token in `~/.config/foundry/sentry.token` (mode 0600); ADX uses your `az login`. `--check <name>` tests a source, `--dry-run` prints the groups without writing.
+
+**The Nightshift.** `/nightshift` queues refined work for an unattended run: an approved plan, or a task range of one, or a research brief written with you. Queuing is your approval, and a readiness check refuses items that are not refined enough. `foundry-nightshift.timer` ticks every 15 minutes on a standalone machine or a server (never a client) and runs one due item at a time: in the nightly window (`nightshift_window`, default `22:00-05:00`, waiting while you are active), at a set time, or now. A plan item runs in a private clone under `nightshift_workspace`, is verified, pushed to a branch and ends in a pull request; it never merges or deploys. A research item reads its sources and writes one findings note. Each item runs in a fresh, confined `claude -p` session that holds no credential. The morning report, `system/logs/nightshift/<date>.md`, starts with a health banner, then "Needs you" (decisions only), which the brief carries forward. Queue notes live in `raw/<partition>/nightshift/`, tracked in your vault so an item queued on a client reaches the server.
+
+**DTCC change watcher.** It is for a codebase that integrates with DTCC Insurance & Retirement Services. `foundry-dtcc-watch.timer` runs `dtcc_watch.py` daily, 30 minutes before the brief. No model runs. It reads DTCC's public product pages, release dates, Important Notices and API catalog, and writes one `dtcc_change` note per change to `wiki/<partition>/changes/` with the codebase paths it touches. The brief lists each change as a checkbox that carries forward until you tick it. The watcher does nothing until your vault has `system/dtcc/map.yaml` (start from `system/dtcc/map.example.yaml`).
+
+**Active Projects.** An optional `wiki/<partition>/ActiveProjects.md` lists your project pages in priority order under `## Active`. Each morning, `active_projects.py` reads those pages, and the brief shows each project's next 3 open checkboxes and the open items under its "Decisions…" heading, as plain bullets. You tick items on the project page, so nothing is tracked twice.
 
 **Meetings fetch: retrying a skipped Doc.** After three failed reads of one Gemini Doc (any non-zero exit, timeouts and usage limits included), the fetch alerts once ("`<id>` failed 3 reads; it is skipped from now on") and skips it, because it counts failures in this month's and last month's `system/logs/meetings_fetch-<YYYY-MM>.jsonl`. To fetch it again: delete that Doc's `"step": "read"` lines from those two log files, then set `system/logs/meetings_fetch.since` to a time before the Doc was created (ISO 8601, UTC), so the next run's search window includes it. The next fetch reads it once more; the `.since` file moves forward again on success. (#44)
 
@@ -136,6 +131,8 @@ CLAUDE.md                     generic rules; imports @system/config.md
 .claude/settings.json         interactive permissions
 .claude/commands/             setup brief debrief ingest query lint backup impact
 .claude/skills/humanizer/     vendored humanizer v3.0.0 (MIT): /humanizer, headless self-edit
+.claude/skills/nightshift/    /nightshift: queue plans and research briefs for unattended runs
+.claude/skills/dtcc-watch/    /dtcc-watch: the DTCC change watcher by hand
 .githooks/pre-commit          deterministic linter (lint_vault.sh --staged)
 .scratch/                     throwaway clones, worktrees and temp files (ignored; the gate's temp files go here)
 raw/                          contents gitignored
@@ -153,6 +150,8 @@ system/
   config.example.md           example global config (real config.md is gitignored)
   codebases/example.md        example codebase file
   telemetry/example.md        example error source (real sources are gitignored)
+  dtcc/map.example.yaml       example DTCC watch map (your map.yaml is tracked in your vault)
+  nightshift/                 session profiles for Nightshift plan and research runs
   headless.settings.json      headless permissions
   template_source             canonical template URL
   schemas/                    one schema note per note type
@@ -163,8 +162,9 @@ system/
   scripts/                    vault_index.py, vaultlib/, publish_staged.py, run_headless.sh,
                               intake_daemon.sh, install_units.sh, install_hooks.sh,
                               setup_remote.sh, update_template.sh, check_deps.sh,
-                              vault_sync.sh, commit_runs.py, calendar_fetch.sh, meetings_fetch.sh, telemetry_fetch.py, ...
-  systemd/                    foundry-{intake,brief,debrief,focus,sync,telemetry,meetings} unit templates (*.in)
+                              vault_sync.sh, commit_runs.py, calendar_fetch.sh, meetings_fetch.sh, telemetry_fetch.py,
+                              nightshift.py, dtcc_watch.py, active_projects.py, ...
+  systemd/                    foundry-{intake,brief,debrief,focus,sync,telemetry,meetings,nightshift,dtcc-watch} unit templates (*.in)
     dropins/                  foundry-sync.conf.in: sync before and after each run (server)
   tests/                      *.bats per area (system_health.bats is advisory), python/ for pytest
   jobs/                       reserved for Sub-project 2 (gitignored)
@@ -214,6 +214,7 @@ The Foundry runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh 
 - Hyprland (`hyprctl`) for the Obsidian focus tracker, on a standalone machine only. Without it only focus stats are lost.
 - A client needs only `claude`, `git`, `jq`, `python3` with PyYAML, and SQLite with FTS5.
 - Optional: the Azure CLI (`az`, logged in) for ADX error sources, and a read-only Sentry token for Sentry sources. Without them those sources stay off.
+- Optional: `pdftotext` (`poppler` on Arch, `poppler-utils` on Debian) for the DTCC change watcher, which reads the header of each notice's PDF.
 - Optional: `herdr` or `tmux` as session backends for sub-project 2
 - Obsidian, with the **Dataview** plugin recommended (`wiki/Index.md` dashboards are plain code blocks without it). **[Vault Curate](https://github.com/notoriouslab/vault-curate)** is an optional plugin for link suggestions. It is not a dependency.
 
