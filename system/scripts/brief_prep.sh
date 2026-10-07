@@ -58,9 +58,11 @@ else
 fi
 
 # Briefings and debriefs dated before today move to briefings/archive/<YYYY-MM>/, after carried.md is
-# written (carry_forward.py reads the archive too). The sync commit records the moves.
+# written (carry_forward.py reads the archive too). The sync commit records the moves. Only a run for
+# today archives: /brief <past date> must find that day's briefing where it is.
 today="$(date +%F)"
 for f in briefings/*.md; do
+  [[ "$PREP_DATE" == "$today" ]] || break
   name="${f#briefings/}"
   [[ "$name" =~ ^(([0-9]{4}-[0-9]{2})-[0-9]{2})(\.debrief)?\.md$ ]] || continue
   [[ "${BASH_REMATCH[1]}" < "$today" ]] || continue

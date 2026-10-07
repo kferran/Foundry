@@ -271,7 +271,7 @@ codebase() {  # <name> <path>
   for f in 2026-09-29.md 2026-09-29.debrief.md 2026-10-01.md "$today.md" "$today.debrief.md" notes.md; do
     printf 'x\n' > "briefings/$f"
   done
-  run "$BP" 2026-10-01
+  run "$BP"
   [ "$status" -eq 0 ]
   [ -f briefings/archive/2026-09/2026-09-29.md ]
   [ -f briefings/archive/2026-09/2026-09-29.debrief.md ]
@@ -281,20 +281,32 @@ codebase() {  # <name> <path>
   [ -f "briefings/$today.debrief.md" ]
   [ -f briefings/notes.md ]
   before="$(find briefings | sort)"
-  run "$BP" 2026-10-01
+  run "$BP"
   [ "$status" -eq 0 ]
   [ "$(find briefings | sort)" = "$before" ]
+}
+
+@test "brief_prep: a run for a past date archives nothing" {
+  mkdir -p briefings
+  printf 'x\n' > briefings/2026-09-29.md
+  printf 'x\n' > briefings/2026-10-01.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -f briefings/2026-09-29.md ]
+  [ -f briefings/2026-10-01.md ]
+  [ ! -e briefings/archive ]
 }
 
 @test "brief_prep: a briefing whose archive copy exists stays put and is recorded" {
   mkdir -p briefings/archive/2026-09
   printf 'old\n' > briefings/archive/2026-09/2026-09-29.md
   printf 'new\n' > briefings/2026-09-29.md
-  run "$BP" 2026-10-01
+  run "$BP"
   [ "$status" -eq 0 ]
   [ "$(cat briefings/archive/2026-09/2026-09-29.md)" = "old" ]
   [ "$(cat briefings/2026-09-29.md)" = "new" ]
-  grep -qxF -- '- brief_prep: briefings: 2026-09-29.md not archived (briefings/archive/2026-09/2026-09-29.md exists)' "$IN/unavailable.md"
+  grep -qxF -- '- brief_prep: briefings: 2026-09-29.md not archived (briefings/archive/2026-09/2026-09-29.md exists)' \
+    "system/logs/inputs/$(TZ=America/Denver date +%F)/unavailable.md"
 }
 
 @test "brief_prep: nightshift.md copies that morning's report, empty when there is none" {

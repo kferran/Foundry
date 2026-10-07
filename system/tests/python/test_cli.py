@@ -31,6 +31,19 @@ def test_issues_staged(cli, vault):
     assert cli("issues", "--staged").returncode == 1
 
 
+def test_archived_briefings_stay_indexed_and_the_debrief_embed_resolves(cli, vault):
+    write(vault, "briefings/archive/2026-10/2026-10-06.md",
+          '---\ntype: briefing\ndate: "2026-10-06"\nstatus: active\n---\n# Briefing\n\n![[2026-10-06.debrief]]\n')
+    write(vault, "briefings/archive/2026-10/2026-10-06.debrief.md",
+          '---\ntype: debrief\ndate: "2026-10-06"\n---\n# Debrief\n')
+    data = json.loads(cli("issues", "--json").stdout)
+    assert [i for i in data["issues"] if "briefings/" in json.dumps(i)] == []
+    res = cli("query", "SELECT path, type FROM notes WHERE path LIKE 'briefings/archive/%' ORDER BY path")
+    assert res.returncode == 0, res.stderr
+    assert "briefings/archive/2026-10/2026-10-06.debrief.md" in res.stdout
+    assert "briefings/archive/2026-10/2026-10-06.md" in res.stdout
+
+
 def test_query_and_rejection(cli):
     res = cli("query", "SELECT path FROM notes WHERE type='index'")
     assert res.returncode == 0 and "wiki/Index.md" in res.stdout
