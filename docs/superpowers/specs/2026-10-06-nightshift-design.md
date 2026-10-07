@@ -2,6 +2,7 @@
 
 **Date:** 2026-10-06
 **Status:** Approved in brainstorming (2026-10-06), awaiting written-spec review
+**Changed:** 2026-10-07, the inactivity gate is removed (`2026-10-07-nightshift-no-idle-design.md`)
 **Extends:** `2026-10-03-two-machines-design.md` (units by role, sync), `2026-10-05-error-monitoring-design.md` (runner pattern, alerts, run log), brief carry-forward (PR #36)
 
 ## 1. Problem and decisions
@@ -13,7 +14,7 @@ Refined work waits for attended time: an approved implementation plan sits until
 | Work it takes | (A) an approved implementation plan, or a task range of one; (C) a written research brief. Maintenance sweeps are a later phase. |
 | Autonomy ceiling | Plans: implement in a private clone, test, push a branch, open a pull request. Never merge, never deploy, never touch a protected `master` or production. Research: read-only, one findings note. |
 | Intake | A `/nightshift` skill writes one queue note per item. Queuing is the approval record. A readiness check refuses items that are not refined enough. |
-| When | Per item: the nightly window (config `nightshift_window`, default `22:00-05:00` local; waits while the user is active), `--at HH:MM`, or `--now`. A 15-minute timer runs one due item at a time. No count cap; per-item time budgets. |
+| When | Per item: the nightly window (config `nightshift_window`, default `22:00-05:00` local), `--at HH:MM`, or `--now`. A 15-minute timer runs one due item at a time. No count cap; per-item time budgets. |
 | Execution | A deterministic runner (no model) owns the queue, lock, windows, budgets, usage limits, verification, push, pull request and report. Each item runs in a fresh, confined `claude -p` session that never holds a credential. |
 | Hosting | GitHub pull requests are opened with `gh`. A Bitbucket-hosted codebase ends at "branch pushed + prefilled create-PR link" (no unattended Bitbucket PR without an API token; a later option). |
 | Model | `sonnet` by default; `--model` per item. |
@@ -60,7 +61,7 @@ Under `flock` on `system/nightshift.lock` (not inherited by children):
 
 1. **Reconcile.** A `running` item whose process is gone is resumed once (§7); a `cancelled` item whose session is alive is stopped.
 2. **Health.** Once per window (first tick at or after the window opens, or the first tick that has a due item): Claude auth, `gh auth status`, SSH to each push remote, the sandbox self-test (§5.3), usage windows. Recorded for the report; a failed self-test blocks every item that night.
-3. **Pick** one due item: `now` items by queue time, then `at` items whose time has passed, then `window` items by queue time. A window item starts only when the time is inside the window, the user has been inactive for 20 minutes (newest tmux client activity and newest `system/logs/memory/sessions/*.events` modification on this host), `now + budget` is at or before the window's end, and the 7-day usage window is under 80%. Otherwise it waits for a later tick or night.
+3. **Pick** one due item: `now` items by queue time, then `at` items whose time has passed, then `window` items by queue time. A window item starts only when the time is inside the window, `now + budget` is at or before the window's end, and the 7-day usage window is under 80%. Otherwise it waits for a later tick or night.
 4. **Claim** the item atomically (`mkdir system/logs/nightshift/items/<id>/claim`), set `state: running`, and run it (§3.3).
 
 ### 3.3 Item run

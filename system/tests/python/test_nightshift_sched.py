@@ -25,32 +25,31 @@ def test_window_crosses_midnight():
 
 
 def test_window_item_rules():
-    assert ns.due(item(), at(23), W, idle=3600, usage7=0.4)[0]
-    assert ns.due(item(), at(12), W, 3600, 0.4) == (False, "outside the window")
-    assert ns.due(item(), at(23), W, 60, 0.4) == (False, "user active")
-    assert ns.due(item(budget="8h"), at(23), W, 3600, 0.4) == (False, "budget does not fit before the window ends")
-    assert ns.due(item(), at(23), W, 3600, 0.9) == (False, "7-day usage above 80%")
-    assert not ns.due(item(state="done"), at(23), W, 3600, 0.4)[0]
+    assert ns.due(item(), at(23), W, usage7=0.4)[0]
+    assert ns.due(item(), at(12), W, 0.4) == (False, "outside the window")
+    assert ns.due(item(budget="8h"), at(23), W, 0.4) == (False, "budget does not fit before the window ends")
+    assert ns.due(item(), at(23), W, 0.9) == (False, "7-day usage above 80%")
+    assert not ns.due(item(state="done"), at(23), W, 0.4)[0]
 
 
-def test_now_and_at_skip_window_and_idle():
-    assert ns.due(item(start="now"), at(12), W, 0, 0.4)[0]
-    assert ns.due(item(start="at", start_at="2026-10-06T15:00:00-06:00"), at(15, 5), W, 0, 0.4)[0]
-    assert not ns.due(item(start="at", start_at="2026-10-06T15:00:00-06:00"), at(14), W, 0, 0.4)[0]
+def test_now_and_at_skip_the_window():
+    assert ns.due(item(start="now"), at(12), W, 0.4)[0]
+    assert ns.due(item(start="at", start_at="2026-10-06T15:00:00-06:00"), at(15, 5), W, 0.4)[0]
+    assert not ns.due(item(start="at", start_at="2026-10-06T15:00:00-06:00"), at(14), W, 0.4)[0]
 
 
 def test_waiting_reset_is_due_after_reset():
     fm = item(state="waiting_reset", start="now", reset_at="2026-10-06T13:00:00-06:00")
-    assert not ns.due(fm, at(12), W, 0, 0.4)[0]
-    assert ns.due(fm, at(13, 1), W, 0, 0.4)[0]
+    assert not ns.due(fm, at(12), W, 0.4)[0]
+    assert ns.due(fm, at(13, 1), W, 0.4)[0]
 
 
 def test_pick_order():
     entries = [("w", item(queued_at="2026-10-06T09:00:00-06:00"), ""),
                ("a", item(start="at", start_at="2026-10-06T22:30:00-06:00", queued_at="2026-10-06T11:00:00-06:00"), ""),
                ("n", item(start="now", queued_at="2026-10-06T12:00:00-06:00"), "")]
-    assert ns.pick(entries, at(23), W, 3600, 0.4)[0] == "n"
-    assert ns.pick(entries[:2], at(23), W, 3600, 0.4)[0] == "a"
+    assert ns.pick(entries, at(23), W, 0.4)[0] == "n"
+    assert ns.pick(entries[:2], at(23), W, 0.4)[0] == "a"
 
 
 def test_report_date():
@@ -60,5 +59,11 @@ def test_report_date():
 
 def test_waiting_reset_window_item_still_obeys_the_window():
     fm = item(state="waiting_reset", reset_at="2026-10-06T11:00:00-06:00")
-    assert not ns.due(fm, at(12), W, 3600, 0.4)[0]
-    assert ns.due(fm, at(23), W, 3600, 0.4)[0]
+    assert not ns.due(fm, at(12), W, 0.4)[0]
+    assert ns.due(fm, at(23), W, 0.4)[0]
+
+
+def test_a_window_item_needs_no_inactivity():
+    assert ns.due(item(), at(23), W, 0.4) == (True, "")
+    assert not hasattr(ns, "IDLE")
+    assert not hasattr(ns, "idle_seconds")

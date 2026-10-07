@@ -506,7 +506,7 @@ def tick(ctx: Ctx) -> int:
         path, fm, body = delivering[0]
         return run_item(ctx, path, fm, body)
     hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
-    candidates = [e for e in entries if ns.due(e[1], ctx.local, ctx.window, float("inf"), 0)[0]
+    candidates = [e for e in entries if ns.due(e[1], ctx.local, ctx.window, 0)[0]
                   or e[1].get("state") == "running"]
     if not candidates:
         return 0
@@ -521,9 +521,8 @@ def tick(ctx: Ctx) -> int:
         rep.write(ctx.vault, ctx.date)
         return 1
     usage7 = h.get("usage7")
-    idle = ns.idle_seconds(ctx.vault, ctx.now)
     running = [e for e in entries if e[1].get("state") == "running"]
-    chosen = running[0] if running else ns.pick(entries, ctx.local, ctx.window, idle, usage7)
+    chosen = running[0] if running else ns.pick(entries, ctx.local, ctx.window, usage7)
     if not chosen:
         return 0
     path, fm, body = chosen
