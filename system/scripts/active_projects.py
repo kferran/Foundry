@@ -36,6 +36,22 @@ def active_entries(text: str) -> list[tuple[str, str]]:
     return out
 
 
+def list_problems(text: str) -> list[str]:
+    """Why a list would silently show fewer projects: no "## Active" heading, or Active lines with a link
+    that are not entries (a numbered or bold line, say)."""
+    lines = frontmatter.parse(text).body.split("\n")
+    if not any(line.strip() == "## Active" for line in lines):
+        return ['ActiveProjects has no "## Active" heading.']
+    out, on = [], False
+    for line in lines:
+        if line.startswith("## "):
+            on = line.strip() == "## Active"
+            continue
+        if on and "[[" in line and not ENTRY.match(line):
+            out.append(f"line in ActiveProjects is not an entry: {line.strip()}")
+    return out
+
+
 def page_items(text: str) -> tuple[list[str], list[str]]:
     """(first MAX_NEXT open checkboxes outside Decisions sections, every open checkbox inside them)."""
     nxt, decisions = [], []
@@ -81,7 +97,9 @@ def partition_blocks(part: str, resolver: Resolver, notices: list[str]) -> list[
     listing = Path("wiki") / part / LIST_NAME
     if not listing.is_file():
         return []
-    entries = active_entries(listing.read_text(encoding="utf-8"))
+    list_text = listing.read_text(encoding="utf-8")
+    notices += [f"- {part}: {problem}" for problem in list_problems(list_text)]
+    entries = active_entries(list_text)
     if len(entries) > MAX_ACTIVE:
         notices.append(f"- {part}: only the first {MAX_ACTIVE} active projects are shown.")
         entries = entries[:MAX_ACTIVE]

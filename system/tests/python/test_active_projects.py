@@ -142,5 +142,25 @@ def test_cli_only_notices_still_prints_none_first(vault):
                                  "- work: [[Missing]] in ActiveProjects does not resolve to a note.\n")
 
 
+def test_cli_notices_near_miss_active_lines(vault):
+    write(vault, "wiki/work/ActiveProjects.md",
+          listing("- [[Alpha]]\n1. [[Beta]]\n- **[[Gamma]]**: focus\nPlain prose is fine.\n"))
+    write(vault, "wiki/work/concepts/Alpha.md", page("- [ ] a1\n"))
+    out = run(vault)
+    assert out.returncode == 0, out.stderr
+    assert "### [[Alpha]]\nNext:\n- a1\n" in out.stdout
+    assert "- work: line in ActiveProjects is not an entry: 1. [[Beta]]\n" in out.stdout
+    assert "- work: line in ActiveProjects is not an entry: - **[[Gamma]]**: focus\n" in out.stdout
+    assert "Plain prose" not in out.stdout
+
+
+def test_cli_notices_a_list_without_an_active_heading(vault):
+    write(vault, "wiki/work/ActiveProjects.md",
+          "---\ntype: concept\ntags: []\ncompiled_at: 2026-10-07\npartition: work\n---\n## Active projects\n- [[Alpha]]\n")
+    out = run(vault)
+    assert out.returncode == 0, out.stderr
+    assert '- work: ActiveProjects has no "## Active" heading.\n' in out.stdout
+
+
 def test_cli_bad_date_exits_2(vault):
     assert run(vault, "yesterday").returncode == 2
