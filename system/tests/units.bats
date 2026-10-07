@@ -372,3 +372,16 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -q 'nightshift.py' "$UD/foundry-nightshift.service"
   grep -q 'enable --now .*foundry-nightshift.timer' "$STUB_SYSTEMCTL_LOG"
 }
+
+@test "a vault with a DTCC map gets the watch timer 30 minutes before the brief; one without does not" {
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ ! -e "$UD/foundry-dtcc-watch.timer" ]
+  mkdir -p "$V/system/dtcc"
+  printf 'partition: work\n' > "$V/system/dtcc/map.yaml"
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -q '^OnCalendar=\*-\*-\* 05:30:00 ' "$UD/foundry-dtcc-watch.timer"
+  grep -q 'dtcc_watch.py' "$UD/foundry-dtcc-watch.service"
+  grep -q 'enable --now .*foundry-dtcc-watch.timer' "$STUB_SYSTEMCTL_LOG"
+}

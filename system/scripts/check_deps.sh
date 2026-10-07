@@ -43,6 +43,7 @@ hint() {
     fts5) pkg_pacman="sqlite python" pkg_apt="libsqlite3-0 python3"; printf "python's sqlite3 lacks FTS5: " ;;
     git|jq|tmux) pkg_pacman="$1" pkg_apt="$1" ;;
     bats) pkg_pacman=bash-bats pkg_apt=bats ;;
+    pdftotext) pkg_pacman=poppler pkg_apt=poppler-utils ;;
     bwrap) pkg_pacman=bubblewrap pkg_apt=bubblewrap ;;
     gh) pkg_pacman=github-cli pkg_apt=gh ;;
     hyprctl) pkg_pacman=hyprland pkg_apt=hyprland ;;
@@ -83,6 +84,7 @@ present() {  # <item>: 1 when the item is available
 for item in "${REQUIRED[@]}"; do report "$item" "$(present "$item")"; done
 for c in herdr tmux; do report "$c" "$(has "$c")" optional; done
 if [[ "$role" != client ]]; then report az "$(has az)" optional; fi
+if [[ "$role" != client ]]; then report pdftotext "$(has pdftotext)" optional; fi
 if [[ "$role" != client ]]; then report bwrap "$(has bwrap)" optional; report gh "$(has gh)" optional; fi
 
 (( strict && missing )) && exit 1
