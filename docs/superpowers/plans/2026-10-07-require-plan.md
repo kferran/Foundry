@@ -4,15 +4,15 @@
 
 **Goal:** Every change to `kferran/Foundry` (and later `kferran/minutes`) is built from a committed `superpowers:writing-plans` plan: a required pull-request check enforces it, a git shim stops a code commit early and logs `--no-verify`, and the Nightshift names its plan in every pull request it opens.
 
-**Architecture:** One bash checker, `.github/require_plan.sh` (git and grep only), judges a commit (`commit` mode) or a pull request (`pr` mode). The judge is always the default branch's copy: the `pre-commit` shim reads it with `git show origin/<default>:…`, and the `pull_request_target` workflow copies it out before checking out the pull request as data. Everything is off unless the clone's `--local` git config or the repository variable switches it on, so vaults made from the template carry the files and never run them. The Nightshift writes a runner-owned `Plan:` line first in its pull request body and refuses at queue time a plan the check would refuse.
+**Architecture:** One bash checker, `.github/require_plan.sh` (git and grep only), judges a commit (`commit` mode) or a pull request (`pr` mode). The judge is always the default branch's copy: the `pre-commit` shim reads it with `git show refs/remotes/origin/<default>:…`, and the `pull_request_target` workflow copies it out, then points `HEAD` at the pull request's commit as data without writing its files. Everything is off unless the clone's `--local` git config or the repository variable switches it on, so vaults made from the template carry the files and never run them. The Nightshift writes a runner-owned `Plan:` line first in its pull request body and refuses at queue time a plan the check would refuse.
 
 **Tech Stack:** bash (3.2 compatible), git 2.39, grep, GitHub Actions (`pull_request_target`, `actions/checkout@v4`), Python 3.11 (`vaultlib`), bats 1.8.2, pytest, `gh` (rollout only).
 
-**Spec:** `docs/superpowers/specs/2026-10-07-require-plan-design.md` (approved, rev 3 with the `--no-verify` logging addition)
+**Spec:** `docs/superpowers/specs/2026-10-07-require-plan-design.md` (rev 4, approved: rev 3 plus the plan review's fixes)
 
 ## Global Constraints
 
-- Work on branch `feat/require-plan` of `kferran/Foundry` (spec at commit `549ae82`). Every task commits there. Tasks 1 to 4 never push, never open a pull request, never install a shim or set `superpowers.requirePlans` in the development clone, and never touch repository variables or branch protection; those are Task 5, attended.
+- Work on branch `feat/require-plan` of `kferran/Foundry` (spec rev 4 at commit `4c44ad4`). Every task commits there. Tasks 1 to 4 never push, never open a pull request, never install a shim or set `superpowers.requirePlans` in the development clone, and never touch repository variables or branch protection; those are Task 5, attended.
 - Tool floor: jq 1.6, bats 1.8.2, Python 3.11, git 2.39.
 - The checker and both shims must run on bash 3.2 (the `minutes` repository runs on macOS): no `mapfile`, `readarray`, `${x,,}`, `${x^^}`, `declare -A`, `[[ -v`. The checker uses `git` and `grep` only.
 - bats ruling R1: no mid-test `!`, no `&&` assertion chains, no wall-clock timing assertions. Read verdicts from exit codes (`run` then `[ "$status" -eq N ]`), never through a pipe.
@@ -30,6 +30,10 @@
 - A default-branch checker that cannot run (a syntax error, a bad merge) must block every commit, never allow. Pinned by `judge: a default-branch checker that cannot run blocks every commit` (Task 1).
 - The `minutes` repository has `main` and a clone may lack `origin/HEAD`; the checker must find `origin/main` and treat `main` as the default branch. Pinned by `base: a repository whose default branch is main resolves origin/main` (Task 1).
 - A `Plan:` line edited on GitHub may carry trailing spaces, and a hostile one may use `..` to point outside `plans/`: trailing spaces pass, `docs/superpowers/plans/../notes.md` fails (git refuses `..` in a tree path). Pinned by `pr: a CRLF body passes, trailing spaces pass, a missing body file fails` and `pr: a Plan: line must name a plan with the header under docs/superpowers/plans/ at HEAD` (Task 1).
+- `git rebase --quit` leaves `REBASE_HEAD` behind; it must not read as a rebase in progress. Pinned by `in progress: a REBASE_HEAD left behind by git rebase --quit does not count` (Task 1).
+- Deleting or renaming code beside a new spec must not pass as the plan step: the plan-step test reads `--no-renames` paths with deletions, the plan search reads `--diff-filter=ACMR`. Pinned by `deletions: removing or renaming code beside a new spec is a code change` (Task 1).
+- A tag named `origin/master` must not stand in for the branch when `origin/HEAD` is missing: the base chain uses `refs/remotes/origin/…`. Pinned by `base: a tag named origin/master does not replace the branch` (Task 1).
+- A pull request must not carry a `pull_request` workflow that reports a passing `require-plan` check. Pinned by `pr: a branch that changes require-plan.yml or adds a workflow naming require-plan is blocked` (Task 1).
 - A `--no-verify` commit in a linked worktree must land in the clone's one log with the worktree's branch, and a `--no-verify` amend that keeps the tree must still be logged (the allow marker is used once). Pinned by `no-verify: a --no-verify commit in a worktree logs to the clone's common log with the worktree's branch` and `no-verify: the marker is used once, so a --no-verify amend that keeps the tree is logged` (Task 2).
 
 ---
@@ -47,6 +51,7 @@
 | `system/scripts/vaultlib/nightshift_deliver.py` (modify) | `push()` log starts with the push command |
 | `system/scripts/vaultlib/nightshift_run.py` (modify) | `_deliver` writes `Plan: <plan>` first and drops the session's `Plan:` lines |
 | `system/tests/python/test_nightshift_check.py`, `test_nightshift_deliver.py`, `test_nightshift_run.py` (modify) | Nightshift tests |
+| `.claude/skills/nightshift/SKILL.md` (modify) | the `add` step names `--pr-base main` and the `workflow` scope (spec §6) |
 | `README.md` (modify) | one line on the `workflow` scope an HTTPS push needs after this update |
 | `CLAUDE.local.md` (untracked, Task 5 only) | the one instruction line per clone |
 
@@ -65,6 +70,7 @@
   - `require_plan: no merge base between <base> and HEAD (unborn HEAD or unrelated history)`
   - `require_plan: no superpowers plan on this branch; commit one under docs/superpowers/plans/ first`
   - `require_plan: no superpowers plan in this pull request; add one under docs/superpowers/plans/`
+  - `require_plan: this pull request changes or adds a require-plan workflow; only the owner can merge it`
 - Produces: the checker line `MARKER='REQUIRED SUB-SKILL: Use superpowers:'` (Task 4's test reads it).
 - Produces for Tasks 2 and 3: the bats `setup` (a clone `$C` of a bare `$ORIGIN` built from `$SEED`, every file in `.github/hooks/` installed, switch on, branch `feat/x`) and helpers `plan_file <path>`, `spec_file`, `stage_code [path]`, `unchecked <commit args>` (a commit no hook sees), `pr <args>` (runs the checker in `pr` mode against `origin/master`), plus `$REPO`, `$CHECK`, `$SEED`, `$B`.
 
@@ -75,13 +81,14 @@ Create `system/tests/require_plan.bats` with exactly:
 ```bash
 #!/usr/bin/env bats
 # require_plan.sh and the git shims (require-plan spec §3, §4, §8). Every repository here is a temporary clone of
-# a temporary bare origin whose master carries this branch's checker; HOME is temporary, so no global git setting
-# reaches the tests.
+# a temporary bare origin whose master carries this branch's checker; HOME is temporary and the system and XDG
+# configs are off, so no host git setting reaches the tests.
 
 setup() {
   REPO="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   CHECK="$REPO/.github/require_plan.sh"
-  export HOME="$BATS_TEST_TMPDIR/home"
+  export HOME="$BATS_TEST_TMPDIR/home" GIT_CONFIG_NOSYSTEM=1
+  export XDG_CONFIG_HOME="$HOME/.config"
   mkdir -p "$HOME"
   export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
   unset REQUIRE_PLANS
@@ -247,6 +254,28 @@ pr() { run bash "$CHECK" pr --base origin/master "$@"; }
   [ "$status" -eq 1 ]
 }
 
+@test "deletions: removing or renaming code beside a new spec is a code change" {
+  git rm -q README.md
+  spec_file
+  run git commit -qm drop
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$NOPLAN"* ]]
+  unchecked -m drop
+  pr
+  [ "$status" -eq 1 ]
+  git checkout -q -b moved origin/master
+  mkdir -p docs/superpowers/specs
+  git mv README.md docs/superpowers/specs/r.md
+  run git commit -qm move
+  [ "$status" -eq 1 ]
+  git checkout -q -f master
+  git rm -q README.md
+  spec_file
+  run git commit -qm drop
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"require_plan: on master only"* ]]
+}
+
 conflict_branches() {  # branches b and c from origin/master, both changing README.md; neither has a plan
   git checkout -q -b b origin/master
   echo b > README.md
@@ -297,6 +326,20 @@ in_progress_cases() {  # run in a checkout of c: each operation stops on a confl
   git worktree add -q "$BATS_TEST_TMPDIR/wt" c
   cd "$BATS_TEST_TMPDIR/wt"
   in_progress_cases
+}
+
+@test "in progress: a REBASE_HEAD left behind by git rebase --quit does not count" {
+  conflict_branches
+  git checkout -q c
+  run git rebase -q b
+  [ "$status" -eq 1 ]
+  git rebase --quit
+  git reset -q --hard
+  [ -e "$(git rev-parse --git-path REBASE_HEAD)" ]
+  stage_code
+  run git commit -qm code
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$NOPLAN"* ]]
 }
 
 @test "detached HEAD: allowed with a plan on its history, blocked without" {
@@ -390,6 +433,17 @@ in_progress_cases() {  # run in a checkout of c: each operation stops on a confl
   [[ "$output" == *"require_plan: on main only"* ]]
 }
 
+@test "base: a tag named origin/master does not replace the branch" {
+  git remote set-head origin -d                    # the fallback names origin/master
+  git tag origin/master origin/old
+  stage_code
+  run git commit -qm code
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$NOPLAN"* ]]
+  run bash "$CHECK" commit
+  [ "$status" -eq 1 ]
+}
+
 @test "base: an unborn HEAD blocks" {
   git checkout -q --orphan fresh
   run git commit -qm first
@@ -453,6 +507,36 @@ in_progress_cases() {  # run in a checkout of c: each operation stops on a confl
   [ "$status" -eq 1 ]
 }
 
+@test "pr: a branch that changes require-plan.yml or adds a workflow naming require-plan is blocked" {
+  W=.github/workflows
+  mkdir -p "$SEED/$W"
+  printf 'name: require-plan\n' > "$SEED/$W/require-plan.yml"
+  printf 'name: other\n' > "$SEED/$W/other.yml"
+  git -C "$SEED" add -A
+  git -C "$SEED" commit -qm workflows
+  git -C "$SEED" push -q origin master
+  git fetch -q origin
+  git reset -q --hard origin/master
+  plan_file docs/superpowers/plans/p.md
+  git add docs
+  unchecked -m plan
+  echo 'on: push' >> "$W/other.yml"
+  unchecked -am other
+  pr
+  [ "$status" -eq 0 ]
+  echo '# edited' >> "$W/require-plan.yml"
+  unchecked -am edit
+  pr
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"require_plan: this pull request changes or adds a require-plan workflow; only the owner can merge it"* ]]
+  git reset -q --hard HEAD~1
+  printf 'jobs:\n  require-plan:\n' > "$W/x.yml"
+  git add "$W"
+  unchecked -m forged
+  pr
+  [ "$status" -eq 1 ]
+}
+
 @test "usage: a bad mode or option exits 2" {
   run bash "$CHECK"
   [ "$status" -eq 2 ]
@@ -479,7 +563,7 @@ in_progress_cases() {  # run in a checkout of c: each operation stops on a confl
 - [ ] **Step 2: Run the suite to verify it fails**
 
 Run: `mkdir -p .scratch/tmp && TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch bats system/tests/require_plan.bats`
-Expected: FAIL, all 29 tests, each in `setup` with `cp: cannot stat '<repo>/.github/hooks/*': No such file or directory`.
+Expected: FAIL, all 33 tests, each in `setup` with `cp: cannot stat '<repo>/.github/hooks/*': No such file or directory`.
 
 - [ ] **Step 3: Write the checker**
 
@@ -551,13 +635,17 @@ has_plan() {
   return 1
 }
 
+# The plan-step test reads every changed path (deletions, and both sides of a rename); the plan search reads only
+# paths that exist after the change, so a deleted plan does not count.
+staged_all() { git diff --cached -z --name-only --no-renames; }
 staged() { git diff --cached -z --name-only --diff-filter=ACMR; }
+branch_all() { git diff -z --name-only --no-renames "$mb" HEAD; }
 branch_changes() { git diff -z --name-only --diff-filter=ACMR "$mb" HEAD; }
 
-# The base: --base, else origin/HEAD, else origin/master, else origin/main.
+# The base: --base, else origin/HEAD, else origin/master, else origin/main, by full name (a tag cannot stand in).
 if [ -z "$base" ]; then
-  base=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)
-  for b in "$base" origin/master origin/main; do
+  base=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)
+  for b in "$base" refs/remotes/origin/master refs/remotes/origin/main; do
     if [ -n "$b" ] && git rev-parse --verify --quiet "$b^{commit}" >/dev/null; then base=$b; break; fi
     base=''
   done
@@ -565,12 +653,13 @@ if [ -z "$base" ]; then
 fi
 
 if [ "$mode" = commit ]; then
-  # A merge, rebase, cherry-pick or revert in progress is left to the pull-request check.
-  for f in MERGE_HEAD REBASE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply; do
+  # A merge, rebase, cherry-pick or revert in progress is left to the pull-request check. Not REBASE_HEAD:
+  # git rebase --quit leaves it behind, and a real rebase always has one of the two folders.
+  for f in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply; do
     if [ -e "$(git rev-parse --git-path "$f")" ]; then exit 0; fi
   done
-  if staged | plan_step; then exit 0; fi
-  default=${base#origin/}
+  if staged_all | plan_step; then exit 0; fi
+  default=${base#refs/remotes/origin/}
   if [ "$(git symbolic-ref --quiet --short HEAD)" = "$default" ]; then
     block "on $default only $SPECS and $PLANS may be committed; work on a branch"
   fi
@@ -584,7 +673,13 @@ if [ "$mode" = commit ]; then
   block "no superpowers plan on this branch; commit one under $PLANS first"
 fi
 
-if branch_changes | plan_step || branch_changes | has_plan HEAD:; then exit 0; fi
+# A pull_request workflow from the pull request could report a passing check under the same name.
+wf=.github/workflows/
+if ! git diff --quiet "$mb" HEAD -- "${wf}require-plan.yml" ||
+   git grep -qF require-plan HEAD -- "$wf" ":(exclude)${wf}require-plan.yml"; then
+  block 'this pull request changes or adds a require-plan workflow; only the owner can merge it'
+fi
+if branch_all | plan_step || branch_changes | has_plan HEAD:; then exit 0; fi
 # A Nightshift pull request names its plan on a "Plan: <path>" line instead (spec §3, pr mode).
 case $head_ref in
   nightshift/*)
@@ -613,8 +708,8 @@ Create `.github/hooks/pre-commit` with exactly:
 # git pre-commit shim (require-plan spec §4): runs the default branch's copy of .github/require_plan.sh, so a branch
 # cannot weaken the check that judges it. Install by copying into "$(git rev-parse --git-common-dir)/hooks/".
 [ "$(git config --local --type=bool --get superpowers.requirePlans 2>/dev/null)" = true ] || exit 0
-base=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)
-for b in "$base" origin/master origin/main; do
+base=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)
+for b in "$base" refs/remotes/origin/master refs/remotes/origin/main; do
   if [ -n "$b" ] && git rev-parse --verify --quiet "$b^{commit}" >/dev/null; then base=$b; break; fi
   base=''
 done
@@ -635,7 +730,7 @@ Run: `chmod +x .github/require_plan.sh .github/hooks/pre-commit && git add .gith
 - [ ] **Step 6: Run the suite to verify it passes**
 
 Run: `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch bats system/tests/require_plan.bats`
-Expected: PASS, `1..29`, no `not ok`.
+Expected: PASS, `1..33`, no `not ok`.
 
 - [ ] **Step 7: Commit**
 
@@ -671,6 +766,7 @@ Run: `git commit -q -F .scratch/msg-1.txt`
 Append to the end of `system/tests/require_plan.bats`, after one blank line:
 
 ```bash
+
 # --no-verify logging (spec §4.1)
 log_file() { echo "$(git rev-parse --git-common-dir)/require-plan.log"; }
 
@@ -749,7 +845,7 @@ log_file() { echo "$(git rev-parse --git-common-dir)/require-plan.log"; }
 - [ ] **Step 2: Run the suite to verify the new tests fail**
 
 Run: `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch bats system/tests/require_plan.bats`
-Expected: FAIL, 4 of 36: `no-verify: a git commit --no-verify adds one line naming the commit` (`.git/require-plan.log: No such file or directory`), `no-verify: a stale marker from an aborted commit does not hide a later --no-verify commit` (the `[ -s … require-plan-checked ]` line), `no-verify: the marker is used once, …` and `no-verify: a --no-verify commit in a worktree …`. The three "add no line" tests pass already (nothing logs yet); they guard against over-logging once Step 4 lands.
+Expected: FAIL, 4 of 40: `no-verify: a git commit --no-verify adds one line naming the commit` (`.git/require-plan.log: No such file or directory`), `no-verify: a stale marker from an aborted commit does not hide a later --no-verify commit` (the `[ -s … require-plan-checked ]` line), `no-verify: the marker is used once, …` and `no-verify: a --no-verify commit in a worktree …`. The three "add no line" tests pass already (nothing logs yet); they guard against over-logging once Step 4 lands.
 
 - [ ] **Step 3: Replace `.github/hooks/pre-commit`** with exactly:
 
@@ -758,8 +854,8 @@ Expected: FAIL, 4 of 36: `no-verify: a git commit --no-verify adds one line nami
 # git pre-commit shim (require-plan spec §4): runs the default branch's copy of .github/require_plan.sh, so a branch
 # cannot weaken the check that judges it. Install by copying into "$(git rev-parse --git-common-dir)/hooks/".
 [ "$(git config --local --type=bool --get superpowers.requirePlans 2>/dev/null)" = true ] || exit 0
-base=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)
-for b in "$base" origin/master origin/main; do
+base=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)
+for b in "$base" refs/remotes/origin/master refs/remotes/origin/main; do
   if [ -n "$b" ] && git rev-parse --verify --quiet "$b^{commit}" >/dev/null; then base=$b; break; fi
   base=''
 done
@@ -804,7 +900,7 @@ Run: `chmod +x .github/hooks/post-commit && git add .github/hooks/pre-commit .gi
 - [ ] **Step 6: Run the suite to verify it passes**
 
 Run: `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch bats system/tests/require_plan.bats`
-Expected: PASS, `1..36`, no `not ok`.
+Expected: PASS, `1..40`, no `not ok`.
 
 - [ ] **Step 7: Commit**
 
@@ -833,7 +929,7 @@ Run: `git commit -q -F .scratch/msg-2.txt`
 
 **Interfaces:**
 - Consumes: Task 1's checker `pr` mode and its options; `$REPO` from the bats `setup`.
-- Produces: the workflow `require-plan` with job id `require-plan`, which is the check name Task 5 makes required. Its last step runs `bash "$RUNNER_TEMP/require_plan.sh" pr --base "origin/$BASE_REF" --head-ref "$HEAD_REF" --same-repo <true|false> --body-file "$RUNNER_TEMP/body.md"` with `REQUIRE_PLANS` from `vars.REQUIRE_PLANS`.
+- Produces: the workflow `require-plan` with job id `require-plan`, which is the check name Task 5 makes required. Its last step returns at once unless `REQUIRE_PLANS` is exactly `true`, then runs `bash "$RUNNER_TEMP/require_plan.sh" pr --base "refs/remotes/origin/$BASE_REF" --head-ref "$HEAD_REF" --same-repo <true|false> --body-file "$RUNNER_TEMP/body.md"` with `REQUIRE_PLANS` from `vars.REQUIRE_PLANS`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -853,12 +949,13 @@ Append to the end of `system/tests/require_plan.bats`, after one blank line:
   grep -qxF '          persist-credentials: false' "$W"
 }
 
-@test "workflow: every expression is a whole env or with value, so none reaches a run block" {
+@test "workflow: every expression sets a listed env name, so none reaches a run block" {
   W="$REPO/.github/workflows/require-plan.yml"
   run grep -nF '${{' "$W"
   [ "${#lines[@]}" -ge 2 ]
+  names='REQUIRE_PLANS|DEFAULT_BRANCH|BASE_REF|HEAD_REF|HEAD_SHA|HEAD_REPO|BASE_REPO|PR_NUMBER|PR_BODY'
   for l in "${lines[@]}"; do
-    [[ "$l" =~ ^[0-9]+:\ +[A-Za-z_-]+:\ \$\{\{\ [A-Za-z0-9_.]+\ \}\}$ ]]
+    [[ "$l" =~ ^[0-9]+:\ +($names):\ \$\{\{\ [A-Za-z0-9_.]+\ \}\}$ ]]
   done
 }
 
@@ -870,12 +967,27 @@ Append to the end of `system/tests/require_plan.bats`, after one blank line:
   [ "$status" -eq 1 ]
   grep -qF 'REQUIRE_PLANS: ${{ vars.REQUIRE_PLANS }}' "$W"
 }
+
+@test "workflow: the check step ends green before the fetch when switched off" {
+  W="$REPO/.github/workflows/require-plan.yml"
+  run awk '/^        run: \|$/ { getline; first = $0 } END { print first }' "$W"
+  [ "$output" = '          [ "$REQUIRE_PLANS" = true ] || exit 0' ]
+}
+
+@test "workflow: the head is pinned to the event's sha and no pull request file is checked out" {
+  W="$REPO/.github/workflows/require-plan.yml"
+  grep -qxF '          HEAD_SHA: ${{ github.event.pull_request.head.sha }}' "$W"
+  grep -qF '[ "$(git rev-parse FETCH_HEAD)" = "$HEAD_SHA" ]' "$W"
+  grep -qxF '          git update-ref --no-deref HEAD "$HEAD_SHA"' "$W"
+  run grep -nE '^ +git .*(checkout|switch)' "$W"
+  [ "$status" -eq 1 ]
+}
 ```
 
 - [ ] **Step 2: Run the suite to verify the new tests fail**
 
 Run: `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch bats system/tests/require_plan.bats`
-Expected: FAIL, the 3 `workflow:` tests (`grep: …/.github/workflows/require-plan.yml: No such file or directory`); the other 36 pass.
+Expected: FAIL, the 5 `workflow:` tests (`grep: …/.github/workflows/require-plan.yml: No such file or directory`); the other 40 pass.
 
 - [ ] **Step 3: Write the workflow**
 
@@ -884,7 +996,7 @@ Create `.github/workflows/require-plan.yml` with exactly:
 ```yaml
 # The pull-request check (require-plan spec §5): fails a pull request that carries no superpowers plan.
 # It runs the default branch's .github/require_plan.sh on the pull request's commits, read as data; nothing from
-# the pull request is executed. Off unless the repository variable REQUIRE_PLANS is exactly true.
+# the pull request is executed or written to disk. Off unless the repository variable REQUIRE_PLANS is exactly true.
 name: require-plan
 
 on:
@@ -916,22 +1028,29 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          git show "origin/$DEFAULT_BRANCH:.github/require_plan.sh" > "$RUNNER_TEMP/require_plan.sh"
+          [ "$REQUIRE_PLANS" = true ] || exit 0
+          git show "refs/remotes/origin/$DEFAULT_BRANCH:.github/require_plan.sh" > "$RUNNER_TEMP/require_plan.sh"
           git fetch -q --no-tags origin "refs/pull/$PR_NUMBER/head"
-          git -c advice.detachedHead=false checkout -q --detach FETCH_HEAD
+          if [ "$(git rev-parse FETCH_HEAD)" = "$HEAD_SHA" ]; then :; else
+            echo "::error::the pull request moved since this event; the newer push gets its own run"
+            exit 1
+          fi
+          # HEAD names the pull request's commit, read as data; the working tree stays the default branch's.
+          git update-ref --no-deref HEAD "$HEAD_SHA"
           printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/body.md"
           same=false
           if [ "$HEAD_REPO" = "$BASE_REPO" ]; then same=true; fi
-          bash "$RUNNER_TEMP/require_plan.sh" pr --base "origin/$BASE_REF" --head-ref "$HEAD_REF" \
+          bash "$RUNNER_TEMP/require_plan.sh" pr --base "refs/remotes/origin/$BASE_REF" --head-ref "$HEAD_REF" \
             --same-repo "$same" --body-file "$RUNNER_TEMP/body.md"
 ```
 
-Notes for the reviewer: `pull_request_target` runs this file and checks out the commit from the default branch, so a pull request cannot edit its own check. The pull request's commits are fetched as data (`refs/pull/<n>/head`, public repository, no credentials kept) and only the default branch's checker runs. A step's `exit 0` does not end a job, so the switch lives in the checker (`REQUIRE_PLANS` from the variable), never in step 1, and no step or job has an `if:`.
+Notes for the reviewer: `pull_request_target` runs this file and checks out the commit from the default branch, so a pull request cannot edit its own check. The pull request's commit is fetched as data (`refs/pull/<n>/head`, public repository, no credentials kept), compared with the event's `head.sha`, and named by `HEAD` through `git update-ref`; no file from it is written and only the default branch's checker runs. A step's `exit 0` does not end a job, so the switch guard is the first line of the last step (a switched-off repository, such as a private vault whose fetch would fail, ends green before the fetch) and the checker keeps its own switch; no step or job has an `if:`.
 
 - [ ] **Step 4: Add the README line**
 
@@ -944,7 +1063,7 @@ In `README.md`, section `## Updating and uninstalling`, insert this bullet direc
 - [ ] **Step 5: Run the suite to verify it passes**
 
 Run: `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch bats system/tests/require_plan.bats`
-Expected: PASS, `1..39`, no `not ok`.
+Expected: PASS, `1..45`, no `not ok`.
 
 - [ ] **Step 6: Commit**
 
@@ -968,12 +1087,12 @@ Run: `git add .github/workflows/require-plan.yml system/tests/require_plan.bats 
 ### Task 4: The Nightshift names its plan, checks the header and records its push
 
 **Files:**
-- Modify: `system/scripts/vaultlib/nightshift_check.py` (constants; `_plan`), `system/scripts/vaultlib/nightshift_deliver.py` (`push`), `system/scripts/vaultlib/nightshift_run.py` (imports; `_deliver`)
+- Modify: `system/scripts/vaultlib/nightshift_check.py` (constants; `_plan`), `system/scripts/vaultlib/nightshift_deliver.py` (`push`), `system/scripts/vaultlib/nightshift_run.py` (imports; `_deliver`), `.claude/skills/nightshift/SKILL.md` (the `add` step)
 - Test: `system/tests/python/test_nightshift_check.py`, `system/tests/python/test_nightshift_deliver.py`, `system/tests/python/test_nightshift_run.py`
 
 **Interfaces:**
 - Consumes: the checker line `MARKER='REQUIRED SUB-SKILL: Use superpowers:'` (Task 1).
-- Produces: `nightshift_check.MARKER: str`; `_plan` adds the error `plan <path> lacks the writing-plans header ('REQUIRED SUB-SKILL: Use superpowers:'); the pull-request check would refuse it`; `nightshift_deliver.push(runner_repo, sha, branch, url) -> (ok, log)` whose log's first line is `git push --no-verify <url> <sha>:refs/heads/<branch>`; `_deliver` writes `pr_body.md` as `Plan: <fm["plan"]>`, a blank line, the session's body with every line matching `^[ \t]*plan:` (any case) removed, then the existing "Queued as" line.
+- Produces: `nightshift_check.MARKER: str`; `_plan` adds the error `plan <path> lacks the writing-plans header ('REQUIRED SUB-SKILL: Use superpowers:'); the pull-request check would refuse it`; `nightshift_deliver.push(runner_repo, sha, branch, url) -> (ok, log)` whose log's first line is `git push --no-verify <url> <sha>:refs/heads/<branch>`, with any `//user:token@` in the URL reduced to `//`; `_deliver` writes `pr_body.md` as `Plan: <fm["plan"]>`, a blank line, the session's body with every line matching `^[ \t]*plan:` (any case) removed, then the existing "Queued as" line.
 
 Every edit below is a find-and-replace of exact text; each "Find" text occurs once in its file.
 
@@ -1037,6 +1156,16 @@ Replace with:
     assert log.splitlines()[0] == f"git push --no-verify {remote} {sha}:refs/heads/nightshift/x"
 ```
 
+Append to the end of `system/tests/python/test_nightshift_deliver.py`, after two blank lines:
+
+```python
+def test_push_log_drops_credentials_from_the_url(tmp_path, monkeypatch):
+    monkeypatch.setattr(nd.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "", ""))
+    ok, log = nd.push(tmp_path / "runner.git", "abc", "nightshift/x", "https://user:tok@example.com/o/r.git")
+    assert ok
+    assert log.splitlines()[0] == "git push --no-verify https://example.com/o/r.git abc:refs/heads/nightshift/x"
+```
+
 Append to the end of `system/tests/python/test_nightshift_run.py`, after two blank lines:
 
 ```python
@@ -1067,7 +1196,7 @@ def test_pr_body_starts_with_the_plan_line_and_drops_the_sessions(vault: Path, t
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch python3 -m pytest system/tests/python/test_nightshift_check.py system/tests/python/test_nightshift_deliver.py system/tests/python/test_nightshift_run.py -q`
-Expected: FAIL, `4 failed, 52 passed`: `test_plan_without_the_writing_plans_header_is_refused` and `test_marker_is_the_checkers_literal` (`AttributeError: module 'vaultlib.nightshift_check' has no attribute 'MARKER'`), `test_fetch_push_and_github_pr` (the first log line is the push output), `test_pr_body_starts_with_the_plan_line_and_drops_the_sessions` (`assert 'Plan: docs/s...lans/other.md' == 'Plan: docs/s...rs/plans/p.md'`).
+Expected: FAIL, `5 failed, 52 passed`: `test_plan_without_the_writing_plans_header_is_refused` and `test_marker_is_the_checkers_literal` (`AttributeError: module 'vaultlib.nightshift_check' has no attribute 'MARKER'`), `test_fetch_push_and_github_pr` and `test_push_log_drops_credentials_from_the_url` (the first log line is the push output), `test_pr_body_starts_with_the_plan_line_and_drops_the_sessions` (`assert 'Plan: docs/s...lans/other.md' == 'Plan: docs/s...rs/plans/p.md'`).
 
 - [ ] **Step 3: Implement**
 
@@ -1113,7 +1242,8 @@ Replace with:
 ```python
     args = ["push", "--no-verify", url, f"{sha}:refs/heads/{branch}"]
     p = subprocess.run(cmd + args, capture_output=True, text=True, env=env)
-    return p.returncode == 0, f"git {' '.join(args)}\n" + p.stdout + p.stderr   # the log names every --no-verify push
+    shown = re.sub(r"//[^/@]+@", "//", " ".join(args))   # no credentials in the log (spec §6)
+    return p.returncode == 0, f"git {shown}\n" + p.stdout + p.stderr   # the log names every --no-verify push
 ```
 
 In `system/scripts/vaultlib/nightshift_run.py`, find:
@@ -1144,10 +1274,24 @@ Replace with:
         body.write_text(f"Plan: {fm['plan']}\n\n{text}\n\nQueued as Nightshift item `{fm['id']}`.\n")
 ```
 
+In `.claude/skills/nightshift/SKILL.md`, find (the `add` step's run line):
+
+```markdown
+--verify "<cmd>" … [--now | --at HH:MM] [--budget] [--model]`. Exit 2 lists what is not ready: report it and stop.
+```
+
+Replace with:
+
+```markdown
+--verify "<cmd>" … [--now | --at HH:MM] [--budget] [--model]`. Exit 2 lists what is not ready: report it and stop.
+   - `--pr-base` defaults to `master`; a repository whose default branch is `main` needs `--pr-base main`.
+   - A plan that edits `.github/workflows/` needs an SSH remote or a token with the `workflow` scope, or the push is refused.
+```
+
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch python3 -m pytest system/tests/python/test_nightshift_check.py system/tests/python/test_nightshift_deliver.py system/tests/python/test_nightshift_run.py -q`
-Expected: PASS, `56 passed`.
+Expected: PASS, `57 passed`.
 
 - [ ] **Step 5: Run the gate**
 
@@ -1164,18 +1308,19 @@ feat(nightshift): Plan: line, plan header check, push command on record
 The pull request body for a plan item starts with the runner's Plan: line
 and drops any the session wrote; queueing refuses a plan without the
 writing-plans header; push.log starts with the git push --no-verify
-command.
+command, with credentials removed from the URL. The skill's add step
+names --pr-base main and the workflow scope a push may need.
 
 Claude-Session: https://claude.ai/code/session_0199FzGq2D5cGY9jt9zXX5zm
 ```
 
-Run: `git add system/scripts/vaultlib/nightshift_check.py system/scripts/vaultlib/nightshift_deliver.py system/scripts/vaultlib/nightshift_run.py system/tests/python/test_nightshift_check.py system/tests/python/test_nightshift_deliver.py system/tests/python/test_nightshift_run.py && git commit -q -F .scratch/msg-4.txt`
+Run: `git add system/scripts/vaultlib/nightshift_check.py system/scripts/vaultlib/nightshift_deliver.py system/scripts/vaultlib/nightshift_run.py system/tests/python/test_nightshift_check.py system/tests/python/test_nightshift_deliver.py system/tests/python/test_nightshift_run.py .claude/skills/nightshift/SKILL.md && git commit -q -F .scratch/msg-4.txt`
 
 ---
 
 ### Task 5: Rollout on `kferran/Foundry` (attended; owner only)
 
-**Not runnable by an executor, a subagent or the Nightshift.** Every step changes the owner's clone, the GitHub repository or its settings, and each one needs the owner's explicit OK before it runs. Stop and report at the first surprise. The Nightshift's readiness check refuses this task (it works on `master`); queue Tasks 1 to 4 only.
+**Not runnable by an executor, a subagent or the Nightshift.** Every step changes the owner's clone, the GitHub repository or its settings, and each one needs the owner's explicit OK before it runs. Each step lists its undo. Stop and report at the first surprise. The Nightshift's readiness check refuses this task (it works on `master`); queue Tasks 1 to 4 only.
 
 **Files:** none tracked. Untracked: `CLAUDE.local.md` in the clone root, the installed shims under `$(git rev-parse --git-common-dir)/hooks/`, an `info/exclude` line.
 
@@ -1189,11 +1334,13 @@ In the development clone of `kferran/Foundry`:
 ```bash
 git fetch origin
 git remote set-head origin -a
-git cat-file -e origin/master:.github/require_plan.sh && echo checker-on-master
+git cat-file -e refs/remotes/origin/master:.github/require_plan.sh && echo checker-on-master
 git config --get core.hooksPath; echo "hooksPath exit $?"
 ```
 
 Expected: `checker-on-master`, and `hooksPath exit 1` with nothing printed before it (unset). If `core.hooksPath` is set, stop: the shim would never run.
+
+The owner then opens the repository's **Settings → Actions → General** page in a browser and reads its workflow event policy. GitHub reportedly turns `pull_request_target` off by default for public repositories from 2026-11-02 (in evaluate mode before that); the REST API does not show this policy. If the page shows a policy that blocks or will block `pull_request_target`, the owner allows it for this repository and notes the old value (undo: set it back). If the page has no such policy, nothing changes.
 
 - [ ] **Step 2: Switch the clone on and install the shims (owner's OK)**
 
@@ -1201,7 +1348,7 @@ Expected: `checker-on-master`, and `hooksPath exit 1` with nothing printed befor
 git config --local superpowers.requirePlans true
 hooks="$(git rev-parse --git-common-dir)/hooks"
 for h in pre-commit post-commit; do
-  git show "origin/master:.github/hooks/$h" > "$hooks/$h"
+  git show "refs/remotes/origin/master:.github/hooks/$h" > "$hooks/$h"
   chmod 755 "$hooks/$h"
 done
 ls -l "$hooks/pre-commit" "$hooks/post-commit"
@@ -1209,15 +1356,20 @@ ls -l "$hooks/pre-commit" "$hooks/post-commit"
 
 Expected: both files present with mode `-rwxr-xr-x`.
 
+Undo: `git config --local --unset superpowers.requirePlans && rm "$(git rev-parse --git-common-dir)/hooks/pre-commit" "$(git rev-parse --git-common-dir)/hooks/post-commit"`.
+
 - [ ] **Step 3: Write `CLAUDE.local.md` and exclude it (owner's OK)**
 
 ```bash
-printf '%s\n' 'Every change in this repository is built from a written plan made with superpowers:writing-plans, committed before any code. Never take brainstorming'"'"'s in-chat (bounded) path to skip it, and never commit with --no-verify.' > CLAUDE.local.md
-echo CLAUDE.local.md >> "$(git rev-parse --git-common-dir)/info/exclude"
+printf '%s\n' 'Every change in this repository is built from a written plan made with superpowers:writing-plans, committed before any code. Never take brainstorming'"'"'s in-chat (bounded) path to skip it, never commit with --no-verify, and never push to the default branch.' > CLAUDE.local.md
+exclude="$(git rev-parse --git-common-dir)/info/exclude"
+grep -qxF CLAUDE.local.md "$exclude" || echo CLAUDE.local.md >> "$exclude"
 git status --short CLAUDE.local.md
 ```
 
-Expected: `git status` prints nothing (the file is ignored).
+Expected: `git status` prints nothing (the file is ignored). Then start a new Claude Code session in the clone and run `/memory`: `CLAUDE.local.md` is listed among the loaded memory files. If it is not, stop and report; the spec relies on it.
+
+Undo: `rm CLAUDE.local.md && sed -i '/^CLAUDE\.local\.md$/d' "$(git rev-parse --git-common-dir)/info/exclude"`.
 
 - [ ] **Step 4: Set the repository variable (owner's OK)**
 
@@ -1228,44 +1380,34 @@ gh variable list --repo kferran/Foundry
 
 Expected: `REQUIRE_PLANS  true`.
 
-- [ ] **Step 5: Make `require-plan` a required check on `master` (owner's OK)**
+Undo: `gh variable delete REQUIRE_PLANS --repo kferran/Foundry`.
 
-Show the current protection first; the owner chooses the branch below from what it prints:
+- [ ] **Step 5: Live proof, local (owner's OK)**
 
-```bash
-gh api repos/kferran/Foundry/branches/master/protection
-```
-
-If it prints protection that already has `required_status_checks`, add the context without touching the rest:
+From Claude Code:
 
 ```bash
-gh api -X POST repos/kferran/Foundry/branches/master/protection/required_status_checks/contexts -f 'contexts[]=require-plan'
-```
-
-If it prints `Branch not protected` (404), create protection with only this check, admins exempt (the owner can still override):
-
-```bash
-printf '%s' '{"required_status_checks":{"strict":false,"contexts":["require-plan"]},"enforce_admins":false,"required_pull_request_reviews":null,"restrictions":null}' > .scratch/protection.json
-gh api -X PUT repos/kferran/Foundry/branches/master/protection --input .scratch/protection.json
-```
-
-Expected: `gh api repos/kferran/Foundry/branches/master/protection --jq .required_status_checks.contexts` lists `require-plan`.
-
-- [ ] **Step 6: Live proof, local (owner's OK)**
-
-```bash
-git switch -c scratch/rp-noplan origin/master
+git switch -c scratch/rp-noplan refs/remotes/origin/master
 echo proof > rp-proof.txt
 git add rp-proof.txt
 git commit -m 'rp proof'; echo "exit $?"
 ```
 
-Expected: `require_plan: no superpowers plan on this branch; commit one under docs/superpowers/plans/ first` and `exit 1`. Run the same four lines once from Claude Code and once by the owner in a plain terminal.
+Expected: `require_plan: no superpowers plan on this branch; commit one under docs/superpowers/plans/ first` and `exit 1`. `rp-proof.txt` stays staged.
+
+Then the owner, in a plain terminal in the same clone:
+
+```bash
+git switch scratch/rp-noplan
+git commit -m 'rp proof'; echo "exit $?"
+```
+
+Expected: the same message and `exit 1`.
 
 In a worktree of a branch cut before this landed:
 
 ```bash
-old="$(git rev-parse 'origin/master^1')"
+old="$(git rev-parse 'refs/remotes/origin/master^1')"
 git cat-file -e "$old:.github/require_plan.sh"; echo "checker in old: exit $?"
 git worktree add -b scratch/rp-old .scratch/rp-old "$old"
 cd .scratch/rp-old && echo proof > rp-proof.txt && git add rp-proof.txt && git commit -m 'rp proof'; echo "exit $?"; cd -
@@ -1282,12 +1424,14 @@ tail -n 1 "$(git rev-parse --git-common-dir)/require-plan.log"
 
 Expected: one line ending in `scratch/rp-noplan`, the new commit's sha and `pre-commit skipped (--no-verify)`.
 
-- [ ] **Step 7: Live proof, pull requests (owner's OK)**
+Undo: Step 8 removes the branches and the worktree.
+
+- [ ] **Step 6: Live proof, pull requests, before the check is required (owner's OK)**
 
 ```bash
 git push -u origin scratch/rp-noplan
 gh pr create --draft --base master --head scratch/rp-noplan --title 'rp proof: no plan' --body 'Require-plan live proof; closed after the check runs.'
-git switch -c scratch/rp-plan origin/master
+git switch -c scratch/rp-plan refs/remotes/origin/master
 mkdir -p docs/superpowers/plans
 printf '# RP proof\n\n> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan.\n' > docs/superpowers/plans/rp-proof.md
 git add docs/superpowers/plans/rp-proof.md
@@ -1298,10 +1442,52 @@ git commit -m 'rp proof: code'
 git push -u origin scratch/rp-plan
 gh pr create --draft --base master --head scratch/rp-plan --title 'rp proof: plan' --body 'Require-plan live proof; closed after the check runs.'
 gh pr checks scratch/rp-noplan --watch; gh pr checks scratch/rp-plan --watch
-gh pr view scratch/rp-plan --json mergeable --jq .mergeable
+for b in scratch/rp-noplan scratch/rp-plan; do
+  sha="$(git rev-parse "$b")"
+  echo "$b $(gh api "repos/kferran/Foundry/commits/$sha/check-runs" --jq '.check_runs[] | select(.name=="require-plan") | .conclusion')"
+done
 ```
 
-Expected: both plan-branch commits allowed; `require-plan` fails on `scratch/rp-noplan` with the `no superpowers plan in this pull request` line in its log and passes on `scratch/rp-plan`; `mergeable` prints `MERGEABLE`. If `require-plan` does not appear on a pull request's checks at all, stop: the required check would never pass, and branch protection from Step 5 must be reverted by the owner before anything else merges.
+Expected: both plan-branch commits allowed; the loop prints `scratch/rp-noplan failure` and `scratch/rp-plan success`, so each run reported on its pull request's head commit. If a line has no conclusion, the check did not attach to the head commit: stop, and do not run Step 7.
+
+Undo: Step 8 closes the pull requests and deletes the branches.
+
+- [ ] **Step 7: Make `require-plan` a required check on `master`, then confirm it blocks (owner's OK)**
+
+Show the current protection first; the owner chooses the branch below from what it prints:
+
+```bash
+gh api repos/kferran/Foundry/branches/master/protection
+```
+
+If it prints protection that already has `required_status_checks`, add the context without touching the rest:
+
+```bash
+gh api -X POST repos/kferran/Foundry/branches/master/protection/required_status_checks/contexts -f 'contexts[]=require-plan'
+```
+
+Undo: `gh api -X DELETE repos/kferran/Foundry/branches/master/protection/required_status_checks/contexts -f 'contexts[]=require-plan'`.
+
+If it prints `Branch not protected` (404), create protection with only this check, admins exempt (the owner can still override):
+
+```bash
+printf '%s' '{"required_status_checks":{"strict":false,"contexts":["require-plan"]},"enforce_admins":false,"required_pull_request_reviews":null,"restrictions":null}' > .scratch/protection.json
+gh api -X PUT repos/kferran/Foundry/branches/master/protection --input .scratch/protection.json
+```
+
+Undo: `gh api -X DELETE repos/kferran/Foundry/branches/master/protection`.
+
+Then:
+
+```bash
+gh api repos/kferran/Foundry/branches/master/protection --jq .required_status_checks.contexts
+gh pr ready scratch/rp-noplan
+gh pr ready scratch/rp-plan
+gh pr view scratch/rp-noplan --json mergeStateStatus --jq .mergeStateStatus
+gh pr view scratch/rp-plan --json mergeStateStatus --jq .mergeStateStatus
+```
+
+Expected: the contexts list `require-plan`; `BLOCKED` for `scratch/rp-noplan` and `CLEAN` for `scratch/rp-plan` (GitHub may print `UNKNOWN` for a few seconds after `ready`; repeat the view until it settles). Anything else: run this step's undo before anything else merges, and report.
 
 - [ ] **Step 8: Clean up (owner's OK)**
 
