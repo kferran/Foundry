@@ -56,3 +56,9 @@ def test_no_earlier_briefing_prints_nothing(vault):
 
 def test_bad_date_exits_2(vault):
     assert run(vault, "yesterday").returncode == 2
+
+
+def test_active_projects_section_never_carries(vault):
+    write(vault, "briefings/2026-10-06.md", briefing(
+        "- [ ] **Real**\n", extra="\n## 🎯 Active Projects\n\n### [[Alpha]]\nNext:\n- [ ] a project checkbox\n"))
+    assert run(vault, "2026-10-07").stdout.splitlines() == ["- [ ] **Real** _(open since 2026-10-06)_"]
