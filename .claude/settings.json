@@ -15,7 +15,14 @@
       "Bash(system/scripts/vault_index.py validate:*)",
       "Bash(system/scripts/vault_index.py field:*)",
       "Bash(system/scripts/vault_index.py rebuild:*)",
-      "Bash(system/scripts/vault_index.py recall:*)"
+      "Bash(system/scripts/vault_index.py recall:*)",
+      "Bash(system/scripts/verify_setup.sh)",
+      "Bash(system/scripts/verify_setup.sh --health)",
+      "Bash(system/scripts/nightshift.py list)",
+      "Bash(system/scripts/telemetry_fetch.py --list)",
+      "Bash(system/scripts/telemetry_fetch.py --check *)",
+      "Bash(system/scripts/dtcc_watch.py --check)",
+      "Bash(systemctl --user list-timers *)"
     ],
     "deny": [
       "Read(~/.ssh/**)", "Read(~/.gnupg/**)",
