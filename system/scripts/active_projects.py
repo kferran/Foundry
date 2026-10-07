@@ -68,9 +68,64 @@ def page_items(text: str) -> tuple[list[str], list[str]]:
     return nxt, decisions
 
 
+def project_block(raw: str, focus: str, text: str) -> list[str]:
+    nxt, decisions = page_items(text)
+    lines = ["", f"### [[{raw}]]" + (f": {focus}" if focus else ""), "Next:"]
+    lines += [f"- {t}" for t in nxt] or ["- None open."]
+    if decisions:
+        lines += ["Decisions waiting:", *[f"- {t}" for t in decisions]]
+    return lines
+
+
+def partition_blocks(part: str, resolver: Resolver, notices: list[str]) -> list[str]:
+    listing = Path("wiki") / part / LIST_NAME
+    if not listing.is_file():
+        return []
+    entries = active_entries(listing.read_text(encoding="utf-8"))
+    if len(entries) > MAX_ACTIVE:
+        notices.append(f"- {part}: only the first {MAX_ACTIVE} active projects are shown.")
+        entries = entries[:MAX_ACTIVE]
+    lines = []
+    for raw, focus in entries:
+        link = f"[[{raw}]]"
+        path, ambiguous = resolver.resolve(wiki_target(raw), listing.as_posix(), "link", len)
+        if path is None:
+            notices.append(f"- {part}: {link} in ActiveProjects does not resolve to a note.")
+            continue
+        if ambiguous:
+            notices.append(f"- {part}: {link} in ActiveProjects matches more than one note; use a path link.")
+            continue
+        other = path.split("/")[1]
+        if other != part:
+            notices.append(f"- {part}: {link} is in {other}; list it in that partition's ActiveProjects.")
+            continue
+        try:
+            text = Path(path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            notices.append(f"- {part}: {link} could not be read.")
+            continue
+        lines += project_block(raw, focus, text)
+    return ["", f"## {part}", *lines] if lines else []
+
+
 def main(argv) -> int:
-    print("usage: active_projects.py YYYY-MM-DD", file=sys.stderr)
-    return 2
+    try:
+        day = date.fromisoformat(argv[1]) if len(argv) == 2 else None
+    except ValueError:
+        day = None
+    if day is None:
+        print("usage: active_projects.py YYYY-MM-DD", file=sys.stderr)
+        return 2
+    files = [p.as_posix() for p in Path("wiki").rglob("*.md")] if Path("wiki").is_dir() else []
+    resolver = Resolver(files, name_exclude=("wiki/.staging/",))
+    notices, blocks = [], []
+    for part in PARTITIONS:
+        blocks += partition_blocks(part, resolver, notices)
+    print(f"# Active projects for {day}")
+    print("\n".join(blocks) if blocks else "\nNone.")
+    if notices:
+        print("\n## Notices\n" + "\n".join(notices))
+    return 0
 
 
 if __name__ == "__main__":
