@@ -1,7 +1,7 @@
 # Require a superpowers plan for every change
 
 **Date:** 2026-10-07
-**Status:** Rev 3: the re-review's findings (N1–N7, M1–M8) and the chief-of-staff ruling folded in; awaiting the owner's review
+**Status:** Rev 3, approved by the owner (2026-10-07) with one addition: every `--no-verify` commit or push is logged (§4.1, §6)
 **Applies to:** the development repositories `kferran/Foundry` (default branch `master`) and `kferran/minutes` (`main`). Vaults made from the template carry the files but never run them.
 
 ## 1. Problem and decisions
@@ -10,7 +10,7 @@ The owner's rule: every change is built from a written plan made with superpower
 
 | Topic | Decision |
 |---|---|
-| Layers | A required GitHub check on every pull request (authoritative; nothing local can skip it). A git `pre-commit` shim that stops a code commit early. A Plan line and a queue-time check for the Nightshift. One instruction line in an untracked `CLAUDE.local.md` per clone. |
+| Layers | A required GitHub check on every pull request (authoritative; nothing local can skip it). A git `pre-commit` shim that stops a code commit early, and a `post-commit` shim that logs a commit made with `--no-verify`. A Plan line and a queue-time check for the Nightshift. One instruction line in an untracked `CLAUDE.local.md` per clone. |
 | Exemptions | No change ships without a plan. The plan step itself is allowed: a commit or pull request that touches only `docs/superpowers/specs/` and `docs/superpowers/plans/`. |
 | What counts | A plan file with the `writing-plans` header. The check does not look for the spec. |
 | Who judges | The default branch's copy of the checker, in CI and in the git shim, so a branch cannot weaken the check that judges it. |
@@ -23,7 +23,7 @@ The owner's rule: every change is built from a written plan made with superpower
 | Unit | Purpose |
 |---|---|
 | `.github/require_plan.sh` | The checker (§3). `git` and `grep` only. |
-| `.github/hooks/pre-commit` | Tracked source of the git shim (§4). Installed by copying it into the clone's shared hooks folder; no branch carries the installed copy. |
+| `.github/hooks/pre-commit`, `.github/hooks/post-commit` | Tracked sources of the git shims (§4). Installed by copying them into the clone's shared hooks folder; no branch carries the installed copies. |
 | `.github/workflows/require-plan.yml` | The pull-request check (§5). |
 | `system/scripts/vaultlib/nightshift_run.py` (`_deliver`) | Puts a `Plan:` line first in the pull request body the Nightshift builds (§6). |
 | `system/scripts/vaultlib/nightshift_check.py` (`_plan`) | Refuses to queue a plan without the header (§6). |
@@ -57,6 +57,15 @@ Usage: `require_plan.sh commit` or `require_plan.sh pr [--base <ref>] [--head-re
 
 The shim does not run when `core.hooksPath` is set. The development clone leaves it unset; `/setup`, which sets it to `.githooks`, is never run in a development clone. `git commit --no-verify` and `git cherry-pick`, `git revert` and `git rebase` replays skip `pre-commit`; the pull-request check catches what they let through, and `CLAUDE.local.md` tells sessions never to use `--no-verify`.
 
+### 4.1 Logging `--no-verify`
+
+`git commit --no-verify` skips `pre-commit` but not `post-commit`, so a second shim records it.
+
+- When the checker allows a commit, the `pre-commit` shim writes the staged tree (`git write-tree`) to `$(git rev-parse --git-path require-plan-checked)`.
+- `.github/hooks/post-commit`, installed beside it, exits 0 unless the local switch is on. It reads the subject of `HEAD`'s reflog entry (`git reflog -1 --format=%gs HEAD`). Only a subject starting with `commit` is a `git commit` (`commit:`, `commit (amend):`, `commit (merge):`, `commit (initial):`); cherry-pick, revert and rebase replays have their own subjects and are not logged.
+- For such a commit, when the marker is missing or names a tree other than `HEAD^{tree}`, it appends one line to `$(git rev-parse --git-common-dir)/require-plan.log`: `<ISO 8601 time>\t<branch or detached>\t<commit sha>\tpre-commit skipped (--no-verify)`. It then removes the marker. It never fails the commit.
+- `git push --no-verify` skips only a `pre-push` hook, and the development clones have none, so it skips no check. The Nightshift's push is logged by the runner (§6).
+
 ## 5. The pull-request check
 
 `.github/workflows/require-plan.yml`, on `pull_request_target` (`opened`, `synchronize`, `reopened`, `edited`), job `require-plan`, `permissions: contents: read`. `pull_request_target` takes the workflow file and the checked-out commit from the repository's default branch, whatever the base (GitHub behavior since 2025-12-08), so a pull request cannot edit the check that judges it; no code from the pull request is executed.
@@ -76,13 +85,14 @@ Branch protection on `master` (`Foundry`) and `main` (`minutes`) makes `require-
 - `nightshift_check._plan` also requires the header marker, the same literal as the checker, so a plan that would fail the pull-request check is refused at queue time instead of after a night's run. This applies to every codebase the Nightshift serves, Bitbucket ones included: every Nightshift plan comes from `writing-plans`. A test keeps the two literals equal.
 - `_deliver` defaults the pull request base to `master`; a `minutes` item must be queued with `--pr-base main`.
 - Bitbucket codebases get no body (the runner only records a create-PR link) and no pull-request check.
+- The runner always pushes with `--no-verify` and `core.hooksPath=/dev/null`. `push.log` for the item gains a first line naming the command (`git push --no-verify <url> <sha>:refs/heads/<branch>`) before the push output, so every such push is on record.
 - A Nightshift plan that edits `.github/workflows/` needs an SSH remote or a token with the `workflow` scope to push.
 
 ## 7. Rollout
 
 The last task of the plan, attended, with the owner's OK at each step:
 
-1. In the `Foundry` clone: `git config --local superpowers.requirePlans true`; copy `.github/hooks/pre-commit` to `$(git rev-parse --git-common-dir)/hooks/pre-commit` with mode 755; confirm `core.hooksPath` is unset.
+1. In the `Foundry` clone: `git config --local superpowers.requirePlans true`; copy `.github/hooks/pre-commit` and `.github/hooks/post-commit` to `$(git rev-parse --git-common-dir)/hooks/` with mode 755; confirm `core.hooksPath` is unset.
 2. Write `CLAUDE.local.md` in the clone root with one line: "Every change in this repository is built from a written plan made with superpowers:writing-plans, committed before any code. Never take brainstorming's in-chat (bounded) path to skip it, and never commit with --no-verify." Add `CLAUDE.local.md` to `.git/info/exclude`, so nothing is committed.
 3. Set the repository variable `REQUIRE_PLANS=true` on `kferran/Foundry`.
 4. Branch protection: `require-plan` required on `master`.
@@ -105,13 +115,14 @@ Bound tools: **bats**, **pytest**, the gate (`system/scripts/verify_setup.sh`), 
   - the judge: a worktree on a branch without `.github/` is still blocked; a branch whose `require_plan.sh` is `exit 0` is still blocked; a default branch without the checker allows;
   - the base chain: no `origin/HEAD` falls back to `origin/master`; none at all blocks with the `set-head` message; unborn `HEAD` blocks;
   - pr mode: a plan on the branch; a plan-step-only branch; neither plan nor line; a valid `Plan:` line on a `nightshift/` head from the same repository; the same line from a fork (`--same-repo false`); the same line on another head; a line naming a path outside `plans/`, a path starting with `-`, a missing path, and a file without the marker; a CRLF body; a missing body file; a bad mode exits 2;
-  - the files: `.github/require_plan.sh` and `.github/hooks/pre-commit` are mode 100755 in git; the checker contains none of `mapfile`, `${x,,}`, `declare -A`, `[[ -v` (bash 3.2 for `minutes`);
+  - `--no-verify` logging: a `git commit --no-verify` with the switch on adds one line naming the commit; a normal commit, an amend that ran `pre-commit`, a cherry-pick and a rebase add none; the switch off adds none; a stale marker from an aborted commit does not hide a later `--no-verify` commit of a different tree;
+  - the files: `.github/require_plan.sh`, `.github/hooks/pre-commit` and `.github/hooks/post-commit` are mode 100755 in git; the checker contains none of `mapfile`, `${x,,}`, `declare -A`, `[[ -v` (bash 3.2 for `minutes`);
   - the workflow, by text: the trigger is `pull_request_target`; `permissions` is `contents: read`; checkout sets `persist-credentials: false`; no `run:` block contains `${{`; `REQUIRE_PLANS` is never set to a literal `true`; the job has no `if:`.
-- pytest: the Nightshift pull request body's first line is `Plan: <plan path>` and a session-written `Plan:` line is removed; `nightshift_check` refuses a plan without the marker; the marker literal in `nightshift_check.py` equals the one in `require_plan.sh`.
+- pytest: the Nightshift `push.log` starts with the push command line; the Nightshift pull request body's first line is `Plan: <plan path>` and a session-written `Plan:` line is removed; `nightshift_check` refuses a plan without the marker; the marker literal in `nightshift_check.py` equals the one in `require_plan.sh`.
 
 ## 9. Rulings (cost if wrong)
 
-- R1. Commits that skip `pre-commit` (`--no-verify`, replays by cherry-pick, revert or rebase, a clone with `core.hooksPath` set, a clone not switched on) are not stopped locally. Cost: the work is caught at the pull request, after it was done.
+- R1. Commits that skip `pre-commit` (`--no-verify`, replays by cherry-pick, revert or rebase, a clone with `core.hooksPath` set, a clone not switched on) are not stopped locally. Cost: the work is caught at the pull request, after it was done. A `git commit --no-verify` is at least logged (§4.1); the other cases are not.
 - R2. A fix pass on a merged plan must change the plan on its branch (for example, a fix-pass section) before its first code commit. Cost: one small plan edit per fix branch.
 - R3. The checker, shim source and workflow ship to vaults but stay off. Cost: three unused files in every vault, and a notice line on any vault pull request on GitHub.
 - R4. A merge, rebase, cherry-pick or revert in progress is allowed locally. Cost: code added by hand while resolving one is caught only at the pull request.
