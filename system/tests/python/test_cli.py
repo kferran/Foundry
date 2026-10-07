@@ -44,6 +44,13 @@ def test_archived_briefings_stay_indexed_and_the_debrief_embed_resolves(cli, vau
     assert "briefings/archive/2026-10/2026-10-06.md" in res.stdout
 
 
+def test_the_briefing_template_adds_no_tags():
+    from vaultlib import links
+    from helpers import REPO
+    body = (REPO / "system" / "templates" / "daily-briefing.md").read_text(encoding="utf-8")
+    assert links.extract(body, 1)[1] == set()
+
+
 def test_query_and_rejection(cli):
     res = cli("query", "SELECT path FROM notes WHERE type='index'")
     assert res.returncode == 0 and "wiki/Index.md" in res.stdout

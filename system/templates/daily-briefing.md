@@ -21,7 +21,7 @@ status: "{{status}}"
 
 ## 📝 Notes
 
-<!-- Yours: /brief never edits this section. Wrap a block in #wiki-ingest-start and #wiki-ingest-end to send it to the wiki. -->
+<!-- Yours: /brief never edits this section. Put `#wiki-ingest-start` and `#wiki-ingest-end` on lines of their own around a block to send it to the wiki. -->
 
 ## 🌌 Evening Debriefing ({{debrief_time}})
 

@@ -286,6 +286,20 @@ codebase() {  # <name> <path>
   [ "$(find briefings | sort)" = "$before" ]
 }
 
+@test "brief_prep: a busy run.lock skips archiving and is recorded" {
+  mkdir -p briefings
+  printf 'x\n' > briefings/2026-09-29.md
+  flock system/run.lock sleep 4 &
+  sleep 0.5
+  ARCHIVE_LOCK_WAIT=1 run "$BP"
+  wait
+  [ "$status" -eq 0 ]
+  [ -f briefings/2026-09-29.md ]
+  [ ! -e briefings/archive ]
+  grep -qxF -- '- brief_prep: briefings: run.lock busy; nothing archived' \
+    "system/logs/inputs/$(TZ=America/Denver date +%F)/unavailable.md"
+}
+
 @test "brief_prep: a run for a past date archives nothing" {
   mkdir -p briefings
   printf 'x\n' > briefings/2026-09-29.md
