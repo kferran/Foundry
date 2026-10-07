@@ -14,6 +14,10 @@ status: "{{status}}"
 
 ### 2. Unavailable Sources
 
+## 🎯 Active Projects
+
+<!-- From projects.md. Tick items on each project's own page; this section is rewritten every brief. -->
+
 ## 🛑 Real-Time Workflow Friction Matrix
 - **Systemic Blockers**:
 - **Focus Drift Analysis**:

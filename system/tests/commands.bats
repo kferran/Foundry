@@ -63,6 +63,15 @@ headless_contract() {
   headless_allowlist "$f"
   grep -qF 'briefings/<date>.md' "$f"
   grep -qx '### 2. Unavailable Sources' system/templates/daily-briefing.md
+  t=system/templates/daily-briefing.md
+  grep -qx '## 🎯 Active Projects' "$t"
+  unavailable_line="$(grep -nx '### 2. Unavailable Sources' "$t" | cut -d: -f1)"
+  projects_line="$(grep -nx '## 🎯 Active Projects' "$t" | cut -d: -f1)"
+  friction_line="$(grep -n '^## 🛑 ' "$t" | cut -d: -f1)"
+  [ "$unavailable_line" -lt "$projects_line" ]
+  [ "$projects_line" -lt "$friction_line" ]
+  grep -qF 'system/logs/inputs/<date>/projects.md' "$f"
+  grep -qF 'plain `- ` bullets, never `- [ ] `' "$f"
   grep -qF '![[{{date}}.debrief]]' system/templates/daily-briefing.md
   grep -qx '## 📝 Notes' system/templates/daily-briefing.md
   grep -qF 'Never edit the **📝 Notes** section' "$f"

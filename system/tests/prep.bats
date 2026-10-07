@@ -339,3 +339,24 @@ codebase() {  # <name> <path>
   [ -e "$IN/dtcc.md" ]
   [ ! -s "$IN/dtcc.md" ]
 }
+
+@test "brief_prep: projects.md lists active projects with their next actions" {
+  mkdir -p wiki/work/concepts
+  printf -- '---\ntype: concept\ntags: []\ncompiled_at: 2026-10-01\npartition: work\n---\n# Active Projects\n## Active\n- [[Alpha]]: focus\n' > wiki/work/ActiveProjects.md
+  printf -- '---\ntype: concept\ntags: []\ncompiled_at: 2026-10-01\npartition: work\n---\n# Alpha\n- [ ] first step\n' > wiki/work/concepts/Alpha.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qx '### \[\[Alpha\]\]: focus' "$IN/projects.md"
+  grep -qx -- '- first step' "$IN/projects.md"
+  run grep -c 'projects' "$IN/unavailable.md"
+  [ "$output" = "0" ]
+}
+
+@test "brief_prep: a failing active_projects.py is recorded and leaves no projects.md" {
+  printf '#!/bin/bash\necho boom >&2\nexit 1\n' > "$V/system/scripts/active_projects.py"
+  chmod +x "$V/system/scripts/active_projects.py"
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ ! -e "$IN/projects.md" ]
+  grep -qxF -- '- brief_prep: projects: active_projects.py failed (see system/logs/inputs/2026-10-01/prep_errors.log)' "$IN/unavailable.md"
+}

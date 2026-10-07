@@ -1,5 +1,5 @@
 #!/bin/bash
-# Calendar, meeting actions and yesterday's focus stats into system/logs/inputs/<date>/ (spec §6.5; calendar
+# Calendar, meeting actions, active projects and yesterday's focus stats into system/logs/inputs/<date>/ (spec §6.5; calendar
 # spec §5; meetings spec §2.5).
 # Exits 0 whenever the date is valid; every source that could not be read gets a line in unavailable.md.
 set -euo pipefail
@@ -31,6 +31,9 @@ esac
 
 prep_write actions.md system/scripts/meeting_actions.py "$PREP_DATE" \
   || prep_unavailable "actions: meeting_actions.py failed (see $PREP_DIR/prep_errors.log)"
+# Active projects with their next actions and decisions waiting (active projects spec §4, issue #65).
+prep_write projects.md system/scripts/active_projects.py "$PREP_DATE" \
+  || prep_unavailable "projects: active_projects.py failed (see $PREP_DIR/prep_errors.log)"
 prep_meetings
 # Error telemetry (Plan 11 spec §6): a last fetch before the brief. Notes land in raw/telemetry/.
 rc=0
