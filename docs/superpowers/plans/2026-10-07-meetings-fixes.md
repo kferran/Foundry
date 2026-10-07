@@ -532,7 +532,7 @@ git commit -m "fix(meetings): remove the running session's directory when the fe
 
 ---
 
-### Task 7 (decision gate: triage Decision 2): the title's zone sets the start (#42)
+### Task 7: (decided 2026-10-07: title-zone table) the title's zone sets the start (#42)
 
 **Files:**
 - Modify: `system/scripts/vaultlib/meetings.py:5`, `:11-12`, `:131-134` (`parse_gdoc`)
@@ -638,7 +638,7 @@ git commit -m "fix(meetings): read a Doc title's zone abbreviation for its start
 
 ---
 
-### Task 8 (decision gate: triage Decision 3): `meetings_fetch.sh --retry` (#44)
+### Task 8: (NOT RUN: user chose a README note instead, 2026-10-07) `meetings_fetch.sh --retry` (#44)
 
 **Files:**
 - Modify: `system/scripts/meetings_extract.py:133-142` (`fetch_log`)
