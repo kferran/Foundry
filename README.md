@@ -41,7 +41,7 @@ Automation runs on systemd user timers: isolated headless `claude -p` jobs for i
 | 10. Migrate Cerebro and Wong | Import both older systems, then decommission them (Sub-project 3) | Complete (2026-10-06): content migrated outside this repo's plans |
 
 - Design spec: [docs/superpowers/specs/2026-09-30-vault-template-design.md](docs/superpowers/specs/2026-09-30-vault-template-design.md)
-- Roadmap: [docs/superpowers/plans/2026-09-30-jarvis-roadmap.md](docs/superpowers/plans/2026-09-30-jarvis-roadmap.md)
+- Roadmap: [docs/superpowers/roadmap.md](docs/superpowers/roadmap.md)
 
 Plans are numbered in the order they were defined, not the order they run; the table is in run order. Each plan is written only after the previous one is finished, because results carry forward. For example, the spike can change the permission model (spec §7), and that affects Plans 2–4.
 
