@@ -19,6 +19,10 @@ status: "{{status}}"
 - **Focus Drift Analysis**:
 - **Communication Debt**:
 
+## 📝 Notes
+
+<!-- Yours: /brief never edits this section. Wrap a block in #wiki-ingest-start and #wiki-ingest-end to send it to the wiki. -->
+
 ## 🌌 Evening Debriefing ({{debrief_time}})
 
 ![[{{date}}.debrief]]

@@ -56,4 +56,20 @@ if [[ -f "system/logs/nightshift/$PREP_DATE.md" ]]; then
 else
   : > "$PREP_DIR/nightshift.md"
 fi
+
+# Briefings and debriefs dated before today move to briefings/archive/<YYYY-MM>/, after carried.md is
+# written (carry_forward.py reads the archive too). The sync commit records the moves.
+today="$(date +%F)"
+for f in briefings/*.md; do
+  name="${f#briefings/}"
+  [[ "$name" =~ ^(([0-9]{4}-[0-9]{2})-[0-9]{2})(\.debrief)?\.md$ ]] || continue
+  [[ "${BASH_REMATCH[1]}" < "$today" ]] || continue
+  dest="briefings/archive/${BASH_REMATCH[2]}/$name"
+  if [[ -e "$dest" ]]; then
+    prep_unavailable "briefings: $name not archived ($dest exists)"
+  else
+    { mkdir -p "${dest%/*}" && mv "$f" "$dest"; } 2>> "$PREP_DIR/prep_errors.log" \
+      || prep_unavailable "briefings: $name could not be archived (see $PREP_DIR/prep_errors.log)"
+  fi
+done
 exit 0
