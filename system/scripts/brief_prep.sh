@@ -56,4 +56,7 @@ if [[ -f "system/logs/nightshift/$PREP_DATE.md" ]]; then
 else
   : > "$PREP_DIR/nightshift.md"
 fi
+# New DTCC changes since the latest earlier briefing (DTCC watcher spec §7); empty without a map.
+prep_write dtcc.md system/scripts/dtcc_watch.py --brief "$PREP_DATE" \
+  || prep_unavailable "dtcc: dtcc_watch.py --brief failed (see $PREP_DIR/prep_errors.log)"
 exit 0

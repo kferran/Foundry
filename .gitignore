@@ -4,8 +4,6 @@
 .obsidian/plugins/obsidian-git/obsidian_askpass.sh
 .claude/settings.local.json
 system/config.md
-system/codebases/*.md
-!system/codebases/example.md
 system/logs/*
 !system/logs/.gitkeep
 system/quarantine/*
@@ -31,6 +29,4 @@ meetings/drop/**/.*
 !meetings/drop/*/.gitkeep
 meetings/drop/**/Thumbs.db
 meetings/drop/**/desktop.ini
-system/telemetry/*.md
-!system/telemetry/example.md
 system/telemetry.lock

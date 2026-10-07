@@ -102,6 +102,11 @@ if [[ "$role" != client ]]; then
   UNITS+=(foundry-nightshift.service foundry-nightshift.timer)
   ENABLE+=(foundry-nightshift.timer)
 fi
+# DTCC watcher: standalone and server, only when the vault has a map (DTCC watcher spec §7).
+if [[ "$role" != client ]] && [[ -f system/dtcc/map.yaml ]]; then
+  UNITS+=(foundry-dtcc-watch.service foundry-dtcc-watch.timer)
+  ENABLE+=(foundry-dtcc-watch.timer)
+fi
 # A server syncs around every run (two-machine spec §5.2): one drop-in per run service, with the
 # service's own prep step and a timeout raised by two sync deadlines plus margin.
 DROPINS=()
@@ -138,6 +143,9 @@ if ! out="$(config_validate 2>&1)"; then
   die 1 "system/config.md or a codebase file is invalid; fix it and re-run"
 fi
 tz="$(config_get timezone)" brief="$(config_get brief_time)" debrief="$(config_get debrief_time)"
+IFS=: read -r bh bm <<< "$brief"
+t=$(( (10#$bh * 60 + 10#$bm + 1410) % 1440 ))
+dtcc_time="$(printf '%02d:%02d' $(( t / 60 )) $(( t % 60 )))"
 sync_interval="$(config_get sync_interval_minutes 5)"
 unit_path="$(dirname "$claude_bin"):%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
@@ -157,7 +165,7 @@ render() {
   {
     printf '%s\n' "$HEADER"
     sed "$@" -e "s|{{VAULT_ROOT}}|$(esc "$VAULT_ROOT")|g" -e "s|{{TZ}}|$(esc "$tz")|g" \
-        -e "s|{{BRIEF_TIME}}|$(esc "$brief")|g" -e "s|{{DEBRIEF_TIME}}|$(esc "$debrief")|g" \
+        -e "s|{{BRIEF_TIME}}|$(esc "$brief")|g" -e "s|{{DTCC_TIME}}|$(esc "$dtcc_time")|g" -e "s|{{DEBRIEF_TIME}}|$(esc "$debrief")|g" \
         -e "s|{{SYNC_INTERVAL}}|$(esc "$sync_interval")|g" \
         -e "s|{{CLAUDE_BIN}}|$(esc "$claude_bin")|g" -e "s|{{UNIT_PATH}}|$(esc "$unit_path")|g" "$t"
   } > "$out"
