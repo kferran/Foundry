@@ -78,7 +78,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 
 | Command | What it does |
 |---|---|
-| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, and a friction matrix |
+| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Earlier days' briefings and debriefs move to `briefings/archive/<YYYY-MM>/` |
 | `/debrief [date]` | The Foreman writes `briefings/<date>.debrief.md` (embedded in the briefing): commits per repo, digest outcomes, headless runs, alerts, focus and agent health |
 | `/ingest <raw file>` | Compiles one raw input into `wiki/`; the intake timer runs it headless in batches |
 | `/query <question>` | Answers from compiled `wiki/` notes only, through the index |
@@ -146,7 +146,7 @@ wiki/
   work/ personal/ shared/     concepts/ entities/ summaries/ preferences/
   work/ personal/meetings/    meeting notes and their transcripts
   .staging/                   headless output awaiting publish (gitignored)
-briefings/                    daily brief and debrief notes
+briefings/                    today's brief and debrief; earlier days in archive/<YYYY-MM>/
 system/
   config.example.md           example global config (real config.md is gitignored)
   codebases/example.md        example codebase file

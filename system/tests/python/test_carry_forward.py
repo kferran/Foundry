@@ -38,6 +38,11 @@ def test_skipped_days_look_further_back_and_debriefs_are_ignored(vault):
     assert out.stdout.splitlines() == ["- [ ] **Friday item** _(open since 2026-10-03)_"]
 
 
+def test_an_archived_briefing_still_carries(vault):
+    write(vault, "briefings/archive/2026-10/2026-10-06.md", briefing("- [ ] **Archived item**\n"))
+    assert run(vault, "2026-10-07").stdout.splitlines() == ["- [ ] **Archived item** _(open since 2026-10-06)_"]
+
+
 def test_only_the_objectives_section_counts(vault):
     write(vault, "briefings/2026-10-06.md", briefing("- [ ] **Real**\n", extra="\n## Notes\n- [ ] a checkbox elsewhere\n"))
     assert run(vault, "2026-10-07").stdout.splitlines() == ["- [ ] **Real** _(open since 2026-10-06)_"]

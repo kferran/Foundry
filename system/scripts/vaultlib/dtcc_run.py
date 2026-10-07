@@ -299,8 +299,12 @@ def brief_lines(vault: Path, day: str) -> list:
     """One checkbox per note detected after the latest earlier briefing's brief time (30-day lookback)."""
     tz, bt = _config(vault)
     today = date.fromisoformat(day)
-    prev = next((today - timedelta(days=b) for b in range(1, 31)
-                 if (vault / "briefings" / f"{(today - timedelta(days=b)).isoformat()}.md").is_file()), today - timedelta(days=30))
+    def briefed(d: date) -> bool:  # brief_prep.sh archives earlier days to briefings/archive/<YYYY-MM>/
+        name = f"{d.isoformat()}.md"
+        return (vault / "briefings" / name).is_file() or (vault / "briefings" / "archive" / name[:7] / name).is_file()
+
+    prev = next((today - timedelta(days=b) for b in range(1, 31) if briefed(today - timedelta(days=b))),
+                today - timedelta(days=30))
     h, m = (int(x) for x in bt.split(":"))
     cutoff = datetime(prev.year, prev.month, prev.day, h, m, tzinfo=tz)
     lines = []

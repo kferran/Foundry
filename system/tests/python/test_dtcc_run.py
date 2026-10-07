@@ -192,3 +192,10 @@ def test_brief_lines_since_previous_briefing(env):
     assert any("[[dtcc-conflict-production-2027-04-25-2027-04-15]]) — Production 2027-04-15 (a9809)" in l for l in lines)
     write(vault, "briefings/2026-10-07.md", "# brief\n")
     assert dtcc_run.brief_lines(vault, "2026-10-08") == []
+
+
+def test_brief_lines_find_an_archived_previous_briefing(env):
+    vault, _ = env
+    run(vault)
+    write(vault, "briefings/archive/2026-10/2026-10-07.md", "# brief\n")
+    assert dtcc_run.brief_lines(vault, "2026-10-08") == []

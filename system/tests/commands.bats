@@ -64,6 +64,8 @@ headless_contract() {
   grep -qF 'briefings/<date>.md' "$f"
   grep -qx '### 2. Unavailable Sources' system/templates/daily-briefing.md
   grep -qF '![[{{date}}.debrief]]' system/templates/daily-briefing.md
+  grep -qx '## 📝 Notes' system/templates/daily-briefing.md
+  grep -qF 'Never edit the **📝 Notes** section' "$f"
 }
 
 @test "debrief: headless contract, its own file, template sections" {

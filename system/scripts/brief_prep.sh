@@ -59,4 +59,30 @@ fi
 # New DTCC changes since the latest earlier briefing (DTCC watcher spec §7); empty without a map.
 prep_write dtcc.md system/scripts/dtcc_watch.py --brief "$PREP_DATE" \
   || prep_unavailable "dtcc: dtcc_watch.py --brief failed (see $PREP_DIR/prep_errors.log)"
+
+# Briefings and debriefs dated before today move to briefings/archive/<YYYY-MM>/, after carried.md and
+# dtcc.md are written (carry_forward.py and dtcc_watch.py read the archive too). The sync commit records
+# the moves. Only a run for today archives: /brief <past date> must find that day's briefing where it is.
+today="$(date +%F)"
+if [[ "$PREP_DATE" == "$today" ]]; then
+  # run.lock, like every other writer of tracked files: a sync's git add -A must not see half the moves.
+  exec 9>system/run.lock
+  if flock -w "${ARCHIVE_LOCK_WAIT:-60}" 9; then
+    for f in briefings/*.md; do
+      name="${f#briefings/}"
+      [[ "$name" =~ ^(([0-9]{4}-[0-9]{2})-[0-9]{2})(\.debrief)?\.md$ ]] || continue
+      [[ "${BASH_REMATCH[1]}" < "$today" ]] || continue
+      dest="briefings/archive/${BASH_REMATCH[2]}/$name"
+      if [[ -e "$dest" ]]; then
+        prep_unavailable "briefings: $name not archived ($dest exists)"
+      else
+        { mkdir -p "${dest%/*}" && mv "$f" "$dest"; } 2>> "$PREP_DIR/prep_errors.log" \
+          || prep_unavailable "briefings: $name could not be archived (see $PREP_DIR/prep_errors.log)"
+      fi
+    done
+  else
+    prep_unavailable "briefings: run.lock busy; nothing archived"
+  fi
+  exec 9>&-
+fi
 exit 0

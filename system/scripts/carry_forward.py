@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Print the open objectives of the latest briefing before <date>, each with the date it was first raised.
 
-Usage: carry_forward.py YYYY-MM-DD. Reads briefings/<earlier date>.md (never a debrief), section
+Usage: carry_forward.py YYYY-MM-DD. Reads briefings/<earlier date>.md, or its copy in
+briefings/archive/<YYYY-MM>/ (never a debrief), section
 "### 1." up to "### 2.", lines starting "- [ ] ". "[x]" is done and "[-]" is dropped; neither carries.
 That briefing already carried the older items, so one file is enough. Exit 0, or 2 on a bad date.
 """
@@ -30,6 +31,8 @@ def main(argv) -> int:
     for back in range(1, LOOKBACK_DAYS + 1):
         day = (today - timedelta(days=back)).isoformat()
         path = Path("briefings") / f"{day}.md"
+        if not path.is_file():
+            path = Path("briefings") / "archive" / day[:7] / f"{day}.md"
         if not path.is_file():
             continue
         for line in open_items(path.read_text(encoding="utf-8")):

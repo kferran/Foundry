@@ -265,6 +265,64 @@ codebase() {  # <name> <path>
   [ "$output" = "0" ]
 }
 
+@test "brief_prep: briefings and debriefs before today move to briefings/archive/<YYYY-MM>/; a rerun changes nothing" {
+  today="$(TZ=America/Denver date +%F)"
+  mkdir -p briefings
+  for f in 2026-09-29.md 2026-09-29.debrief.md 2026-10-01.md "$today.md" "$today.debrief.md" notes.md; do
+    printf 'x\n' > "briefings/$f"
+  done
+  run "$BP"
+  [ "$status" -eq 0 ]
+  [ -f briefings/archive/2026-09/2026-09-29.md ]
+  [ -f briefings/archive/2026-09/2026-09-29.debrief.md ]
+  [ -f briefings/archive/2026-10/2026-10-01.md ]
+  [ ! -e briefings/2026-09-29.md ]
+  [ -f "briefings/$today.md" ]
+  [ -f "briefings/$today.debrief.md" ]
+  [ -f briefings/notes.md ]
+  before="$(find briefings | sort)"
+  run "$BP"
+  [ "$status" -eq 0 ]
+  [ "$(find briefings | sort)" = "$before" ]
+}
+
+@test "brief_prep: a busy run.lock skips archiving and is recorded" {
+  mkdir -p briefings
+  printf 'x\n' > briefings/2026-09-29.md
+  flock system/run.lock sleep 4 &
+  sleep 0.5
+  ARCHIVE_LOCK_WAIT=1 run "$BP"
+  wait
+  [ "$status" -eq 0 ]
+  [ -f briefings/2026-09-29.md ]
+  [ ! -e briefings/archive ]
+  grep -qxF -- '- brief_prep: briefings: run.lock busy; nothing archived' \
+    "system/logs/inputs/$(TZ=America/Denver date +%F)/unavailable.md"
+}
+
+@test "brief_prep: a run for a past date archives nothing" {
+  mkdir -p briefings
+  printf 'x\n' > briefings/2026-09-29.md
+  printf 'x\n' > briefings/2026-10-01.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -f briefings/2026-09-29.md ]
+  [ -f briefings/2026-10-01.md ]
+  [ ! -e briefings/archive ]
+}
+
+@test "brief_prep: a briefing whose archive copy exists stays put and is recorded" {
+  mkdir -p briefings/archive/2026-09
+  printf 'old\n' > briefings/archive/2026-09/2026-09-29.md
+  printf 'new\n' > briefings/2026-09-29.md
+  run "$BP"
+  [ "$status" -eq 0 ]
+  [ "$(cat briefings/archive/2026-09/2026-09-29.md)" = "old" ]
+  [ "$(cat briefings/2026-09-29.md)" = "new" ]
+  grep -qxF -- '- brief_prep: briefings: 2026-09-29.md not archived (briefings/archive/2026-09/2026-09-29.md exists)' \
+    "system/logs/inputs/$(TZ=America/Denver date +%F)/unavailable.md"
+}
+
 @test "brief_prep: nightshift.md copies that morning's report, empty when there is none" {
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
