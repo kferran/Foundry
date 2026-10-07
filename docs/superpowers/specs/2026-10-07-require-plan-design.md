@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-07
 **Status:** Rev 3: the re-review's findings (N1–N7, M1–M8) and the chief-of-staff ruling folded in; awaiting the owner's review
-**Applies to:** the development repositories `kferran/jarvis` (default branch `master`) and `kferran/minutes` (`main`). Vaults made from the template carry the files but never run them.
+**Applies to:** the development repositories `kferran/Foundry` (default branch `master`) and `kferran/minutes` (`main`). Vaults made from the template carry the files but never run them.
 
 ## 1. Problem and decisions
 
@@ -68,7 +68,7 @@ The shim does not run when `core.hooksPath` is set. The development clone leaves
 
 The job always runs: a job skipped by `if:` reports success and would satisfy a required check silently. Re-running a job reuses the original event, so a corrected `Plan:` line is seen only through an edit of the pull request body (the `edited` trigger).
 
-Branch protection on `master` (`jarvis`) and `main` (`minutes`) makes `require-plan` a required check. Both repositories are public, so the free plan allows it. The owner can still override as an admin.
+Branch protection on `master` (`Foundry`) and `main` (`minutes`) makes `require-plan` a required check. Both repositories are public, so the free plan allows it. The owner can still override as an admin.
 
 ## 6. The Nightshift
 
@@ -82,9 +82,9 @@ Branch protection on `master` (`jarvis`) and `main` (`minutes`) makes `require-p
 
 The last task of the plan, attended, with the owner's OK at each step:
 
-1. In the `jarvis` clone: `git config --local superpowers.requirePlans true`; copy `.github/hooks/pre-commit` to `$(git rev-parse --git-common-dir)/hooks/pre-commit` with mode 755; confirm `core.hooksPath` is unset.
+1. In the `Foundry` clone: `git config --local superpowers.requirePlans true`; copy `.github/hooks/pre-commit` to `$(git rev-parse --git-common-dir)/hooks/pre-commit` with mode 755; confirm `core.hooksPath` is unset.
 2. Write `CLAUDE.local.md` in the clone root with one line: "Every change in this repository is built from a written plan made with superpowers:writing-plans, committed before any code. Never take brainstorming's in-chat (bounded) path to skip it, and never commit with --no-verify." Add `CLAUDE.local.md` to `.git/info/exclude`, so nothing is committed.
-3. Set the repository variable `REQUIRE_PLANS=true` on `kferran/jarvis`.
+3. Set the repository variable `REQUIRE_PLANS=true` on `kferran/Foundry`.
 4. Branch protection: `require-plan` required on `master`.
 5. Live proof:
    - a code commit on a scratch branch without a plan is blocked, from Claude Code and from a plain terminal, and in a worktree of a branch cut before this landed;
@@ -123,6 +123,6 @@ Bound tools: **bats**, **pytest**, the gate (`system/scripts/verify_setup.sh`), 
 ## 10. Out of scope
 
 - Checking that a plan has an approved spec, or that it was reviewed.
-- Repositories other than `jarvis` and `minutes`.
+- Repositories other than `Foundry` and `minutes`.
 - Bitbucket pull requests.
 - A Claude Code hook (dropped in rev 3; see §1).
