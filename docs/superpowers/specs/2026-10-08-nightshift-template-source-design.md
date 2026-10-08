@@ -1,12 +1,12 @@
 # Nightshift: template items come from the template remote
 
 **Date:** 2026-10-08
-**Status:** Rev 2, approved by the owner (2026-10-08). Rev 1 (option A, the remote) was approved; rev 2 folds in a three-reviewer quorum on its plan (`.scratch/ts-quorum-*.md`).
+**Status:** Rev 2, approved by the owner (2026-10-08). Rev 1 (option A, the remote) was approved; rev 2 folds in a three-reviewer quorum on its plan.
 **Changes:** `2026-10-06-nightshift-design.md` §3.1 (readiness) and the runner's clone step
 
 ## 1. Problem and decision
 
-A Nightshift item with `repo: template` reads its base branch and plan from the vault itself (`nightshift_check.source` returns the vault for `template`) and the runner fetches the base from the vault into the item's clone. So template work has to live as branches in the vault repository: on 2026-10-07 the vault held `fix/template-issues`, `fix/nightshift-minors` and `fix/telemetry-identifiers` and three worktrees only for this. The work split (2026-10-07) moves template branches to the development clone and the template remote.
+A Nightshift item with `repo: template` reads its base branch and plan from the vault itself (`nightshift_check.source` returns the vault for `template`) and the runner fetches the base from the vault into the item's clone. So template work has to live as branches, and often worktrees, in the vault repository, mixed with the vault's own history. Template work belongs in the template's development clone and on the template remote.
 
 **Decision (owner, option A):** a template item's source is the `template_remote` URL from the vault's config. The base branch must be pushed there before the item is queued. Rejected: a local development-clone path (option B), because every vault would need to configure it and unpushed branches would be run.
 
@@ -60,7 +60,7 @@ A local bare repository stands in for the template remote, as `test_nightshift_r
 
 Bound tools: pytest (`test_nightshift_check.py`, `test_nightshift_run.py`, `test_nightshift_deliver.py`, `test_nightshift_report.py`), the gate.
 
-## 4. Rollout (in the vault, by feOS, with the owner's OK)
+## 4. Rollout (in each vault that queues template items, with its owner's OK)
 
 1. Before `update_template.sh`: `system/scripts/nightshift.py list`; for each queued template item, push its base to the template remote under the same name, or cancel the item.
 2. Run `update_template.sh`.
