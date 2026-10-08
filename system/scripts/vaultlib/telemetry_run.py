@@ -69,6 +69,7 @@ def _adx_groups(src, start, end, counters):
             fp = t.fingerprint(src.name, kind, keys)
             groups.append({"fingerprint": fp, "source": src.name, "environment": src.environment, "codebase": src.codebase,
                            "partition": src.partition, "kind": kind, "service": keys["service"], "exception": exception,
+                           "message": r.get("message"),
                            "operation_id": t.trace_id(r.get("sample_trace")), "detected_at": str(r.get("first_ts")),
                            "last_seen": str(r.get("last_ts")), "count": int(r.get("n") or 0), "keys": keys,
                            "filters": t._filters(src)})
@@ -121,7 +122,8 @@ def _sentry_groups(src, start, store):
         out.append({"fingerprint": f"s-{i['id']}", "source": src.name, "environment": src.environment,
                     "codebase": src.codebase, "partition": src.partition, "kind": "sentry",
                     "service": t.sanitize(i.get("environment") or i.get("project")),
-                    "exception": t.sanitize(i.get("type") or "error"), "operation_id": str(i["id"]),
+                    "exception": t.sanitize(i.get("type") or "error"),
+                    "message": i.get("title"), "operation_id": str(i["id"]),
                     "detected_at": i.get("firstSeen"), "last_seen": i.get("lastSeen"), "count": int(i.get("count") or 0),
                     "keys": {"project": t.sanitize(i.get("project")), "level": t.sanitize(i.get("level"))},
                     "substatus": i.get("substatus"), "sentry_issue": i.get("shortId"),

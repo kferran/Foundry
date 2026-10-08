@@ -308,20 +308,26 @@ def test_bad_source_file_is_reported_and_others_still_run(v, monkeypatch, capsys
 
 
 GUID = "3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b"
-SECRETS = [GUID, "bob@example.com", "sig=AbCdEf", "bob%40example.com", "0123456789abcdef01234567", "3f2b8a1e9c4d4e1f8a2b1c3d4e5f6a7b"]
+APP = "A1-23B4C-D-56"
+DIRTY = (f"Ticket {GUID} for application {APP} failed for bob@example.com and bob%40example.com "
+         "Authorization: Bearer abc.def.ghi Bearer Zm9vYmFyYmF6cXV4MTIzNDU2 password=hunter2 "
+         "Server=db;Pwd=s3cretPwd;AccountKey=Zm9vYmFyQUNDT1VOVEtFWQ==;Database=x "
+         "https://x.example.com/p?sig=AbCdEfSAS postgres://app:pgpass99@db/x AKIAIOSFODNN7EXAMPLE "
+         '{"password":"jsonpass1"}')
+NEVER = ["bob@example.com", "bob%40example.com", "abc.def.ghi", "Zm9vYmFyYmF6cXV4MTIzNDU2", "hunter2", "s3cretPwd",
+         "Zm9vYmFyQUNDT1VOVEtFWQ", "AbCdEfSAS", "pgpass99", "AKIAIOSFODNN7EXAMPLE", "jsonpass1"]
 
 
 def test_privacy_end_to_end(v, monkeypatch, capsys):
     write(v, "system/telemetry/prod-sentry.md", SEN)
     write(v, "system/telemetry/prod-adx.md", ADX.format(covers='covers: "prod-sentry"\n').replace(
         'adx_signals: ["logs"]', 'adx_signals: ["logs", "spans"]'))
-    dirty = f"ticket {GUID} user bob@example.com https://x.example.com/p?sig=AbCdEf and bob%40example.com id 0123456789abcdef01234567 3f2b8a1e9c4d4e1f8a2b1c3d4e5f6a7b"
-    log = dict(LOG_ROW, scope=dirty, event_id=dirty, service=dirty)
-    span = {"service": dirty, "route": "GET /a/" + dirty, "status": "500", "n": 2, "first_ts": "2026-10-05T10:00:00Z",
-            "last_ts": "2026-10-05T11:00:00Z", "traces": 1, "sample_trace": dirty}
+    log = dict(LOG_ROW, scope=DIRTY, event_id=DIRTY, service=DIRTY, message=DIRTY)
+    span = {"service": DIRTY, "route": "GET /a/" + DIRTY, "status": "500", "n": 2, "first_ts": "2026-10-05T10:00:00Z",
+            "last_ts": "2026-10-05T11:00:00Z", "traces": 1, "sample_trace": DIRTY}
     monkeypatch.setattr(kusto, "query", lambda c, d, kql, n: [log] if "Logs" in kql.split("\n")[0] else [span])
-    issue = dict(_sentry_issue(101), title=dirty, culprit=dirty, type=dirty, environment=dirty,
-                 metadata={"value": dirty, "type": dirty}, permalink="https://sentry.example.com/i/101/?sig=AbCdEf")
+    issue = dict(_sentry_issue(101), title=DIRTY, culprit=DIRTY, type=DIRTY, environment=DIRTY,
+                 metadata={"value": DIRTY, "type": DIRTY}, permalink="https://sentry.example.com/i/101/?sig=AbCdEfSAS")
     monkeypatch.setattr(sentry, "project_ids", lambda *a: {"api": "7"})
     monkeypatch.setattr(sentry, "issues", lambda *a: [issue])
     monkeypatch.setattr(sentry, "issue_for_trace", lambda *a: None)
@@ -329,7 +335,86 @@ def test_privacy_end_to_end(v, monkeypatch, capsys):
     assert telemetry_run.main(["--dry-run"], v, NOW + timedelta(hours=1)) == 0
     assert telemetry_run.main([], v, NOW + timedelta(hours=2)) == 0
     out = capsys.readouterr().out
-    blobs = [out] + [p.read_text() for p in v.rglob("*") if p.is_file() and ("raw/telemetry" in str(p) or "system/logs" in str(p))]
+    files = [p for p in v.rglob("*") if p.is_file() and ("raw/telemetry" in str(p) or "system/logs" in str(p))]
+    blobs = [out] + [p.read_text() for p in files]
     assert len(blobs) > 5
-    for s in SECRETS:
+    for s in NEVER:
         assert all(s not in b for b in blobs), s
+    notes = {p.name: p.read_text() for p in files if p.suffix == ".md" and "raw/telemetry" in str(p)}
+    log_note = next(n for n in notes.values() if 'kind: "log"' in n)
+    for note in (notes["prod-sentry-s-101.md"], log_note):
+        msg = [l for l in note.splitlines() if l.startswith("message:")][0]
+        assert GUID in msg and APP in msg and "Ticket " in msg
+
+
+def test_log_group_shows_real_scope_and_message(v, monkeypatch):
+    write(v, "system/telemetry/prod-adx.md", ADX.format(covers=""))
+    scope = "Shop.Plugins.VendorAccountSuitabilitySubmissionFetchXML"
+    row = dict(LOG_ROW, service="worker", scope=scope, event_id="9908", message=f"Ticket {GUID} failed")
+    monkeypatch.setattr(kusto, "query", lambda *a, **k: [row])
+    assert telemetry_run.main([], v, NOW) == 0
+    [note] = [p.read_text() for p in (v / "raw/telemetry").glob("prod-adx-a-*.md")]
+    assert f'exception: "{scope}#9908"' in note and "high_entropy" not in note
+    assert f'message: "Ticket {GUID} failed"' in note
+
+
+def test_sentry_title_becomes_the_message(v, monkeypatch):
+    write(v, "system/telemetry/prod-sentry.md", SEN)
+    monkeypatch.setattr(sentry, "project_ids", lambda *a: {"api": "7"})
+    title = f"InvalidOperationException: ticket {GUID} for {APP}"
+    monkeypatch.setattr(sentry, "issues", lambda *a: [dict(_sentry_issue(101), title=title)])
+    assert telemetry_run.main([], v, NOW) == 0
+    assert f'message: "{title}"' in (v / "raw/telemetry/prod-sentry-s-101.md").read_text()
+
+
+def _two_signal_source(v, name):
+    write(v, f"system/telemetry/{name}.md", ADX.format(covers="").replace('"prod-adx"', f'"{name}"').replace(
+        'adx_signals: ["logs"]', 'adx_signals: ["logs", "spans"]\nadx_group_keys: ["app.partition", "app.slice"]'))
+
+
+def _rows(logs, spans):
+    return lambda c, d, kql, n: logs if kql.startswith("Logs") else spans
+
+
+SPAN_ROW = {"service": "core-api", "status": 500, "n": 1, "first_ts": "2026-10-05T10:00:00Z",
+            "last_ts": "2026-10-05T11:00:00Z", "traces": 1, "sample_trace": "0af7651916cd43dd8448eb211c80319c"}
+
+
+def test_vault_fingerprints_without_the_marker_do_not_change(v, monkeypatch):
+    """Groups with no [REDACTED:high_entropy] in their keys: their fingerprints, and so their note file names, must
+    not move. The names were computed by the code before Task 2; the test passes before and after it."""
+    _two_signal_source(v, "shop-uat-adx")
+    _two_signal_source(v, "shop-prod-adx")
+    logs = [dict(LOG_ROW, service="core-worker", scope="Acme.Platform.Services.MailService", event_id="1800",
+                 module_0="Acme.Core.Partitions.Orders.OrderPartition",
+                 module_1="Acme.Core.Partitions.Orders.OrderEmailNotificationSlice"),
+            dict(LOG_ROW, service="batch-worker", scope="Quartz.Impl.AdoJobStore.ClusterManager", event_id="",
+                 module_0="", module_1="")]
+    spans = [dict(SPAN_ROW, route="api/vendor/agent-credentials/order-credential-check")]
+    monkeypatch.setattr(kusto, "query", _rows(logs, spans))
+    assert telemetry_run.main([], v, NOW) == 0
+    assert sorted(p.name for p in (v / "raw/telemetry").glob("*.md")) == [
+        "shop-prod-adx-a-1ac755ccca34.md", "shop-prod-adx-a-2a9d42e61b13.md", "shop-prod-adx-a-8818b5096c41.md",
+        "shop-uat-adx-a-0e5b4bafc506.md", "shop-uat-adx-a-30e079fb650d.md", "shop-uat-adx-a-f7890ec560a5.md"]
+
+
+def test_marker_groups_split_into_real_routes_and_type_names(v, monkeypatch):
+    """Before 2026-10-07 both routes hashed to a-8513424e6ee9 (route key "[REDACTED:high_entropy]") and the long scope
+    to a-2f59495da85c; now each lands in its own group under its real shape."""
+    _two_signal_source(v, "shop-uat-adx")
+    _two_signal_source(v, "shop-prod-adx")
+    spans = [dict(SPAN_ROW, route=f"api/orders/{GUID}/credential-check"),
+             dict(SPAN_ROW, route=f"api/vendor/agent-credentials/{GUID}/order-credential-check")]
+    log = dict(LOG_ROW, service="core-worker", scope="Acme.Core.Plugins.Vendor.VendorAccountSuitabilitySubmissionFetchXML",
+               event_id="9908", module_0="", module_1="")
+    monkeypatch.setattr(kusto, "query", _rows([log], spans))
+    assert telemetry_run.main([], v, NOW) == 0
+    tele = v / "raw/telemetry"
+    assert not (tele / "shop-prod-adx-a-8513424e6ee9.md").exists()
+    assert not (tele / "shop-uat-adx-a-2f59495da85c.md").exists()
+    notes = [p.read_text() for p in tele.glob("shop-prod-adx-a-*.md")]
+    assert sorted(l for n in notes for l in n.splitlines() if l.startswith("exception:")) == [
+        'exception: "Acme.Core.Plugins.Vendor.VendorAccountSuitabilitySubmissionFetchXML#9908"',
+        'exception: "api/orders/<guid>/credential-check 500"',
+        'exception: "api/vendor/agent-credentials/<guid>/order-credential-check 500"']
+    assert all("high_entropy" not in n and "message:" not in n for n in notes)

@@ -5,7 +5,7 @@ import time
 import pytest
 
 from helpers import REPO
-from vaultlib.redact import named_kinds, redact
+from vaultlib.redact import named_kinds, redact, redact_credentials
 
 
 @pytest.mark.parametrize("secret, kind", [
@@ -122,3 +122,42 @@ def test_named_kinds_takes_only_the_key_equals_value_form():
     assert named_kinds("Avery: reset your password: it expired\n") == []
     assert redact("reset your password: it expired")[1] == 1
     assert named_kinds("api_key = sk_live_example\n") == ["assignment"]
+
+
+LONG_NAME = "Shop.Plugins.VendorAccountSuitabilitySubmissionFetchXML"
+GUID_PATH = "api/orders/3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b/credential-check"
+
+
+def test_high_entropy_guess_hits_long_names_and_guid_paths_and_can_be_skipped():
+    """The cause of [REDACTED:high_entropy] in telemetry notes: CANDIDATE takes / and - as token characters, so a GUID
+    inside a path joins one 64-character token above ENTROPY_BITS; a long PascalCase type name clears it alone."""
+    assert redact(GUID_PATH) == ("[REDACTED:high_entropy]", 1)
+    assert redact(LONG_NAME) == ("Shop.Plugins.[REDACTED:high_entropy]", 1)
+    assert redact("3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b")[1] == 0
+    assert redact(GUID_PATH, high_entropy=False) == (GUID_PATH, 0)
+    assert redact(LONG_NAME, high_entropy=False) == (LONG_NAME, 0)
+    assert redact("Zq8xT2mN7vB4kL9pR3wY6cH1jF5dS0aE password=x", high_entropy=False) == (
+        "Zq8xT2mN7vB4kL9pR3wY6cH1jF5dS0aE password=[REDACTED:assignment]", 1)
+
+
+@pytest.mark.parametrize("text, secret, marker", [
+    ("call failed: Bearer Zm9vYmFyYmF6cXV4MTIzNDU2 rejected", "Zm9vYmFyYmF6cXV4MTIzNDU2", "Bearer [REDACTED:bearer] rejected"),
+    ("postgres://app:pgpass99@db:5432/x", "pgpass99", "postgres://app:[REDACTED:userinfo]@db"),
+    ("Server=db;Pwd=s3cretPwd;Database=x", "s3cretPwd", "Pwd=[REDACTED:connection];Database=x"),
+    ("AccountName=a;AccountKey=Zm9vYmFyQUNDT1VOVEtFWQ==;EndpointSuffix=core.windows.net", "Zm9vYmFyQUNDT1VOVEtFWQ",
+     "AccountKey=[REDACTED:connection];EndpointSuffix"),
+    ("https://a.blob.core.windows.net/c/f?sv=2022&sig=AbCdEfSAS&se=2026", "AbCdEfSAS", "sig=[REDACTED:connection]&se=2026"),
+    ("Server=db;Password=hunter2;Database=x", "hunter2", "Password=[REDACTED:assignment]"),
+    ('{"user":"a","password":"hunter2"}', "hunter2", '"password":"[REDACTED:json]"'),
+    ('{"ticketGuid":"3f2b","apiKey": "k-123"}', "k-123", '"apiKey": "[REDACTED:json]"'),
+    ("key AKIAIOSFODNN7EXAMPLE here", "AKIAIOSFODNN7EXAMPLE", "key [REDACTED:aws_key] here"),
+])
+def test_redact_credentials_masks_credential_shapes(text, secret, marker):
+    out = redact_credentials(text)
+    assert secret not in out and marker in out
+
+
+def test_redact_credentials_keeps_identifiers_and_prose():
+    text = (f"Ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b for A1-23B4C-D-56 in {LONG_NAME} at {GUID_PATH}; "
+            'the bearer of bad news {"tokenCount":"5"}')
+    assert redact_credentials(text) == text

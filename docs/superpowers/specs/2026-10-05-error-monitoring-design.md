@@ -2,6 +2,7 @@
 
 **Date:** 2026-10-05
 **Status:** Approved in brainstorming (2026-10-05), awaiting written-spec review
+**Revised:** 2026-10-07: data policy (identifiers kept, credentials and emails masked); `docs/superpowers/plans/2026-10-07-telemetry-identifiers.md`
 **Extends:** `2026-09-30-vault-template-design.md` (production telemetry, `raw/telemetry/`, the Workcell with `telemetry`); `2026-10-03-two-machines-design.md` (units by role)
 **Roadmap:** Plan 11; sub-projects A (access layer) and B (scheduled error digest) of four. C (alerts) and D (on-demand `/logs`) get their own specs.
 
@@ -15,7 +16,7 @@ The vault already reserves a slot for production errors: `production_error` note
 | Sources | Sentry first: its issues already carry grouping, first/last seen, counts, regression state and a culprit. ADX supplements it with error logs and failed server spans, and covers environments Sentry cannot separate. |
 | Signals | Sentry: unresolved issues of level error or fatal. ADX: logs with `SeverityNumber >= 17` (Error and above) and server spans with `STATUS_CODE_ERROR` or HTTP status 500 and above. Warnings are out of scope. |
 | Cadence | Hourly timer, plus one fetch in `brief_prep.sh` before the brief. |
-| Data policy | **Aggregates only.** Notes and state hold group keys, counts, times, opaque IDs (Sentry issue ID and short ID, one sample trace ID) and links. Never a message, title, body, attribute value, project code, ticket GUID, user ID or URL from the logs. |
+| Data policy | **Identifiers kept, credentials masked** (revised 2026-10-07; "aggregates only" is dropped for every source and environment). Notes hold group keys, counts, times, opaque IDs, links and one `message`: the Sentry issue `title`, or one sample `Body` per ADX log group, ticket identifiers (GUIDs, application IDs) included. Free text passes through `redact_credentials` (named token patterns, bearer tokens, URL passwords, connection-string keys, JSON secret fields, `password=`-style assignments) and emails become `<email>`; nothing else is masked. Group keys keep their shape (`<guid>`, `<n>`, `<hex>`, query strings dropped) so one group covers many tickets. State and the run log hold no free text. |
 | Execution | Deterministic scripts with no model and no headless `claude` run. Network access stays out of the headless sandbox (security model unchanged). |
 | Generality | Everything is generic to any registered codebase. Sources are configured per user in gitignored files; this repository ships only an example. |
 
@@ -82,16 +83,16 @@ Ceiling: an ADX row ingested more than 10 minutes after its timestamp, once its 
 
 ### 3.2 Sentry
 
-Each issue returned for the window is one group. Fingerprint: `s-<issue id>`. Kept per group: issue `id`, `shortId`, `permalink`, `project` slug, `level`, `status` and `substatus` (`new`, `regressed`, `escalating`, `ongoing`), `firstSeen`, `lastSeen`, `count`, `userCount`, `metadata.type` (the exception type, without its value), `culprit` (code location), and the event's `environment` tag (which some codebases use for the service name). `title`, `metadata.value` and every tag value except `environment` are dropped at parse time and never written. `culprit` is kept but passed through `redact.py` and cut at the first `?` (URLs).
+Each issue returned for the window is one group. Fingerprint: `s-<issue id>`. Kept per group: issue `id`, `shortId`, `permalink`, `project` slug, `level`, `status` and `substatus` (`new`, `regressed`, `escalating`, `ongoing`), `firstSeen`, `lastSeen`, `count`, `userCount`, `metadata.type` (the exception type, without its value), `culprit` (code location), and the event's `environment` tag (which some codebases use for the service name). `title` is kept and written as the note's `message` (masked as in §1, folded to one line, at most 500 characters); `metadata.value` and every tag value except `environment` are dropped at parse time. `culprit` is kept but passed through `redact.py` and cut at the first `?` (URLs).
 
 ### 3.3 ADX
 
-Two fixed queries, each with `adx_filter` applied to `ResourceAttributes` and aggregation in ADX, so only group keys and aggregates leave the cluster. `<keys>` are the columns the grouping uses; at most 500 groups per query, with a second query for the total group count when the cap is reached.
+Two fixed queries, each with `adx_filter` applied to `ResourceAttributes` and aggregation in ADX, so only group keys, aggregates and one sample message per log group leave the cluster. `<keys>` are the columns the grouping uses; at most 500 groups per query, with a second query for the total group count when the cap is reached.
 
-- **Logs:** `Logs | where Timestamp >= start and Timestamp < end and SeverityNumber >= 17` grouped by `service = ResourceAttributes["service.name"]`, `scope = LogsAttributes["scope.name"]`, `event_id = LogsAttributes["logrecord.event.id"]`, and each attribute in the source's `adx_group_keys`.
+- **Logs:** `Logs | where Timestamp >= start and Timestamp < end and SeverityNumber >= 17` grouped by `service = ResourceAttributes["service.name"]`, `scope = LogsAttributes["scope.name"]`, `event_id = LogsAttributes["logrecord.event.id"]`, and each attribute in the source's `adx_group_keys`. It also returns `message = take_any(body)` (`body = tostring(Body)`), outside the grouping.
 - **Spans:** `Traces | where StartTime >= start and StartTime < end and SpanKind == "SPAN_KIND_SERVER" and (SpanStatus == "STATUS_CODE_ERROR" or toint(TraceAttributes["http.response.status_code"]) >= 500)` grouped by `service`, `route = coalesce(TraceAttributes["http.route"], SpanName)` and `status = TraceAttributes["http.response.status_code"]`.
 
-Each returns `count()`, `min` and `max` of the time column, `dcount(TraceID)` and `sample_trace = take_any(TraceID)`. Fingerprint: `a-` plus the first 12 hex digits of SHA-1 over `source|signal|key=value|…` in a fixed key order.
+Each returns `count()`, `min` and `max` of the time column, `dcount(TraceID)` and `sample_trace = take_any(TraceID)`. Fingerprint: `a-` plus the first 12 hex digits of SHA-1 over `source|signal|key=value|…` in a fixed key order. The fingerprint hashes the keys as notes show them (`sanitize`: credentials and emails masked, IDs collapsed to their shape). Since 2026-10-07 key cleaning skips the generic high-entropy guess, which had merged long GUID-bearing routes and long type names into one `[REDACTED:high_entropy]` group; those groups split into their real errors, and their old notes stop updating and resolve after 7 quiet days. Every other fingerprint is unchanged.
 
 ### 3.4 Coverage
 
@@ -123,6 +124,7 @@ The existing fields keep their meaning; the new fields are optional so existing 
 |---|---|---|
 | `service` | the `environment` tag, else the project slug | `service.name` |
 | `exception` | `metadata.type` | logs: `<scope>#<event_id>`; spans: `<route> <status>` |
+| new `message` | issue `title` | logs: one sample `Body`; spans: absent |
 | `operation_id` | the latest event's trace ID when present, else the issue ID | the sample trace ID |
 | `detected_at` | `firstSeen` | first `min(time)` |
 | `codebase`, `partition` | from the source's codebase | same |
@@ -186,10 +188,10 @@ One jsonl line per source and run: `started_at`, `source`, `window` (`from`, `to
 
 Gating suites, following the existing patterns:
 
-- **pytest** (`system/tests/python/`): fingerprint stability and key order; KQL building with and without `adx_filter` and `adx_group_keys`; the read-only guard; window math (first run, 7-day cap, failure keeps the checkpoint); Sentry pagination; note create, update, resolve and regress; state rebuild from notes; coverage lookups and the 20-lookup cap. A **privacy test** feeds Sentry issues and ADX rows whose dropped fields hold GUIDs, URLs with query strings, emails and free text, and asserts that none of those strings appear in any note, the state file or the run log.
+- **pytest** (`system/tests/python/`): fingerprint stability and key order; KQL building with and without `adx_filter` and `adx_group_keys`; the read-only guard; window math (first run, 7-day cap, failure keeps the checkpoint); Sentry pagination; note create, update, resolve and regress; state rebuild from notes; coverage lookups and the 20-lookup cap. A **privacy test** feeds Sentry issues and ADX rows whose fields hold credentials (an AWS key, bearer tokens, `password=`, SQL and Azure Storage connection strings, a URL password, a SAS `sig=`, a JSON `"password"` field), plain and URL-encoded emails, a ticket GUID and an application ID, and asserts that no credential or email appears in any note, the state file, the run log or the dry-run output, and that the GUID, the application ID and the title text do appear in the notes.
 - **bats** (`system/tests/telemetry.bats`): `telemetry_fetch.py` end to end with a stub `az` and canned HTTP responses (`FOUNDRY_TELEMETRY_STUB` points the two clients at a directory of fixture files); lock contention (exit 4); auth failure alerts once a day; a token file with mode 0644 is refused; `--check` and `--dry-run` write nothing.
 - **Existing suites extended:** `units.bats` (units by role, enabled only with a source), `setup.bats` (`az` optional), `vault_integrity.bats` and the schema-note tests (the new schema and fields), `prep.bats` (brief prep exit-code lines), `commands.bats` (brief and debrief mention telemetry).
-- **Live acceptance** (`docs/superpowers/spikes/2026-10-xx-plan-11-acceptance.md`): one run against every source configured on the real server; a scripted scan of `raw/telemetry/` and the state file for the forbidden patterns (GUIDs, URLs with query strings, emails); then `/brief` renders the telemetry rows.
+- **Live acceptance** (`docs/superpowers/spikes/2026-10-xx-plan-11-acceptance.md`): one run against every source configured on the real server; a scripted scan of `raw/telemetry/` and the state file for credentials and emails; then `/brief` renders the telemetry rows.
 
 ## 9. Out of scope
 

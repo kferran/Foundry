@@ -1,4 +1,4 @@
-"""Sentry REST client for the telemetry fetch (Plan 11 spec §2.2, §3.2). Keeps only aggregate fields."""
+"""Sentry REST client for the telemetry fetch (Plan 11 spec §2.2, §3.2). Keeps the issue fields notes use, title included."""
 import os
 import re
 import stat
@@ -10,7 +10,7 @@ from . import http
 from .http import TelemetryError
 
 KEEP = ("id", "shortId", "permalink", "project", "level", "status", "substatus", "firstSeen", "lastSeen",
-        "count", "userCount", "type", "culprit", "environment")
+        "count", "userCount", "type", "culprit", "environment", "title")
 MAX_PAGES = 5
 NEXT = re.compile(r'<[^>]*>;\s*rel="next";\s*results="(true|false)";\s*cursor="([^"]*)"')
 

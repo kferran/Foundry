@@ -6,7 +6,13 @@ from vaultlib import frontmatter
 from vaultlib.telemetry_store import Store
 
 NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
-SECRETS = ["3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b", "bob@example.com", "sig=AbCdEf", "free text from a log body"]
+GUID = "3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b"
+APP = "A1-23B4C-D-56"
+CREDS = ["AKIAIOSFODNN7EXAMPLE", "hunter2", "s3cretPwd", "Zm9vYmFyQUNDT1VOVEtFWQ", "pgpass99", "Zm9vYmFyYmF6cXV4MTIzNDU2"]
+DIRTY = (f"Ticket {GUID} for application {APP} failed for bob@example.com: AKIAIOSFODNN7EXAMPLE password=hunter2 "
+         "Server=db;Pwd=s3cretPwd;AccountKey=Zm9vYmFyQUNDT1VOVEtFWQ==; postgres://app:pgpass99@db/x "
+         "Bearer Zm9vYmFyYmF6cXV4MTIzNDU2")
+NOTE = "raw/telemetry/prod-adx-a-0123456789ab.md"
 
 
 def group(**kw):
@@ -54,15 +60,38 @@ def test_corrupt_state_is_quarantined_and_rebuilt_without_duplicates(vault):
     assert len(list((vault / "raw/telemetry").glob("*.md"))) == 1
 
 
-def test_privacy_nothing_dropped_reaches_disk(vault):
+def test_privacy_message_keeps_identifiers_masks_credentials_and_emails(vault):
     st = Store(vault); st.load()
-    g = group(keys={"service": "api", "route": "GET /items/<n>"}, culprit="orders/Submit.cs in Submit")
-    g["title"] = SECRETS[0]; g["body"] = SECRETS[3]; g["attributes"] = {"user": SECRETS[1], "url": "https://x/?" + SECRETS[2]}
+    g = group(message=DIRTY, culprit="orders/Submit.cs in Submit")
+    g["body"] = "free text from a log body"; g["attributes"] = {"user": "carol@example.com"}
     st.upsert(g, NOW); st.save()
     blobs = [p.read_text() for p in (vault / "raw/telemetry").glob("*.md")]
-    blobs.append((vault / "system/logs/telemetry_state.json").read_text())
-    for s in SECRETS:
-        assert all(s not in b for b in blobs), s
+    state = (vault / "system/logs/telemetry_state.json").read_text()
+    for s in CREDS + ["bob@example.com", "carol@example.com", "free text from a log body"]:
+        assert all(s not in b for b in blobs + [state]), s
+    msg = read(vault, NOTE)["message"]
+    assert msg.startswith(f"Ticket {GUID} for application {APP} failed for <email>: ")
+    assert GUID not in state and "Ticket" not in state
+
+
+def test_message_is_one_line_and_round_trips(vault):
+    st = Store(vault); st.load()
+    st.upsert(group(message='Failed "quoted" path C:\\tmp\\x\nsecond line\ttab'), NOW)
+    text = (vault / NOTE).read_text()
+    assert len([l for l in text.splitlines() if l.startswith("message:")]) == 1
+    assert read(vault, NOTE)["message"] == 'Failed "quoted" path C:\\tmp\\x second line tab'
+
+
+def test_existing_note_gains_message_and_keeps_it(vault):
+    st = Store(vault); st.load()
+    st.upsert(group(), NOW)
+    assert "message" not in read(vault, NOTE)
+    st.upsert(group(message=f"Ticket {GUID} failed"), NOW)
+    assert read(vault, NOTE)["message"] == f"Ticket {GUID} failed"
+    st.upsert(group(message=None), NOW)
+    assert read(vault, NOTE)["message"] == f"Ticket {GUID} failed"
+    st.set_status("prod-adx/a-0123456789ab", "resolved", NOW)
+    assert read(vault, NOTE)["message"] == f"Ticket {GUID} failed"
 
 
 def test_store_sanitizes_raw_whitelisted_fields(vault):
@@ -173,3 +202,12 @@ def test_reopen_kql_spans_and_placeholder_keys_are_omitted(vault):
         assert 'toint(TraceAttributes["http.response.status_code"]) == 500' in k
     assert "http.route" not in k1 and "GET /items" not in k1
     assert 'coalesce(tostring(TraceAttributes["http.route"]), SpanName) == "GET /items \\"x\\""' in k2
+
+
+def test_long_type_names_are_not_redacted(vault):
+    scope = "Shop.Plugins.VendorAccountSuitabilitySubmissionFetchXML"
+    st = Store(vault); st.load()
+    st.upsert(group(exception=f"{scope}#9908", keys={"service": "worker", "scope": scope, "event_id": "9908"}), NOW)
+    text = (vault / "raw/telemetry/prod-adx-a-0123456789ab.md").read_text()
+    assert "high_entropy" not in text
+    assert f'exception: "{scope}#9908"' in text and f"| scope | {scope} |" in text

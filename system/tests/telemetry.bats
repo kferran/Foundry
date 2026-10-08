@@ -43,6 +43,15 @@ EOF
   [ -f "$V/system/logs/telemetry_state.json" ]
 }
 
+@test "a log note keeps the ticket GUID in its message and masks the email and password" {
+  run "$V/system/scripts/telemetry_fetch.py"
+  [ "$status" -eq 0 ]
+  note=$(find "$V/raw/telemetry" -name 'prod-adx-a-*.md')
+  grep -qF 'message: "Ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b failed for <email> password=[REDACTED:assignment]"' "$note"
+  run grep -rlE 'bob@example.com|hunter2' "$V/raw/telemetry" "$V/system/logs"
+  [ "$status" -ne 0 ]
+}
+
 @test "the lock is held: a second run exits 4" {
   exec 9> "$V/system/telemetry.lock"
   flock 9

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import frontmatter
-from .redact import redact
+from .redact import redact_credentials
 
 LAG = {"adx": timedelta(minutes=10), "sentry": timedelta(minutes=2)}
 FIRST = timedelta(hours=24)
@@ -116,10 +116,11 @@ def kql_logs(src: Source, start: datetime, end: datetime, limit: int = 500) -> s
                       f"| where Timestamp >= {_t(start)} and Timestamp < {_t(end)} and SeverityNumber >= 17",
                       *_filters(src),
                       "| extend service = tostring(ResourceAttributes[\"service.name\"]), "
-                      "scope = tostring(LogsAttributes[\"scope.name\"]), event_id = tostring(LogsAttributes[\"logrecord.event.id\"])"
+                      "scope = tostring(LogsAttributes[\"scope.name\"]), event_id = tostring(LogsAttributes[\"logrecord.event.id\"]), "
+                      "body = tostring(Body)"
                       + (", " + ", ".join(extra) if extra else ""),
                       f"| summarize n = count(), first_ts = min(Timestamp), last_ts = max(Timestamp), traces = dcount(TraceID), "
-                      f"sample_trace = take_any(TraceID) by {', '.join(by)}",
+                      f"sample_trace = take_any(TraceID), message = take_any(body) by {', '.join(by)}",
                       "| order by n desc",
                       f"| take {limit}"])
 
@@ -172,14 +173,28 @@ def kql_count(kql: str) -> str:
     return "\n".join(line for line in kql.split("\n") if not line.startswith("| take ")) + "\n| count"
 
 
+def _text(value) -> str:
+    return urllib.parse.unquote(str(value if value is not None else ""))
+
+
 def sanitize(value) -> str:
-    text, _ = redact(urllib.parse.unquote(str(value if value is not None else "")))
+    """One group key, as the fingerprint hashes it and the note shows it: credentials and emails masked, IDs and
+    numbers collapsed to their shape. No high-entropy guess (dropped 2026-10-07): it hit GUID-bearing routes and long
+    type names and merged unrelated errors into one group."""
+    text = redact_credentials(_text(value))
     text = QUERY.sub("", text)
     text = GUID.sub("<guid>", text)
     text = EMAIL.sub("<email>", text)
     text = HEX.sub("<hex>", text)
     text = DIGITS.sub("<n>", text)
     return text[:200]
+
+
+def mask(value, limit: int = 500) -> str:
+    """Free text kept for triage (Sentry title, sample log message): credentials and emails masked, identifiers kept,
+    whitespace folded to single spaces, cut at `limit` after masking."""
+    text = EMAIL.sub("<email>", redact_credentials(_text(value)))
+    return " ".join(text.split())[:limit]
 
 
 def event_id(value) -> str:

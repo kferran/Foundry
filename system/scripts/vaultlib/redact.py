@@ -18,6 +18,12 @@ PATTERNS = [
 ]
 BEARER = re.compile(r"(?i)(authorization:\s*bearer\s+)\S+")
 ASSIGNMENT = re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key)(\s*[:=]\s*)(?!\[REDACTED)(\S+)")
+BARE_BEARER = re.compile(r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/-]{16,}=*")
+USERINFO = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^/\s:@]+:)[^/\s@]+@")
+CONNECTION = re.compile(r"(?i)\b(pwd|accountkey|sharedaccesskey|sharedaccesssignature|sig|client_secret|access_token"
+                        r"|refresh_token)(\s*=\s*)(?!\[REDACTED)([^;&\s]+)")
+JSON_SECRET = re.compile(r'(?i)("(?:password|passwd|pwd|(?:client_)?secret|(?:access_|refresh_)?token|api[_-]?key'
+                         r'|accountkey)"\s*:\s*)"[^"]*"')
 CANDIDATE = re.compile(r"[A-Za-z0-9+/=_-]{32,}")
 HEX = re.compile(r"[0-9a-fA-F]+")
 ENTROPY_BITS = 4.0
@@ -86,8 +92,8 @@ def _scan_pem(text: str) -> tuple[str, int]:
     return "".join(result), count
 
 
-def redact(text: str) -> tuple:
-    """Return (redacted_text, redaction_count)."""
+def redact(text: str, high_entropy: bool = True) -> tuple:
+    """Return (redacted_text, redaction_count). high_entropy=False skips the generic high-entropy guess."""
     count = 0
 
     def sub(pattern, replacement, value):
@@ -105,10 +111,23 @@ def redact(text: str) -> tuple:
         text = sub(pattern, f"[REDACTED:{kind}]", text)
     text = sub(BEARER, r"\1[REDACTED:bearer]", text)
     text = sub(ASSIGNMENT, r"\1\2[REDACTED:assignment]", text)
+    if not high_entropy:
+        return text, count
     before = text
     text = CANDIDATE.sub(_high_entropy, text)
     count += text.count("[REDACTED:high_entropy]") - before.count("[REDACTED:high_entropy]")
     return text, count
+
+
+def redact_credentials(text: str) -> str:
+    """Telemetry text (error monitoring spec §1): credential-shaped strings only. The named detectors plus bare bearer
+    tokens, URL passwords, connection-string keys and JSON secret fields; no high-entropy guess, which also hits
+    GUID-bearing URL paths and long type names."""
+    text, _ = redact(text, high_entropy=False)
+    text = BARE_BEARER.sub(r"\1[REDACTED:bearer]", text)
+    text = USERINFO.sub(r"\1[REDACTED:userinfo]@", text)
+    text = CONNECTION.sub(r"\1\2[REDACTED:connection]", text)
+    return JSON_SECRET.sub(r'\1"[REDACTED:json]"', text)
 
 
 ASSIGNMENT_EQUALS = re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key)\s*=\s*\S")
