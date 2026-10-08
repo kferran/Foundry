@@ -61,6 +61,15 @@ digests_md() {
 }
 prep_write digests.md digests_md || prep_unavailable "digests: index query failed (see $PREP_DIR/prep_errors.log)"
 
+# The open Work Orders report (Foreman v1 §3.4): everything after this morning's brief lands in the next day's
+# report, so the debrief for a date reads the report dated one day later. Empty when nothing ran.
+open_report="system/logs/nightshift/$(date -d "$PREP_DATE +1 day" +%F).md"
+if [[ -f "$open_report" ]]; then
+  prep_write orders.md cat "$open_report" || prep_unavailable "orders: report unreadable"
+else
+  : > "$PREP_DIR/orders.md"
+fi
+
 prep_meetings
 prep_write focus.md system/scripts/focus_stats.sh "$PREP_DATE" || prep_unavailable "focus: focus_stats.sh failed"
 [[ -s "system/logs/obsidian_focus_$PREP_DATE.log" ]] || prep_unavailable "focus: no focus log for $PREP_DATE"

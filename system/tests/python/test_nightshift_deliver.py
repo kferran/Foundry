@@ -118,6 +118,16 @@ def test_push_target_for_template(vault: Path):
     assert nd.push_target(vault, {"repo": "template"}) == ("https://github.com/acme/vault-template.git", "github:acme/vault-template")
 
 
+def test_push_target_reads_order_pr_and_its_old_name(vault: Path, tmp_path):
+    from test_nightshift_check import registered, set_codebase
+    registered(vault, tmp_path)
+    set_codebase(vault, "shop", nightshift_pr="bitbucket-link")
+    assert nd.push_target(vault, {"repo": "shop"})[1] == "bitbucket-link"
+    set_codebase(vault, "shop", order_pr="github:o/shop")
+    assert nd.push_target(vault, {"repo": "shop"})[1] == "github:o/shop"
+    assert nd.open_pr("gitlab", "order/x", "main", "T", Path("/b"), "") == (False, "unknown order_pr 'gitlab'")
+
+
 def test_research_published(vault: Path, tmp_path):
     findings = tmp_path / "A.md"
     findings.write_text(concept("work", "Answer", "Found it.", provenance='["headless"]'))
@@ -206,6 +216,7 @@ def test_protected_files_are_committed_by_the_runner(tmp_path):
     assert git(runner, "rev-parse", f"{new}^").strip() == sha
     assert git(runner, "rev-parse", "master").strip() == new
     assert git(runner, "show", f"{new}:a.txt") == "a"
+    assert git(runner, "log", "-1", "--format=%an <%ae>", new).strip() == "Work Orders <orders@localhost>"
 
 
 def test_protected_files_outside_the_allowed_folders_are_refused(tmp_path):

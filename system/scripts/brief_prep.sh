@@ -53,7 +53,7 @@ prep_write focus_yesterday.md system/scripts/focus_stats.sh "$yesterday" \
 # Open objectives from the latest earlier briefing, so follow-ups are not lost after one day.
 prep_write carried.md system/scripts/carry_forward.py "$PREP_DATE" \
   || prep_unavailable "carried: carry_forward.py failed (see $PREP_DIR/prep_errors.log)"
-# The Nightshift's report for this morning (Nightshift spec §6); empty when nothing ran.
+# The Work Orders report for this morning (Nightshift spec §6); empty when nothing ran.
 if [[ -f "system/logs/nightshift/$PREP_DATE.md" ]]; then
   prep_write nightshift.md cat "system/logs/nightshift/$PREP_DATE.md" || prep_unavailable "nightshift: report unreadable"
 else

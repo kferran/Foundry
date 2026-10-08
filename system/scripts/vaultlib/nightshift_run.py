@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time as clock
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -54,6 +54,7 @@ def _parser():
     g = a.add_mutually_exclusive_group()
     g.add_argument("--now", action="store_true")
     g.add_argument("--at", metavar="HH:MM")
+    g.add_argument("--window", action="store_true")
     a.add_argument("--budget")
     a.add_argument("--model", default="sonnet")
     c = sub.add_parser("check")
@@ -73,8 +74,12 @@ class Ctx:
         cfg = nc.config(vault)
         self.tz = ZoneInfo(str(cfg.get("timezone") or "UTC"))
         self.brief_time = str(cfg.get("brief_time") or "06:00")
-        self.window = ns.parse_window(cfg.get("nightshift_window"))
-        self.workspace = Path(str(cfg.get("nightshift_workspace") or "~/code/worktrees")).expanduser()
+        self.window = ns.parse_window(nc.setting(cfg, "run_window", "nightshift_window"))
+        self.workspace = Path(str(nc.setting(cfg, "order_workspace", "nightshift_workspace") or "~/code/worktrees")).expanduser()
+        try:
+            self.max_five_hour = float(cfg.get("order_max_five_hour", 0.6))
+        except (TypeError, ValueError):
+            self.max_five_hour = 0.6
         self.local = now.astimezone(self.tz)
         self.date = ns.report_date(self.local, self.brief_time)
         self.alerts = {}
@@ -90,7 +95,7 @@ class Ctx:
         seen.write_text(json.dumps(data))
         path = self.vault / "system" / "logs" / f"alerts_{day}.md"
         with open(path, "a", encoding="utf-8") as f:
-            f.write(f"- {self.local.strftime('%H:%M:%S')} [nightshift] {msg}\n")
+            f.write(f"- {self.local.strftime('%H:%M:%S')} [orders] {msg}\n")
 
     def log(self, line: dict) -> None:
         path = self.vault / "system" / "logs" / f"nightshift-{self.now.strftime('%Y-%m')}.jsonl"
@@ -190,7 +195,7 @@ def _clone(ctx: Ctx, fm: dict) -> Path:
             return clone
         shutil.rmtree(clone)   # half-built by a killed tick: start again
     ctx.workspace.mkdir(parents=True, exist_ok=True)
-    branch = f"nightshift/{fm['id']}"
+    branch = f"order/{fm['id']}"
     if template:
         # From the template remote, never the vault: the vault's object store holds private notes.
         url = str(nc.config(ctx.vault).get("template_remote") or "")
@@ -314,11 +319,11 @@ def _elapsed(idir: Path) -> float:
 def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Path, resume: bool) -> dict:
     kind = fm["kind"]
     cb = nc.codebase(ctx.vault, fm.get("repo")) or {}
-    hosts = list(cb.get("nightshift_hosts") or [])
+    hosts = list(nc.setting(cb, "order_hosts", "nightshift_hosts") or [])
     web = list(fm.get("hosts") or []) if kind == "research" else []
     settings = idir / "settings.json"
     settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm))))
-    plugins = [p for p in [ss.superpowers_dir()] if p] + [Path(str(p)).expanduser() for p in cb.get("nightshift_plugins") or []]
+    plugins = [p for p in [ss.superpowers_dir()] if p] + [Path(str(p)).expanduser() for p in nc.setting(cb, "order_plugins", "nightshift_plugins") or []]
     code = nc.git(cwd / "code", "log", "-1", "--format=%h (%cs)").stdout.strip() if kind == "research" and fm.get("repo") else ""
     prompt = (ss.plan_prompt(fm) if kind == "plan" else
               ss.research_prompt(fm, body, code=f"{fm['repo']} at {code}" if code else None))
@@ -415,9 +420,13 @@ def _deliver_plan(ctx: Ctx, fm: dict, clone: Path, idir: Path, before: dict) -> 
     if (fm["repo"] != "template" and nd.protected_refs(src) != before["src"]) or nd.code_status(ctx.vault) != before["code"]:
         ctx.alert(f"containment/{fm['id']}", f"{fm['id']}: a protected branch or vault code changed during the run")
         return {"state": "failed", "reason": "containment"}
-    branch = f"nightshift/{fm['id']}"
+    branch = f"order/{fm['id']}"
     runner = ctx.workspace / "nightshift-runner.git"
     ok, sha = nd.fetch_branch(runner, clone, branch)
+    if not ok:   # a clone made before the rename to Work Orders holds nightshift/<id>
+        old = f"nightshift/{fm['id']}"
+        ok, old_sha = nd.fetch_branch(runner, clone, old)
+        branch, sha = (old, old_sha) if ok else (branch, sha)
     if not ok:
         return {"state": "blocked", "reason": "no commits", "notes": sha}
     if sha == before["base_sha"]:
@@ -451,7 +460,7 @@ def _deliver(ctx: Ctx, fm: dict, idir: Path) -> dict:
     link = ""
     if ok:
         body = idir / "pr_body.md"
-        body.write_text(f"{d['body']}\n\nQueued as Nightshift item `{fm['id']}`.\n")
+        body.write_text(f"{d['body']}\n\nQueued as Work Order `{fm['id']}`.\n")
         ok, link = nd.open_pr(pr, d["branch"], fm.get("pr_base") or "master", d["title"], body, push_log)
     if ok:
         verb = "Review and merge" if pr.startswith("github:") else "Open the pull request"
@@ -519,12 +528,15 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
         except CloneError as exc:
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
                 f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then queue {fm['id']} again ({exc})"]})
+    t0 = clock.monotonic()
     run = _run_session(ctx, path, fm, body, cwd, idir, resume)
     if run.get("usage"):
         hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
         h = json.loads(hfile.read_text()) if hfile.is_file() else {}
         u = run["usage"]
         h["usage7"] = u.get("seven_day")
+        h["usage5"] = u.get("five_hour")
+        h["usage5_at"] = (ctx.now + timedelta(seconds=clock.monotonic() - t0)).isoformat()
         h["usage"] = f"5h {round((u.get('five_hour') or 0) * 100)}% / 7d {round((u.get('seven_day') or 0) * 100)}%"
         rep.write_health(ctx.vault, ctx.date, h)
     if run["outcome"] == "waiting_reset":
@@ -601,13 +613,24 @@ def tick(ctx: Ctx) -> int:
     hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
     candidates = [e for e in entries if ns.due(e[1], ctx.local, ctx.window, 0)[0]
                   or e[1].get("state") == "running"]
-    if not candidates:
+    if not candidates:   # a held item was cancelled or finished elsewhere: drop the stale Held line
+        h = json.loads(hfile.read_text()) if hfile.is_file() else {}
+        if h.pop("held", None):
+            rep.write_health(ctx.vault, ctx.date, h)
+            rep.write(ctx.vault, ctx.date)
         return 0
     if not hfile.is_file():
         h = health(ctx.vault, ctx.now, entries)
+        prev = ctx.vault / rep.DIR / f"health-{(date.fromisoformat(ctx.date) - timedelta(days=1)).isoformat()}.json"
+        try:   # the last 5-hour reading outlives the report day, so the ceiling holds right after the brief too
+            old = json.loads(prev.read_text()) if prev.is_file() else {}
+        except (OSError, ValueError):
+            old = {}
+        h |= {k: old[k] for k in ("usage5", "usage5_at") if k in old}
         rep.write_health(ctx.vault, ctx.date, h)
     h = json.loads(hfile.read_text())
     h["last_tick"] = ctx.local.strftime("%H:%M")
+    was_held = h.pop("held", None)   # the report's Held line shows only the latest tick's hold
     rep.write_health(ctx.vault, ctx.date, h)
     if str(h.get("sandbox", "")).startswith("FAILED"):
         ctx.alert("sandbox", f"sandbox self-test failed: {h['sandbox']}; no items run")
@@ -616,7 +639,12 @@ def tick(ctx: Ctx) -> int:
     usage7 = h.get("usage7")
     running = [e for e in entries if e[1].get("state") == "running"]
     chosen = running[0] if running else ns.pick(entries, ctx.local, ctx.window, usage7)
-    if not chosen:
+    # The 5-hour ceiling holds only a new start: running and waiting_reset items resume (pick ranks those first).
+    held = ns.five_hour_hold(h, ctx.now, ctx.max_five_hour) if chosen and chosen[1].get("state") == "queued" else ""
+    if was_held or held:
+        rep.write_health(ctx.vault, ctx.date, h | ({"held": held} if held else {}))
+        rep.write(ctx.vault, ctx.date)   # the brief and the debrief copy this file, so the Held line must be in it
+    if held or not chosen:
         return 0
     path, fm, body = chosen
     claim = rep.item_dir(ctx.vault, fm["id"]) / f"claim-{int(fm.get('attempts') or 0) + 1}"
@@ -631,7 +659,7 @@ def tick(ctx: Ctx) -> int:
 def _add(ctx: Ctx, a) -> int:
     item_id = ni.new_id(a.title, ctx.local)
     fm = {"type": "nightshift_item", "id": item_id, "partition": a.partition, "kind": a.kind, "state": "queued",
-          "queued_at": ctx.local.isoformat(), "start": "now" if a.now else ("at" if a.at else "window"),
+          "queued_at": ctx.local.isoformat(), "start": "at" if a.at else ("window" if a.window else "now"),
           "budget": a.budget or ("4h" if a.kind == "plan" else "1h"), "model": a.model}
     if a.at:
         hh, mm = (int(x) for x in a.at.split(":"))

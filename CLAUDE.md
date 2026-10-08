@@ -5,7 +5,7 @@
 ## Directory Map
 - `raw/inbox/`: manual drops (unstructured). `raw/archive/`: compiled drops. `raw/telemetry/`: production-error notes (not ingested).
 - `raw/<partition>/notes/`: pending session digests; `raw/<partition>/archive/`: compiled digests.
-- `raw/<partition>/nightshift/`: Nightshift queue notes (tracked; never ingested).
+- `raw/<partition>/nightshift/`: Work Order queue notes (tracked; never ingested).
 - `wiki/work/`, `wiki/personal/`, `wiki/shared/`: compiled notes in `concepts/`, `entities/`, `summaries/` (and `preferences/` outside `shared`), and `changes/` (`dtcc_change` notes from the DTCC watcher). `wiki/Index.md` is the cross-partition index.
 - `wiki/<partition>/meetings/`: meeting notes and their `.transcript.md` notes, written only by the meeting import (tick an action item's checkbox to close it). `meetings/drop/<partition>/`: drop meeting transcripts here (`.vtt`, `.srt`, `.txt`, `.md`); the server imports and removes them. `raw/meetings/`: fetched Gemini notes awaiting import.
 - `wiki/.staging/<run_id>/`: headless output awaiting publish. Never edit it by hand.
@@ -26,8 +26,9 @@
 - `/lint`: vault integrity report plus link, duplicate, contradiction and staleness suggestions.
 - `/impact <component> [--repo name]`: read-only blast-radius analysis across registered codebases.
 - `/backup`: verify, commit and push according to `remote_mode`.
-- `/nightshift add|ask|list|cancel|status`: queue refined work for unattended runs (a plan's task range to a pull request, or a research brief to a findings note).
+- `/order add|ask|list|cancel|status`: queue refined work as Work Orders for unattended runs (a plan's task range to a pull request, or a research brief to a findings note).
 - `/setup`: interactive onboarding; safe to re-run.
+- **Approved plans:** When the user approves a plan and names no execution method, the plan runs as a Work Order that starts now. "native" or "subagent" runs it in the session; "tonight" queues it for 22:00; "hold" leaves it unqueued. The vault is the repository that has `system/config.md`. In the vault, run `/order add` (the skill shows the readiness result). In any other repository, push the plan's branch and send the exact `system/scripts/nightshift.py add` command to the Foreman session by cross-session message.
 
 ## Codebases
 Codebases are defined in `system/codebases/`. Read the relevant file before touching code.

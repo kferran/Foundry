@@ -2,7 +2,7 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -33,7 +33,7 @@ def env(vault: Path, tmp_path: Path, monkeypatch):
     git(tmp_path, "init", "-q", "--bare", str(remote))
     git(vault, "push", "-q", str(remote), "feat/x")   # template items are read from the template remote
     write(vault, "system/config.md", "---\ntype: config\ntimezone: \"America/Denver\"\nbrief_time: \"06:00\"\n"
-          f"template_remote: \"{remote}\"\nnightshift_workspace: \"{tmp_path / 'ws'}\"\n---\n")
+          f"template_remote: \"{remote}\"\nnightshift_workspace: \"{tmp_path / 'ws'}\"\nrun_window: \"22:00-05:00\"\n---\n")
     stream = tmp_path / "stream.jsonl"
     shutil.copy(FX / "ok.jsonl", stream)
     writes = tmp_path / "writes.txt"
@@ -77,15 +77,17 @@ def test_now_item_runs_verifies_pushes_and_reports(env):
     assert nr.main(["tick"], vault, NOW) == 0
     _, fm = only_item(vault)
     assert fm["state"] == "done" and fm["result"] == "https://github.com/o/r/pull/1"
-    assert "nightshift/" in git(tmp / "remote.git", "branch", "--list")
+    assert "order/" in git(tmp / "remote.git", "branch", "--list")
     report = (vault / "system/logs/nightshift/2026-10-07.md").read_text()
     assert "Review and merge: https://github.com/o/r/pull/1" in report
     assert not list((tmp / "ws").glob("nightshift-2026*"))  # clone removed after delivery
+    body = (vault / "system/logs/nightshift/items" / fm["id"] / "pr_body.md").read_text()
+    assert body.endswith(f"Queued as Work Order `{fm['id']}`.\n")
 
 
 def test_window_item_waits_in_daytime(env):
     vault, _ = env
-    assert add(vault) == 0
+    assert add(vault, "--window") == 0
     assert nr.main(["tick"], vault, NOW) == 0
     assert only_item(vault)[1]["state"] == "queued"
 
@@ -98,7 +100,7 @@ def test_verify_failure_blocks_without_push(env, monkeypatch):
     assert nr.main(["tick"], vault, NOW) == 1
     _, fm = only_item(vault)
     assert (fm["state"], fm["reason"]) == ("blocked", "no commits")
-    assert git(tmp / "remote.git", "branch", "--list", "nightshift/*").strip() == ""
+    assert git(tmp / "remote.git", "branch", "--list", "order/*").strip() == ""
 
 
 def test_usage_limit_waits_then_resumes(env, monkeypatch):
@@ -128,6 +130,118 @@ def test_no_result_is_failed(env, monkeypatch, tmp_path):
     assert add(vault, "--now") == 0
     assert nr.main(["tick"], vault, NOW) == 1
     assert only_item(vault)[1]["reason"] == "no result"
+
+
+def test_settings_read_the_old_keys_and_the_new_ones_win(env, tmp_path):
+    vault, _ = env
+    assert nr.Ctx(vault, NOW).workspace == tmp_path / "ws"   # the fixture sets only nightshift_workspace
+    write(vault, "system/config.md", '---\ntype: config\ntimezone: "UTC"\nnightshift_workspace: "/old"\n'
+          'order_workspace: "/new"\nnightshift_window: "21:00-04:00"\n---\n')
+    ctx = nr.Ctx(vault, NOW)
+    assert ctx.workspace == Path("/new") and ctx.window == nr.ns.parse_window("21:00-04:00")
+    write(vault, "system/config.md", '---\ntype: config\ntimezone: "UTC"\nnightshift_window: "21:00-04:00"\n'
+          'run_window: "23:00-02:00"\n---\n')
+    assert nr.Ctx(vault, NOW).window == nr.ns.parse_window("23:00-02:00")
+
+
+def test_alerts_carry_the_orders_tag(env):
+    vault, _ = env
+    ctx = nr.Ctx(vault, NOW)
+    ctx.alert("k", "something broke")
+    text = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
+    assert "[orders] something broke" in text and "[nightshift]" not in text
+
+
+def test_add_starts_now_unless_told_otherwise(env):
+    vault, _ = env
+    assert add(vault) == 0
+    path, fm = only_item(vault)
+    assert fm["start"] == "now"
+    path.unlink()
+    assert add(vault, "--window") == 0
+    assert only_item(vault)[1]["start"] == "window"
+
+
+def test_a_finished_session_stores_the_five_hour_usage(env, monkeypatch, tmp_path):
+    vault, _ = env
+    empty = tmp_path / "none.txt"
+    empty.write_text("")
+    monkeypatch.setenv("NIGHTSHIFT_STUB_WRITE", str(empty))
+    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "true")
+    assert add(vault) == 0
+    nr.main(["tick"], vault, NOW)
+    h = json.loads((vault / "system/logs/nightshift/health-2026-10-07.json").read_text())
+    assert (h["usage5"], h["usage7"]) == (0.12, 0.48)
+    assert NOW <= datetime.fromisoformat(h["usage5_at"]) < NOW + timedelta(minutes=5)
+
+
+def health_at(vault, usage5, age_hours, date="2026-10-07"):
+    nr.rep.write_health(vault, date, {"claude": "ok", "sandbox": "ok", "usage5": usage5,
+                                      "usage5_at": (NOW - timedelta(hours=age_hours)).isoformat()})
+
+
+def test_a_hold_reaches_the_report_file_the_brief_copies(env):
+    vault, _ = env
+    assert add(vault) == 0
+    health_at(vault, 0.7, 1)
+    nr.main(["tick"], vault, NOW)
+    assert "> Held: 5-hour usage 70% at or above 60%" in (vault / nr.rep.DIR / "2026-10-07.md").read_text()
+
+
+def test_a_cancelled_held_item_clears_the_held_line(env):
+    vault, _ = env
+    assert add(vault) == 0
+    health_at(vault, 0.7, 1)
+    nr.main(["tick"], vault, NOW)
+    assert nr.main(["cancel", only_item(vault)[1]["id"]], vault, NOW) == 0
+    nr.main(["tick"], vault, NOW)
+    assert "Held" not in (vault / nr.rep.DIR / "2026-10-07.md").read_text()
+
+
+def test_a_new_report_day_keeps_the_last_five_hour_reading(env):
+    vault, _ = env
+    assert add(vault) == 0
+    health_at(vault, 0.7, 1, date="2026-10-06")   # read by the last session before the brief
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1]["state"] == "queued"
+    assert "> Held: 5-hour usage 70%" in (vault / nr.rep.DIR / "2026-10-07.md").read_text()
+
+
+def test_the_five_hour_ceiling_holds_a_new_item_and_says_why(env, capsys):
+    vault, _ = env
+    assert add(vault) == 0
+    health_at(vault, 0.7, 1)
+    assert nr.main(["tick"], vault, NOW) == 0
+    assert only_item(vault)[1]["state"] == "queued"
+    nr.main(["report"], vault, NOW)
+    assert "> Held: 5-hour usage 70% at or above 60%" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("age,config", [(6, ""), (1, 'order_max_five_hour: "0.8"\n')])
+def test_an_old_reading_or_a_higher_ceiling_lets_it_start(env, monkeypatch, capsys, age, config):
+    vault, _ = env
+    if config:
+        cfg = vault / "system/config.md"
+        cfg.write_text(cfg.read_text().rsplit("---\n", 1)[0] + config + "---\n")
+    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(FX / "limited.jsonl"))
+    assert add(vault) == 0
+    health_at(vault, 0.7, age)
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1]["state"] == "waiting_reset"
+    nr.main(["report"], vault, NOW)
+    assert "Held" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("state", ["running", "waiting_reset"])
+def test_the_five_hour_ceiling_never_stops_an_item_already_started(env, monkeypatch, state):
+    vault, _ = env
+    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(FX / "limited.jsonl"))
+    assert add(vault) == 0
+    path, _ = only_item(vault)
+    ni.update(path, state=state, attempts="1", session_id="old", reset_at=(NOW - timedelta(hours=1)).isoformat())
+    health_at(vault, 0.9, 1)
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1]["attempts"] == "2"
 
 
 def test_cancel_and_list(env, capsys):
@@ -193,7 +307,7 @@ def test_template_clone_comes_from_the_template_remote(env):
     clone = nr._clone(nr.Ctx(vault, NOW), fm)
     assert git(clone, "rev-parse", "HEAD").strip() == on_remote
     assert not (clone / "vault-only.txt").exists()
-    assert git(clone, "for-each-ref", "--format=%(refname)").split() == [f"refs/heads/nightshift/{fm['id']}", "refs/remotes/base"]
+    assert git(clone, "for-each-ref", "--format=%(refname)").split() == [f"refs/heads/order/{fm['id']}", "refs/remotes/base"]
 
 
 def test_a_failed_fetch_leaves_no_clone_and_a_half_built_one_is_rebuilt(env):
@@ -486,6 +600,26 @@ def test_delivery_runs_no_git_inside_the_session_clone(env, monkeypatch):
     out = nr._deliver_plan(ctx, fm, clone, idir, before)
     assert out["state"] == "done", out
     assert [c for c in calls if c[:3] == ["git", "-C", str(clone)]] == []
+
+
+def test_a_clone_made_before_the_rename_delivers_its_nightshift_branch(env, monkeypatch):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ctx = nr.Ctx(vault, NOW)
+    clone = nr._clone(ctx, fm)
+    git(clone, "branch", "-m", f"nightshift/{fm['id']}")   # an item already running when the vault updated
+    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir.mkdir(parents=True)
+    before = nr._before(ctx, fm, idir)
+    (clone / "done.txt").write_text("yes")
+    git(clone, "add", "done.txt")
+    git(clone, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "work")
+    (clone / ".nightshift").mkdir()
+    (clone / ".nightshift" / "result.json").write_text(RESULT)
+    monkeypatch.setattr(nr.nd, "verify_sha", lambda *a: (True, ""))
+    assert nr._deliver_plan(ctx, fm, clone, idir, before)["state"] == "done"
+    assert f"nightshift/{fm['id']}" in git(tmp / "remote.git", "branch", "--list")
 
 
 

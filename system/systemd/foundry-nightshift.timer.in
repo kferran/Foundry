@@ -1,5 +1,5 @@
 [Unit]
-Description=The Foundry: Nightshift tick every 15 minutes
+Description=The Foundry: Work Orders tick every 15 minutes
 
 [Timer]
 OnCalendar=*:0/15

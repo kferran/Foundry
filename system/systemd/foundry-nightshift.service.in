@@ -1,5 +1,5 @@
 [Unit]
-Description=The Foundry: Nightshift tick
+Description=The Foundry: Work Orders tick
 
 [Service]
 Type=oneshot
