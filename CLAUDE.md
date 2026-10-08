@@ -28,6 +28,7 @@
 - `/backup`: verify, commit and push according to `remote_mode`.
 - `/order add|ask|list|cancel|status`: queue refined work as Work Orders for unattended runs (a plan's task range to a pull request, or a research brief to a findings note).
 - `/setup`: interactive onboarding; safe to re-run.
+- **Approved plans:** When the user approves a plan and names no execution method, the plan runs as a Work Order that starts now. "native" or "subagent" runs it in the session; "tonight" queues it for 22:00; "hold" leaves it unqueued. In the vault, run `/order add` (the skill shows the readiness result). In any other repository, push the plan's branch and send the exact `system/scripts/nightshift.py add` command to the Foreman session by cross-session message.
 
 ## Codebases
 Codebases are defined in `system/codebases/`. Read the relevant file before touching code.

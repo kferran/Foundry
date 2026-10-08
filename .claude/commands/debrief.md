@@ -22,6 +22,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - `system/logs/inputs/<date>/git.md`: the day's commits per repo.
 - `system/logs/inputs/<date>/digests.md`: the day's session digests from every partition.
 - `system/logs/inputs/<date>/focus.md`: top notes and Focus Fragmentation Warnings.
+- `system/logs/inputs/<date>/orders.md`: the open Work Orders report, which collects everything since this morning's brief (empty when nothing ran).
 - `system/logs/inputs/<date>/unavailable.md`: sources the prep script could not read.
 - `system/logs/alerts_<date>.md`: pipeline alerts.
 - Today's meetings: `system/scripts/vault_index.py query "SELECT path, title, partition FROM v_meeting WHERE date = '<date>'"`.
@@ -37,6 +38,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - **2. System State Deltas:** headless runs (published, rejected, conflicts), telemetry runs per source (groups new, updated, resolved; failures), alerts, quarantined inputs, and focus: top notes plus every Focus Fragmentation Warning.
 - **3. Agent Health:** every agent whose 3 most recent metric files all show `test_suite_passed: false`, with the files. Report only; the user decides what to do. Otherwise "No repeated failures."
 - **4. Unavailable Sources:** one bullet per missing source, or "None."
+- **5. Work Orders:** the `## Items` table and every `- [ ] ` line under "## Needs you" from `orders.md`, verbatim, and its Held line when there is one. Write "No Work Orders ran today." when the file is empty or says "Nothing ran." When an existing debrief has no 5. Work Orders section, add it at the end.
 - Frontmatter: `type: debrief`, `date: "<date>"`. Never add, change or remove `provenance`; the gate stamps it.
 
 ## Self-edit

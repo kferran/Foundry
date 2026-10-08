@@ -603,3 +603,37 @@ self_edit_contract() {
   grep -qF '`order_max_five_hour`' README.md
   grep -qF 'By default `run_window` is empty and the window is always open' README.md
 }
+
+@test "the brief and the debrief report Work Orders (Foreman v1 §3.4)" {
+  b=.claude/commands/brief.md
+  grep -qF -- '- **🛠 Work Orders:** the `## Items` table from `nightshift.md` verbatim' "$b"
+  grep -qF 'Then **Work Orders**: every `- [ ] ` line under "## Needs you" in `nightshift.md`, verbatim' "$b"
+  run grep -nE 'Overnight|Nightshift' "$b"
+  [ "$status" -eq 1 ]
+  d=.claude/commands/debrief.md
+  grep -qF 'system/logs/inputs/<date>/orders.md' "$d"
+  grep -qF -- '- **5. Work Orders:** the `## Items` table and every `- [ ] ` line under "## Needs you" from `orders.md`' "$d"
+  grep -qF 'No Work Orders ran today.' "$d"
+  grep -qx '### 5. Work Orders' system/templates/daily-debrief.md
+  [ "$(grep -n '^### ' system/templates/daily-debrief.md | tail -n 1)" = "$(grep -n '^### 5. Work Orders$' system/templates/daily-debrief.md)" ]
+}
+
+# commands_section: the body of CLAUDE.md's Commands section.
+commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 } on' CLAUDE.md; }
+
+@test "CLAUDE.md Commands: an approved plan becomes a Work Order that starts now (Foreman v1 §3.3)" {
+  sec="$(commands_section)"
+  [[ "$sec" == *'When the user approves a plan and names no execution method, the plan runs as a Work Order that starts now.'* ]]
+  [[ "$sec" == *'"native" or "subagent" runs it in the session; "tonight" queues it for 22:00; "hold" leaves it unqueued.'* ]]
+  [[ "$sec" == *'In the vault, run `/order add` (the skill shows the readiness result).'* ]]
+  [[ "$sec" == *"In any other repository, push the plan's branch and send the exact \`system/scripts/nightshift.py add\` command to the Foreman session by cross-session message."* ]]
+}
+
+@test "the Foreman owns the Work Order queue; the README asks for one permission mode (Foreman v1 §3.5)" {
+  f=system/agents/foreman.md
+  [ "$(head -n 1 "$f")" = '# The Foreman' ]
+  grep -qF -- '- **Work Orders**: You own the Work Order queue.' "$f"
+  grep -qF 'You take approved plans handed over by design sessions and queue them with `/order add`' "$f"
+  grep -qF 'report them in the brief and the debrief' "$f"
+  grep -qF 'Run the Foreman session and your design sessions in the same permission mode' README.md
+}

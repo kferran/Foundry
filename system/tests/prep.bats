@@ -188,6 +188,19 @@ codebase() {  # <name> <path>
   grep -qx -- '- debrief_prep: focus: no focus log for 2026-10-01' "$IN/unavailable.md"
 }
 
+@test "debrief_prep: orders.md copies the open Work Orders report, empty when there is none" {
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -e "$IN/orders.md" ] && [ ! -s "$IN/orders.md" ]
+  mkdir -p system/logs/nightshift
+  # The morning's report closed at brief time; everything after it lands in the next day's report.
+  printf '# Work Orders: 2026-10-01\n> Health: claude ok\n\nNothing ran.\n' > system/logs/nightshift/2026-10-01.md
+  printf '# Work Orders: 2026-10-02\n> Health: claude ok\n\n## Items\n' > system/logs/nightshift/2026-10-02.md
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(head -n 1 "$IN/orders.md")" = '# Work Orders: 2026-10-02' ]
+}
+
 @test "debrief_prep: a failing index query is recorded and writes no digests.md" {
   mv system/scripts/vault_index.py system/scripts/vault_index_real.py
   printf '#!/bin/bash\n[[ "$1" == query ]] && exit 3\nexec "$(dirname "$0")/vault_index_real.py" "$@"\n' > system/scripts/vault_index.py
