@@ -121,7 +121,7 @@ Plan: load `superpowers:executing-plans` with the Skill tool and execute tasks `
 
 ### 5.3 Self-test
 
-`nightshift.py selftest` runs the plan profile's sandbox with two commands that must fail: a request to a host outside the allowlist, and a read of a file under `~/.ssh`. Either succeeding fails the self-test.
+`nightshift.py selftest` plants a canary file holding a fresh token at `~/.config/foundry/nightshift-canary` (a denied path), then runs the plan profile's sandbox with two commands that must fail: a request to a host outside the allowlist, and a read of the canary. Either succeeding, or the token appearing in the session's output, fails the self-test. The canary is removed afterwards, whatever the outcome.
 
 ## 6. Report and brief
 
