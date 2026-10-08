@@ -212,3 +212,10 @@ def test_quarantined_or_staged_copy_does_not_make_a_name_ambiguous(vault):
     idx = build(vault)
     assert issues(idx, "ambiguous-link") == []
     assert query(idx, "SELECT target_path FROM links WHERE src='wiki/work/concepts/A.md'") == [("wiki/work/concepts/Same.md",)]
+
+
+def test_a_markdown_link_to_a_folder_is_not_dead(vault):
+    write(vault, "README.md", "Specs in [specs](docs/specs/), none in [x](docs/nothing/).\n")
+    write(vault, "docs/specs/a.md", "# A\n")
+    assert issue_messages(build(vault), "dead-link") == [
+        ("README.md", "warning", "dead-link", "dead link docs/nothing/")]
