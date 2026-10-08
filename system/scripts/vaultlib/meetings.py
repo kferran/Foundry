@@ -209,9 +209,20 @@ def drop_start(name: str, commit_iso, mtime: float, tz) -> datetime:
     return datetime.fromtimestamp(mtime, tz)
 
 
+def _decode(data: bytes) -> str:
+    """UTF-8 (a byte-order mark is dropped), or UTF-16 with its byte-order mark, as Windows tools save it (#41).
+    Any other text holds NULs once decoded and is a ParseError, so it is quarantined with a reason."""
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16", errors="replace")
+    text = data.decode("utf-8", errors="replace").lstrip("\ufeff")
+    if "\x00" in text:
+        raise ParseError("not UTF-8 text (save the transcript as UTF-8)")
+    return text
+
+
 def parse_drop(name: str, data: bytes, tz, start: datetime) -> Meeting:
     """A dropped transcript (.vtt, .srt, .txt or .md); a .md with the Gemini structure is a Gemini Doc."""
-    text = data.decode("utf-8", errors="replace").lstrip("﻿")
+    text = _decode(data)
     suffix = Path(name).suffix.lower()
     meeting = Meeting(drop_title(name), start, "", name)
     if suffix == ".md" and _is_gemini(text):

@@ -189,6 +189,18 @@ def test_text_lines_are_turns_or_one_block():
     assert m.turns == [("00:00:00", "", "we talked about the launch\nand the budget")]
 
 
+def test_a_utf16_drop_parses_like_its_utf8_twin():
+    start = datetime(2026, 10, 5, 15, 0, tzinfo=TZ)
+    text = "Avery Sample: Hello.\n**Blake Sample:** Hi.\n"
+    twin = meetings.parse_drop("notes.txt", text.encode(), TZ, start).turns
+    assert meetings.parse_drop("notes.txt", text.encode("utf-16"), TZ, start).turns == twin
+    assert meetings.parse_drop("notes.txt", b"\xfe\xff" + text.encode("utf-16-be"), TZ, start).turns == twin
+    assert (meetings.parse_drop("call.vtt", VTT.encode("utf-16"), TZ, start).turns
+            == meetings.parse_drop("call.vtt", VTT.encode(), TZ, start).turns)
+    with pytest.raises(meetings.ParseError, match="not UTF-8 text"):
+        meetings.parse_drop("notes.txt", text.encode("utf-16-le"), TZ, start)  # no byte-order mark
+
+
 def test_a_markdown_drop_with_the_gemini_structure_is_a_gemini_doc():
     m = meetings.parse_drop("2026-10-05 1500 Planning.md", (NOTES + TRANSCRIPT + END).encode(), TZ,
                             datetime(2026, 10, 5, 15, 0, tzinfo=TZ))
@@ -619,6 +631,13 @@ def test_a_drop_with_no_transcript_text_is_quarantined_not_published(iv, name, t
     tick(iv)
     assert meeting_runs(iv) == []
     assert "no transcript text" in (iv / "system/quarantine/meetings" / f"{name}.reason.txt").read_text()
+
+
+def test_a_drop_of_nul_bytes_is_quarantined_as_not_utf8(iv):
+    dropped(iv, "work/notes.txt", "\x00" * 8)
+    tick(iv)
+    assert meeting_runs(iv) == []
+    assert "not UTF-8 text" in (iv / "system/quarantine/meetings/notes.txt.reason.txt").read_text()
 
 
 def test_a_source_that_keeps_failing_is_quarantined_on_the_third_tick(iv, monkeypatch):
