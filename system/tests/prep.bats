@@ -191,7 +191,8 @@ codebase() {  # <name> <path>
 @test "debrief_prep: orders.md copies the open Work Orders report, empty when there is none" {
   run "$DP" 2026-10-01
   [ "$status" -eq 0 ]
-  [ -e "$IN/orders.md" ] && [ ! -s "$IN/orders.md" ]
+  [ -e "$IN/orders.md" ]
+  [ ! -s "$IN/orders.md" ]
   mkdir -p system/logs/nightshift
   # The morning's report closed at brief time; everything after it lands in the next day's report.
   printf '# Work Orders: 2026-10-01\n> Health: claude ok\n\nNothing ran.\n' > system/logs/nightshift/2026-10-01.md

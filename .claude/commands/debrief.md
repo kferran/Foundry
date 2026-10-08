@@ -38,7 +38,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - **2. System State Deltas:** headless runs (published, rejected, conflicts), telemetry runs per source (groups new, updated, resolved; failures), alerts, quarantined inputs, and focus: top notes plus every Focus Fragmentation Warning.
 - **3. Agent Health:** every agent whose 3 most recent metric files all show `test_suite_passed: false`, with the files. Report only; the user decides what to do. Otherwise "No repeated failures."
 - **4. Unavailable Sources:** one bullet per missing source, or "None."
-- **5. Work Orders:** the `## Items` table and every `- [ ] ` line under "## Needs you" from `orders.md`, verbatim, and its Held line when there is one. Write "No Work Orders ran today." when the file is empty or says "Nothing ran." When an existing debrief has no 5. Work Orders section, add it at the end.
+- **5. Work Orders:** the `## Items` table and every `- [ ] ` line under "## Needs you" from `orders.md`, verbatim. Write "No Work Orders ran today." when the file is empty or says "Nothing ran." In both cases, copy its `> Held:` line verbatim when there is one. When an existing debrief has no 5. Work Orders section, add it at the end.
 - Frontmatter: `type: debrief`, `date: "<date>"`. Never add, change or remove `provenance`; the gate stamps it.
 
 ## Self-edit

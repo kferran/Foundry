@@ -188,6 +188,16 @@ def test_a_hold_reaches_the_report_file_the_brief_copies(env):
     assert "> Held: 5-hour usage 70% at or above 60%" in (vault / nr.rep.DIR / "2026-10-07.md").read_text()
 
 
+def test_a_cancelled_held_item_clears_the_held_line(env):
+    vault, _ = env
+    assert add(vault) == 0
+    health_at(vault, 0.7, 1)
+    nr.main(["tick"], vault, NOW)
+    assert nr.main(["cancel", only_item(vault)[1]["id"]], vault, NOW) == 0
+    nr.main(["tick"], vault, NOW)
+    assert "Held" not in (vault / nr.rep.DIR / "2026-10-07.md").read_text()
+
+
 def test_a_new_report_day_keeps_the_last_five_hour_reading(env):
     vault, _ = env
     assert add(vault) == 0

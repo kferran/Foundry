@@ -77,7 +77,7 @@ class Ctx:
         self.window = ns.parse_window(nc.setting(cfg, "run_window", "nightshift_window"))
         self.workspace = Path(str(nc.setting(cfg, "order_workspace", "nightshift_workspace") or "~/code/worktrees")).expanduser()
         try:
-            self.max_five_hour = float(cfg.get("order_max_five_hour") or 0.6)
+            self.max_five_hour = float(cfg.get("order_max_five_hour", 0.6))
         except (TypeError, ValueError):
             self.max_five_hour = 0.6
         self.local = now.astimezone(self.tz)
@@ -613,7 +613,11 @@ def tick(ctx: Ctx) -> int:
     hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
     candidates = [e for e in entries if ns.due(e[1], ctx.local, ctx.window, 0)[0]
                   or e[1].get("state") == "running"]
-    if not candidates:
+    if not candidates:   # a held item was cancelled or finished elsewhere: drop the stale Held line
+        h = json.loads(hfile.read_text()) if hfile.is_file() else {}
+        if h.pop("held", None):
+            rep.write_health(ctx.vault, ctx.date, h)
+            rep.write(ctx.vault, ctx.date)
         return 0
     if not hfile.is_file():
         h = health(ctx.vault, ctx.now, entries)
@@ -626,6 +630,7 @@ def tick(ctx: Ctx) -> int:
         rep.write_health(ctx.vault, ctx.date, h)
     h = json.loads(hfile.read_text())
     h["last_tick"] = ctx.local.strftime("%H:%M")
+    was_held = h.pop("held", None)   # the report's Held line shows only the latest tick's hold
     rep.write_health(ctx.vault, ctx.date, h)
     if str(h.get("sandbox", "")).startswith("FAILED"):
         ctx.alert("sandbox", f"sandbox self-test failed: {h['sandbox']}; no items run")
@@ -636,7 +641,7 @@ def tick(ctx: Ctx) -> int:
     chosen = running[0] if running else ns.pick(entries, ctx.local, ctx.window, usage7)
     # The 5-hour ceiling holds only a new start: running and waiting_reset items resume (pick ranks those first).
     held = ns.five_hour_hold(h, ctx.now, ctx.max_five_hour) if chosen and chosen[1].get("state") == "queued" else ""
-    if h.pop("held", None) or held:   # the report's Held line shows only the latest tick's hold
+    if was_held or held:
         rep.write_health(ctx.vault, ctx.date, h | ({"held": held} if held else {}))
         rep.write(ctx.vault, ctx.date)   # the brief and the debrief copy this file, so the Held line must be in it
     if held or not chosen:
