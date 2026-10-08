@@ -1,6 +1,8 @@
 """Lookups and readiness checks for Nightshift items (Nightshift spec §3.1)."""
+import os
 import re
 import subprocess
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -31,14 +33,41 @@ def codebase(vault, name) -> dict | None:
 
 
 def source(vault, repo) -> Path | None:
+    """A codebase's registered clone. A template item has none: it is read from template_remote, never the vault."""
     if repo == "template":
-        return Path(vault)
+        return None
     cb = codebase(vault, repo)
     return Path(str(cb["path"])).expanduser() if cb and cb.get("path") else None
 
 
 def git(repo, *args) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+
+
+def remote_git(url: str) -> tuple:
+    """git -c options and environment for talking to a remote: no prompts; the gh credential helper for GitHub HTTPS."""
+    env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_TERMINAL_PROMPT="0", GIT_SSH_COMMAND="ssh -o BatchMode=yes")
+    opts = ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"] \
+        if url.startswith("https://github.com/") else []
+    return opts, env
+
+
+def shown(url: str) -> str:
+    """The URL without any user:password@ part, for messages and logs."""
+    return re.sub(r"//[^/@]+@", "//", url)
+
+
+def fetch_base(repo, url: str, base: str, dest: str, depth: int | None = None, timeout: int = 600):
+    """Fetch refs/heads/<base> from url into repo as dest. A URL that starts with "-" is refused: git reads it as an option."""
+    if url.startswith("-"):
+        raise ValueError("template_remote must be a URL or a path")
+    opts, env = remote_git(url)
+    cmd = ["git", "-C", str(repo), *opts, "fetch", "-q", "--no-tags", *(["--depth", str(depth)] if depth else []),
+           url, f"refs/heads/{base}:{dest}"]
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, 124, "", f"timed out after {timeout}s")
 
 
 def parse_tasks(text) -> set | None:
@@ -101,19 +130,38 @@ def check(vault, fm: dict, body: str) -> list:
 
 
 def _plan(vault, fm: dict) -> list:
-    repo, base, plan = fm.get("repo", ""), fm.get("base", ""), fm.get("plan", "")
+    repo, base = fm.get("repo", ""), fm.get("base", "")
+    errs = [] if fm.get("verify") else ["verify needs at least one command"]
+    if repo == "template":
+        url = str(config(vault).get("template_remote") or "")
+        if not url:
+            return ["config has no template_remote"]
+        if url.startswith("-"):
+            return ["template_remote must be a URL or a path"]
+        if not base:
+            return errs + ["base (empty) must name a branch on the template remote"]
+        with tempfile.TemporaryDirectory(prefix="nightshift-check-") as tmp:   # the base and plan, read from the remote
+            subprocess.run(["git", "init", "-q", "--bare", tmp], check=True, capture_output=True)
+            f = fetch_base(tmp, url, base, f"refs/heads/{base}", depth=1, timeout=120)
+            if f.returncode and "couldn't find remote ref" in f.stderr:
+                return errs + [f"base {base} is not on the template remote {shown(url)} (push it first)"]
+            if f.returncode:
+                why = (f.stderr.strip().splitlines() or ["no error text"])[-1]
+                return errs + [f"cannot read the template remote {shown(url)}: {why}"]
+            return errs + _plan_at(tmp, fm)
     src = source(vault, repo)
     if src is None:
         return [f"repo {repo!r} is not a registered codebase or 'template'"]
-    errs = []
-    if repo != "template" and not (codebase(vault, repo) or {}).get("nightshift_pr"):
+    if not (codebase(vault, repo) or {}).get("nightshift_pr"):
         errs.append(f"codebase {repo} has no nightshift_pr (github:<owner>/<repo> or bitbucket-link)")
-    if repo == "template" and not config(vault).get("template_remote"):
-        errs.append("config has no template_remote")
-    if not fm.get("verify"):
-        errs.append("verify needs at least one command")
     if not base or git(src, "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}").returncode:
         return errs + [f"base {base or '(empty)'} does not resolve in {src}"]
+    return errs + _plan_at(src, fm)
+
+
+def _plan_at(src, fm: dict) -> list:
+    """Checks on the plan committed at the item's base in src."""
+    base, plan, errs = fm.get("base", ""), fm.get("plan", ""), []
     shown = git(src, "show", f"{base}:{plan}")
     if not plan or shown.returncode:
         return errs + [f"plan {plan or '(empty)'} is not committed at {base}"]

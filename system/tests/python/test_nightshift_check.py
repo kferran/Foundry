@@ -23,13 +23,15 @@ def git(repo, *a):
 
 
 @pytest.fixture
-def vault_repo(vault: Path) -> Path:
+def vault_repo(vault: Path, tmp_path: Path) -> Path:
     git(vault, "init", "-q", "-b", "master")
     write(vault, "docs/p.md", PLAN)
     git(vault, "add", "docs/p.md")
     git(vault, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "plan")
-    git(vault, "branch", "feat/x")
-    write(vault, "system/config.md", '---\ntype: config\ntimezone: "UTC"\ntemplate_remote: "https://github.com/o/r.git"\n---\n')
+    remote = tmp_path / "remote.git"   # a local bare repository stands in for the template remote
+    git(tmp_path, "init", "-q", "--bare", str(remote))
+    git(vault, "push", "-q", str(remote), "HEAD:refs/heads/feat/x")   # the base exists only on the remote
+    write(vault, "system/config.md", f'---\ntype: config\ntimezone: "UTC"\ntemplate_remote: "{remote}"\n---\n')
     return vault
 
 
@@ -58,13 +60,46 @@ def test_plan_errors(vault_repo):
     errs = nc.check(vault_repo, plan_fm(base="nope", tasks="1-2"), "")
     assert any("base nope" in e for e in errs)
     errs = nc.check(vault_repo, plan_fm(tasks="1-9"), "")
-    assert any("9" in e for e in errs)
+    assert any(e.startswith("tasks not in the plan") and e.endswith("9") for e in errs)
     errs = nc.check(vault_repo, plan_fm(tasks="1-2", verify=[]), "")
     assert any("verify" in e for e in errs)
     errs = nc.check(vault_repo, plan_fm(tasks="1-2", repo="ghost"), "")
     assert any("ghost" in e for e in errs)
     errs = nc.check(vault_repo, plan_fm(tasks="1-2", budget="4 hours"), "")
     assert any("budget" in e for e in errs)
+
+
+def test_template_base_must_be_on_the_template_remote(vault_repo):
+    git(vault_repo, "branch", "only-here")   # in the vault, never pushed
+    errs = nc.check(vault_repo, plan_fm(base="only-here", tasks="1-2"), "")
+    assert any("base only-here is not on the template remote" in e and "push it first" in e for e in errs)
+    assert nc.source(vault_repo, "template") is None
+
+
+def test_template_without_template_remote_fails_before_any_fetch(vault_repo, monkeypatch):
+    monkeypatch.setattr(nc, "fetch_base", lambda *a, **k: pytest.fail("fetched"))
+    write(vault_repo, "system/config.md", '---\ntype: config\ntimezone: "UTC"\n---\n')
+    assert nc.check(vault_repo, plan_fm(tasks="1-2"), "") == ["config has no template_remote"]
+
+
+def test_an_unreadable_template_remote_is_not_a_missing_branch(vault_repo, tmp_path):
+    write(vault_repo, "system/config.md", f'---\ntype: config\ntimezone: "UTC"\ntemplate_remote: "{tmp_path / "gone.git"}"\n---\n')
+    errs = nc.check(vault_repo, plan_fm(tasks="1-2"), "")
+    assert any(e.startswith("cannot read the template remote") for e in errs)
+    assert not any("push it first" in e for e in errs)
+
+
+def test_a_template_remote_that_looks_like_an_option_is_refused(vault_repo, monkeypatch):
+    monkeypatch.setattr(nc, "fetch_base", lambda *a, **k: pytest.fail("fetched"))
+    write(vault_repo, "system/config.md", '---\ntype: config\ntimezone: "UTC"\ntemplate_remote: "--upload-pack=touch x"\n---\n')
+    assert nc.check(vault_repo, plan_fm(tasks="1-2"), "") == ["template_remote must be a URL or a path"]
+
+
+def test_remote_git_uses_gh_credentials_for_github_https_only():
+    opts, env = nc.remote_git("https://github.com/o/r.git")
+    assert "credential.helper=!gh auth git-credential" in opts and env["GIT_TERMINAL_PROMPT"] == "0"
+    assert nc.remote_git("/srv/r.git")[0] == []
+    assert nc.shown("https://user:tok@github.com/o/r.git") == "https://github.com/o/r.git"
 
 
 def test_research_brief(vault_repo):

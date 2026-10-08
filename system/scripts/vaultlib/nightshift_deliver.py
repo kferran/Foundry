@@ -151,10 +151,10 @@ def verify_sha(runner_repo, sha: str, vdir, cmds, log_path) -> tuple:
 
 
 def push(runner_repo, sha: str, branch: str, url: str) -> tuple:
-    env = dict(_git_env(), GIT_SSH_COMMAND="ssh -o BatchMode=yes")
-    cmd = ["git", "-C", str(runner_repo), "-c", "core.hooksPath=/dev/null"]
-    if url.startswith("https://github.com/"):
-        cmd += ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"]
+    if url.startswith("-"):   # git would read it as an option
+        return False, f"refused: the remote {url!r} looks like an option"
+    opts, env = nc.remote_git(url)
+    cmd = ["git", "-C", str(runner_repo), "-c", "core.hooksPath=/dev/null", *opts]
     p = subprocess.run(cmd + ["push", "--no-verify", url, f"{sha}:refs/heads/{branch}"],
                        capture_output=True, text=True, env=env)
     return p.returncode == 0, p.stdout + p.stderr

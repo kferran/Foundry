@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-06
 **Status:** Approved in brainstorming (2026-10-06), awaiting written-spec review
-**Changed:** 2026-10-07, the inactivity gate is removed (`2026-10-07-nightshift-no-idle-design.md`)
+**Changed:** 2026-10-07, the inactivity gate is removed (`2026-10-07-nightshift-no-idle-design.md`); 2026-10-08, template items are read from `template_remote`, never the vault (`2026-10-08-nightshift-template-source-design.md`)
 **Extends:** `2026-10-03-two-machines-design.md` (units by role, sync), `2026-10-05-error-monitoring-design.md` (runner pattern, alerts, run log), brief carry-forward (PR #36)
 
 ## 1. Problem and decisions
@@ -50,7 +50,7 @@ Identifiers, both kinds: `id` is `<YYYY-MM-DD>-<slug>` (lower-case letters, digi
 
 Readiness, plan:
 - the plan file exists and is committed in the target repository at `base`;
-- `repo` is a registered codebase, or `template` (resolved through the config key `template_remote`);
+- `repo` is a registered codebase, or `template` (resolved through the config key `template_remote`; the base and plan are read from that remote);
 - `--tasks` names tasks that exist in the plan (`### Task N:` headings); without it, every task is in scope;
 - `verify` holds at least one command (the skill proposes the plan's test commands; the user confirms them);
 - the plan's in-scope tasks name no step on a protected branch (`master`, `main`) of the vault, and no deploy. A task range is how a plan's own rollout task is left with the user.

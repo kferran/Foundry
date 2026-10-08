@@ -178,20 +178,34 @@ def _stop(proc, sig) -> None:
     proc.wait()
 
 
+class CloneError(RuntimeError):
+    """A template item's base could not be fetched from the template remote."""
+
+
 def _clone(ctx: Ctx, fm: dict) -> Path:
-    src = nc.source(ctx.vault, fm["repo"])
     clone = ctx.workspace / f"nightshift-{fm['id']}"
+    template = fm["repo"] == "template"
     if clone.exists():
-        return clone
+        if not template or nc.git(clone, "rev-parse", "--verify", "--quiet", "refs/remotes/base").returncode == 0:
+            return clone
+        shutil.rmtree(clone)   # half-built by a killed tick: start again
     ctx.workspace.mkdir(parents=True, exist_ok=True)
     branch = f"nightshift/{fm['id']}"
-    if fm["repo"] == "template":
-        # The vault's object store holds private notes: copy only what the base reaches, with no alternates.
-        ref = nc.git(src, "rev-parse", "--symbolic-full-name", fm["base"]).stdout.strip() or fm["base"]
+    if template:
+        # From the template remote, never the vault: the vault's object store holds private notes.
+        url = str(nc.config(ctx.vault).get("template_remote") or "")
         subprocess.run(["git", "init", "-q", str(clone)], check=True)
-        subprocess.run(["git", "-C", str(clone), "fetch", "-q", "--no-tags", str(src), f"{ref}:refs/remotes/base"], check=True)
+        try:
+            f = nc.fetch_base(clone, url, fm["base"], "refs/remotes/base")
+        except ValueError as exc:
+            f = subprocess.CompletedProcess([], 2, "", str(exc))
+        if f.returncode:
+            shutil.rmtree(clone, ignore_errors=True)   # the next tick starts from an empty workspace again
+            why = (f.stderr.strip().splitlines() or ["no error text"])[-1]
+            raise CloneError(f"fetch {fm['base']} from {nc.shown(url)}: {why}")
         subprocess.run(["git", "-C", str(clone), "checkout", "-q", "-b", branch, "refs/remotes/base"], check=True)
     else:
+        src = nc.source(ctx.vault, fm["repo"])
         sha = nc.git(src, "rev-parse", f"{fm['base']}^{{commit}}").stdout.strip()
         subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", str(src), str(clone)], check=True)
         subprocess.run(["git", "-C", str(clone), "checkout", "-q", "-b", branch, sha], check=True)
@@ -341,9 +355,13 @@ def _before(ctx: Ctx, fm: dict, idir: Path) -> dict:
     f = idir / "before.json"
     if f.is_file():
         return json.loads(f.read_text())
-    src = nc.source(ctx.vault, fm["repo"])
-    b = {"src": nd.protected_refs(src) if fm["repo"] != "template" else {}, "code": nd.code_status(ctx.vault),
-         "base_sha": nc.git(src, "rev-parse", f"{fm['base']}^{{commit}}").stdout.strip()}
+    if fm["repo"] == "template":   # the commit the session starts from, fetched from the template remote
+        at, ref, refs = ctx.workspace / f"nightshift-{fm['id']}", "refs/remotes/base", {}
+    else:
+        at = nc.source(ctx.vault, fm["repo"])
+        ref, refs = fm["base"], nd.protected_refs(at)
+    b = {"src": refs, "code": nd.code_status(ctx.vault),
+         "base_sha": nc.git(at, "rev-parse", f"{ref}^{{commit}}").stdout.strip()}
     f.write_text(json.dumps(b))
     return b
 
@@ -450,7 +468,11 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
               reset_at=None)
     before = {}
     if fm["kind"] == "plan":
-        cwd = _clone(ctx, fm)
+        try:
+            cwd = _clone(ctx, fm)
+        except CloneError as exc:   # ends now, with a report row and a Needs-you line, and frees the queue
+            return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
+                f"Push {fm['base']} to the template remote, then queue {fm['id']} again ({exc})"]})
         before = _before(ctx, fm, idir)
     else:
         cwd = _research_dir(ctx, fm)
