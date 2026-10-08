@@ -73,6 +73,13 @@ def test_research_prompt_points_at_context():
     assert "context/" in ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")
 
 
+def test_research_reads_code_and_gets_more_turns():
+    assert ss.MAX_TURNS["research"] == "300"
+    p = ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ", code="shop at 1a2b3c4 (2026-10-01)")
+    assert "code/ is a read-only copy of shop at 1a2b3c4 (2026-10-01)" in p
+    assert "code/" not in ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")
+
+
 def test_research_prompt_keeps_sources_to_wikilinks():
     p = ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")
     assert "sources lists only vault notes, as wikilinks ([[Note]])" in p

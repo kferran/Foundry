@@ -102,6 +102,33 @@ def test_remote_git_uses_gh_credentials_for_github_https_only():
     assert nc.shown("https://user:tok@github.com/o/r.git") == "https://github.com/o/r.git"
 
 
+def registered(vault: Path, tmp_path: Path, name: str = "shop") -> Path:
+    """A registered codebase whose clone has origin/HEAD, like a real checkout."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    seed = tmp_path / f"{name}-seed"
+    git(tmp_path, "init", "-q", "-b", "main", str(seed))
+    write(seed, "app.py", "print(1)\n")
+    git(seed, "add", "app.py")
+    git(seed, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "first")
+    git(tmp_path, "clone", "-q", "--bare", str(seed), str(tmp_path / f"{name}.git"))
+    clone = tmp_path / name
+    git(tmp_path, "clone", "-q", str(tmp_path / f"{name}.git"), str(clone))
+    write(vault, f"system/codebases/{name}.md", f'---\ntype: codebase\nname: "{name}"\npath: "{clone}"\npartition: "work"\n'
+          'search_globs: ["*"]\n---\n')
+    return clone
+
+
+def test_research_may_name_a_repository_and_commit(vault_repo, tmp_path):
+    registered(vault_repo, tmp_path)
+    fm = plan_fm(kind="research", output="wiki/work/concepts/Answer.md", repo="shop", base=None)
+    fm.pop("base")
+    assert nc.check(vault_repo, fm, BRIEF) == []
+    assert any("base nope" in e for e in nc.check(vault_repo, {**fm, "base": "nope"}, BRIEF))
+    assert any("ghost" in e for e in nc.check(vault_repo, {**fm, "repo": "ghost"}, BRIEF))
+    assert nc.check(vault_repo, {**fm, "repo": "template", "base": "feat/x"}, BRIEF) == []
+    assert any("push it first" in e for e in nc.check(vault_repo, {**fm, "repo": "template", "base": "gone"}, BRIEF))
+
+
 def test_research_brief(vault_repo):
     fm = plan_fm(kind="research", output="wiki/work/concepts/Answer.md", hosts=["www.dtcc.com"])
     assert nc.check(vault_repo, fm, BRIEF) == []
