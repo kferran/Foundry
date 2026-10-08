@@ -31,6 +31,7 @@ def env(vault: Path, tmp_path: Path, monkeypatch):
     git(vault, "branch", "feat/x")
     remote = tmp_path / "remote.git"
     git(tmp_path, "init", "-q", "--bare", str(remote))
+    git(vault, "push", "-q", str(remote), "feat/x")   # template items are read from the template remote
     write(vault, "system/config.md", "---\ntype: config\ntimezone: \"America/Denver\"\nbrief_time: \"06:00\"\n"
           f"template_remote: \"{remote}\"\nnightshift_workspace: \"{tmp_path / 'ws'}\"\n---\n")
     stream = tmp_path / "stream.jsonl"
@@ -96,8 +97,8 @@ def test_verify_failure_blocks_without_push(env, monkeypatch):
     assert add(vault, "--now") == 0
     assert nr.main(["tick"], vault, NOW) == 1
     _, fm = only_item(vault)
-    assert fm["state"] in ("blocked", "failed") and fm["reason"] in ("verify", "no commits")
-    assert git(tmp / "remote.git", "branch", "--list").strip() == ""
+    assert (fm["state"], fm["reason"]) == ("blocked", "no commits")
+    assert git(tmp / "remote.git", "branch", "--list", "nightshift/*").strip() == ""
 
 
 def test_usage_limit_waits_then_resumes(env, monkeypatch):
@@ -179,6 +180,50 @@ def test_template_clone_holds_no_private_vault_objects(env):
     assert not (clone / ".git" / "objects" / "info" / "alternates").exists()
 
 
+def test_template_clone_comes_from_the_template_remote(env):
+    vault, _ = env
+    on_remote = git(vault, "rev-parse", "feat/x").strip()
+    assert add(vault) == 0
+    git(vault, "checkout", "-q", "feat/x")
+    write(vault, "vault-only.txt", "never pushed")
+    git(vault, "add", "vault-only.txt")
+    git(vault, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "vault only")
+    git(vault, "checkout", "-q", "master")
+    path, fm = only_item(vault)
+    clone = nr._clone(nr.Ctx(vault, NOW), fm)
+    assert git(clone, "rev-parse", "HEAD").strip() == on_remote
+    assert not (clone / "vault-only.txt").exists()
+    assert git(clone, "for-each-ref", "--format=%(refname)").split() == [f"refs/heads/nightshift/{fm['id']}", "refs/remotes/base"]
+
+
+def test_a_failed_fetch_leaves_no_clone_and_a_half_built_one_is_rebuilt(env):
+    vault, tmp = env
+    assert add(vault) == 0
+    path, fm = only_item(vault)
+    ctx = nr.Ctx(vault, NOW)
+    half = ctx.workspace / f"nightshift-{fm['id']}"
+    half.mkdir(parents=True)
+    git(half, "init", "-q")   # a tick killed before its fetch
+    clone = nr._clone(ctx, fm)
+    assert git(clone, "rev-parse", "refs/remotes/base").strip() == git(tmp / "remote.git", "rev-parse", "feat/x").strip()
+    shutil.rmtree(clone)
+    git(tmp / "remote.git", "branch", "-D", "feat/x")
+    with pytest.raises(RuntimeError):
+        nr._clone(ctx, fm)
+    assert not clone.exists()
+
+
+def test_a_template_base_gone_from_the_remote_fails_at_once_with_a_needs_you_line(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    git(tmp / "remote.git", "branch", "-D", "feat/x")
+    assert nr.main(["tick"], vault, NOW) == 1
+    _, fm = only_item(vault)
+    assert (fm["state"], fm["reason"]) == ("failed", "base")
+    out = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
+    assert out["needs"][0].startswith(f"Push feat/x to the template remote, then queue {fm['id']} again")
+
+
 @pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
 def test_vault_master_moving_during_a_run_is_not_a_containment_failure(env, monkeypatch):
     vault, _ = env
@@ -242,11 +287,13 @@ def test_no_init_event_requeues_with_a_fresh_session(env, monkeypatch, tmp_path)
 @pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
 def test_delivery_failure_is_retried_without_a_new_session(env, monkeypatch, tmp_path):
     vault, tmp = env
-    shutil.rmtree(tmp / "remote.git")
+    hook = tmp / "remote.git" / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\nexit 1\n")   # the remote refuses pushes; the check and the clone still fetch
+    hook.chmod(0o755)
     assert add(vault, "--now") == 0
     nr.main(["tick"], vault, NOW)
     assert only_item(vault)[1]["state"] == "delivering"
-    git(tmp, "init", "-q", "--bare", str(tmp / "remote.git"))
+    hook.unlink()
     monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(tmp_path / "missing.jsonl"))  # a new session would fail
     assert nr.main(["tick"], vault, NOW) == 0
     assert only_item(vault)[1]["state"] == "done"
@@ -361,6 +408,7 @@ def test_delivery_runs_no_git_inside_the_session_clone(env, monkeypatch):
     idir = vault / "system/logs/nightshift/items" / fm["id"]
     idir.mkdir(parents=True)
     before = nr._before(ctx, fm, idir)
+    assert before["base_sha"] == git(tmp / "remote.git", "rev-parse", "feat/x").strip()
     (clone / "done.txt").write_text("yes")
     git(clone, "add", "done.txt")
     git(clone, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "work")
