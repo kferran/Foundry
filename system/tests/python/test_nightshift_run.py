@@ -320,3 +320,30 @@ def test_selftest_retries_when_the_model_declines(env, monkeypatch, tmp_path):
 
 def test_selftest_prompt_says_failures_are_expected():
     assert "expected" in nr.SELFTEST_PROMPT and "self-test" in nr.SELFTEST_PROMPT
+
+
+
+def test_delivery_runs_no_git_inside_the_session_clone(env, monkeypatch):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ctx = nr.Ctx(vault, NOW)
+    clone = nr._clone(ctx, fm)
+    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir.mkdir(parents=True)
+    before = nr._before(ctx, fm, idir)
+    (clone / "done.txt").write_text("yes")
+    git(clone, "add", "done.txt")
+    git(clone, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "work")
+    (clone / ".nightshift").mkdir()
+    (clone / ".nightshift" / "result.json").write_text(RESULT)
+    monkeypatch.setattr(nr.nd, "verify_sha", lambda *a: (True, ""))  # bwrap is covered by the end-to-end tests
+    calls, real = [], subprocess.run
+
+    def spy(cmd, *a, **kw):
+        calls.append([str(c) for c in cmd])
+        return real(cmd, *a, **kw)
+    monkeypatch.setattr(subprocess, "run", spy)
+    out = nr._deliver_plan(ctx, fm, clone, idir, before)
+    assert out["state"] == "done", out
+    assert [c for c in calls if c[:3] == ["git", "-C", str(clone)]] == []

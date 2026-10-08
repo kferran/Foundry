@@ -47,7 +47,7 @@ def test_fetch_push_and_github_pr(tmp_path, monkeypatch):
     remote = tmp_path / "remote.git"
     git(tmp_path, "init", "-q", "--bare", str(remote))
     runner = tmp_path / "runner.git"
-    assert nd.fetch_branch(runner, src, "nightshift/x", sha) == (True, "")
+    assert nd.fetch_branch(runner, src, "nightshift/x") == (True, sha)
     ok, log = nd.push(runner, sha, "nightshift/x", str(remote))
     assert ok, log
     assert git(remote, "rev-parse", "nightshift/x").strip() == sha
@@ -63,13 +63,21 @@ def test_fetch_push_and_github_pr(tmp_path, monkeypatch):
     assert "--base master --head nightshift/x" in (tmp_path / "gh.log").read_text()
 
 
-def test_fetch_refuses_a_moved_tip(tmp_path):
+def test_fetch_reads_the_tip_from_the_runner_repository(tmp_path):
     src = repo_with_commit(tmp_path / "src")
     git(src, "checkout", "-q", "-b", "nightshift/x")
-    old = git(src, "rev-parse", "HEAD").strip()
-    git(src, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-q", "--allow-empty", "-m", "late")
-    ok, why = nd.fetch_branch(tmp_path / "runner.git", src, "nightshift/x", old)
-    assert not ok and "moved" in why
+    git(src, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-q", "--allow-empty", "-m", "work")
+    tip = git(src, "rev-parse", "HEAD").strip()
+    git(src, "tag", "nightshift/x", "HEAD~1")  # a tag named like the branch must not be what is fetched
+    runner = tmp_path / "runner.git"
+    assert nd.fetch_branch(runner, src, "nightshift/x") == (True, tip)
+    assert git(runner, "rev-parse", "refs/heads/nightshift/x").strip() == tip
+
+
+def test_fetch_of_a_missing_branch_fails(tmp_path):
+    src = repo_with_commit(tmp_path / "src")
+    ok, why = nd.fetch_branch(tmp_path / "runner.git", src, "nightshift/gone")
+    assert not ok and why
 
 
 @pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
@@ -77,7 +85,7 @@ def test_verify_runs_on_a_private_checkout_of_the_sha(tmp_path):
     src = repo_with_commit(tmp_path / "src")
     sha = git(src, "rev-parse", "HEAD").strip()
     runner = tmp_path / "runner.git"
-    assert nd.fetch_branch(runner, src, "master", sha)[0]
+    assert nd.fetch_branch(runner, src, "master") == (True, sha)
     evil = "git -c user.name=e -c user.email=e@e commit -q --allow-empty -m evil; git update-ref refs/heads/master HEAD; true"
     ok, _ = nd.verify_sha(runner, sha, tmp_path / "vdir", ["test -f a.txt", evil], tmp_path / "v.log")
     assert ok
@@ -136,7 +144,7 @@ def test_protected_files_are_committed_by_the_runner(tmp_path):
     src = repo_with_commit(tmp_path / "src")
     sha = git(src, "rev-parse", "HEAD").strip()
     runner = tmp_path / "runner.git"
-    assert nd.fetch_branch(runner, src, "master", sha)[0]
+    assert nd.fetch_branch(runner, src, "master") == (True, sha)
     _protected(src, ".claude/skills/demo/SKILL.md", "---\nname: demo\n---\n")
     files, problems = nd.protected_files(src)
     assert problems == [] and [r for r, _ in files] == [".claude/skills/demo/SKILL.md"]

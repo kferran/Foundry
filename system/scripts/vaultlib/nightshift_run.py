@@ -349,13 +349,12 @@ def _deliver_plan(ctx: Ctx, fm: dict, clone: Path, idir: Path, before: dict) -> 
         ctx.alert(f"containment/{fm['id']}", f"{fm['id']}: a protected branch or vault code changed during the run")
         return {"state": "failed", "reason": "containment"}
     branch = f"nightshift/{fm['id']}"
-    sha = nc.git(clone, "rev-parse", "--verify", "--quiet", f"{branch}^{{commit}}").stdout.strip()
-    if not sha or sha == before["base_sha"]:
-        return {"state": "blocked", "reason": "no commits"}
     runner = ctx.workspace / "nightshift-runner.git"
-    ok, why = nd.fetch_branch(runner, clone, branch, sha)
+    ok, sha = nd.fetch_branch(runner, clone, branch)
     if not ok:
-        return {"state": "failed", "reason": "containment" if "moved" in why else "delivery", "notes": why}
+        return {"state": "blocked", "reason": "no commits", "notes": sha}
+    if sha == before["base_sha"]:
+        return {"state": "blocked", "reason": "no commits"}
     files, problems = nd.protected_files(clone)
     if problems:
         return {"state": "blocked", "reason": "protected", "needs": [f"Protected file refused: {p}" for p in problems]}
