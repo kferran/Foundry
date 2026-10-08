@@ -173,3 +173,12 @@ def test_reopen_kql_spans_and_placeholder_keys_are_omitted(vault):
         assert 'toint(TraceAttributes["http.response.status_code"]) == 500' in k
     assert "http.route" not in k1 and "GET /items" not in k1
     assert 'coalesce(tostring(TraceAttributes["http.route"]), SpanName) == "GET /items \\"x\\""' in k2
+
+
+def test_long_type_names_are_not_redacted(vault):
+    scope = "Shop.Plugins.EDJAnnuitySuitabilitySubmissionFetchXML"
+    st = Store(vault); st.load()
+    st.upsert(group(exception=f"{scope}#9908", keys={"service": "worker", "scope": scope, "event_id": "9908"}), NOW)
+    text = (vault / "raw/telemetry/prod-adx-a-0123456789ab.md").read_text()
+    assert "high_entropy" not in text
+    assert f'exception: "{scope}#9908"' in text and f"| scope | {scope} |" in text

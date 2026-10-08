@@ -32,7 +32,7 @@ def test_kql_filter_and_group_keys_are_quoted():
     assert 'tostring(ResourceAttributes["deployment.instance"]) == "u\\"at"' in q
     assert 'module_0 = tostring(LogsAttributes["app.module"])' in q
     assert "SeverityNumber >= 17" in q and "| order by n desc\n| take 500" in q
-    assert "Body" not in q
+    assert "body = tostring(Body)" in q and "message = take_any(body)" in q
     s = t.kql_spans(adx(), NOW - timedelta(hours=1), NOW)
     assert s.startswith("Traces\n") and 'SpanKind == "SPAN_KIND_SERVER"' in s
 
@@ -106,3 +106,41 @@ def test_kql_aliases_avoid_reserved_words():
         aliases = re.findall(r"(?:summarize|extend|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)", q)
         assert aliases, q
         assert not reserved & set(aliases), sorted(reserved & set(aliases))
+
+
+GUID = "3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b"
+LONG_SCOPE = "Shop.Plugins.EDJAnnuitySuitabilitySubmissionFetchXML"
+GUID_ROUTE = f"api/orders/{GUID}/credential-check"
+
+
+def test_sanitize_keeps_long_type_names_and_route_shapes():
+    assert t.sanitize(LONG_SCOPE) == LONG_SCOPE
+    assert t.sanitize(GUID_ROUTE) == "api/orders/<guid>/credential-check"
+    assert t.sanitize("K7-55Q0R-A-01") == "K7-55Q0R-A-01"
+    assert t.sanitize("db password=hunter2") == "db password=[REDACTED:assignment]"
+    assert t.sanitize("call Bearer Zm9vYmFyYmF6cXV4MTIzNDU2") == "call Bearer [REDACTED:bearer]"
+
+
+def test_mask_keeps_identifiers_and_masks_credentials_and_emails():
+    dirty = (f"Ticket {GUID} for application K7-55Q0R-A-01 failed for bob@example.com and bob%40example.com "
+             "Authorization: Bearer abc.def.ghi Bearer Zm9vYmFyYmF6cXV4MTIzNDU2 password=hunter2 "
+             "Server=db;Pwd=s3cretPwd;AccountKey=Zm9vYmFyQUNDT1VOVEtFWQ==;Database=x "
+             "https://x.example.com/p?sig=AbCdEfSAS postgres://app:pgpass99@db/x AKIAIOSFODNN7EXAMPLE")
+    m = t.mask(dirty)
+    assert m.startswith(f"Ticket {GUID} for application K7-55Q0R-A-01 failed for <email> and <email> ")
+    for s in ["bob", "abc.def.ghi", "Zm9vYmFyYmF6cXV4MTIzNDU2", "hunter2", "s3cretPwd", "Zm9vYmFyQUNDT1VOVEtFWQ",
+              "AbCdEfSAS", "pgpass99", "AKIAIOSFODNN7EXAMPLE"]:
+        assert s not in m, s
+    assert t.mask(f"in {LONG_SCOPE} at {GUID_ROUTE}") == f"in {LONG_SCOPE} at {GUID_ROUTE}"
+
+
+def test_mask_edges():
+    assert t.mask(None) == "" and t.mask("") == ""
+    assert t.mask("line one\nline two\t  three") == "line one line two three"
+    near_cut = "x" * 490 + " password=hunter2 tail"
+    assert "hunter2" not in t.mask(near_cut) and len(t.mask(near_cut)) == 500
+    assert len(t.mask("y" * 900)) == 500
+    assert t.mask("keep <private>hidden</private> this") == "keep [PRIVATE] this"
+    assert t.mask("a <private>open to the end") == "a [PRIVATE]"
+    j = t.mask('{"ticketGuid":"' + GUID + '","password":"hunter2"}')
+    assert GUID in j and "hunter2" not in j
