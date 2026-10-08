@@ -528,3 +528,9 @@ self_edit_contract() {
   upstream="${sec%%git branch -u*}"
   [ "${#check}" -lt "${#upstream}" ]
 }
+
+@test "/setup phase 3 drafts the stack from the manifest counts (#18)" {
+  sec="$(setup_section '3. Codebases')"
+  [[ "$sec" == *'`manifest_counts`'* ]]
+  [[ "$sec" == *'inspect_codebase.sh --all-manifests <path>'* ]]
+}

@@ -7,11 +7,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from vaultlib.codebase_inspect import NotARepo, inspect_repo  # noqa: E402
 
-if len(sys.argv) != 2:
-    print("usage: inspect_codebase.sh <path>", file=sys.stderr)
+PER_KIND = 5  # manifests shown per kind; --all-manifests lists every one
+args = sys.argv[1:]
+every = args[:1] == ["--all-manifests"]
+if every:
+    args = args[1:]
+if len(args) != 1:
+    print("usage: inspect_codebase.sh [--all-manifests] <path>", file=sys.stderr)
     sys.exit(2)
 try:
-    print(json.dumps(inspect_repo(Path(sys.argv[1]).resolve())))
+    print(json.dumps(inspect_repo(Path(args[0]).resolve(), per_kind=None if every else PER_KIND)))
 except NotARepo:
-    print(f"inspect_codebase: not a git work tree: {sys.argv[1]}", file=sys.stderr)
+    print(f"inspect_codebase: not a git work tree: {args[0]}", file=sys.stderr)
     sys.exit(2)
