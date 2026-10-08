@@ -144,3 +144,11 @@ def test_mask_edges():
     assert t.mask("a <private>open to the end") == "a [PRIVATE]"
     j = t.mask('{"ticketGuid":"' + GUID + '","password":"hunter2"}')
     assert GUID in j and "hunter2" not in j
+
+
+def test_docs_state_the_identifier_policy():
+    from helpers import REPO
+    spec = (REPO / "docs/superpowers/specs/2026-10-05-error-monitoring-design.md").read_text()
+    readme = (REPO / "README.md").read_text()
+    assert "**Aggregates only.**" not in spec and "Identifiers kept, credentials masked" in spec
+    assert "aggregate-only" not in readme and "no message text, titles or attribute values" not in readme
