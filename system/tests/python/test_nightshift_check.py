@@ -87,3 +87,19 @@ def test_protected_phrasings_are_caught(text):
                                   "deployment notes", "git push -u template feat/x"])
 def test_ordinary_phrasings_pass(text):
     assert not nc.PROTECTED.search(text)
+
+
+
+@pytest.mark.parametrize("field,value,needle", [
+    ("id", "../../evil", "id must look like"), ("id", "2026-10-06-Bad_Name", "id must look like"),
+    ("id", "evil", "id must look like"), ("base", "--output=/tmp/x", "base must not start with '-'"),
+    ("pr_base", "-x", "pr_base must not start with '-'"), ("repo", "../x", "repo must be a plain name")])
+def test_identifiers_are_refused_before_any_git_call(vault_repo, field, value, needle):
+    errs = nc.check(vault_repo, plan_fm(tasks="1-2", **{field: value}), "")
+    assert any(needle in e for e in errs), errs
+
+
+@pytest.mark.parametrize("output", ["wiki/work/../personal/x.md", "/etc/x.md"])
+def test_output_must_stay_inside_the_vault(vault_repo, output):
+    fm = plan_fm(kind="research", output=output, hosts=[])
+    assert any("no '..'" in e for e in nc.check(vault_repo, fm, BRIEF))

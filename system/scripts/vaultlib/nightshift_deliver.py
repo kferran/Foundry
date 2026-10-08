@@ -61,17 +61,21 @@ def _git_env() -> dict:
     return dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_TERMINAL_PROMPT="0")
 
 
-def fetch_branch(runner_repo, clone, branch: str, sha: str) -> tuple:
-    """Copy the session's branch into the runner's repository and confirm its tip is the commit the runner checked."""
+def fetch_branch(runner_repo, clone, branch: str) -> tuple:
+    """Copy the session's branch into the runner's repository and return (True, its tip) or (False, reason).
+    The tip is read in the runner's repository: the only git process that touches the session-writable clone is
+    upload-pack, which ignores the clone's dangerous config and hooks (git-upload-pack(1), SECURITY)."""
     runner_repo = Path(runner_repo)
     if not (runner_repo / "HEAD").exists():
         subprocess.run(["git", "init", "-q", "--bare", str(runner_repo)], check=True)
-    f = subprocess.run(["git", "-C", str(runner_repo), "fetch", "-q", "--no-tags", str(clone), f"+{branch}:{branch}"],
+    ref = f"refs/heads/{branch}"
+    f = subprocess.run(["git", "-C", str(runner_repo), "fetch", "-q", "--no-tags", str(clone), f"+{ref}:{ref}"],
                        capture_output=True, text=True, env=_git_env())
     if f.returncode:
-        return False, f.stderr.strip()
-    tip = subprocess.run(["git", "-C", str(runner_repo), "rev-parse", branch], capture_output=True, text=True).stdout.strip()
-    return (True, "") if tip == sha else (False, f"branch moved after the check ({sha[:8]} -> {tip[:8]})")
+        return False, f.stderr.strip() or f"fetch failed (exit {f.returncode})"
+    tip = subprocess.run(["git", "-C", str(runner_repo), "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+                         capture_output=True, text=True, env=_git_env()).stdout.strip()
+    return (True, tip) if tip else (False, f"{ref} is not a commit")
 
 
 PROTECTED_DIRS = (".claude/skills/", ".claude/commands/", ".claude/agents/")

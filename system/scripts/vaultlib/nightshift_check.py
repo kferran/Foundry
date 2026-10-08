@@ -13,6 +13,8 @@ PROTECTED = re.compile(rf"\b(?:on|vault|to|into|onto)\s+(?:the\s+)?{_BRANCH}|'s\
                        rf"|\b(?:push|merge|checkout|switch)\b[^\n]*?\s{_BRANCH}|\bdeploy\b", re.I)
 SECTIONS = ("## Question", "## Scope", "## Done when", "## Output")
 HOST = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$")
+ID = re.compile(r"\d{4}-\d{2}-\d{2}-[a-z0-9-]+")
+NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
 def _fm(path: Path) -> dict:
@@ -59,11 +61,27 @@ def task_blocks(plan_text: str) -> dict:
             for i, m in enumerate(heads)}
 
 
-def check(vault, fm: dict, body: str) -> list:
+def identifiers(fm: dict) -> list:
+    """The fields the runner turns into file paths and git arguments. check() and the tick refuse a note that fails."""
     errs = []
-    kind = fm.get("kind")
+    if not ID.fullmatch(str(fm.get("id") or "")):
+        errs.append("id must look like 2026-10-07-some-slug (lower-case letters, digits and dashes)")
     if fm.get("partition") not in ni.PARTITIONS:
         errs.append("partition must be work, personal or shared")
+    if fm.get("repo") and not NAME.fullmatch(str(fm["repo"])):
+        errs.append("repo must be a plain name (a registered codebase or template)")
+    errs += [f"{k} must not start with '-'" for k in ("base", "pr_base") if str(fm.get(k) or "").startswith("-")]
+    out = str(fm.get("output") or "")
+    if out.startswith("/") or ".." in out.split("/"):
+        errs.append("output must be a relative path with no '..' segments")
+    return errs
+
+
+def check(vault, fm: dict, body: str) -> list:
+    errs = identifiers(fm)
+    if errs:
+        return errs  # nothing below may pass a bad ref or path to git
+    kind = fm.get("kind")
     try:
         ni.budget_seconds(fm.get("budget") or ("4h" if kind == "plan" else "1h"))
     except ValueError as exc:

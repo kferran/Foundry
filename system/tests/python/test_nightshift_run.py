@@ -150,6 +150,7 @@ def test_lock_held_exits_4(env):
 
 def test_selftest_parses_tool_results(env, monkeypatch, tmp_path):
     vault, _ = env
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))  # the self-test plants its canary under $HOME
     good = tmp_path / "good.jsonl"
     good.write_text((FX / "ok.jsonl").read_text().replace("CURL_EXIT=6", "CURL_EXIT=6 CAT_EXIT=1"))
     monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(good))
@@ -303,6 +304,7 @@ def test_protected_files_reach_the_pushed_branch(env, monkeypatch, tmp_path):
 
 def test_selftest_retries_when_the_model_declines(env, monkeypatch, tmp_path):
     vault, _ = env
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))  # the self-test plants its canary under $HOME
     declined = tmp_path / "declined.jsonl"
     declined.write_text((FX / "ok.jsonl").read_text().replace('"content":"CURL_EXIT=6"', '"content":"no"'))
     good = tmp_path / "good.jsonl"
@@ -320,3 +322,77 @@ def test_selftest_retries_when_the_model_declines(env, monkeypatch, tmp_path):
 
 def test_selftest_prompt_says_failures_are_expected():
     assert "expected" in nr.SELFTEST_PROMPT and "self-test" in nr.SELFTEST_PROMPT
+    assert nr.CANARY in nr.SELFTEST_PROMPT and ".ssh" not in nr.SELFTEST_PROMPT
+
+
+def test_selftest_plants_a_canary_and_fails_if_the_session_reads_it(env, monkeypatch, tmp_path):
+    vault, _ = env
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    canary = home / ".config" / "foundry" / "nightshift-canary"
+    stream = tmp_path / "s.jsonl"
+    clean = (FX / "ok.jsonl").read_text().replace("CURL_EXIT=6", "CURL_EXIT=6 CAT_EXIT=1")
+    stream.write_text(clean)
+    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(stream))
+    # A masked sandbox: the canary exists while the session runs, the read fails, and the canary is gone afterwards.
+    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", f"test -s {canary} && touch {tmp_path}/seen")
+    assert nr.selftest(vault) == (True, "")
+    assert (tmp_path / "seen").exists() and not canary.exists()
+    # An unmasked sandbox: the session's output carries the canary's content, even with a non-zero exit code.
+    line = json.dumps({"type": "user", "message": {"content": [{"type": "tool_result", "content": "LEAK CAT_EXIT=1"}]}})
+    leak = tmp_path / "leak.sh"
+    leak.write_text(f"echo '{line}' | sed \"s/LEAK/$(cat {canary})/\" >> {stream}\n")
+    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", f"bash {leak}")
+    ok, why = nr.selftest(vault)
+    assert ok is False and "canary" in why
+    assert not canary.exists()
+    # A session that cannot start still leaves no canary behind.
+    monkeypatch.setenv("FOUNDRY_CLAUDE_BIN", str(tmp_path / "missing"))
+    assert nr.selftest(vault)[0] is False and not canary.exists()
+
+
+
+def test_delivery_runs_no_git_inside_the_session_clone(env, monkeypatch):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ctx = nr.Ctx(vault, NOW)
+    clone = nr._clone(ctx, fm)
+    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir.mkdir(parents=True)
+    before = nr._before(ctx, fm, idir)
+    (clone / "done.txt").write_text("yes")
+    git(clone, "add", "done.txt")
+    git(clone, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "work")
+    (clone / ".nightshift").mkdir()
+    (clone / ".nightshift" / "result.json").write_text(RESULT)
+    monkeypatch.setattr(nr.nd, "verify_sha", lambda *a: (True, ""))  # bwrap is covered by the end-to-end tests
+    calls, real = [], subprocess.run
+
+    def spy(cmd, *a, **kw):
+        calls.append([str(c) for c in cmd])
+        return real(cmd, *a, **kw)
+    monkeypatch.setattr(subprocess, "run", spy)
+    out = nr._deliver_plan(ctx, fm, clone, idir, before)
+    assert out["state"] == "done", out
+    assert [c for c in calls if c[:3] == ["git", "-C", str(clone)]] == []
+
+
+
+def test_tick_refuses_a_note_with_an_unsafe_id(env):
+    vault, tmp = env
+    from test_nightshift_item import plan_fm
+    path = ni.note_path(vault, "work", "2026-10-06-evil")
+    ni.save(path, plan_fm(id="../../../evil", start="now", tasks="1-2", verify=["true"]), "")
+    old = ni.note_path(vault, "work", "2026-09-01-old")
+    long_ago = (NOW - __import__("datetime").timedelta(days=8)).isoformat()
+    ni.save(old, plan_fm(id="../../victim", state="failed", reason="budget", finished_at=long_ago), "")
+    (tmp / "victim").mkdir()  # where the 7-day clean-up would point for that id
+    assert nr.main(["tick"], vault, NOW) == 2
+    fm, _ = ni.load(path)
+    assert fm["state"] == "failed" and fm["reason"].startswith("invalid: id must look like")
+    assert not (vault / "system" / "evil").exists() and not (tmp / "evil").exists()
+    alerts = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
+    assert "2026-10-06-evil.md refused" in alerts
+    assert nr.main(["tick"], vault, NOW) == 0  # refused once; later ticks skip both notes
+    assert (tmp / "victim").is_dir()
