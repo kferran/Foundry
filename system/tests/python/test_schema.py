@@ -101,6 +101,13 @@ def test_path_must_exist_warns(schemas):
     assert [(i.severity, i.code) for i in issues] == [("warning", "field")]
 
 
+def test_a_shipped_example_skips_the_path_check(schemas):
+    _, issues = check(schemas, "things/example.md", "type: thing\nname: A\nwhere: /no/such/path")
+    assert issues == []
+    _, issues = check(schemas, "things/mine.md", "type: thing\nname: A\nwhere: /no/such/path")
+    assert codes(issues, "warning") == ["field"]
+
+
 def test_unknown_field_warns(schemas):
     _, issues = check(schemas, "things/a.md", "type: thing\nname: A\nextra: 1")
     assert [(i.severity, i.code) for i in issues] == [("warning", "unknown-field")]
