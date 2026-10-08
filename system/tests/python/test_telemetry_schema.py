@@ -62,3 +62,15 @@ def test_extended_production_error_note_validates(vault):
         'kind: "log"', 'fingerprint: "a-0123456789ab"', 'count: "17"', 'last_seen: "2026-10-05T16:42:00+00:00"', 'status: "active"',
         'regressed: "false"', 'covered: "false"', "---", "# body", ""]))
     assert [i for i in issues(vault) if i[0].startswith("raw/telemetry/")] == []
+
+
+def test_production_error_message_field_is_known(vault):
+    write(vault, "raw/telemetry/prod-sentry-s-101.md", "\n".join([
+        "---", "type: production_error", 'service: "api"', 'exception: "KeyError"',
+        'message: "KeyError: ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b \\"K7-55Q0R-A-01\\""', 'operation_id: "101"',
+        'detected_at: "2026-10-05T14:10:00+00:00"', 'kind: "sentry"', 'fingerprint: "s-101"', "---", "# body", ""]))
+    idx = Index(vault)
+    idx.refresh(full=True)
+    rows = idx.connect().execute("SELECT code, message FROM issues WHERE path LIKE 'raw/telemetry/%'").fetchall()
+    assert not [r for r in rows if r[0] in ("unknown-field", "schema")], rows
+    assert [i for i in issues(vault) if i[0].startswith("raw/telemetry/")] == []

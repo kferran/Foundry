@@ -8,13 +8,13 @@ from pathlib import Path
 import re
 
 from . import frontmatter
-from .telemetry import event_id, kql_reopen, sanitize, trace_id
+from .telemetry import event_id, kql_reopen, mask, sanitize, trace_id
 
 STATE = "system/logs/telemetry_state.json"
 QUIET = timedelta(days=7)
-NOTE_FIELDS = ("type", "service", "exception", "operation_id", "detected_at", "codebase", "partition", "environment",
-               "source", "kind", "fingerprint", "count", "last_seen", "status", "resolved_at", "substatus", "regressed",
-               "sentry_issue", "covered", "culprit", "link")
+NOTE_FIELDS = ("type", "service", "exception", "message", "operation_id", "detected_at", "codebase", "partition",
+               "environment", "source", "kind", "fingerprint", "count", "last_seen", "status", "resolved_at", "substatus",
+               "regressed", "sentry_issue", "covered", "culprit", "link")
 
 
 def _aware(v: str) -> datetime:
@@ -29,6 +29,8 @@ def _clean(g: dict) -> dict:
     g["service"] = sanitize(g.get("service"))
     if g.get("culprit"):
         g["culprit"] = sanitize(g["culprit"])
+    if g.get("message"):
+        g["message"] = mask(g["message"])
     ex = str(g.get("exception") or "")
     if g.get("kind") == "log" and "#" in ex:
         scope, eid = ex.rsplit("#", 1)
@@ -139,6 +141,7 @@ class Store:
         status = "deprecated" if "deprecated" in (note_status, old and old.get("status")) else "active"
         regressed = regressed or g.get("substatus") == "regressed"
         fm = {"type": "production_error", "service": g["service"], "exception": g["exception"],
+              "message": g.get("message") or prev.get("message"),
               "operation_id": g["operation_id"], "detected_at": first, "codebase": g["codebase"],
               "partition": g["partition"], "environment": g["environment"], "source": g["source"], "kind": g["kind"],
               "fingerprint": g["fingerprint"], "count": count, "last_seen": g["last_seen"], "status": status,
