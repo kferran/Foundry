@@ -1,11 +1,8 @@
-"""Window, idle, due and pick rules (Nightshift spec §3.2)."""
-import subprocess
+"""Window, due and pick rules (Nightshift spec §3.2)."""
 from datetime import datetime, time, timedelta
-from pathlib import Path
 
 from . import nightshift_item as ni
 
-IDLE = 1200        # seconds of inactivity before a window item starts
 USAGE_GATE = 0.8   # 7-day usage fraction above which window items wait
 
 
@@ -25,21 +22,11 @@ def window_end(now_local: datetime, start: time, end: time) -> datetime:
     return datetime.combine(day, end, tzinfo=now_local.tzinfo)
 
 
-def idle_seconds(vault, now: datetime) -> float:
-    stamps = [p.stat().st_mtime for p in Path(vault).glob("system/logs/memory/sessions/*.events")]
-    try:
-        out = subprocess.run(["tmux", "list-clients", "-F", "#{client_activity}"], capture_output=True, text=True, timeout=5)
-        stamps += [float(x) for x in out.stdout.split() if x.strip().isdigit()]
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return now.timestamp() - max(stamps) if stamps else float("inf")
-
-
 def _dt(value) -> datetime:
     return datetime.fromisoformat(str(value))
 
 
-def due(fm: dict, now_local: datetime, window: tuple, idle: float, usage7: float) -> tuple:
+def due(fm: dict, now_local: datetime, window: tuple, usage7: float) -> tuple:
     state = fm.get("state", "queued")
     if state == "waiting_reset" and fm.get("reset_at") and now_local < _dt(fm["reset_at"]):
         return False, "waiting for the usage reset"
@@ -52,8 +39,6 @@ def due(fm: dict, now_local: datetime, window: tuple, idle: float, usage7: float
         return (now_local >= _dt(fm["start_at"]), "before its start time")
     if not in_window(now_local.time(), *window):
         return False, "outside the window"
-    if idle < IDLE:
-        return False, "user active"
     budget = ni.budget_seconds(fm.get("budget") or ("4h" if fm.get("kind") == "plan" else "1h"))
     if now_local + timedelta(seconds=budget) > window_end(now_local, *window):
         return False, "budget does not fit before the window ends"
@@ -62,9 +47,9 @@ def due(fm: dict, now_local: datetime, window: tuple, idle: float, usage7: float
     return True, ""
 
 
-def pick(entries, now_local: datetime, window: tuple, idle: float, usage7: float):
+def pick(entries, now_local: datetime, window: tuple, usage7: float):
     rank = {"now": 0, "at": 1, "window": 2}
-    ready = [e for e in entries if due(e[1], now_local, window, idle, usage7)[0]]
+    ready = [e for e in entries if due(e[1], now_local, window, usage7)[0]]
     ready.sort(key=lambda e: (0 if e[1].get("state") == "waiting_reset" else 1,
                               rank.get(e[1].get("start", "window"), 2), str(e[1].get("queued_at", ""))))
     return ready[0] if ready else None
