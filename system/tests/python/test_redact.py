@@ -124,7 +124,7 @@ def test_named_kinds_takes_only_the_key_equals_value_form():
     assert named_kinds("api_key = sk_live_example\n") == ["assignment"]
 
 
-LONG_NAME = "Shop.Plugins.EDJAnnuitySuitabilitySubmissionFetchXML"
+LONG_NAME = "Shop.Plugins.VendorAccountSuitabilitySubmissionFetchXML"
 GUID_PATH = "api/orders/3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b/credential-check"
 
 
@@ -158,6 +158,6 @@ def test_redact_credentials_masks_credential_shapes(text, secret, marker):
 
 
 def test_redact_credentials_keeps_identifiers_and_prose():
-    text = (f"Ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b for K7-55Q0R-A-01 in {LONG_NAME} at {GUID_PATH}; "
+    text = (f"Ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b for A1-23B4C-D-56 in {LONG_NAME} at {GUID_PATH}; "
             'the bearer of bad news {"tokenCount":"5"}')
     assert redact_credentials(text) == text

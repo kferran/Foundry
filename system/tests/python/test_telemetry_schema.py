@@ -67,7 +67,7 @@ def test_extended_production_error_note_validates(vault):
 def test_production_error_message_field_is_known(vault):
     write(vault, "raw/telemetry/prod-sentry-s-101.md", "\n".join([
         "---", "type: production_error", 'service: "api"', 'exception: "KeyError"',
-        'message: "KeyError: ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b \\"K7-55Q0R-A-01\\""', 'operation_id: "101"',
+        'message: "KeyError: ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b \\"A1-23B4C-D-56\\""', 'operation_id: "101"',
         'detected_at: "2026-10-05T14:10:00+00:00"', 'kind: "sentry"', 'fingerprint: "s-101"', "---", "# body", ""]))
     idx = Index(vault)
     idx.refresh(full=True)

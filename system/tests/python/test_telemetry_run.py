@@ -308,7 +308,7 @@ def test_bad_source_file_is_reported_and_others_still_run(v, monkeypatch, capsys
 
 
 GUID = "3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b"
-APP = "K7-55Q0R-A-01"
+APP = "A1-23B4C-D-56"
 DIRTY = (f"Ticket {GUID} for application {APP} failed for bob@example.com and bob%40example.com "
          "Authorization: Bearer abc.def.ghi Bearer Zm9vYmFyYmF6cXV4MTIzNDU2 password=hunter2 "
          "Server=db;Pwd=s3cretPwd;AccountKey=Zm9vYmFyQUNDT1VOVEtFWQ==;Database=x "
@@ -349,7 +349,7 @@ def test_privacy_end_to_end(v, monkeypatch, capsys):
 
 def test_log_group_shows_real_scope_and_message(v, monkeypatch):
     write(v, "system/telemetry/prod-adx.md", ADX.format(covers=""))
-    scope = "Shop.Plugins.EDJAnnuitySuitabilitySubmissionFetchXML"
+    scope = "Shop.Plugins.VendorAccountSuitabilitySubmissionFetchXML"
     row = dict(LOG_ROW, service="worker", scope=scope, event_id="9908", message=f"Ticket {GUID} failed")
     monkeypatch.setattr(kusto, "query", lambda *a, **k: [row])
     assert telemetry_run.main([], v, NOW) == 0
@@ -367,9 +367,9 @@ def test_sentry_title_becomes_the_message(v, monkeypatch):
     assert f'message: "{title}"' in (v / "raw/telemetry/prod-sentry-s-101.md").read_text()
 
 
-def _ultron(v, name):
+def _two_signal_source(v, name):
     write(v, f"system/telemetry/{name}.md", ADX.format(covers="").replace('"prod-adx"', f'"{name}"').replace(
-        'adx_signals: ["logs"]', 'adx_signals: ["logs", "spans"]\nadx_group_keys: ["porch.partition", "porch.slice"]'))
+        'adx_signals: ["logs"]', 'adx_signals: ["logs", "spans"]\nadx_group_keys: ["app.partition", "app.slice"]'))
 
 
 def _rows(logs, spans):
@@ -381,39 +381,40 @@ SPAN_ROW = {"service": "core-api", "status": 500, "n": 1, "first_ts": "2026-10-0
 
 
 def test_vault_fingerprints_without_the_marker_do_not_change(v, monkeypatch):
-    """Three groups from the vault's raw/telemetry notes, stored before 2026-10-07 with no [REDACTED:high_entropy] in
-    their keys: their fingerprints, and so their note file names, must not move. Passes before and after Task 2."""
-    _ultron(v, "ultron-uat-adx")
-    _ultron(v, "ultron-prod-adx")
-    logs = [dict(LOG_ROW, service="core-worker", scope="Porch.Bedrock.Services.PostmarkEmailService", event_id="1800",
-                 module_0="Porch.Core.Partitions.ApplicationProject.ApplicationProjectPartition",
-                 module_1="Porch.Core.Partitions.ApplicationProject.ApplicationProjectEmailNotificationSlice"),
-            dict(LOG_ROW, service="dtcc-worker", scope="Quartz.Impl.AdoJobStore.ClusterManager", event_id="",
+    """Groups with no [REDACTED:high_entropy] in their keys: their fingerprints, and so their note file names, must
+    not move. The names were computed by the code before Task 2; the test passes before and after it."""
+    _two_signal_source(v, "shop-uat-adx")
+    _two_signal_source(v, "shop-prod-adx")
+    logs = [dict(LOG_ROW, service="core-worker", scope="Acme.Platform.Services.MailService", event_id="1800",
+                 module_0="Acme.Core.Partitions.Orders.OrderPartition",
+                 module_1="Acme.Core.Partitions.Orders.OrderEmailNotificationSlice"),
+            dict(LOG_ROW, service="batch-worker", scope="Quartz.Impl.AdoJobStore.ClusterManager", event_id="",
                  module_0="", module_1="")]
-    spans = [dict(SPAN_ROW, route="api/edj/advisor-credentials/ticket-credential-check")]
+    spans = [dict(SPAN_ROW, route="api/vendor/agent-credentials/order-credential-check")]
     monkeypatch.setattr(kusto, "query", _rows(logs, spans))
     assert telemetry_run.main([], v, NOW) == 0
-    for rel in ["ultron-uat-adx-a-c3e2f52dc29b.md", "ultron-uat-adx-a-3b5cb41c814c.md", "ultron-prod-adx-a-626b0a509922.md"]:
-        assert (v / "raw/telemetry" / rel).is_file(), rel
+    assert sorted(p.name for p in (v / "raw/telemetry").glob("*.md")) == [
+        "shop-prod-adx-a-1ac755ccca34.md", "shop-prod-adx-a-2a9d42e61b13.md", "shop-prod-adx-a-8818b5096c41.md",
+        "shop-uat-adx-a-0e5b4bafc506.md", "shop-uat-adx-a-30e079fb650d.md", "shop-uat-adx-a-f7890ec560a5.md"]
 
 
 def test_marker_groups_split_into_real_routes_and_type_names(v, monkeypatch):
-    """Before 2026-10-07 both routes hashed to a-c79f07df3017 (route key "[REDACTED:high_entropy]") and the long scope
-    to a-57a6beae009d; now each lands in its own group under its real shape."""
-    _ultron(v, "ultron-uat-adx")
-    _ultron(v, "ultron-prod-adx")
+    """Before 2026-10-07 both routes hashed to a-8513424e6ee9 (route key "[REDACTED:high_entropy]") and the long scope
+    to a-2f59495da85c; now each lands in its own group under its real shape."""
+    _two_signal_source(v, "shop-uat-adx")
+    _two_signal_source(v, "shop-prod-adx")
     spans = [dict(SPAN_ROW, route=f"api/orders/{GUID}/credential-check"),
-             dict(SPAN_ROW, route=f"api/edj/advisor-credentials/{GUID}/ticket-credential-check")]
-    log = dict(LOG_ROW, service="core-worker", scope="Porch.Core.Plugins.EDJ.EDJAnnuitySuitabilitySubmissionFetchXML",
+             dict(SPAN_ROW, route=f"api/vendor/agent-credentials/{GUID}/order-credential-check")]
+    log = dict(LOG_ROW, service="core-worker", scope="Acme.Core.Plugins.Vendor.VendorAccountSuitabilitySubmissionFetchXML",
                event_id="9908", module_0="", module_1="")
     monkeypatch.setattr(kusto, "query", _rows([log], spans))
     assert telemetry_run.main([], v, NOW) == 0
     tele = v / "raw/telemetry"
-    assert not (tele / "ultron-prod-adx-a-c79f07df3017.md").exists()
-    assert not (tele / "ultron-uat-adx-a-57a6beae009d.md").exists()
-    notes = [p.read_text() for p in tele.glob("ultron-prod-adx-a-*.md")]
+    assert not (tele / "shop-prod-adx-a-8513424e6ee9.md").exists()
+    assert not (tele / "shop-uat-adx-a-2f59495da85c.md").exists()
+    notes = [p.read_text() for p in tele.glob("shop-prod-adx-a-*.md")]
     assert sorted(l for n in notes for l in n.splitlines() if l.startswith("exception:")) == [
-        'exception: "Porch.Core.Plugins.EDJ.EDJAnnuitySuitabilitySubmissionFetchXML#9908"',
-        'exception: "api/edj/advisor-credentials/<guid>/ticket-credential-check 500"',
-        'exception: "api/orders/<guid>/credential-check 500"']
+        'exception: "Acme.Core.Plugins.Vendor.VendorAccountSuitabilitySubmissionFetchXML#9908"',
+        'exception: "api/orders/<guid>/credential-check 500"',
+        'exception: "api/vendor/agent-credentials/<guid>/order-credential-check 500"']
     assert all("high_entropy" not in n and "message:" not in n for n in notes)

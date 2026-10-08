@@ -15,15 +15,15 @@
 `telemetry.sanitize()` (`system/scripts/vaultlib/telemetry.py:175-182`) calls `redact()` on the whole value **before** it collapses GUIDs and numbers. `redact()` ends with the generic secret guess (`system/scripts/vaultlib/redact.py:108-110`): every run of `CANDIDATE = [A-Za-z0-9+/=_-]{32,}` (`redact.py:21`) whose Shannon entropy is at least `ENTROPY_BITS = 4.0` (`redact.py:23`) becomes `[REDACTED:high_entropy]` (`_high_entropy`, `redact.py:31-35`).
 
 - **Routes.** `/` and `-` are token characters, so a span route with no spaces is one token. A bare GUID is 36 characters at 3.88 bits and survives; joined into a path (`api/orders/<GUID>/credential-check`, 64 characters, above 4.0) the whole route is replaced, and the `GUID → <guid>` step never sees it.
-- **Type names.** `.` is not a token character, so the namespace survives, but a PascalCase type name of 32 or more characters clears 4.0 alone (`EDJAnnuitySuitabilitySubmissionFetchXML`: 39 characters, 4.23 bits). In the ultron codebase, many `EDJ…` and `…Dashboard…` class names do.
-- **Evidence in the vault.** 5 of 29 notes in `raw/telemetry/` carry the marker: `ultron-prod-adx-a-c79f07df3017` (`exception: "[REDACTED:high_entropy] 500"`, route key redacted, so its reopen KQL drops the route condition), `ultron-uat-adx-a-57a6beae009d` (`Porch.Core.Plugins.EDJ.[REDACTED:high_entropy]#9908`) and three `porch.slice` keys `Porch.Core.Partitions.ApplicationProjectDashboard.[REDACTED:high_entropy]`. `fingerprint("ultron-uat-adx", "log", {service: core-worker, scope: "Porch.Core.Plugins.EDJ.[REDACTED:high_entropy]", event_id: 9908, porch.partition: "", porch.slice: ""})` reproduces `a-57a6beae009d` exactly. `a-c79f07df3017` is reproduced by any long core-api route with status 500, because the hashed key is the literal marker: every such route has been counted in that one note. Task 2 removes the guess from key cleaning, so these groups split into their real errors (user decision, 2026-10-07).
+- **Type names.** `.` is not a token character, so the namespace survives, but a PascalCase type name of 32 or more characters clears 4.0 alone (for example `VendorAccountSuitabilitySubmissionFetchXML`: 42 characters, above 4.0). Long class names in a real codebase often do.
+- **Effect on notes.** A group key that held the marker hashes the literal marker, so every long route with the same status (or every long type name under the same namespace) lands in one note, and that note's reopen KQL drops the redacted condition. The tests reproduce this with generic names: on the old code a long route gives a note such as `shop-prod-adx-a-8513424e6ee9` (`exception: "[REDACTED:high_entropy] 500"`) and a long type name gives `shop-uat-adx-a-2f59495da85c` (`Acme.Core.Plugins.Vendor.[REDACTED:high_entropy]#9908`). Task 2 removes the guess from key cleaning, so these groups split into their real errors (user decision, 2026-10-07).
 
 ## Global Constraints
 
 - User decision (2026-10-07), verbatim: "Ticket identifiers are needed and maintaining which env can show them in logs is unnecessary. This isn't PII data." It applies to every source and environment.
-- Mask only credential-shaped strings (API keys, bearer tokens, connection strings, passwords) and email addresses. GUIDs, application IDs such as `K7-55Q0R-A-01`, numbers, long type names and URL paths stay.
-- Group keys drop the high-entropy guess (user decision, 2026-10-07: fix the grouping key). `sanitize` ran `redact()` before its shape steps (query strip, `<guid>`, `<email>`, `<hex>`, `<n>`, 200-character cut); it now runs `redact_credentials()`, which is `redact()` without the guess plus four patterns. A fingerprint therefore changes only where the guess fired (the key held the marker) or where one of the four patterns fires on a raw key (a credential in clear inside a route, scope or module value; none of the 29 vault notes has one). Every other fingerprint stays byte-identical; `test_vault_fingerprints_without_the_marker_do_not_change` pins three from the vault.
-- The 5 marker notes (`ultron-prod-adx-a-c79f07df3017`, `ultron-uat-adx-a-57a6beae009d`, `-a-8ee692ba7175`, `-a-a3850c69052e`, `-a-a901bbb809ca`) get no migration. No row hashes to their fingerprints after Task 2, so their `last_seen` stops moving and `resolve_stale` marks them `resolved` after the existing 7-day quiet rule; they are never deleted. The split groups start as new notes with counts from the next fetch window (no backfill) and go through the capped Sentry cover lookup like any new group.
+- Mask only credential-shaped strings (API keys, bearer tokens, connection strings, passwords) and email addresses. GUIDs, application IDs such as `A1-23B4C-D-56`, numbers, long type names and URL paths stay.
+- Group keys drop the high-entropy guess (user decision, 2026-10-07: fix the grouping key). `sanitize` ran `redact()` before its shape steps (query strip, `<guid>`, `<email>`, `<hex>`, `<n>`, 200-character cut); it now runs `redact_credentials()`, which is `redact()` without the guess plus four patterns. A fingerprint therefore changes only where the guess fired (the key held the marker) or where one of the four patterns fires on a raw key (a credential in clear inside a route, scope or module value). Every other fingerprint stays byte-identical; `test_vault_fingerprints_without_the_marker_do_not_change` pins six, computed by the code before Task 2.
+- Notes whose key held the marker get no migration. No row hashes to their fingerprints after Task 2, so their `last_seen` stops moving and `resolve_stale` marks them `resolved` after the existing 7-day quiet rule; they are never deleted. The split groups start as new notes with counts from the next fetch window (no backfill) and go through the capped Sentry cover lookup like any new group.
 - `redact()` called with its default argument behaves exactly as before (digests, inbox copies and meeting notes use it).
 - Group keys in notes keep their shape (`<guid>`, `<n>`, `<hex>`, `<email>`, query strings dropped) so one group covers many tickets and the reopen KQL keeps dropping placeholder conditions.
 - `message` is masked, folded to one line and cut at 500 characters after masking. State and the run log hold no free text.
@@ -31,7 +31,7 @@
 
 ## Review Focus
 
-1. Fingerprints: the three vault groups without the marker keep their note file names, and the two long GUID routes that both landed in `a-c79f07df3017` now land in two notes with `<guid>` route shapes (Task 2, `test_vault_fingerprints_without_the_marker_do_not_change`, `test_marker_groups_split_into_real_routes_and_type_names`).
+1. Fingerprints: the three vault groups without the marker keep their note file names, and the two long GUID routes that both landed in `a-8513424e6ee9` now land in two notes with `<guid>` route shapes (Task 2, `test_vault_fingerprints_without_the_marker_do_not_change`, `test_marker_groups_split_into_real_routes_and_type_names`).
 2. A log row with a null or missing `Body`, and every span: no `message:` line, and the note still validates (Task 2, `test_marker_groups_split_into_real_routes_and_type_names`; Task 3, `test_existing_note_gains_message_and_keeps_it`).
 3. A message with newlines, tabs, double quotes or backslashes: one frontmatter line that parses back to the folded text (Task 3, `test_message_is_one_line_and_round_trips`).
 4. A credential next to the 500-character cut: masked before the cut, so no fragment survives (Task 2, `test_mask_edges`).
@@ -75,7 +75,7 @@ from vaultlib.redact import named_kinds, redact, redact_credentials
 Append:
 
 ```python
-LONG_NAME = "Shop.Plugins.EDJAnnuitySuitabilitySubmissionFetchXML"
+LONG_NAME = "Shop.Plugins.VendorAccountSuitabilitySubmissionFetchXML"
 GUID_PATH = "api/orders/3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b/credential-check"
 
 
@@ -109,7 +109,7 @@ def test_redact_credentials_masks_credential_shapes(text, secret, marker):
 
 
 def test_redact_credentials_keeps_identifiers_and_prose():
-    text = (f"Ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b for K7-55Q0R-A-01 in {LONG_NAME} at {GUID_PATH}; "
+    text = (f"Ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b for A1-23B4C-D-56 in {LONG_NAME} at {GUID_PATH}; "
             'the bearer of bad news {"tokenCount":"5"}')
     assert redact_credentials(text) == text
 ```
@@ -199,25 +199,25 @@ Append:
 
 ```python
 GUID = "3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b"
-LONG_SCOPE = "Shop.Plugins.EDJAnnuitySuitabilitySubmissionFetchXML"
+LONG_SCOPE = "Shop.Plugins.VendorAccountSuitabilitySubmissionFetchXML"
 GUID_ROUTE = f"api/orders/{GUID}/credential-check"
 
 
 def test_sanitize_keeps_long_type_names_and_route_shapes():
     assert t.sanitize(LONG_SCOPE) == LONG_SCOPE
     assert t.sanitize(GUID_ROUTE) == "api/orders/<guid>/credential-check"
-    assert t.sanitize("K7-55Q0R-A-01") == "K7-55Q0R-A-01"
+    assert t.sanitize("A1-23B4C-D-56") == "A1-23B4C-D-56"
     assert t.sanitize("db password=hunter2") == "db password=[REDACTED:assignment]"
     assert t.sanitize("call Bearer Zm9vYmFyYmF6cXV4MTIzNDU2") == "call Bearer [REDACTED:bearer]"
 
 
 def test_mask_keeps_identifiers_and_masks_credentials_and_emails():
-    dirty = (f"Ticket {GUID} for application K7-55Q0R-A-01 failed for bob@example.com and bob%40example.com "
+    dirty = (f"Ticket {GUID} for application A1-23B4C-D-56 failed for bob@example.com and bob%40example.com "
              "Authorization: Bearer abc.def.ghi Bearer Zm9vYmFyYmF6cXV4MTIzNDU2 password=hunter2 "
              "Server=db;Pwd=s3cretPwd;AccountKey=Zm9vYmFyQUNDT1VOVEtFWQ==;Database=x "
              "https://x.example.com/p?sig=AbCdEfSAS postgres://app:pgpass99@db/x AKIAIOSFODNN7EXAMPLE")
     m = t.mask(dirty)
-    assert m.startswith(f"Ticket {GUID} for application K7-55Q0R-A-01 failed for <email> and <email> ")
+    assert m.startswith(f"Ticket {GUID} for application A1-23B4C-D-56 failed for <email> and <email> ")
     for s in ["bob", "abc.def.ghi", "Zm9vYmFyYmF6cXV4MTIzNDU2", "hunter2", "s3cretPwd", "Zm9vYmFyQUNDT1VOVEtFWQ",
               "AbCdEfSAS", "pgpass99", "AKIAIOSFODNN7EXAMPLE"]:
         assert s not in m, s
@@ -240,7 +240,7 @@ Append to `system/tests/python/test_telemetry_store.py`:
 
 ```python
 def test_long_type_names_are_not_redacted(vault):
-    scope = "Shop.Plugins.EDJAnnuitySuitabilitySubmissionFetchXML"
+    scope = "Shop.Plugins.VendorAccountSuitabilitySubmissionFetchXML"
     st = Store(vault); st.load()
     st.upsert(group(exception=f"{scope}#9908", keys={"service": "worker", "scope": scope, "event_id": "9908"}), NOW)
     text = (vault / "raw/telemetry/prod-adx-a-0123456789ab.md").read_text()
@@ -251,9 +251,9 @@ def test_long_type_names_are_not_redacted(vault):
 Append to `system/tests/python/test_telemetry_run.py` (it uses the module's existing `GUID` constant):
 
 ```python
-def _ultron(v, name):
+def _two_signal_source(v, name):
     write(v, f"system/telemetry/{name}.md", ADX.format(covers="").replace('"prod-adx"', f'"{name}"').replace(
-        'adx_signals: ["logs"]', 'adx_signals: ["logs", "spans"]\nadx_group_keys: ["porch.partition", "porch.slice"]'))
+        'adx_signals: ["logs"]', 'adx_signals: ["logs", "spans"]\nadx_group_keys: ["app.partition", "app.slice"]'))
 
 
 def _rows(logs, spans):
@@ -265,48 +265,49 @@ SPAN_ROW = {"service": "core-api", "status": 500, "n": 1, "first_ts": "2026-10-0
 
 
 def test_vault_fingerprints_without_the_marker_do_not_change(v, monkeypatch):
-    """Three groups from the vault's raw/telemetry notes, stored before 2026-10-07 with no [REDACTED:high_entropy] in
-    their keys: their fingerprints, and so their note file names, must not move. Passes before and after Task 2."""
-    _ultron(v, "ultron-uat-adx")
-    _ultron(v, "ultron-prod-adx")
-    logs = [dict(LOG_ROW, service="core-worker", scope="Porch.Bedrock.Services.PostmarkEmailService", event_id="1800",
-                 module_0="Porch.Core.Partitions.ApplicationProject.ApplicationProjectPartition",
-                 module_1="Porch.Core.Partitions.ApplicationProject.ApplicationProjectEmailNotificationSlice"),
-            dict(LOG_ROW, service="dtcc-worker", scope="Quartz.Impl.AdoJobStore.ClusterManager", event_id="",
+    """Groups with no [REDACTED:high_entropy] in their keys: their fingerprints, and so their note file names, must
+    not move. The names were computed by the code before Task 2; the test passes before and after it."""
+    _two_signal_source(v, "shop-uat-adx")
+    _two_signal_source(v, "shop-prod-adx")
+    logs = [dict(LOG_ROW, service="core-worker", scope="Acme.Platform.Services.MailService", event_id="1800",
+                 module_0="Acme.Core.Partitions.Orders.OrderPartition",
+                 module_1="Acme.Core.Partitions.Orders.OrderEmailNotificationSlice"),
+            dict(LOG_ROW, service="batch-worker", scope="Quartz.Impl.AdoJobStore.ClusterManager", event_id="",
                  module_0="", module_1="")]
-    spans = [dict(SPAN_ROW, route="api/edj/advisor-credentials/ticket-credential-check")]
+    spans = [dict(SPAN_ROW, route="api/vendor/agent-credentials/order-credential-check")]
     monkeypatch.setattr(kusto, "query", _rows(logs, spans))
     assert telemetry_run.main([], v, NOW) == 0
-    for rel in ["ultron-uat-adx-a-c3e2f52dc29b.md", "ultron-uat-adx-a-3b5cb41c814c.md", "ultron-prod-adx-a-626b0a509922.md"]:
-        assert (v / "raw/telemetry" / rel).is_file(), rel
+    assert sorted(p.name for p in (v / "raw/telemetry").glob("*.md")) == [
+        "shop-prod-adx-a-1ac755ccca34.md", "shop-prod-adx-a-2a9d42e61b13.md", "shop-prod-adx-a-8818b5096c41.md",
+        "shop-uat-adx-a-0e5b4bafc506.md", "shop-uat-adx-a-30e079fb650d.md", "shop-uat-adx-a-f7890ec560a5.md"]
 
 
 def test_marker_groups_split_into_real_routes_and_type_names(v, monkeypatch):
-    """Before 2026-10-07 both routes hashed to a-c79f07df3017 (route key "[REDACTED:high_entropy]") and the long scope
-    to a-57a6beae009d; now each lands in its own group under its real shape."""
-    _ultron(v, "ultron-uat-adx")
-    _ultron(v, "ultron-prod-adx")
+    """Before 2026-10-07 both routes hashed to a-8513424e6ee9 (route key "[REDACTED:high_entropy]") and the long scope
+    to a-2f59495da85c; now each lands in its own group under its real shape."""
+    _two_signal_source(v, "shop-uat-adx")
+    _two_signal_source(v, "shop-prod-adx")
     spans = [dict(SPAN_ROW, route=f"api/orders/{GUID}/credential-check"),
-             dict(SPAN_ROW, route=f"api/edj/advisor-credentials/{GUID}/ticket-credential-check")]
-    log = dict(LOG_ROW, service="core-worker", scope="Porch.Core.Plugins.EDJ.EDJAnnuitySuitabilitySubmissionFetchXML",
+             dict(SPAN_ROW, route=f"api/vendor/agent-credentials/{GUID}/order-credential-check")]
+    log = dict(LOG_ROW, service="core-worker", scope="Acme.Core.Plugins.Vendor.VendorAccountSuitabilitySubmissionFetchXML",
                event_id="9908", module_0="", module_1="")
     monkeypatch.setattr(kusto, "query", _rows([log], spans))
     assert telemetry_run.main([], v, NOW) == 0
     tele = v / "raw/telemetry"
-    assert not (tele / "ultron-prod-adx-a-c79f07df3017.md").exists()
-    assert not (tele / "ultron-uat-adx-a-57a6beae009d.md").exists()
-    notes = [p.read_text() for p in tele.glob("ultron-prod-adx-a-*.md")]
+    assert not (tele / "shop-prod-adx-a-8513424e6ee9.md").exists()
+    assert not (tele / "shop-uat-adx-a-2f59495da85c.md").exists()
+    notes = [p.read_text() for p in tele.glob("shop-prod-adx-a-*.md")]
     assert sorted(l for n in notes for l in n.splitlines() if l.startswith("exception:")) == [
-        'exception: "Porch.Core.Plugins.EDJ.EDJAnnuitySuitabilitySubmissionFetchXML#9908"',
-        'exception: "api/edj/advisor-credentials/<guid>/ticket-credential-check 500"',
-        'exception: "api/orders/<guid>/credential-check 500"']
+        'exception: "Acme.Core.Plugins.Vendor.VendorAccountSuitabilitySubmissionFetchXML#9908"',
+        'exception: "api/orders/<guid>/credential-check 500"',
+        'exception: "api/vendor/agent-credentials/<guid>/order-credential-check 500"']
     assert all("high_entropy" not in n and "message:" not in n for n in notes)
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `python3 -m pytest system/tests/python/test_telemetry_core.py system/tests/python/test_telemetry_store.py system/tests/python/test_telemetry_run.py -q`
-Expected: FAIL. `test_kql_filter_and_group_keys_are_quoted` (no `body =`), `test_sanitize_keeps_long_type_names_and_route_shapes` (`Shop.Plugins.[REDACTED:high_entropy]` != the scope), `AttributeError: module 'vaultlib.telemetry' has no attribute 'mask'` in the two mask tests, `test_long_type_names_are_not_redacted` (the store's `_clean` still redacts the scope), and `test_marker_groups_split_into_real_routes_and_type_names` on its first `assert not` (the old code writes `ultron-prod-adx-a-c79f07df3017.md`). `test_vault_fingerprints_without_the_marker_do_not_change` passes: it guards the step below.
+Expected: FAIL. `test_kql_filter_and_group_keys_are_quoted` (no `body =`), `test_sanitize_keeps_long_type_names_and_route_shapes` (`Shop.Plugins.[REDACTED:high_entropy]` != the scope), `AttributeError: module 'vaultlib.telemetry' has no attribute 'mask'` in the two mask tests, `test_long_type_names_are_not_redacted` (the store's `_clean` still redacts the scope), and `test_marker_groups_split_into_real_routes_and_type_names` on its first `assert not` (the old code writes `shop-prod-adx-a-8513424e6ee9.md`). `test_vault_fingerprints_without_the_marker_do_not_change` passes: it guards the step below.
 
 - [ ] **Step 3: Implement**
 
@@ -393,7 +394,7 @@ In `system/tests/python/test_telemetry_store.py`, replace the `SECRETS = …` li
 
 ```python
 GUID = "3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b"
-APP = "K7-55Q0R-A-01"
+APP = "A1-23B4C-D-56"
 CREDS = ["AKIAIOSFODNN7EXAMPLE", "hunter2", "s3cretPwd", "Zm9vYmFyQUNDT1VOVEtFWQ", "pgpass99", "Zm9vYmFyYmF6cXV4MTIzNDU2"]
 DIRTY = (f"Ticket {GUID} for application {APP} failed for bob@example.com: AKIAIOSFODNN7EXAMPLE password=hunter2 "
          "Server=db;Pwd=s3cretPwd;AccountKey=Zm9vYmFyQUNDT1VOVEtFWQ==; postgres://app:pgpass99@db/x "
@@ -447,7 +448,7 @@ In `system/tests/python/test_telemetry_schema.py`, append:
 def test_production_error_message_field_is_known(vault):
     write(vault, "raw/telemetry/prod-sentry-s-101.md", "\n".join([
         "---", "type: production_error", 'service: "api"', 'exception: "KeyError"',
-        'message: "KeyError: ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b \\"K7-55Q0R-A-01\\""', 'operation_id: "101"',
+        'message: "KeyError: ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b \\"A1-23B4C-D-56\\""', 'operation_id: "101"',
         'detected_at: "2026-10-05T14:10:00+00:00"', 'kind: "sentry"', 'fingerprint: "s-101"', "---", "# body", ""]))
     idx = Index(vault)
     idx.refresh(full=True)
@@ -540,7 +541,7 @@ In `system/tests/python/test_telemetry_run.py`, replace the block from `GUID = "
 
 ```python
 GUID = "3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b"
-APP = "K7-55Q0R-A-01"
+APP = "A1-23B4C-D-56"
 DIRTY = (f"Ticket {GUID} for application {APP} failed for bob@example.com and bob%40example.com "
          "Authorization: Bearer abc.def.ghi Bearer Zm9vYmFyYmF6cXV4MTIzNDU2 password=hunter2 "
          "Server=db;Pwd=s3cretPwd;AccountKey=Zm9vYmFyQUNDT1VOVEtFWQ==;Database=x "
@@ -581,7 +582,7 @@ def test_privacy_end_to_end(v, monkeypatch, capsys):
 
 def test_log_group_shows_real_scope_and_message(v, monkeypatch):
     write(v, "system/telemetry/prod-adx.md", ADX.format(covers=""))
-    scope = "Shop.Plugins.EDJAnnuitySuitabilitySubmissionFetchXML"
+    scope = "Shop.Plugins.VendorAccountSuitabilitySubmissionFetchXML"
     row = dict(LOG_ROW, service="worker", scope=scope, event_id="9908", message=f"Ticket {GUID} failed")
     monkeypatch.setattr(kusto, "query", lambda *a, **k: [row])
     assert telemetry_run.main([], v, NOW) == 0
@@ -773,3 +774,9 @@ Expected: 704 passed, and 6 bats tests ok.
 git add docs/superpowers/specs/2026-10-05-error-monitoring-design.md README.md system/tests/python/test_telemetry_core.py
 git commit -m "docs(telemetry): data policy keeps identifiers, masks credentials and emails"
 ```
+
+---
+
+## Fix pass (review, 2026-10-08)
+
+The template stays free of any one vault's specifics. The tests and this plan used names from a real codebase, its telemetry notes and an application ID; they now use generic stand-ins (`Acme.*` namespaces, `shop-*-adx` sources, `app.partition`/`app.slice`, `api/vendor/agent-credentials/…`, `A1-23B4C-D-56`). The note names the tests pin were recomputed by running the same generic rows through the code before and after Task 2: the six stable names are identical on both, and the two marker names (`shop-prod-adx-a-8513424e6ee9`, `shop-uat-adx-a-2f59495da85c`) appear only on the old code. Telemetry suites: 103 passed; `telemetry.bats`: 6 ok.

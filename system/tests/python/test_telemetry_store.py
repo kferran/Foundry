@@ -7,7 +7,7 @@ from vaultlib.telemetry_store import Store
 
 NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 GUID = "3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b"
-APP = "K7-55Q0R-A-01"
+APP = "A1-23B4C-D-56"
 CREDS = ["AKIAIOSFODNN7EXAMPLE", "hunter2", "s3cretPwd", "Zm9vYmFyQUNDT1VOVEtFWQ", "pgpass99", "Zm9vYmFyYmF6cXV4MTIzNDU2"]
 DIRTY = (f"Ticket {GUID} for application {APP} failed for bob@example.com: AKIAIOSFODNN7EXAMPLE password=hunter2 "
          "Server=db;Pwd=s3cretPwd;AccountKey=Zm9vYmFyQUNDT1VOVEtFWQ==; postgres://app:pgpass99@db/x "
@@ -205,7 +205,7 @@ def test_reopen_kql_spans_and_placeholder_keys_are_omitted(vault):
 
 
 def test_long_type_names_are_not_redacted(vault):
-    scope = "Shop.Plugins.EDJAnnuitySuitabilitySubmissionFetchXML"
+    scope = "Shop.Plugins.VendorAccountSuitabilitySubmissionFetchXML"
     st = Store(vault); st.load()
     st.upsert(group(exception=f"{scope}#9908", keys={"service": "worker", "scope": scope, "event_id": "9908"}), NOW)
     text = (vault / "raw/telemetry/prod-adx-a-0123456789ab.md").read_text()
