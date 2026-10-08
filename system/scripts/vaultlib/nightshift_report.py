@@ -1,7 +1,11 @@
 """Per-item outcome files, the health file and the night's report (Nightshift spec §6)."""
 import json
 import os
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from . import nightshift_check as nc
 
 DIR = "system/logs/nightshift"
 HEALTH_ORDER = ("claude", "gh", "ssh", "sandbox", "usage", "last_tick")
@@ -43,6 +47,14 @@ def _clean(text, limit=300) -> str:
     return " ".join(str(text or "").split()).replace("|", "/")[:limit]
 
 
+def _hm(value, tz) -> str:
+    """An ISO timestamp as HH:MM in the vault's timezone; empty when it is missing or unreadable."""
+    try:
+        return datetime.fromisoformat(str(value)).astimezone(tz).strftime("%H:%M")
+    except ValueError:
+        return ""
+
+
 def build(vault, date: str) -> str:
     hp = Path(vault) / DIR / f"health-{date}.json"
     health = json.loads(hp.read_text(encoding="utf-8")) if hp.is_file() else {}
@@ -54,10 +66,11 @@ def build(vault, date: str) -> str:
     needs = [f"- [ ] {_clean(n)} ({o['id']})" for o in outcomes for n in o.get("needs") or []]
     if needs:
         lines += ["## Needs you", *needs, ""]
+    tz = ZoneInfo(str(nc.config(vault).get("timezone") or "UTC"))
     lines += ["## Items", "| Item | Kind | Result | Time | Notes |", "|---|---|---|---|---|"]
     for o in outcomes:
         state = o["state"] + (f" ({o['reason']})" if o.get("reason") else "")
-        span = f"{str(o.get('started_at', ''))[11:16]}–{str(o.get('finished_at', ''))[11:16]}"
+        span = f"{_hm(o.get('started_at'), tz)}–{_hm(o.get('finished_at'), tz)}"
         lines.append(f"| {o['id']} | {o['kind']} | {_clean(state)} | {span} | {_clean(o.get('result') or o.get('notes'))} |")
     return "\n".join(lines) + "\n"
 
