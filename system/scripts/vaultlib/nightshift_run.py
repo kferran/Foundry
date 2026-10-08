@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time as clock
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -54,6 +54,7 @@ def _parser():
     g = a.add_mutually_exclusive_group()
     g.add_argument("--now", action="store_true")
     g.add_argument("--at", metavar="HH:MM")
+    g.add_argument("--window", action="store_true")
     a.add_argument("--budget")
     a.add_argument("--model", default="sonnet")
     c = sub.add_parser("check")
@@ -75,6 +76,10 @@ class Ctx:
         self.brief_time = str(cfg.get("brief_time") or "06:00")
         self.window = ns.parse_window(nc.setting(cfg, "run_window", "nightshift_window"))
         self.workspace = Path(str(nc.setting(cfg, "order_workspace", "nightshift_workspace") or "~/code/worktrees")).expanduser()
+        try:
+            self.max_five_hour = float(cfg.get("order_max_five_hour") or 0.6)
+        except (TypeError, ValueError):
+            self.max_five_hour = 0.6
         self.local = now.astimezone(self.tz)
         self.date = ns.report_date(self.local, self.brief_time)
         self.alerts = {}
@@ -523,12 +528,15 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
         except CloneError as exc:
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
                 f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then queue {fm['id']} again ({exc})"]})
+    t0 = clock.monotonic()
     run = _run_session(ctx, path, fm, body, cwd, idir, resume)
     if run.get("usage"):
         hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
         h = json.loads(hfile.read_text()) if hfile.is_file() else {}
         u = run["usage"]
         h["usage7"] = u.get("seven_day")
+        h["usage5"] = u.get("five_hour")
+        h["usage5_at"] = (ctx.now + timedelta(seconds=clock.monotonic() - t0)).isoformat()
         h["usage"] = f"5h {round((u.get('five_hour') or 0) * 100)}% / 7d {round((u.get('seven_day') or 0) * 100)}%"
         rep.write_health(ctx.vault, ctx.date, h)
     if run["outcome"] == "waiting_reset":
@@ -609,6 +617,12 @@ def tick(ctx: Ctx) -> int:
         return 0
     if not hfile.is_file():
         h = health(ctx.vault, ctx.now, entries)
+        prev = ctx.vault / rep.DIR / f"health-{(date.fromisoformat(ctx.date) - timedelta(days=1)).isoformat()}.json"
+        try:   # the last 5-hour reading outlives the report day, so the ceiling holds right after the brief too
+            old = json.loads(prev.read_text()) if prev.is_file() else {}
+        except (OSError, ValueError):
+            old = {}
+        h |= {k: old[k] for k in ("usage5", "usage5_at") if k in old}
         rep.write_health(ctx.vault, ctx.date, h)
     h = json.loads(hfile.read_text())
     h["last_tick"] = ctx.local.strftime("%H:%M")
@@ -620,7 +634,12 @@ def tick(ctx: Ctx) -> int:
     usage7 = h.get("usage7")
     running = [e for e in entries if e[1].get("state") == "running"]
     chosen = running[0] if running else ns.pick(entries, ctx.local, ctx.window, usage7)
-    if not chosen:
+    # The 5-hour ceiling holds only a new start: running and waiting_reset items resume (pick ranks those first).
+    held = ns.five_hour_hold(h, ctx.now, ctx.max_five_hour) if chosen and chosen[1].get("state") == "queued" else ""
+    if h.pop("held", None) or held:   # the report's Held line shows only the latest tick's hold
+        rep.write_health(ctx.vault, ctx.date, h | ({"held": held} if held else {}))
+        rep.write(ctx.vault, ctx.date)   # the brief and the debrief copy this file, so the Held line must be in it
+    if held or not chosen:
         return 0
     path, fm, body = chosen
     claim = rep.item_dir(ctx.vault, fm["id"]) / f"claim-{int(fm.get('attempts') or 0) + 1}"
@@ -635,7 +654,7 @@ def tick(ctx: Ctx) -> int:
 def _add(ctx: Ctx, a) -> int:
     item_id = ni.new_id(a.title, ctx.local)
     fm = {"type": "nightshift_item", "id": item_id, "partition": a.partition, "kind": a.kind, "state": "queued",
-          "queued_at": ctx.local.isoformat(), "start": "now" if a.now else ("at" if a.at else "window"),
+          "queued_at": ctx.local.isoformat(), "start": "at" if a.at else ("window" if a.window else "now"),
           "budget": a.budget or ("4h" if a.kind == "plan" else "1h"), "model": a.model}
     if a.at:
         hh, mm = (int(x) for x in a.at.split(":"))

@@ -67,3 +67,22 @@ def test_a_window_item_needs_no_inactivity():
     assert ns.due(item(), at(23), W, 0.4) == (True, "")
     assert not hasattr(ns, "IDLE")
     assert not hasattr(ns, "idle_seconds")
+
+
+def test_an_empty_or_full_day_run_window_is_always_open():
+    for text in (None, "", "00:00-24:00"):
+        w = ns.parse_window(text)
+        assert ns.due(item(), at(12), w, 0.4) == (True, "")
+        assert ns.due(item(budget="20h"), at(4), w, 0.4) == (True, "")
+        assert ns.due(item(), at(12), w, 0.9) == (False, "7-day usage above 80%")
+    assert ns.due(item(), at(12), W, 0.4) == (False, "outside the window")   # a set window is kept
+
+
+def test_five_hour_hold():
+    h = {"usage5": 0.7, "usage5_at": at(11).isoformat()}
+    assert ns.five_hour_hold(h, at(12), 0.6) == "5-hour usage 70% at or above 60%"
+    assert ns.five_hour_hold({**h, "usage5": 0.6}, at(12), 0.6) == "5-hour usage 60% at or above 60%"
+    assert ns.five_hour_hold({**h, "usage5": 0.59}, at(12), 0.6) == ""
+    assert ns.five_hour_hold({**h, "usage5_at": at(6, 59).isoformat()}, at(12), 0.6) == ""   # the window has reset
+    assert ns.five_hour_hold(h, at(12), 0.8) == ""
+    assert ns.five_hour_hold({}, at(12), 0.6) == ""

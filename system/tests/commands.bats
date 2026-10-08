@@ -591,3 +591,15 @@ self_edit_contract() {
     grep -q "^  $k:" system/schemas/codebase.md
   done
 }
+
+@test "Work Orders start now by default; tonight, hold, the window and the 5-hour ceiling are documented (Foreman v1 §3.2)" {
+  f=.claude/skills/order/SKILL.md
+  grep -qF 'With no start flag a Work Order starts now.' "$f"
+  grep -qF '"tonight" means `--at 22:00`' "$f"
+  grep -qF '"hold" means do not queue' "$f"
+  grep -qF -- '`--window`' "$f"
+  grep -q '^  order_max_five_hour: {kind: string, default: "0.6"}$' system/schemas/config.md
+  grep -q '^  run_window: {kind: string}$' system/schemas/config.md
+  grep -qF '`order_max_five_hour`' README.md
+  grep -qF 'By default `run_window` is empty and the window is always open' README.md
+}

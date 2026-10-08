@@ -9,12 +9,15 @@ description: |
 
 Specs: `docs/superpowers/specs/2026-10-06-nightshift-design.md` (the runner) and `docs/superpowers/specs/2026-10-08-foreman-v1-work-orders-design.md` (Work Orders). Everything runs through `system/scripts/nightshift.py` from the vault root.
 
-**`/order add <plan> [--tasks N-M] [--at HH:MM | --now] [--budget 4h] [--model opus]`**
+**`/order add <plan> [--tasks N-M] [--at HH:MM | --window] [--budget 4h] [--model opus]`**
+
+With no start flag a Work Order starts now. "tonight" means `--at 22:00`; "hold" means do not queue (tell the user the plan is not queued); `--window` waits for the vault's `run_window`. A new Work Order also waits while the last session's 5-hour usage is at or above `order_max_five_hour` (default 0.6); `status` shows that hold.
+
 1. Find the plan's repository: a registered codebase (`system/codebases/*.md`) or `template` (this repository's template remote). Ask if unclear. For `template`, the branch that holds the plan must be pushed to the template remote first: the check and the run read it from there, never from the vault, and `--base` is that branch's name.
 2. Read the plan (for `template`: `git fetch -q template <branch>`, then `git show FETCH_HEAD:<plan path>`). Propose `--verify` commands from its test lines (its Global Constraints or the last task's suite run) and a `--tasks` range that leaves out any task on the vault's `master`, a deploy, or a step needing the user. Show both and get the user's yes.
-3. Run `system/scripts/nightshift.py add --kind plan --title "<plan title>" --partition <partition> --repo <repo> --base <branch holding the plan> --pr-base <target branch> --plan <path> --tasks <range> --verify "<cmd>" … [--now | --at HH:MM] [--budget] [--model]`. Exit 2 lists what is not ready: report it and stop.
+3. Run `system/scripts/nightshift.py add --kind plan --title "<plan title>" --partition <partition> --repo <repo> --base <branch holding the plan> --pr-base <target branch> --plan <path> --tasks <range> --verify "<cmd>" … [--at HH:MM | --window] [--budget] [--model]`. Exit 2 lists what is not ready: report it and stop.
 
-**`/order ask`**: draft the brief with the user, one question at a time, until it has `## Question`, `## Scope` (sources and any web hosts), `## Done when` and `## Output` (the findings note, a new path under `wiki/<partition>/`; research creates new notes only). When the question is about code, ask which repository (a registered codebase or `template`) and which branch or commit (a branch for `template`); the session reads a pinned copy under `code/`, at the remote's default branch when no base is named. Save the brief to a temporary file, then run `nightshift.py add --kind research --title "…" --partition <p> --brief-file <file> --output <path> --host <h> … [--repo <name> [--base <branch or commit>]] [--now | --at]`.
+**`/order ask`**: draft the brief with the user, one question at a time, until it has `## Question`, `## Scope` (sources and any web hosts), `## Done when` and `## Output` (the findings note, a new path under `wiki/<partition>/`; research creates new notes only). When the question is about code, ask which repository (a registered codebase or `template`) and which branch or commit (a branch for `template`); the session reads a pinned copy under `code/`, at the remote's default branch when no base is named. Save the brief to a temporary file, then run `nightshift.py add --kind research --title "…" --partition <p> --brief-file <file> --output <path> --host <h> … [--repo <name> [--base <branch or commit>]] [--at HH:MM | --window]`.
 
 **`/order list`**, **`cancel <id>`**, **`status`** (`nightshift.py report` for the open report: everything since this morning's brief).
 

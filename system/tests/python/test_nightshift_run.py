@@ -2,7 +2,7 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -33,7 +33,7 @@ def env(vault: Path, tmp_path: Path, monkeypatch):
     git(tmp_path, "init", "-q", "--bare", str(remote))
     git(vault, "push", "-q", str(remote), "feat/x")   # template items are read from the template remote
     write(vault, "system/config.md", "---\ntype: config\ntimezone: \"America/Denver\"\nbrief_time: \"06:00\"\n"
-          f"template_remote: \"{remote}\"\nnightshift_workspace: \"{tmp_path / 'ws'}\"\n---\n")
+          f"template_remote: \"{remote}\"\nnightshift_workspace: \"{tmp_path / 'ws'}\"\nrun_window: \"22:00-05:00\"\n---\n")
     stream = tmp_path / "stream.jsonl"
     shutil.copy(FX / "ok.jsonl", stream)
     writes = tmp_path / "writes.txt"
@@ -87,7 +87,7 @@ def test_now_item_runs_verifies_pushes_and_reports(env):
 
 def test_window_item_waits_in_daytime(env):
     vault, _ = env
-    assert add(vault) == 0
+    assert add(vault, "--window") == 0
     assert nr.main(["tick"], vault, NOW) == 0
     assert only_item(vault)[1]["state"] == "queued"
 
@@ -150,6 +150,88 @@ def test_alerts_carry_the_orders_tag(env):
     ctx.alert("k", "something broke")
     text = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
     assert "[orders] something broke" in text and "[nightshift]" not in text
+
+
+def test_add_starts_now_unless_told_otherwise(env):
+    vault, _ = env
+    assert add(vault) == 0
+    path, fm = only_item(vault)
+    assert fm["start"] == "now"
+    path.unlink()
+    assert add(vault, "--window") == 0
+    assert only_item(vault)[1]["start"] == "window"
+
+
+def test_a_finished_session_stores_the_five_hour_usage(env, monkeypatch, tmp_path):
+    vault, _ = env
+    empty = tmp_path / "none.txt"
+    empty.write_text("")
+    monkeypatch.setenv("NIGHTSHIFT_STUB_WRITE", str(empty))
+    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "true")
+    assert add(vault) == 0
+    nr.main(["tick"], vault, NOW)
+    h = json.loads((vault / "system/logs/nightshift/health-2026-10-07.json").read_text())
+    assert (h["usage5"], h["usage7"]) == (0.12, 0.48)
+    assert NOW <= datetime.fromisoformat(h["usage5_at"]) < NOW + timedelta(minutes=5)
+
+
+def health_at(vault, usage5, age_hours, date="2026-10-07"):
+    nr.rep.write_health(vault, date, {"claude": "ok", "sandbox": "ok", "usage5": usage5,
+                                      "usage5_at": (NOW - timedelta(hours=age_hours)).isoformat()})
+
+
+def test_a_hold_reaches_the_report_file_the_brief_copies(env):
+    vault, _ = env
+    assert add(vault) == 0
+    health_at(vault, 0.7, 1)
+    nr.main(["tick"], vault, NOW)
+    assert "> Held: 5-hour usage 70% at or above 60%" in (vault / nr.rep.DIR / "2026-10-07.md").read_text()
+
+
+def test_a_new_report_day_keeps_the_last_five_hour_reading(env):
+    vault, _ = env
+    assert add(vault) == 0
+    health_at(vault, 0.7, 1, date="2026-10-06")   # read by the last session before the brief
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1]["state"] == "queued"
+    assert "> Held: 5-hour usage 70%" in (vault / nr.rep.DIR / "2026-10-07.md").read_text()
+
+
+def test_the_five_hour_ceiling_holds_a_new_item_and_says_why(env, capsys):
+    vault, _ = env
+    assert add(vault) == 0
+    health_at(vault, 0.7, 1)
+    assert nr.main(["tick"], vault, NOW) == 0
+    assert only_item(vault)[1]["state"] == "queued"
+    nr.main(["report"], vault, NOW)
+    assert "> Held: 5-hour usage 70% at or above 60%" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("age,config", [(6, ""), (1, 'order_max_five_hour: "0.8"\n')])
+def test_an_old_reading_or_a_higher_ceiling_lets_it_start(env, monkeypatch, capsys, age, config):
+    vault, _ = env
+    if config:
+        cfg = vault / "system/config.md"
+        cfg.write_text(cfg.read_text().rsplit("---\n", 1)[0] + config + "---\n")
+    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(FX / "limited.jsonl"))
+    assert add(vault) == 0
+    health_at(vault, 0.7, age)
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1]["state"] == "waiting_reset"
+    nr.main(["report"], vault, NOW)
+    assert "Held" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("state", ["running", "waiting_reset"])
+def test_the_five_hour_ceiling_never_stops_an_item_already_started(env, monkeypatch, state):
+    vault, _ = env
+    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(FX / "limited.jsonl"))
+    assert add(vault) == 0
+    path, _ = only_item(vault)
+    ni.update(path, state=state, attempts="1", session_id="old", reset_at=(NOW - timedelta(hours=1)).isoformat())
+    health_at(vault, 0.9, 1)
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1]["attempts"] == "2"
 
 
 def test_cancel_and_list(env, capsys):
