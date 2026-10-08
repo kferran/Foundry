@@ -507,3 +507,7 @@ self_edit_contract() {
   grep -qF 'stale' "$f"
   grep -qF '`- [ ] ` checkboxes' "$f"
 }
+
+@test "the README says update_template.sh lists new units and never installs them (#35)" {
+  grep -qF 'A unit the update adds is listed as `new unit available: <unit>` and left out' README.md
+}

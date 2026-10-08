@@ -198,6 +198,38 @@ upstream_commit() {  # <file> <text>
   [[ "$output" != *"units not installed"* ]]
 }
 
+@test "update_template reports a unit the new template adds and never installs or enables it" {
+  template_setup
+  printf '#!/bin/bash\n' > "$STUBS/systemd-analyze"  # verify needs a user session; this test is about the unit list
+  chmod +x "$STUBS/systemd-analyze"
+  system/scripts/install_units.sh > /dev/null
+  rm "$SYSTEMD_USER_DIR"/foundry-nightshift.service "$SYSTEMD_USER_DIR"/foundry-nightshift.timer
+  : > "$STUB_SYSTEMCTL_LOG"
+  upstream_commit new.txt hello
+  run "$UT"
+  [ "$status" -eq 0 ]
+  grep -qx 'new unit available: foundry-nightshift.timer (install it with system/scripts/install_units.sh)' <<< "$output"
+  grep -qx 'unchanged foundry-brief.service' <<< "$output"
+  [ ! -e "$SYSTEMD_USER_DIR/foundry-nightshift.timer" ]
+  [ ! -e "$SYSTEMD_USER_DIR/foundry-nightshift.service" ]
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service' "$STUB_SYSTEMCTL_LOG"
+}
+
+@test "update_template on a server re-renders the sync drop-ins of the services it installed" {
+  template_setup
+  printf '#!/bin/bash\n' > "$STUBS/systemd-analyze"
+  chmod +x "$STUBS/systemd-analyze"
+  system/scripts/vault_index.py set system/config.md machine_role server > /dev/null
+  system/scripts/install_units.sh > /dev/null
+  rm "$SYSTEMD_USER_DIR"/foundry-nightshift.service "$SYSTEMD_USER_DIR"/foundry-nightshift.timer
+  upstream_commit new.txt hello
+  run "$UT"
+  [ "$status" -eq 0 ]
+  grep -qx 'unchanged foundry-brief.service.d/foundry-sync.conf' <<< "$output"
+  grep -qx 'unchanged foundry-sync.timer' <<< "$output"
+  grep -qx 'new unit available: foundry-nightshift.service (install it with system/scripts/install_units.sh)' <<< "$output"
+}
+
 @test "update_template leaves units alone in a vault that never installed them" {
   template_setup
   upstream_commit new.txt hello
