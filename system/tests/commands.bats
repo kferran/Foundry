@@ -534,3 +534,10 @@ self_edit_contract() {
   [[ "$sec" == *'`manifest_counts`'* ]]
   [[ "$sec" == *'inspect_codebase.sh --all-manifests <path>'* ]]
 }
+
+@test "/setup uses answers given up front and says when a scanned worktree is not the registered path (#20)" {
+  grep -qF 'use them and ask only for what is missing; an answer still written as `<…>` is missing' .claude/commands/setup.md
+  sec="$(setup_section '3. Codebases')"
+  [[ "$sec" == *'If the directory you scanned is one of a repo'"'"'s `worktrees` but not its `path`'* ]]
+  grep -qF 'replace every `<…>` first' README.md
+}

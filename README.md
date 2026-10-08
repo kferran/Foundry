@@ -235,7 +235,7 @@ cd my-vault
 claude
 ```
 
-The prompt:
+The prompt (replace every `<…>` first; `/setup` asks for any answer still written as `<…>`):
 
 ```text
 Set up this clone as a new Foundry vault. Run /setup and use these answers; ask me only for what is missing:
