@@ -39,7 +39,7 @@ for f in "$unit_dir"/*.service "$unit_dir"/*.timer "$unit_dir"/*.service.d/*.con
   if [[ -f "$f" && "$(head -n 1 -- "$f")" == "# Managed by vault: $VAULT_ROOT" ]]; then owned=1; break; fi
 done
 if (( owned )); then
-  system/scripts/install_units.sh
+  system/scripts/install_units.sh --update
 else
   echo "update_template: units not installed; skipped (install them with system/scripts/install_units.sh)"
 fi

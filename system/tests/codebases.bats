@@ -97,3 +97,18 @@ mkrepo() {  # <path> [branch]
   run "$IC"
   [ "$status" -eq 2 ]
 }
+
+@test "inspect: at most 5 manifests of a kind unless --all-manifests, with every one counted" {
+  mkrepo "$R/app"
+  for i in 1 2 3 4 5 6 7; do mkdir -p "$R/app/P$i"; printf '<Project/>' > "$R/app/P$i/P$i.csproj"; done
+  git -C "$R/app" add -A
+  run "$IC" "$R/app"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.manifests | length' <<< "$output")" -eq 5 ]
+  [ "$(jq -c .manifest_counts <<< "$output")" = '{"dotnet":7}' ]
+  run "$IC" --all-manifests "$R/app"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.manifests | length' <<< "$output")" -eq 7 ]
+  run "$IC" --all-manifests
+  [ "$status" -eq 2 ]
+}

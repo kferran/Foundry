@@ -68,6 +68,22 @@ field() { system/scripts/vault_index.py field system/config.md "$1"; }
   [[ "$output" == *"not reachable"* ]]
 }
 
+@test "<url> over https on a known host suggests its SSH form when that works without a prompt" {
+  git init -q --bare "$BATS_TEST_TMPDIR/ssh/me/vault.git"
+  git config url."$BATS_TEST_TMPDIR/ssh/".insteadOf git@github.com:  # the SSH form, served locally
+  run "$SR" https://github.com/me/vault
+  [ "$status" -eq 0 ]
+  [ "$(git remote get-url origin)" = https://github.com/me/vault ]
+  [[ "$output" == *"not reachable"* ]]
+  [[ "$output" == *"hint: git@github.com:me/vault.git works without a prompt; to use it, run system/scripts/setup_remote.sh git@github.com:me/vault.git"* ]]
+  run "$SR" https://github.com/me/other
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"hint:"* ]]
+  run "$SR" https://example.com/me/vault
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"hint:"* ]]
+}
+
 @test "<url> that is reachable sets origin without a warning" {
   git init -q --bare "$BATS_TEST_TMPDIR/private.git"
   run "$SR" "$BATS_TEST_TMPDIR/private.git"
@@ -196,6 +212,38 @@ upstream_commit() {  # <file> <text>
   run "$UT"
   [ "$status" -eq 0 ]
   [[ "$output" != *"units not installed"* ]]
+}
+
+@test "update_template reports a unit the new template adds and never installs or enables it" {
+  template_setup
+  printf '#!/bin/bash\n' > "$STUBS/systemd-analyze"  # verify needs a user session; this test is about the unit list
+  chmod +x "$STUBS/systemd-analyze"
+  system/scripts/install_units.sh > /dev/null
+  rm "$SYSTEMD_USER_DIR"/foundry-nightshift.service "$SYSTEMD_USER_DIR"/foundry-nightshift.timer
+  : > "$STUB_SYSTEMCTL_LOG"
+  upstream_commit new.txt hello
+  run "$UT"
+  [ "$status" -eq 0 ]
+  grep -qx 'new unit available: foundry-nightshift.timer (install it with system/scripts/install_units.sh)' <<< "$output"
+  grep -qx 'unchanged foundry-brief.service' <<< "$output"
+  [ ! -e "$SYSTEMD_USER_DIR/foundry-nightshift.timer" ]
+  [ ! -e "$SYSTEMD_USER_DIR/foundry-nightshift.service" ]
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service' "$STUB_SYSTEMCTL_LOG"
+}
+
+@test "update_template on a server re-renders the sync drop-ins of the services it installed" {
+  template_setup
+  printf '#!/bin/bash\n' > "$STUBS/systemd-analyze"
+  chmod +x "$STUBS/systemd-analyze"
+  system/scripts/vault_index.py set system/config.md machine_role server > /dev/null
+  system/scripts/install_units.sh > /dev/null
+  rm "$SYSTEMD_USER_DIR"/foundry-nightshift.service "$SYSTEMD_USER_DIR"/foundry-nightshift.timer
+  upstream_commit new.txt hello
+  run "$UT"
+  [ "$status" -eq 0 ]
+  grep -qx 'unchanged foundry-brief.service.d/foundry-sync.conf' <<< "$output"
+  grep -qx 'unchanged foundry-sync.timer' <<< "$output"
+  grep -qx 'new unit available: foundry-nightshift.service (install it with system/scripts/install_units.sh)' <<< "$output"
 }
 
 @test "update_template leaves units alone in a vault that never installed them" {

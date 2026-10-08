@@ -138,3 +138,19 @@ def test_a_subdirectory_inspects_the_whole_repo(tmp_path):
 def test_not_a_repo(tmp_path):
     with pytest.raises(NotARepo):
         inspect_repo(tmp_path)
+
+
+
+def test_per_kind_keeps_the_shallowest_manifests_and_counts_every_one(tmp_path):
+    files = {f"src/P{i}/P{i}.csproj": "<Project/>" for i in range(7)}
+    files.update({"App.csproj": "<Project/>", "web/package.json": '{"dependencies": {"vue": "3"}}',
+                  "tools/admin/package.json": '{"dependencies": {"react": "18"}}'})
+    repo = make_repo(tmp_path / "r", files)
+    result = inspect_repo(repo, per_kind=3)
+    assert [m["file"] for m in result["manifests"]] == [
+        "App.csproj", "src/P0/P0.csproj", "src/P1/P1.csproj", "tools/admin/package.json", "web/package.json"]
+    assert result["manifest_counts"] == {"dotnet": 8, "npm": 2}
+    one = inspect_repo(repo, per_kind=1)
+    assert [m["file"] for m in one["manifests"]] == ["App.csproj", "web/package.json"]
+    assert one["notable"] == ["react", "vue"]  # the dropped tools/admin manifest still counts
+    assert len(inspect_repo(repo)["manifests"]) == 10

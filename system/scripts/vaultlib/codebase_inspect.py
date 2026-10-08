@@ -97,7 +97,9 @@ def logging_hints(repo: Path) -> dict:
     return out
 
 
-def inspect_repo(path: Path) -> dict:
+def inspect_repo(path: Path, per_kind: int | None = None) -> dict:
+    """per_kind: keep at most that many manifests of each kind, the shallowest first; manifest_counts and
+    notable still cover every manifest (a large monorepo lists hundreds of .csproj files, #18)."""
     top = _git(path, "rev-parse", "--show-toplevel").strip()
     if not top:
         raise NotARepo(str(path))
@@ -123,6 +125,14 @@ def inspect_repo(path: Path) -> dict:
         manifests.append({"file": f, "dir": d, "kind": kind, "details": details})
         if len(p.parts) == 2:
             layers.add(p.parts[0] + "/")
+    counts = Counter(m["kind"] for m in manifests)
+    notable = sorted({n for m in manifests for n in m["details"].get("notable", [])})
+    if per_kind is not None:
+        keep = set()
+        for kind in counts:
+            same = sorted((m for m in manifests if m["kind"] == kind), key=lambda m: (m["file"].count("/"), m["file"]))
+            keep.update(m["file"] for m in same[:per_kind])
+        manifests = [m for m in manifests if m["file"] in keep]
     branch = _git(repo, "symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD").strip().removeprefix("origin/")
     if not branch:
         branch = _git(repo, "branch", "--show-current").strip()
@@ -130,6 +140,8 @@ def inspect_repo(path: Path) -> dict:
     return {
         "path": str(repo),
         "manifests": manifests,
+        "manifest_counts": dict(sorted(counts.items())),
+        "notable": notable,
         "layer_candidates": sorted(layers),
         "extensions": dict(sorted(exts.items())),
         "logging_hints": logging_hints(repo),

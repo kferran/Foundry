@@ -12,12 +12,13 @@ HEADER_PREFIX="# Managed by vault: "
 HEADER="$HEADER_PREFIX$VAULT_ROOT"
 
 die() { echo "install_units: $2" >&2; exit "$1"; }
-usage() { die 2 "usage: install_units.sh [--dry-run | --uninstall]"; }
+usage() { die 2 "usage: install_units.sh [--dry-run | --uninstall | --update]"; }
 (( $# <= 1 )) || usage
 case "${1:-}" in
   "") mode=install ;;
   --dry-run) mode=dry ;;
   --uninstall) mode=uninstall ;;
+  --update) mode=update ;;
   *) usage ;;
 esac
 
@@ -115,6 +116,19 @@ DROPINS=()
 declare -A DROPIN_TIMEOUT=([foundry-intake]=105min [foundry-brief]=60min [foundry-debrief]=60min)
 declare -A DROPIN_PREP=([foundry-intake]="" [foundry-brief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/brief_prep.sh"'
                         [foundry-debrief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/debrief_prep.sh"')
+# --update (update_template.sh) re-renders only what this vault installed: a unit a new template adds is
+# reported, never installed or enabled, so /setup's ask-before-installing holds (#35). Drop-ins follow their
+# service.
+if [[ "$mode" == update ]]; then
+  mapfile -t have < <(owned_units)
+  keep=() keep_enable=() keep_dropins=()
+  for n in "${UNITS[@]}"; do
+    if [[ " ${have[*]} " == *" $n "* ]]; then keep+=("$n"); else echo "new unit available: $n (install it with system/scripts/install_units.sh)"; fi
+  done
+  for n in "${ENABLE[@]}"; do [[ " ${keep[*]} " != *" $n "* ]] || keep_enable+=("$n"); done
+  for d in "${DROPINS[@]}"; do [[ " ${keep[*]} " != *" ${d%%.d/*} "* ]] || keep_dropins+=("$d"); done
+  UNITS=("${keep[@]}") ENABLE=("${keep_enable[@]}") DROPINS=("${keep_dropins[@]}")
+fi
 
 if [[ "$role" == client ]]; then
   echo "install_units: machine_role client: no units"
@@ -183,7 +197,8 @@ for d in "${DROPINS[@]}"; do
 done
 # Each unit is verified with its drop-ins beside it, as systemd will load them.
 rendered=("$work"/*.service "$work"/*.timer)
-if ! out="$(systemd-analyze --user verify "${rendered[@]}" 2>&1)"; then
+out=""
+if (( ${#rendered[@]} )) && ! out="$(systemd-analyze --user verify "${rendered[@]}" 2>&1)"; then
   printf '%s\n' "$out" >&2
   die 1 "systemd-analyze --user verify rejected the rendered units"
 fi
@@ -237,4 +252,4 @@ done < <(owned_dropins)
 remove_units "${stale[@]}"
 remove_dropins "${stale_dropins[@]}"
 "$SYSTEMCTL" --user daemon-reload
-"$SYSTEMCTL" --user enable --now "${ENABLE[@]}"
+(( ${#ENABLE[@]} == 0 )) || "$SYSTEMCTL" --user enable --now "${ENABLE[@]}"

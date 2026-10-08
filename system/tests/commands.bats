@@ -518,3 +518,37 @@ self_edit_contract() {
   grep -qF 'stale' "$f"
   grep -qF '`- [ ] ` checkboxes' "$f"
 }
+
+@test "the README says update_template.sh lists new units and never installs them (#35)" {
+  grep -qF 'A unit the update adds is listed as `new unit available: <unit>` and left out' README.md
+}
+
+@test "/setup phase 4 offers setup_remote.sh's SSH hint before asking for credentials (#16)" {
+  sec="$(setup_section '4. Remote')"
+  [[ "$sec" == *'printed a `hint:` line with an SSH URL, offer that URL first'* ]]
+}
+
+@test "/setup phase 4 stops on an origin with unrelated history before setting the upstream (#15)" {
+  sec="$(setup_section '4. Remote')"
+  for s in 'git merge-base HEAD "origin/<branch>"' 'git log --oneline "origin/<branch>"' \
+      'git push --force-with-lease="<branch>:<that commit>" -u origin HEAD' \
+      'git merge --allow-unrelated-histories "origin/<branch>"' 'Run either only on an explicit yes.'; do
+    [[ "$sec" == *"$s"* ]]
+  done
+  check="${sec%%git merge-base HEAD*}"
+  upstream="${sec%%git branch -u*}"
+  [ "${#check}" -lt "${#upstream}" ]
+}
+
+@test "/setup phase 3 drafts the stack from the manifest counts (#18)" {
+  sec="$(setup_section '3. Codebases')"
+  [[ "$sec" == *'`manifest_counts`'* ]]
+  [[ "$sec" == *'inspect_codebase.sh --all-manifests <path>'* ]]
+}
+
+@test "/setup uses answers given up front and says when a scanned worktree is not the registered path (#20)" {
+  grep -qF 'use them and ask only for what is missing; an answer still written as `<…>` is missing' .claude/commands/setup.md
+  sec="$(setup_section '3. Codebases')"
+  [[ "$sec" == *'If the directory you scanned is one of a repo'"'"'s `worktrees` but not its `path`'* ]]
+  grep -qF 'replace every `<…>` first' README.md
+}
