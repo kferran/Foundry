@@ -477,6 +477,20 @@ self_edit_contract() {
   grep -qF 'only when the summary and details leave a fact unclear' "$f"
 }
 
+@test "setup phase 6b dry-runs the unit installer and installs only on an explicit yes (#59)" {
+  sec="$(setup_section '6b. Meetings')"
+  [[ "$sec" == *'system/scripts/install_units.sh --dry-run'* ]]
+  [[ "$sec" == *'install on an explicit yes'* ]]
+  run grep -cF 'run `system/scripts/install_units.sh` again' .claude/commands/setup.md
+  [ "$output" = "0" ]
+}
+
+@test "the archive keeps yesterday: CLAUDE.md and the README say days before yesterday (#57); the README warns before the first archive (#54)" {
+  grep -qF 'Each brief moves days before yesterday to `briefings/archive/<YYYY-MM>/`.' CLAUDE.md
+  grep -qF "Briefings and debriefs from before yesterday move to \`briefings/archive/<YYYY-MM>/\`" README.md
+  grep -qF 'run `system/scripts/lint_vault.sh` before updating' README.md
+}
+
 @test "meetings: /setup asks about meetings on a server or standalone vault and checks the Drive connector" {
   sec="$(setup_section '6b. Meetings')"
   for s in 'meetings_enabled' 'meetings_partition' 'owner_names' 'system/scripts/meetings_fetch.sh --check' 'exit 3' \
