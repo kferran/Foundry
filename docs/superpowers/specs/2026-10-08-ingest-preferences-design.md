@@ -41,7 +41,7 @@ The same rules apply to an interactive run, which edits `wiki/` directly.
 - **bats (`system/tests/commands.bats`), text of `ingest.md`:** the Preferences step exists; it names `wiki/<p>/preferences/`, the verbatim rule, the ` — ` split, the `v_preference` query (an allowlisted `query` call, so the existing allowlist test keeps passing), the noop-on-repeat rule, the `evidence`/`counter_evidence`/supersede rules, "no preference note" for `shared`, and that `statement` is left alone by the self-edit; step 8 no longer says to patch Corrections into "the note they concern" as the only outcome.
 - **pytest (`system/tests/python/test_publish.py`), the note shape:** a staged new preference written exactly as §3.5 says, with `evidence` linking a `session_digest` in `raw/work/notes/`, and a create decision, publishes with no problems; the same note under `wiki/shared/preferences/` is rejected; a staged patch that appends a second `evidence` link to an existing preference publishes.
 
-Each test fails before the change. Bound tools: bats (`commands.bats`), pytest (`test_publish.py`), the gate (`system/scripts/verify_setup.sh`).
+The bats test fails before the change. The pytest tests pass before it too: the gate already accepts preference notes, and the tests pin that it accepts the exact shape the new step asks for. Bound tools: bats (`commands.bats`), pytest (`test_publish.py`), the gate (`system/scripts/verify_setup.sh`).
 
 ## 5. Rollout
 
