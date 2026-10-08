@@ -488,8 +488,24 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
 
 # --- tick and CLI --------------------------------------------------------------------------------------
 
-def _reconcile(ctx: Ctx) -> None:
-    for path, fm, _ in ni.items(ctx.vault):
+def _screen(ctx: Ctx) -> tuple:
+    """(entries, refused). Only notes whose identifiers pass nc.identifiers are returned: their id, refs and output
+    become paths and git arguments. A live note that fails is marked failed and alerted once."""
+    entries, refused = [], []
+    for path, fm, body in ni.items(ctx.vault):
+        errs = nc.identifiers(fm)
+        if not errs:
+            entries.append((path, fm, body))
+        elif fm.get("state") not in ("failed", "done", "cancelled"):
+            why = "; ".join(errs)
+            ni.update(path, state="failed", reason=f"invalid: {why}")
+            ctx.alert(f"invalid/{path.name}", f"{path.name} refused: {why}")
+            refused.append(path)
+    return entries, refused
+
+
+def _reconcile(ctx: Ctx, entries: list) -> None:
+    for path, fm, _ in entries:
         idir = rep.item_dir(ctx.vault, fm["id"])
         state = fm.get("state")
         if state == "cancelled":
@@ -508,8 +524,11 @@ def _reconcile(ctx: Ctx) -> None:
 
 
 def tick(ctx: Ctx) -> int:
-    _reconcile(ctx)
-    entries = [(p, fm, b) for p, fm, b in ni.items(ctx.vault)]
+    entries, refused = _screen(ctx)
+    if refused:
+        return 2
+    _reconcile(ctx, entries)
+    entries, _ = _screen(ctx)
     delivering = [e for e in entries if e[1].get("state") == "delivering"]
     if delivering:
         path, fm, body = delivering[0]

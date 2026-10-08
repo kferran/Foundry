@@ -45,6 +45,8 @@ Lessons kept from the predecessor system's night shift: every step writes a file
 
 `/nightshift add` (or `ask`) builds the note and runs `nightshift.py check`; on success the note is written with `state: queued`.
 
+Identifiers, both kinds: `id` is `<YYYY-MM-DD>-<slug>` (lower-case letters, digits and dashes); `partition` is `work`, `personal` or `shared`; `repo` is a plain name; `base` and `pr_base` do not start with `-`; `output` is a relative path with no `..` segment. `check` tests these first and runs no git command for a note that fails. Every tick applies the same test to every queue note before anything else: a live note that fails becomes `failed (invalid: …)` with an alert, the tick exits 2, and no tick reads that note again.
+
 Readiness, plan:
 - the plan file exists and is committed in the target repository at `base`;
 - `repo` is a registered codebase, or `template` (resolved through the config key `template_remote`);

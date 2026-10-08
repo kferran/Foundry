@@ -376,3 +376,23 @@ def test_delivery_runs_no_git_inside_the_session_clone(env, monkeypatch):
     out = nr._deliver_plan(ctx, fm, clone, idir, before)
     assert out["state"] == "done", out
     assert [c for c in calls if c[:3] == ["git", "-C", str(clone)]] == []
+
+
+
+def test_tick_refuses_a_note_with_an_unsafe_id(env):
+    vault, tmp = env
+    from test_nightshift_item import plan_fm
+    path = ni.note_path(vault, "work", "2026-10-06-evil")
+    ni.save(path, plan_fm(id="../../../evil", start="now", tasks="1-2", verify=["true"]), "")
+    old = ni.note_path(vault, "work", "2026-09-01-old")
+    long_ago = (NOW - __import__("datetime").timedelta(days=8)).isoformat()
+    ni.save(old, plan_fm(id="../../victim", state="failed", reason="budget", finished_at=long_ago), "")
+    (tmp / "victim").mkdir()  # where the 7-day clean-up would point for that id
+    assert nr.main(["tick"], vault, NOW) == 2
+    fm, _ = ni.load(path)
+    assert fm["state"] == "failed" and fm["reason"].startswith("invalid: id must look like")
+    assert not (vault / "system" / "evil").exists() and not (tmp / "evil").exists()
+    alerts = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
+    assert "2026-10-06-evil.md refused" in alerts
+    assert nr.main(["tick"], vault, NOW) == 0  # refused once; later ticks skip both notes
+    assert (tmp / "victim").is_dir()
