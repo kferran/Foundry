@@ -37,7 +37,8 @@ started="$(date -Iseconds)"
 log="system/logs/meetings_fetch-$(date +%Y-%m).jsonl"
 since_file=system/logs/meetings_fetch.since
 work="$(mktemp -d -p /tmp)"
-trap 'rm -rf -- "$work"' EXIT
+sdir=""  # the running session's directory: a unit stopped mid-session (TimeoutStartSec) must not leave it (#40)
+trap 'rm -rf -- "$work" ${sdir:+"$sdir"}' EXIT
 
 logline() {  # <step> <doc ID or "search"> <exit> <reason>
   jq -cn --arg time "$(date -Iseconds)" --arg step "$1" --arg doc "$2" --argjson exit "$3" --arg reason "$4" \
@@ -59,7 +60,7 @@ confine_settings "$SERVER_NAME" "$work"
 # session <step> <prompt> [Doc ID]: one confined session for search or read, checked and extracted into
 # $work/<step>.out; logs and returns its exit.
 session() {
-  local step="$1" prompt="$2" id="${3:-}" tool rc=0 prc=0 reason t sdir
+  local step="$1" prompt="$2" id="${3:-}" tool rc=0 prc=0 reason t
   local -a others=() args=("$step")
   [[ "$step" == search ]] && tool="${PREFIX}__search_files" || tool="${PREFIX}__read_file_content"
   for t in "${DRIVE_TOOLS[@]}"; do [[ "${PREFIX}__$t" == "$tool" ]] || others+=("${PREFIX}__$t"); done
@@ -78,6 +79,7 @@ session() {
     --allowedTools "$tool" --disallowedTools "${CONFINE_DENY[@]}" \
     < /dev/null > "$work/out.jsonl" 2> "$work/claude.err") || rc=$?
   rm -rf -- "$sdir"
+  sdir=""
   # The tool-use check runs on every session, a timed-out one included.
   system/scripts/meetings_extract.py "${args[@]}" < "$work/out.jsonl" > "$work/$step.out" 2> "$work/extract.err" || prc=$?
   reason="$(sed 's/^meetings_extract: //' "$work/extract.err" | head -n 1)"
