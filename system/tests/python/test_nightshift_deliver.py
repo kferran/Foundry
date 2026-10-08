@@ -126,6 +126,44 @@ def test_research_published(vault: Path, tmp_path):
     assert (vault / "wiki/work/concepts/A.md").is_file()
 
 
+MIXED = ('---\ntype: concept\ntags: ["research"]\ncompiled_at: 2026-10-08\npartition: work\nprovenance: ["headless"]\n'
+         'sources: ["[[Alpha]]", "https://example.com/a", "[[Beta]]", "src/app/main.py"]\nstatus: draft\n---\n'
+         '# Answer\n\nFound it.\n')
+
+
+def test_move_outside_sources_keeps_wikilinks_and_lists_the_rest():
+    out = nd.move_outside_sources(MIXED)
+    assert 'sources: ["[[Alpha]]", "[[Beta]]"]\n' in out
+    assert out.startswith('---\ntype: concept\ntags: ["research"]\ncompiled_at: 2026-10-08\npartition: work\n')
+    assert "status: draft\n---\n# Answer\n\nFound it.\n" in out
+    assert out.endswith("## Web sources\n\n- https://example.com/a\n- src/app/main.py\n")
+
+
+def test_move_outside_sources_adds_only_new_entries_to_an_existing_section():
+    text = MIXED.replace("Found it.\n", "Found it.\n\n## Web sources\n\n- https://example.com/a\n")
+    out = nd.move_outside_sources(text)
+    assert out.count("https://example.com/a") == 1
+    assert out.endswith("## Web sources\n\n- https://example.com/a\n- src/app/main.py\n")
+
+
+@pytest.mark.parametrize("text", [
+    MIXED.replace('"https://example.com/a", ', "").replace(', "src/app/main.py"', ""),   # only wikilinks
+    MIXED.replace('sources: ["[[Alpha]]", "https://example.com/a", "[[Beta]]", "src/app/main.py"]\n', ""),   # none
+    "# No frontmatter\n\nhttps://example.com/a\n"])
+def test_move_outside_sources_leaves_other_notes_unchanged(text):
+    assert nd.move_outside_sources(text) == text
+
+
+def test_research_with_a_url_in_sources_publishes_with_the_url_in_its_body(vault: Path, tmp_path):
+    findings = tmp_path / "C.md"
+    findings.write_text(concept("work", "Answer", "Found it.", provenance='["headless"]',
+                                sources='["https://example.com/a"]'))
+    ok, detail = nd.publish_research(vault, {"output": "wiki/work/concepts/C.md", "partition": "work"}, findings)
+    assert ok, detail
+    note = (vault / "wiki/work/concepts/C.md").read_text()
+    assert "sources: []" in note and "- https://example.com/a" in note
+
+
 def test_research_rejected_by_gate_publishes_nothing(vault: Path, tmp_path):
     findings = tmp_path / "B.md"
     findings.write_text("---\ntype: concept\n---\n# no required fields\n")

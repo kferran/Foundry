@@ -1,4 +1,5 @@
 """Containment, sandboxed verify, push, pull request and research publishing (Nightshift spec §3.3)."""
+import json
 import os
 import re
 import secrets
@@ -7,6 +8,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from . import frontmatter
 from . import nightshift_check as nc
 from . import publish
 
@@ -172,13 +174,48 @@ def open_pr(pr: str, branch: str, pr_base: str, title: str, body_file, push_log:
     return False, f"unknown nightshift_pr {pr!r}"
 
 
+WIKILINK = re.compile(r"^\[\[[^\[\]]+\]\]$")
+WEB = "## Web sources"
+
+
+def move_outside_sources(text: str) -> str:
+    """Move every frontmatter sources entry that is not a [[wikilink]] into a "## Web sources" body section (#75).
+    Only the sources line changes in the frontmatter; a note with nothing to move is returned unchanged."""
+    note = frontmatter.parse(text)
+    srcs = (note.data or {}).get("sources")
+    if note.error or not isinstance(srcs, list):
+        return text
+    keep = [str(s) for s in srcs if WIKILINK.match(str(s).strip())]
+    moved = [str(s).strip() for s in srcs if not WIKILINK.match(str(s).strip())]
+    if not moved:
+        return text
+    fm_lines = note.fm_text.split("\n")
+    i = next(n for n, line in enumerate(fm_lines) if line.startswith("sources:"))
+    j = i + 1
+    while j < len(fm_lines) and fm_lines[j][:1] in (" ", "\t", "-"):   # a block list's items
+        j += 1
+    fm_lines[i:j] = ["sources: " + json.dumps(keep, ensure_ascii=False)]
+    body = note.body.rstrip("\n").split("\n")
+    if WEB in body:
+        h = body.index(WEB)
+        end = next((k for k in range(h + 1, len(body)) if body[k].startswith("#")), len(body))
+        listed = {b[2:].strip() for b in body[h + 1:end] if b.startswith("- ")}
+        k = end
+        while k > h + 1 and not body[k - 1].strip():
+            k -= 1
+        body[k:k] = [f"- {s}" for s in moved if s not in listed]
+    else:
+        body += ["", WEB, ""] + [f"- {s}" for s in moved]
+    return "---\n" + "\n".join(fm_lines) + "\n---\n" + "\n".join(body) + "\n"
+
+
 def publish_research(vault, fm: dict, findings: Path) -> tuple:
     run_id = f"{datetime.now().strftime('%Y%m%dT%H%M%S')}-nightshift-{secrets.token_hex(2)}"
     try:
         publish.snapshot(vault, run_id, [fm["output"]])
         dst = publish.staging_dir(vault, run_id) / fm["output"]
         dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(findings, dst)
+        dst.write_text(move_outside_sources(findings.read_text(encoding="utf-8")), encoding="utf-8")
         report = publish.commit_run(vault, run_id)
     except publish.PublishError as exc:
         return False, str(exc)

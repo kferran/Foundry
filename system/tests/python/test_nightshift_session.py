@@ -73,5 +73,11 @@ def test_research_prompt_points_at_context():
     assert "context/" in ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")
 
 
+def test_research_prompt_keeps_sources_to_wikilinks():
+    p = ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")
+    assert "sources lists only vault notes, as wikilinks ([[Note]])" in p
+    assert "## Web sources" in p
+
+
 def test_plan_prompt_routes_protected_files():
     assert ".nightshift/protected/" in ss.plan_prompt({"plan": "docs/p.md", "tasks": "1-2"})

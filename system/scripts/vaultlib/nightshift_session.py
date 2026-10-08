@@ -64,7 +64,9 @@ def research_prompt(fm: dict, body: str) -> str:
     return ("Answer the research brief below from the sources in its Scope; background notes from the vault are under "
             "context/ (a read-only copy). Change nothing except files under out/. "
             f"Write the findings note to out/{name}, valid for its destination {fm['output']}: frontmatter with type "
-            "concept, tags, compiled_at (today), partition, provenance [\"headless\"] and sources; then the findings, "
+            "concept, tags, compiled_at (today), partition, provenance [\"headless\"] and sources (sources lists only vault "
+            "notes, as wikilinks ([[Note]]); list web pages and code paths under a ## Web sources heading at the end of "
+            "the body); then the findings, "
             "each with its source. Finish by writing out/result.json: "
             '{"status": "done" or "blocked", "summary": "...", "questions": ["..."]}. ' + CONTRACT + "\n\n" + body)
 
