@@ -512,6 +512,30 @@ def test_a_target_changed_at_apply_time_leaves_the_source_for_the_next_tick(iv, 
     assert not src.exists() and (iv / f"raw/work/notes/{NAME}.meeting-input.md").is_file()
 
 
+def meeting_log(vault):
+    return [json.loads(line) for p in sorted((vault / "system/logs").glob("meetings-*.jsonl"))
+            for line in p.read_text().splitlines()]
+
+
+def test_a_crash_before_the_imported_line_is_logged_by_the_next_tick(iv, monkeypatch):
+    config(iv, meetings_partition="work")
+    fetched(iv, body=NOTES + TRANSCRIPT)  # no end marker: complete is false
+    real = Intake._meeting_log
+
+    def dies_once(self, record):
+        if record.get("kind") == "imported":
+            raise OSError("killed")
+        real(self, record)
+    monkeypatch.setattr(Intake, "_meeting_log", dies_once)
+    tick(iv)
+    assert [r for r in meeting_log(iv) if r["kind"] == "imported"] == []
+    monkeypatch.setattr(Intake, "_meeting_log", real)
+    tick(iv)
+    tick(iv)
+    [line] = [r for r in meeting_log(iv) if r["kind"] == "imported"]
+    assert (line["note"], line["complete"]) == (f"wiki/work/meetings/{NAME}.md", False)
+
+
 def test_a_bad_source_is_quarantined_and_the_rest_continue(iv):
     config(iv, meetings_partition="work")
     bad = fetched(iv, doc_id="FAKE-doc-bad", title="Weekly sync - Notes by Gemini")

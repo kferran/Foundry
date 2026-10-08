@@ -515,6 +515,11 @@ class Intake:
         same = next((p for p, d in known if d.get("source") == m.source), None)
         if same is not None:  # published by an earlier tick: finish its hand-off
             name, partition = same.name[:-3], same.parent.parent.name
+            note = f"wiki/{partition}/meetings/{name}.md"
+            if not any(r.get("kind") == "imported" and r.get("note") == note
+                       for log in sorted(self.logs.glob("meetings-*.jsonl"))[-2:] for r in self._jsonl(log)):
+                # that tick stopped before its log line (#43): the brief's Notices read complete from it
+                self._meeting_log({"kind": "imported", "source": rel, "note": note, "complete": m.complete})
         else:
             twin = next((p for p, d in known if self._same_meeting(m, d)), None)
             if twin is not None:
