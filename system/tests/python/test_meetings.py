@@ -132,6 +132,17 @@ def test_attendees_fall_back_to_speakers():
     assert meetings.parse_gdoc(gdoc(body + TRANSCRIPT + END), TZ).attendees == ["Avery Sample", "Blake Sample"]
 
 
+@pytest.mark.parametrize("when, start", [("15:00 MDT", "2026-10-05T15:00:00-06:00"),
+                                         ("15:00 CDT", "2026-10-05T14:00:00-06:00"),
+                                         ("15:00 MST", "2026-10-05T16:00:00-06:00"),
+                                         ("00:30 EDT", "2026-10-04T22:30:00-06:00"),
+                                         ("15:00 IST", "2026-10-05T15:00:00-06:00")])
+def test_the_title_zone_sets_the_start_when_it_is_known(when, start):
+    m = meetings.parse_gdoc(gdoc(title=f"Weekly sync - 2026/10/05 {when} - Notes by Gemini"), TZ)
+    assert m.start.isoformat() == start
+    assert m.start.tzinfo == TZ
+
+
 @pytest.mark.parametrize("title", ["Weekly sync - Notes by Gemini", "Weekly sync - 2026/13/05 15:00 MDT - Notes by Gemini",
                                    "Weekly sync - 2026/10/05 15:00 MDT"])
 def test_a_doc_title_without_a_start_is_a_parse_error(title):
@@ -187,6 +198,18 @@ def test_text_lines_are_turns_or_one_block():
     m = meetings.parse_drop("notes.md", b"we talked about the launch\nand the budget\n", TZ,
                             datetime(2026, 10, 5, 15, 0, tzinfo=TZ))
     assert m.turns == [("00:00:00", "", "we talked about the launch\nand the budget")]
+
+
+def test_a_utf16_drop_parses_like_its_utf8_twin():
+    start = datetime(2026, 10, 5, 15, 0, tzinfo=TZ)
+    text = "Avery Sample: Hello.\n**Blake Sample:** Hi.\n"
+    twin = meetings.parse_drop("notes.txt", text.encode(), TZ, start).turns
+    assert meetings.parse_drop("notes.txt", text.encode("utf-16"), TZ, start).turns == twin
+    assert meetings.parse_drop("notes.txt", b"\xfe\xff" + text.encode("utf-16-be"), TZ, start).turns == twin
+    assert (meetings.parse_drop("call.vtt", VTT.encode("utf-16"), TZ, start).turns
+            == meetings.parse_drop("call.vtt", VTT.encode(), TZ, start).turns)
+    with pytest.raises(meetings.ParseError, match="not UTF-8 text"):
+        meetings.parse_drop("notes.txt", text.encode("utf-16-le"), TZ, start)  # no byte-order mark
 
 
 def test_a_markdown_drop_with_the_gemini_structure_is_a_gemini_doc():
@@ -493,6 +516,49 @@ def test_a_target_created_during_the_run_is_not_a_failure(iv, monkeypatch):
     assert meeting_runs(iv)[0]["publish"]["status"] == "rejected"
 
 
+def test_a_target_changed_at_apply_time_leaves_the_source_for_the_next_tick(iv, monkeypatch):
+    config(iv, meetings_partition="work")
+    src = fetched(iv)
+    real = publish._apply
+    transcript = f"wiki/work/meetings/{NAME}.transcript.md"
+
+    def racing(vault, journal):  # an edit lands between validation and apply
+        write(vault, transcript, "someone else\n")
+        return real(vault, journal)
+    monkeypatch.setattr(publish, "_apply", racing)
+    tick(iv)
+    assert src.exists() and not (iv / "system/quarantine/meetings").exists()
+    assert meeting_runs(iv)[0]["publish"]["status"] == "conflict"
+    assert f"held back {transcript}" in alerts(iv)
+    monkeypatch.setattr(publish, "_apply", real)
+    tick(iv)
+    assert not src.exists() and (iv / f"raw/work/notes/{NAME}.meeting-input.md").is_file()
+
+
+def meeting_log(vault):
+    return [json.loads(line) for p in sorted((vault / "system/logs").glob("meetings-*.jsonl"))
+            for line in p.read_text().splitlines()]
+
+
+def test_a_crash_before_the_imported_line_is_logged_by_the_next_tick(iv, monkeypatch):
+    config(iv, meetings_partition="work")
+    fetched(iv, body=NOTES + TRANSCRIPT)  # no end marker: complete is false
+    real = Intake._meeting_log
+
+    def dies_once(self, record):
+        if record.get("kind") == "imported":
+            raise OSError("killed")
+        real(self, record)
+    monkeypatch.setattr(Intake, "_meeting_log", dies_once)
+    tick(iv)
+    assert [r for r in meeting_log(iv) if r["kind"] == "imported"] == []
+    monkeypatch.setattr(Intake, "_meeting_log", real)
+    tick(iv)
+    tick(iv)
+    [line] = [r for r in meeting_log(iv) if r["kind"] == "imported"]
+    assert (line["note"], line["complete"]) == (f"wiki/work/meetings/{NAME}.md", False)
+
+
 def test_a_bad_source_is_quarantined_and_the_rest_continue(iv):
     config(iv, meetings_partition="work")
     bad = fetched(iv, doc_id="FAKE-doc-bad", title="Weekly sync - Notes by Gemini")
@@ -576,6 +642,13 @@ def test_a_drop_with_no_transcript_text_is_quarantined_not_published(iv, name, t
     tick(iv)
     assert meeting_runs(iv) == []
     assert "no transcript text" in (iv / "system/quarantine/meetings" / f"{name}.reason.txt").read_text()
+
+
+def test_a_drop_of_nul_bytes_is_quarantined_as_not_utf8(iv):
+    dropped(iv, "work/notes.txt", "\x00" * 8)
+    tick(iv)
+    assert meeting_runs(iv) == []
+    assert "not UTF-8 text" in (iv / "system/quarantine/meetings/notes.txt.reason.txt").read_text()
 
 
 def test_a_source_that_keeps_failing_is_quarantined_on_the_third_tick(iv, monkeypatch):

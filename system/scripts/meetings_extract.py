@@ -51,6 +51,14 @@ def blocks(m, kind):
     return [b for b in content if isinstance(b, dict) and b.get("type") == kind] if isinstance(content, list) else []
 
 
+def names_drive(content):
+    """True when a ToolSearch result names a Drive tool in a tool_reference block. Free text never counts: a
+    "not found" reply can repeat the query, which names the tool too (#38)."""
+    return isinstance(content, list) and any(
+        isinstance(c, dict) and c.get("type") == "tool_reference" and str(c.get("tool_name", "")).startswith(PREFIX)
+        for c in content)
+
+
 def results(stream, step):
     """([(call input, structuredContent)] for the expected tool's results, [every call input of that tool]),
     after the tool-use and error checks."""
@@ -64,7 +72,7 @@ def results(stream, step):
         if m.get("type") == "user":
             for b in blocks(m, "tool_result"):
                 call = calls.get(b.get("tool_use_id")) or {}
-                if call.get("name") == "ToolSearch" and PREFIX in json.dumps(b.get("content")):
+                if call.get("name") == "ToolSearch" and names_drive(b.get("content")):
                     named = True
                 if call.get("name") != tool:
                     continue

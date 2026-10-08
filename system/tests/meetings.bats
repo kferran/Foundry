@@ -249,6 +249,46 @@ session_deny() { awk -v n="$1" '$0 == "--end--" { s++; p = 0; next } s == n - 1 
   [ "$(jq -c 'select(.step == "search") | .exit' "$LOG" | tr '\n' ' ')" = '3 3 6 ' ]
 }
 
+@test "fetch: a ToolSearch reply that only repeats the Drive tool's name in its text is no connector, exit 3 (#38)" {
+  printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"ToolSearch","input":{"query":"select:mcp__claude_ai_Google_Drive__search_files"}}]}}' \
+    '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"No matching deferred tools found for select:mcp__claude_ai_Google_Drive__search_files"}]}}' \
+    '{"type":"result","subtype":"success","is_error":false,"num_turns":4}' > "$STUB_STREAMS/search.jsonl"
+  run "$MF"
+  [ "$status" -eq 3 ]
+}
+
+@test "fetch: a search that fails with exit 1 is alerted once a day, and so is a failed filter (#39)" {
+  search_says "$(doc FAKE-doc-0001)"
+  jq -c 'if .tool_use_result then .tool_use_result = {"structuredContent": {"items": []}} else . end' \
+    "$STUB_STREAMS/search.jsonl" > "$BATS_TEST_TMPDIR/odd.jsonl"
+  cp "$BATS_TEST_TMPDIR/odd.jsonl" "$STUB_STREAMS/search.jsonl"
+  run "$MF"
+  [ "$status" -eq 1 ]
+  run "$MF"
+  [ "$status" -eq 1 ]
+  [ "$(grep -c '\[meetings\] Drive fetch failed (exit 1):.*files list' system/logs/alerts_*.md)" -eq 1 ]
+  rm system/logs/alerts_*.md
+  search_says "$(doc FAKE-doc-0001)"
+  rm -f system/index.db
+  mkdir system/index.db
+  run "$MF"
+  [ "$status" -eq 1 ]
+  grep -q '\[meetings\] Drive fetch failed (exit 1): filter: ' system/logs/alerts_*.md
+}
+
+@test "fetch: a fetch stopped mid-session removes that session's /tmp directory (#40)" {
+  search_says
+  STUB_SLEEP=30 setsid "$MF" > /dev/null 2>&1 &
+  pid=$!
+  for i in $(seq 1 100); do [ -s "$STUB_CWD" ] && break; sleep 0.1; done
+  [ -s "$STUB_CWD" ]
+  d="$(head -n 1 "$STUB_CWD")"
+  [ -d "$d" ]
+  kill -TERM -- "-$pid"
+  wait "$pid" || true
+  [ ! -e "$d" ]
+}
+
 @test "fetch: the third failed read of a Doc is alerted once and the Doc is skipped from then on" {
   search_says "$(doc FAKE-doc-0001)"
   read_says FAKE-doc-0001 'x' FAKE-other
