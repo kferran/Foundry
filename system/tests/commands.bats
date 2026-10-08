@@ -511,3 +511,8 @@ self_edit_contract() {
 @test "the README says update_template.sh lists new units and never installs them (#35)" {
   grep -qF 'A unit the update adds is listed as `new unit available: <unit>` and left out' README.md
 }
+
+@test "/setup phase 4 offers setup_remote.sh's SSH hint before asking for credentials (#16)" {
+  sec="$(setup_section '4. Remote')"
+  [[ "$sec" == *'printed a `hint:` line with an SSH URL, offer that URL first'* ]]
+}

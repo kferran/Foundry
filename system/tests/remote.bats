@@ -68,6 +68,22 @@ field() { system/scripts/vault_index.py field system/config.md "$1"; }
   [[ "$output" == *"not reachable"* ]]
 }
 
+@test "<url> over https on a known host suggests its SSH form when that works without a prompt" {
+  git init -q --bare "$BATS_TEST_TMPDIR/ssh/me/vault.git"
+  git config url."$BATS_TEST_TMPDIR/ssh/".insteadOf git@github.com:  # the SSH form, served locally
+  run "$SR" https://github.com/me/vault
+  [ "$status" -eq 0 ]
+  [ "$(git remote get-url origin)" = https://github.com/me/vault ]
+  [[ "$output" == *"not reachable"* ]]
+  [[ "$output" == *"hint: git@github.com:me/vault.git works without a prompt; to use it, run system/scripts/setup_remote.sh git@github.com:me/vault.git"* ]]
+  run "$SR" https://github.com/me/other
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"hint:"* ]]
+  run "$SR" https://example.com/me/vault
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"hint:"* ]]
+}
+
 @test "<url> that is reachable sets origin without a warning" {
   git init -q --bare "$BATS_TEST_TMPDIR/private.git"
   run "$SR" "$BATS_TEST_TMPDIR/private.git"

@@ -84,6 +84,16 @@ if [[ "$mode" == private ]]; then
   fi
   if ! GIT_TERMINAL_PROMPT=0 timeout 20 git ls-remote --heads origin >/dev/null 2>&1; then
     echo "warning: origin $url is not reachable yet; it is set anyway" >&2
+    # An https URL needs a credential prompt that automation cannot answer; on a known host, offer the SSH
+    # form when it works without one (#16).
+    n="$(git_url_normalize "$url")"
+    case "$url" in https://github.com/*|https://gitlab.com/*|https://bitbucket.org/*)
+      ssh_url="git@${n%%/*}:${n#*/}.git"
+      if GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" \
+          timeout 20 git ls-remote --heads "$ssh_url" >/dev/null 2>&1; then
+        echo "hint: $ssh_url works without a prompt; to use it, run system/scripts/setup_remote.sh $ssh_url" >&2
+      fi ;;
+    esac
   fi
 fi
 
