@@ -1,5 +1,5 @@
 [{"FrameType":"DataSetHeader"},
  {"FrameType":"DataTable","TableKind":"PrimaryResult",
-  "Columns":[{"ColumnName":"service"},{"ColumnName":"scope"},{"ColumnName":"event_id"},{"ColumnName":"n"},{"ColumnName":"first_ts"},{"ColumnName":"last_ts"},{"ColumnName":"traces"},{"ColumnName":"sample_trace"}],
-  "Rows":[["api","Shop.Orders","4012",3,"2026-10-05T10:00:00Z","2026-10-05T11:00:00Z",2,"0af7651916cd43dd8448eb211c80319c"]]},
+  "Columns":[{"ColumnName":"service"},{"ColumnName":"scope"},{"ColumnName":"event_id"},{"ColumnName":"n"},{"ColumnName":"first_ts"},{"ColumnName":"last_ts"},{"ColumnName":"traces"},{"ColumnName":"sample_trace"},{"ColumnName":"message"}],
+  "Rows":[["api","Shop.Orders","4012",3,"2026-10-05T10:00:00Z","2026-10-05T11:00:00Z",2,"0af7651916cd43dd8448eb211c80319c","Ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b failed for bob@example.com password=hunter2"]]},
  {"FrameType":"DataSetCompletion","HasErrors":false}]

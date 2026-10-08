@@ -308,20 +308,26 @@ def test_bad_source_file_is_reported_and_others_still_run(v, monkeypatch, capsys
 
 
 GUID = "3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b"
-SECRETS = [GUID, "bob@example.com", "sig=AbCdEf", "bob%40example.com", "0123456789abcdef01234567", "3f2b8a1e9c4d4e1f8a2b1c3d4e5f6a7b"]
+APP = "K7-55Q0R-A-01"
+DIRTY = (f"Ticket {GUID} for application {APP} failed for bob@example.com and bob%40example.com "
+         "Authorization: Bearer abc.def.ghi Bearer Zm9vYmFyYmF6cXV4MTIzNDU2 password=hunter2 "
+         "Server=db;Pwd=s3cretPwd;AccountKey=Zm9vYmFyQUNDT1VOVEtFWQ==;Database=x "
+         "https://x.example.com/p?sig=AbCdEfSAS postgres://app:pgpass99@db/x AKIAIOSFODNN7EXAMPLE "
+         '{"password":"jsonpass1"}')
+NEVER = ["bob@example.com", "bob%40example.com", "abc.def.ghi", "Zm9vYmFyYmF6cXV4MTIzNDU2", "hunter2", "s3cretPwd",
+         "Zm9vYmFyQUNDT1VOVEtFWQ", "AbCdEfSAS", "pgpass99", "AKIAIOSFODNN7EXAMPLE", "jsonpass1"]
 
 
 def test_privacy_end_to_end(v, monkeypatch, capsys):
     write(v, "system/telemetry/prod-sentry.md", SEN)
     write(v, "system/telemetry/prod-adx.md", ADX.format(covers='covers: "prod-sentry"\n').replace(
         'adx_signals: ["logs"]', 'adx_signals: ["logs", "spans"]'))
-    dirty = f"ticket {GUID} user bob@example.com https://x.example.com/p?sig=AbCdEf and bob%40example.com id 0123456789abcdef01234567 3f2b8a1e9c4d4e1f8a2b1c3d4e5f6a7b"
-    log = dict(LOG_ROW, scope=dirty, event_id=dirty, service=dirty)
-    span = {"service": dirty, "route": "GET /a/" + dirty, "status": "500", "n": 2, "first_ts": "2026-10-05T10:00:00Z",
-            "last_ts": "2026-10-05T11:00:00Z", "traces": 1, "sample_trace": dirty}
+    log = dict(LOG_ROW, scope=DIRTY, event_id=DIRTY, service=DIRTY, message=DIRTY)
+    span = {"service": DIRTY, "route": "GET /a/" + DIRTY, "status": "500", "n": 2, "first_ts": "2026-10-05T10:00:00Z",
+            "last_ts": "2026-10-05T11:00:00Z", "traces": 1, "sample_trace": DIRTY}
     monkeypatch.setattr(kusto, "query", lambda c, d, kql, n: [log] if "Logs" in kql.split("\n")[0] else [span])
-    issue = dict(_sentry_issue(101), title=dirty, culprit=dirty, type=dirty, environment=dirty,
-                 metadata={"value": dirty, "type": dirty}, permalink="https://sentry.example.com/i/101/?sig=AbCdEf")
+    issue = dict(_sentry_issue(101), title=DIRTY, culprit=DIRTY, type=DIRTY, environment=DIRTY,
+                 metadata={"value": DIRTY, "type": DIRTY}, permalink="https://sentry.example.com/i/101/?sig=AbCdEfSAS")
     monkeypatch.setattr(sentry, "project_ids", lambda *a: {"api": "7"})
     monkeypatch.setattr(sentry, "issues", lambda *a: [issue])
     monkeypatch.setattr(sentry, "issue_for_trace", lambda *a: None)
@@ -329,10 +335,36 @@ def test_privacy_end_to_end(v, monkeypatch, capsys):
     assert telemetry_run.main(["--dry-run"], v, NOW + timedelta(hours=1)) == 0
     assert telemetry_run.main([], v, NOW + timedelta(hours=2)) == 0
     out = capsys.readouterr().out
-    blobs = [out] + [p.read_text() for p in v.rglob("*") if p.is_file() and ("raw/telemetry" in str(p) or "system/logs" in str(p))]
+    files = [p for p in v.rglob("*") if p.is_file() and ("raw/telemetry" in str(p) or "system/logs" in str(p))]
+    blobs = [out] + [p.read_text() for p in files]
     assert len(blobs) > 5
-    for s in SECRETS:
+    for s in NEVER:
         assert all(s not in b for b in blobs), s
+    notes = {p.name: p.read_text() for p in files if p.suffix == ".md" and "raw/telemetry" in str(p)}
+    log_note = next(n for n in notes.values() if 'kind: "log"' in n)
+    for note in (notes["prod-sentry-s-101.md"], log_note):
+        msg = [l for l in note.splitlines() if l.startswith("message:")][0]
+        assert GUID in msg and APP in msg and "Ticket " in msg
+
+
+def test_log_group_shows_real_scope_and_message(v, monkeypatch):
+    write(v, "system/telemetry/prod-adx.md", ADX.format(covers=""))
+    scope = "Shop.Plugins.EDJAnnuitySuitabilitySubmissionFetchXML"
+    row = dict(LOG_ROW, service="worker", scope=scope, event_id="9908", message=f"Ticket {GUID} failed")
+    monkeypatch.setattr(kusto, "query", lambda *a, **k: [row])
+    assert telemetry_run.main([], v, NOW) == 0
+    [note] = [p.read_text() for p in (v / "raw/telemetry").glob("prod-adx-a-*.md")]
+    assert f'exception: "{scope}#9908"' in note and "high_entropy" not in note
+    assert f'message: "Ticket {GUID} failed"' in note
+
+
+def test_sentry_title_becomes_the_message(v, monkeypatch):
+    write(v, "system/telemetry/prod-sentry.md", SEN)
+    monkeypatch.setattr(sentry, "project_ids", lambda *a: {"api": "7"})
+    title = f"InvalidOperationException: ticket {GUID} for {APP}"
+    monkeypatch.setattr(sentry, "issues", lambda *a: [dict(_sentry_issue(101), title=title)])
+    assert telemetry_run.main([], v, NOW) == 0
+    assert f'message: "{title}"' in (v / "raw/telemetry/prod-sentry-s-101.md").read_text()
 
 
 def _ultron(v, name):

@@ -45,7 +45,7 @@ def test_issues_keep_only_allowed_fields_and_follow_cursor(token_file, monkeypat
     assert [g["shortId"] for g in got] == ["API-1", "API-2"]
     assert set(got[0]) <= set(sentry.KEEP)
     assert got[0]["type"] == "System.InvalidOperationException" and got[0]["environment"] == "api"
-    assert "title" not in got[0] and "bob@example.com" not in json.dumps(got)
+    assert got[0]["title"] == ISSUE["title"] and "bob@example.com" not in json.dumps(got)
     assert "lastSeen%3A%3E%3D2026-10-05T09%3A00%3A00" in urls[0] and "project=7" in urls[0]
     assert "cursor=0%3A100%3A0" in urls[1]
 
