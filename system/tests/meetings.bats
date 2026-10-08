@@ -249,6 +249,14 @@ session_deny() { awk -v n="$1" '$0 == "--end--" { s++; p = 0; next } s == n - 1 
   [ "$(jq -c 'select(.step == "search") | .exit' "$LOG" | tr '\n' ' ')" = '3 3 6 ' ]
 }
 
+@test "fetch: a ToolSearch reply that only repeats the Drive tool's name in its text is no connector, exit 3 (#38)" {
+  printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"ToolSearch","input":{"query":"select:mcp__claude_ai_Google_Drive__search_files"}}]}}' \
+    '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"No matching deferred tools found for select:mcp__claude_ai_Google_Drive__search_files"}]}}' \
+    '{"type":"result","subtype":"success","is_error":false,"num_turns":4}' > "$STUB_STREAMS/search.jsonl"
+  run "$MF"
+  [ "$status" -eq 3 ]
+}
+
 @test "fetch: the third failed read of a Doc is alerted once and the Doc is skipped from then on" {
   search_says "$(doc FAKE-doc-0001)"
   read_says FAKE-doc-0001 'x' FAKE-other
