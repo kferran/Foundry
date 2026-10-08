@@ -257,6 +257,25 @@ session_deny() { awk -v n="$1" '$0 == "--end--" { s++; p = 0; next } s == n - 1 
   [ "$status" -eq 3 ]
 }
 
+@test "fetch: a search that fails with exit 1 is alerted once a day, and so is a failed filter (#39)" {
+  search_says "$(doc FAKE-doc-0001)"
+  jq -c 'if .tool_use_result then .tool_use_result = {"structuredContent": {"items": []}} else . end' \
+    "$STUB_STREAMS/search.jsonl" > "$BATS_TEST_TMPDIR/odd.jsonl"
+  cp "$BATS_TEST_TMPDIR/odd.jsonl" "$STUB_STREAMS/search.jsonl"
+  run "$MF"
+  [ "$status" -eq 1 ]
+  run "$MF"
+  [ "$status" -eq 1 ]
+  [ "$(grep -c '\[meetings\] Drive fetch failed (exit 1):.*files list' system/logs/alerts_*.md)" -eq 1 ]
+  rm system/logs/alerts_*.md
+  search_says "$(doc FAKE-doc-0001)"
+  rm -f system/index.db
+  mkdir system/index.db
+  run "$MF"
+  [ "$status" -eq 1 ]
+  grep -q '\[meetings\] Drive fetch failed (exit 1): filter: ' system/logs/alerts_*.md
+}
+
 @test "fetch: the third failed read of a Doc is alerted once and the Doc is skipped from then on" {
   search_says "$(doc FAKE-doc-0001)"
   read_says FAKE-doc-0001 'x' FAKE-other
