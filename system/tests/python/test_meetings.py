@@ -132,6 +132,17 @@ def test_attendees_fall_back_to_speakers():
     assert meetings.parse_gdoc(gdoc(body + TRANSCRIPT + END), TZ).attendees == ["Avery Sample", "Blake Sample"]
 
 
+@pytest.mark.parametrize("when, start", [("15:00 MDT", "2026-10-05T15:00:00-06:00"),
+                                         ("15:00 CDT", "2026-10-05T14:00:00-06:00"),
+                                         ("15:00 MST", "2026-10-05T16:00:00-06:00"),
+                                         ("00:30 EDT", "2026-10-04T22:30:00-06:00"),
+                                         ("15:00 IST", "2026-10-05T15:00:00-06:00")])
+def test_the_title_zone_sets_the_start_when_it_is_known(when, start):
+    m = meetings.parse_gdoc(gdoc(title=f"Weekly sync - 2026/10/05 {when} - Notes by Gemini"), TZ)
+    assert m.start.isoformat() == start
+    assert m.start.tzinfo == TZ
+
+
 @pytest.mark.parametrize("title", ["Weekly sync - Notes by Gemini", "Weekly sync - 2026/13/05 15:00 MDT - Notes by Gemini",
                                    "Weekly sync - 2026/10/05 15:00 MDT"])
 def test_a_doc_title_without_a_start_is_a_parse_error(title):

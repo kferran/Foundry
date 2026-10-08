@@ -2,14 +2,18 @@
 import json
 import re
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import frontmatter, redact as redactmod
 
 HEADING = re.compile(r"^(#{1,6})\s+\**(.*?)\**\s*$")  # real Docs bold every heading: "### **Summary**"
-DOC_TITLE = re.compile(r"^(.*) - (\d{4})/(\d{2})/(\d{2}) (\d{2}):(\d{2}) \S+ - Notes by Gemini$")
-IMPROMPTU = re.compile(r"^(Meeting started) (\d{4})/(\d{2})/(\d{2}) (\d{2}):(\d{2}) \S+ - Notes by Gemini$")
+DOC_TITLE = re.compile(r"^(.*) - (\d{4})/(\d{2})/(\d{2}) (\d{2}):(\d{2}) (\S+) - Notes by Gemini$")
+IMPROMPTU = re.compile(r"^(Meeting started) (\d{4})/(\d{2})/(\d{2}) (\d{2}):(\d{2}) (\S+) - Notes by Gemini$")
+# A Doc title's zone abbreviation, as UTC offset hours (#42). The title is written in its owner's zone, which can
+# differ from the vault's. Any other abbreviation (IST, …) is ambiguous and read in the config timezone.
+TITLE_ZONES = {"UTC": 0, "GMT": 0, "BST": 1, "CET": 1, "CEST": 2, "EST": -5, "EDT": -4, "CST": -6, "CDT": -5,
+               "MST": -7, "MDT": -6, "PST": -8, "PDT": -7, "AKST": -9, "AKDT": -8, "HST": -10}
 MAILTO = re.compile(r"\[([^\]]+)\]\(mailto:[^)]*\)")
 ACTION = re.compile(r"^\s*[-*]\s+(?:\[ \]\s+)?\\?\[(.+?)\\?\]\s*(.*)$")
 BULLET = re.compile(r"^\s*[-*]\s+(.*)$")
@@ -127,8 +131,11 @@ def parse_gdoc(text: str, tz) -> Meeting:
     match = DOC_TITLE.match(doc_title) or IMPROMPTU.match(doc_title)
     if not match:
         raise ParseError("the Doc title carries no start date and time")
+    *parts, zone = match.groups()[1:]
+    offset = TITLE_ZONES.get(zone)
     try:
-        start = datetime(*map(int, match.groups()[1:]), tzinfo=tz)
+        start = datetime(*map(int, parts), tzinfo=tz if offset is None else timezone(timedelta(hours=offset)))
+        start = start.astimezone(tz)
     except ValueError:
         raise ParseError("the Doc title carries an invalid start date or time")
     attendees, sections, actions, turns, complete = _gemini_body(note.body)
