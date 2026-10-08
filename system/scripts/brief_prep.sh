@@ -71,13 +71,15 @@ if [[ "$PREP_DATE" == "$today" ]]; then
   # run.lock, like every other writer of tracked files: a sync's git add -A must not see half the moves.
   exec 9>system/run.lock
   if flock -w "${ARCHIVE_LOCK_WAIT:-60}" 9; then
+    # Yesterday stays one more day: a client may still have it open in Obsidian (#57).
+    yesterday="$(date -d "$today -1 day" +%F)"
     for f in briefings/*.md; do
       name="${f#briefings/}"
       [[ "$name" =~ ^(([0-9]{4}-[0-9]{2})-[0-9]{2})(\.debrief)?\.md$ ]] || continue
-      [[ "${BASH_REMATCH[1]}" < "$today" ]] || continue
+      [[ "${BASH_REMATCH[1]}" < "$yesterday" ]] || continue
       dest="briefings/archive/${BASH_REMATCH[2]}/$name"
       if [[ -e "$dest" ]]; then
-        prep_unavailable "briefings: $name not archived ($dest exists)"
+        prep_unavailable "briefings: $name not archived ($dest exists; merge the two copies, then delete briefings/$name)"
       else
         { mkdir -p "${dest%/*}" && mv "$f" "$dest"; } 2>> "$PREP_DIR/prep_errors.log" \
           || prep_unavailable "briefings: $name could not be archived (see $PREP_DIR/prep_errors.log)"

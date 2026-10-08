@@ -265,18 +265,23 @@ codebase() {  # <name> <path>
   [ "$output" = "0" ]
 }
 
-@test "brief_prep: briefings and debriefs before today move to briefings/archive/<YYYY-MM>/; a rerun changes nothing" {
+@test "brief_prep: briefings and debriefs before yesterday move to briefings/archive/<YYYY-MM>/; a rerun changes nothing" {
   today="$(TZ=America/Denver date +%F)"
+  yesterday="$(date -d "$today -1 day" +%F)"
   mkdir -p briefings
-  for f in 2026-09-29.md 2026-09-29.debrief.md 2026-10-01.md "$today.md" "$today.debrief.md" notes.md; do
+  for f in 2026-09-29.md 2026-09-29.debrief.md 2026-10-01.md "$yesterday.md" "$yesterday.debrief.md" "$today.md" \
+      "$today.debrief.md" notes.md; do
     printf 'x\n' > "briefings/$f"
   done
   run "$BP"
+  [ "$(TZ=America/Denver date +%F)" = "$today" ] || skip "the date changed during the run"
   [ "$status" -eq 0 ]
   [ -f briefings/archive/2026-09/2026-09-29.md ]
   [ -f briefings/archive/2026-09/2026-09-29.debrief.md ]
   [ -f briefings/archive/2026-10/2026-10-01.md ]
   [ ! -e briefings/2026-09-29.md ]
+  [ -f "briefings/$yesterday.md" ]
+  [ -f "briefings/$yesterday.debrief.md" ]
   [ -f "briefings/$today.md" ]
   [ -f "briefings/$today.debrief.md" ]
   [ -f briefings/notes.md ]
@@ -287,12 +292,14 @@ codebase() {  # <name> <path>
 }
 
 @test "brief_prep: a busy run.lock skips archiving and is recorded" {
+  today="$(TZ=America/Denver date +%F)"
   mkdir -p briefings
   printf 'x\n' > briefings/2026-09-29.md
   flock system/run.lock sleep 4 &
   sleep 0.5
   ARCHIVE_LOCK_WAIT=1 run "$BP"
   wait
+  [ "$(TZ=America/Denver date +%F)" = "$today" ] || skip "the date changed during the run"
   [ "$status" -eq 0 ]
   [ -f briefings/2026-09-29.md ]
   [ ! -e briefings/archive ]
@@ -311,16 +318,33 @@ codebase() {  # <name> <path>
   [ ! -e briefings/archive ]
 }
 
-@test "brief_prep: a briefing whose archive copy exists stays put and is recorded" {
+@test "brief_prep: a briefing whose archive copy exists stays put and is recorded with what to do (#55)" {
+  today="$(TZ=America/Denver date +%F)"
   mkdir -p briefings/archive/2026-09
   printf 'old\n' > briefings/archive/2026-09/2026-09-29.md
   printf 'new\n' > briefings/2026-09-29.md
   run "$BP"
+  [ "$(TZ=America/Denver date +%F)" = "$today" ] || skip "the date changed during the run"
   [ "$status" -eq 0 ]
   [ "$(cat briefings/archive/2026-09/2026-09-29.md)" = "old" ]
   [ "$(cat briefings/2026-09-29.md)" = "new" ]
-  grep -qxF -- '- brief_prep: briefings: 2026-09-29.md not archived (briefings/archive/2026-09/2026-09-29.md exists)' \
-    "system/logs/inputs/$(TZ=America/Denver date +%F)/unavailable.md"
+  grep -qxF -- '- brief_prep: briefings: 2026-09-29.md not archived (briefings/archive/2026-09/2026-09-29.md exists; merge the two copies, then delete briefings/2026-09-29.md)' \
+    "system/logs/inputs/$today/unavailable.md"
+}
+
+@test "brief_prep: a briefing that cannot be moved stays put and is recorded (#56)" {
+  [ "$(id -u)" -ne 0 ] || skip "root can write to a read-only folder"
+  today="$(TZ=America/Denver date +%F)"
+  mkdir -p briefings/archive/2026-09
+  printf 'x\n' > briefings/2026-09-29.md
+  chmod a-w briefings/archive/2026-09
+  run "$BP"
+  chmod u+w briefings/archive/2026-09
+  [ "$(TZ=America/Denver date +%F)" = "$today" ] || skip "the date changed during the run"
+  [ "$status" -eq 0 ]
+  [ -f briefings/2026-09-29.md ]
+  [ ! -e briefings/archive/2026-09/2026-09-29.md ]
+  grep -qF -- '- brief_prep: briefings: 2026-09-29.md could not be archived (see ' "system/logs/inputs/$today/unavailable.md"
 }
 
 @test "brief_prep: nightshift.md copies that morning's report, empty when there is none" {
