@@ -219,3 +219,10 @@ def test_a_markdown_link_to_a_folder_is_not_dead(vault):
     write(vault, "docs/specs/a.md", "# A\n")
     assert issue_messages(build(vault), "dead-link") == [
         ("README.md", "warning", "dead-link", "dead link docs/nothing/")]
+
+
+def test_a_link_from_a_codebase_file_keeps_the_onboarding_note_from_being_an_orphan(vault):
+    write(vault, "wiki/work/concepts/AppOnboardingAssignment.md", concept("work", "AppOnboardingAssignment", "[[Index]]"))
+    write(vault, "system/codebases/app.md", '---\ntype: codebase\nname: app\npath: "/"\npartition: work\n'
+          'search_globs: ["*"]\n---\nOnboarding: [[AppOnboardingAssignment]]\n')
+    assert issues(build(vault), "orphan") == []

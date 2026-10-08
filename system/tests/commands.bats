@@ -552,3 +552,8 @@ self_edit_contract() {
   [[ "$sec" == *'If the directory you scanned is one of a repo'"'"'s `worktrees` but not its `path`'* ]]
   grep -qF 'replace every `<…>` first' README.md
 }
+
+@test "/setup phase 9 links each onboarding note from its codebase file, never from wiki/Index.md (#19)" {
+  sec="$(setup_section '9. Hand-off')"
+  [[ "$sec" == *'add the line `Onboarding: [[<Name>OnboardingAssignment]]` to the body of `system/codebases/<name>.md`'* ]]
+}
