@@ -220,13 +220,50 @@ def _research_dir(ctx: Ctx, fm: dict) -> Path:
     wiki = ctx.vault / "wiki" / fm["partition"]
     if not (d / "context").exists() and wiki.is_dir():
         shutil.copytree(wiki, d / "context", ignore=shutil.ignore_patterns(".*"))
+    if fm.get("repo"):
+        _research_code(ctx, fm, d / "code")
     return d
+
+
+def _research_code(ctx: Ctx, fm: dict, code: Path) -> None:
+    """A read-only copy of the item's repository at one commit (#77): that commit alone, fetched into a new
+    repository, so nothing links to the registered clone and no other branch is visible. The first attempt records
+    the commit in the run directory; a resumed attempt checks it out again, and rebuilds code/ when it cannot."""
+    mark = rep.item_dir(ctx.vault, fm["id"]) / "code-commit"
+    sha = mark.read_text().strip() if mark.is_file() else ""
+    if sha and code.is_dir() and nc.git(code, "checkout", "-q", "-f", "--detach", sha).returncode == 0:
+        return
+    shutil.rmtree(code, ignore_errors=True)   # half-built by a killed tick, or never built
+    repo, base = fm["repo"], fm.get("base")
+    if repo == "template":   # from the template remote, never the vault
+        url = str(nc.config(ctx.vault).get("template_remote") or "")
+        where = f"fetch {base or 'HEAD'} from {nc.shown(url)}"
+    else:
+        src = nc.source(ctx.vault, repo)
+        url, sha = str(src or ""), sha or (nc.research_base(src, base) if src else "")
+        where = f"{base or 'origin/HEAD'} in {src}"
+    r = subprocess.run(["git", "init", "-q", str(code)], capture_output=True, text=True)
+    if r.returncode == 0 and not (sha or repo == "template"):
+        r = subprocess.CompletedProcess([], 2, "", "does not resolve")
+    elif r.returncode == 0:
+        try:
+            r = nc.fetch_base(code, url, base, "refs/remotes/base", depth=1, commit=sha or None)
+        except ValueError as exc:
+            r = subprocess.CompletedProcess([], 2, "", str(exc))
+    if r.returncode == 0:
+        r = nc.git(code, "checkout", "-q", "--detach", "refs/remotes/base")
+    if r.returncode:
+        shutil.rmtree(code, ignore_errors=True)   # the next attempt starts again
+        raise CloneError(f"{where}: {(r.stderr.strip().splitlines() or ['no error text'])[-1]}")
+    mark.parent.mkdir(parents=True, exist_ok=True)
+    mark.write_text(nc.git(code, "rev-parse", "HEAD").stdout.strip())
 
 
 def _deny(ctx: Ctx, fm: dict) -> list:
     """Paths a session must not read: the vault's notes, inputs and logs, and every other registered codebase."""
     out = [str(ctx.vault / p) for p in ("wiki", "raw", "briefings", "system/logs")]
-    own = nc.source(ctx.vault, fm.get("repo")) if fm.get("repo") not in (None, "template") else None
+    # A plan item works in its own codebase; a research item reads code/, so even its own checkout stays denied.
+    own = nc.source(ctx.vault, fm.get("repo")) if fm.get("kind") == "plan" and fm.get("repo") != "template" else None
     for p in sorted((ctx.vault / "system" / "codebases").glob("*.md")):
         cb = nc.codebase(ctx.vault, p.stem) or {}
         path = Path(str(cb.get("path") or "")).expanduser()
@@ -282,7 +319,9 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
     settings = idir / "settings.json"
     settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm))))
     plugins = [p for p in [ss.superpowers_dir()] if p] + [Path(str(p)).expanduser() for p in cb.get("nightshift_plugins") or []]
-    prompt = (ss.plan_prompt(fm) if kind == "plan" else ss.research_prompt(fm, body))
+    code = nc.git(cwd / "code", "log", "-1", "--format=%h (%cs)").stdout.strip() if kind == "research" and fm.get("repo") else ""
+    prompt = (ss.plan_prompt(fm) if kind == "plan" else
+              ss.research_prompt(fm, body, code=f"{fm['repo']} at {code}" if code else None))
     if resume:
         prompt = "Continue where you stopped; read .nightshift/progress.md (or out/) first. " + prompt
     (idir / "prompt.md").write_text(prompt)
@@ -475,7 +514,11 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
                 f"Push {fm['base']} to the template remote, then queue {fm['id']} again ({exc})"]})
         before = _before(ctx, fm, idir)
     else:
-        cwd = _research_dir(ctx, fm)
+        try:
+            cwd = _research_dir(ctx, fm)
+        except CloneError as exc:
+            return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
+                f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then queue {fm['id']} again ({exc})"]})
     run = _run_session(ctx, path, fm, body, cwd, idir, resume)
     if run.get("usage"):
         hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
@@ -598,7 +641,7 @@ def _add(ctx: Ctx, a) -> int:
         fm.update(repo=a.repo, base=a.base, pr_base=a.pr_base, plan=a.plan, tasks=a.tasks, verify=a.verify)
         body = ""
     else:
-        fm.update(output=a.output, hosts=a.host)
+        fm.update(output=a.output, hosts=a.host, repo=a.repo, base=a.base)
         body = Path(a.brief_file).read_text(encoding="utf-8") if a.brief_file else ""
     fm = {k: v for k, v in fm.items() if v not in (None, "", [])} | ({"verify": a.verify} if a.kind == "plan" else {})
     errs = nc.check(ctx.vault, fm, body)

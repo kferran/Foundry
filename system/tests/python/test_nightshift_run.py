@@ -335,6 +335,68 @@ def test_research_runs_on_a_context_copy_and_publishes(env, monkeypatch, tmp_pat
     assert "--add-dir" not in (tmp_path / "args.txt").read_text()
 
 
+def test_research_reads_a_pinned_copy_of_its_codebase(env, tmp_path):
+    vault, tmp = env
+    from test_nightshift_check import registered
+    clone = registered(vault, tmp_path / "cb")
+    fm = {"id": "2026-10-08-q", "kind": "research", "partition": "work", "repo": "shop"}
+    ctx = nr.Ctx(vault, NOW)
+    first = git(clone, "rev-parse", "origin/HEAD").strip()
+    d = nr._research_dir(ctx, fm)
+    assert git(d / "code", "rev-parse", "HEAD").strip() == first
+    assert (d / "code" / "app.py").is_file()
+    seed = tmp_path / "cb" / "shop-seed"   # a later commit reaches the registered clone's origin/HEAD
+    write(seed, "later.py", "x\n")
+    git(seed, "add", "later.py")
+    git(seed, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "later")
+    git(seed, "push", "-q", str(tmp_path / "cb" / "shop.git"), "main")
+    git(clone, "fetch", "-q")
+    d = nr._research_dir(ctx, fm)   # a resumed attempt reads the same commit
+    assert git(d / "code", "rev-parse", "HEAD").strip() == first
+    assert not (d / "code" / "later.py").exists()
+    assert str(clone) in nr._deny(ctx, fm)   # the live checkout stays denied
+
+
+def test_research_code_is_one_commit_with_no_links_to_the_live_clone(env, tmp_path):
+    vault, tmp = env
+    from test_nightshift_check import registered
+    clone = registered(vault, tmp_path / "cb")
+    git(clone, "branch", "unpushed")
+    ctx = nr.Ctx(vault, NOW)
+    fm = {"id": "2026-10-08-q", "kind": "research", "partition": "work", "repo": "shop"}
+    code = nr._research_dir(ctx, fm) / "code"
+    assert "unpushed" not in git(code, "for-each-ref")
+    assert all(p.stat().st_nlink == 1 for p in (code / ".git" / "objects").rglob("*") if p.is_file())
+
+
+def test_research_code_half_built_or_moved_is_rebuilt_at_the_recorded_commit(env, tmp_path):
+    vault, tmp = env
+    from test_nightshift_check import registered
+    clone = registered(vault, tmp_path / "cb")
+    ctx = nr.Ctx(vault, NOW)
+    fm = {"id": "2026-10-08-q", "kind": "research", "partition": "work", "repo": "shop"}
+    first = git(clone, "rev-parse", "origin/HEAD").strip()
+    code = nr._research_dir(ctx, fm) / "code"
+    shutil.rmtree(code)   # a killed tick left a clone with a HEAD and no files
+    git(tmp_path, "clone", "-q", "--no-checkout", str(clone), str(code))
+    assert (nr._research_dir(ctx, fm) / "code" / "app.py").is_file()
+    write(code, "app.py", "changed\n")   # a session that moved code/ on
+    git(code, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qam", "moved")
+    nr._research_dir(ctx, fm)
+    assert git(code, "rev-parse", "HEAD").strip() == first
+    assert (code / "app.py").read_text() == "print(1)\n"
+
+
+def test_research_reads_the_template_from_its_remote_and_needs_no_code_without_a_repo(env):
+    vault, tmp = env
+    ctx = nr.Ctx(vault, NOW)
+    d = nr._research_dir(ctx, {"id": "2026-10-08-t", "kind": "research", "partition": "work", "repo": "template",
+                               "base": "feat/x"})
+    assert git(d / "code", "rev-parse", "HEAD").strip() == git(tmp / "remote.git", "rev-parse", "feat/x").strip()
+    d = nr._research_dir(ctx, {"id": "2026-10-08-n", "kind": "research", "partition": "work"})
+    assert not (d / "code").exists()
+
+
 @pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
 def test_protected_files_reach_the_pushed_branch(env, monkeypatch, tmp_path):
     vault, tmp = env

@@ -57,13 +57,15 @@ def shown(url: str) -> str:
     return re.sub(r"//[^/@]+@", "//", url)
 
 
-def fetch_base(repo, url: str, base: str, dest: str, depth: int | None = None, timeout: int = 600):
-    """Fetch refs/heads/<base> from url into repo as dest. A URL that starts with "-" is refused: git reads it as an option."""
+def fetch_base(repo, url: str, base: str | None, dest: str, depth: int | None = None, timeout: int = 600,
+               commit: str | None = None):
+    """Fetch commit, else refs/heads/<base>, else the remote's HEAD, from url into repo as dest. A URL that starts
+    with "-" is refused: git reads it as an option."""
     if url.startswith("-"):
         raise ValueError("template_remote must be a URL or a path")
     opts, env = remote_git(url)
     cmd = ["git", "-C", str(repo), *opts, "fetch", "-q", "--no-tags", *(["--depth", str(depth)] if depth else []),
-           url, f"refs/heads/{base}:{dest}"]
+           url, f"{commit or (f'refs/heads/{base}' if base else 'HEAD')}:{dest}"]
     try:
         return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -123,7 +125,7 @@ def check(vault, fm: dict, body: str) -> list:
     if kind == "plan":
         errs += _plan(vault, fm)
     elif kind == "research":
-        errs += _research(fm, body)
+        errs += _research(vault, fm, body)
     else:
         errs.append("kind must be plan or research")
     return errs
@@ -181,10 +183,47 @@ def _plan_at(src, fm: dict) -> list:
     return errs
 
 
-def _research(fm: dict, body: str) -> list:
+def _research(vault, fm: dict, body: str) -> list:
     errs = [f"the brief needs a '{h}' section" for h in SECTIONS if h not in body]
     out, part = str(fm.get("output") or ""), fm.get("partition")
     if not (out.startswith(f"wiki/{part}/") and out.endswith(".md")):
         errs.append(f"output must be a note path under wiki/{part}/")
     errs += [f"host {h!r} is not a plain host name" for h in fm.get("hosts") or [] if not HOST.match(str(h))]
-    return errs
+    return errs + _research_repo(vault, fm)
+
+
+def research_base(src, base: str | None) -> str:
+    """The commit a research item reads in a codebase clone: base, else the remote's default branch."""
+    for ref in [base] if base else ["origin/HEAD", "origin/main", "origin/master"]:
+        r = git(src, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+        if r.returncode == 0:
+            return r.stdout.strip()
+    return ""
+
+
+def _research_repo(vault, fm: dict) -> list:
+    """A research item may name a repository to read (#77): a registered codebase, or the template's remote."""
+    repo, base = fm.get("repo"), fm.get("base")
+    if not repo:
+        return []
+    if repo == "template":
+        url = str(config(vault).get("template_remote") or "")
+        if not url:
+            return ["config has no template_remote"]
+        if url.startswith("-"):
+            return ["template_remote must be a URL or a path"]
+        with tempfile.TemporaryDirectory(prefix="nightshift-check-") as tmp:
+            subprocess.run(["git", "init", "-q", "--bare", tmp], check=True, capture_output=True)
+            f = fetch_base(tmp, url, base, "refs/heads/base", depth=1, timeout=120)
+        if f.returncode and "couldn't find remote ref" in f.stderr:
+            return [f"base {base or 'HEAD'} is not on the template remote {shown(url)} (push it first)"]
+        if f.returncode:
+            why = (f.stderr.strip().splitlines() or ["no error text"])[-1]
+            return [f"cannot read the template remote {shown(url)}: {why}"]
+        return []
+    src = source(vault, repo)
+    if src is None:
+        return [f"repo {repo!r} is not a registered codebase or 'template'"]
+    if not research_base(src, base):
+        return [f"base {base or 'origin/HEAD'} does not resolve in {src}"]
+    return []
