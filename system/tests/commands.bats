@@ -516,3 +516,15 @@ self_edit_contract() {
   sec="$(setup_section '4. Remote')"
   [[ "$sec" == *'printed a `hint:` line with an SSH URL, offer that URL first'* ]]
 }
+
+@test "/setup phase 4 stops on an origin with unrelated history before setting the upstream (#15)" {
+  sec="$(setup_section '4. Remote')"
+  for s in 'git merge-base HEAD "origin/<branch>"' 'git log --oneline "origin/<branch>"' \
+      'git push --force-with-lease="<branch>:<that commit>" -u origin HEAD' \
+      'git merge --allow-unrelated-histories "origin/<branch>"' 'Run either only on an explicit yes.'; do
+    [[ "$sec" == *"$s"* ]]
+  done
+  check="${sec%%git merge-base HEAD*}"
+  upstream="${sec%%git branch -u*}"
+  [ "${#check}" -lt "${#upstream}" ]
+}
