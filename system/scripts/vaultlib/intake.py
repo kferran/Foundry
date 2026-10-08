@@ -522,6 +522,10 @@ class Intake:
                 return
             name = self._free_name(meetings.note_name(m))
             report = self._publish_meeting(m, name, partition, rel)
+            if report["status"] == "conflict":  # held back at apply time (#37): the next tick finishes or retries
+                self.alert(f"meeting import of {rel} held back {', '.join(report['conflicts'])} "
+                           "(changed during the publish); will retry")
+                return
             if report["status"] != "published":
                 problems = [p["reason"] for p in report.get("problems") or []]
                 if problems and all(r.startswith("conflict:") for r in problems):

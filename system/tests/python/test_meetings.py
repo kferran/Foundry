@@ -493,6 +493,25 @@ def test_a_target_created_during_the_run_is_not_a_failure(iv, monkeypatch):
     assert meeting_runs(iv)[0]["publish"]["status"] == "rejected"
 
 
+def test_a_target_changed_at_apply_time_leaves_the_source_for_the_next_tick(iv, monkeypatch):
+    config(iv, meetings_partition="work")
+    src = fetched(iv)
+    real = publish._apply
+    transcript = f"wiki/work/meetings/{NAME}.transcript.md"
+
+    def racing(vault, journal):  # an edit lands between validation and apply
+        write(vault, transcript, "someone else\n")
+        return real(vault, journal)
+    monkeypatch.setattr(publish, "_apply", racing)
+    tick(iv)
+    assert src.exists() and not (iv / "system/quarantine/meetings").exists()
+    assert meeting_runs(iv)[0]["publish"]["status"] == "conflict"
+    assert f"held back {transcript}" in alerts(iv)
+    monkeypatch.setattr(publish, "_apply", real)
+    tick(iv)
+    assert not src.exists() and (iv / f"raw/work/notes/{NAME}.meeting-input.md").is_file()
+
+
 def test_a_bad_source_is_quarantined_and_the_rest_continue(iv):
     config(iv, meetings_partition="work")
     bad = fetched(iv, doc_id="FAKE-doc-bad", title="Weekly sync - Notes by Gemini")
