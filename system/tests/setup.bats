@@ -3,7 +3,11 @@
 
 setup() {
   REPO="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
-  CD="$REPO/system/scripts/check_deps.sh"
+  # A copy outside any vault: with no system/config.md beside it the role is standalone, whatever role the
+  # vault running these tests has (#17).
+  mkdir -p "$BATS_TEST_TMPDIR/v/system/scripts"
+  cp "$REPO/system/scripts/check_deps.sh" "$BATS_TEST_TMPDIR/v/system/scripts/"
+  CD="$BATS_TEST_TMPDIR/v/system/scripts/check_deps.sh"
   # A PATH holding exactly the tools under test: real ones linked in, the rest stubbed.
   BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$BIN"
