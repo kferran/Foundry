@@ -286,6 +286,8 @@ def validate_note(schemas: dict, rel: str, note, ctx: Context) -> tuple:
             if spec.required:
                 issues.append(Issue(rel, line, "error", "required", f"missing required field {name}"))
             continue
+        if spec.kind == "path" and rel.endswith("/example.md"):
+            continue  # a shipped example (system/codebases/example.md) names a path no vault has (#19)
         for severity, message in check_value(spec, value, ctx, name):
             issues.append(Issue(rel, line, severity, "field", message))
         if spec.matches_folder and isinstance(value, str) and value != path_partition(rel):

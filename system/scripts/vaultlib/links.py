@@ -73,13 +73,20 @@ class Resolver:
             self.by_name.setdefault(base, []).append(path)
             if base.endswith(".md"):
                 self.by_name.setdefault(base[:-3], []).append(path)
+        # Every directory that holds a file, so a Markdown link to a folder ("docs/specs/") resolves (#19).
+        self.dirs = {}
+        for path in files:
+            d = posixpath.dirname(path)
+            while d and d.lower() not in self.dirs:
+                self.dirs[d.lower()] = d
+                d = posixpath.dirname(d)
 
     def resolve(self, target, src, kind, prefer):
         if target is None:
             return src, False
         if kind == "md":
             joined = posixpath.normpath(posixpath.join(posixpath.dirname(src), target))
-            return self.by_lower.get(joined.lower()), False
+            return self.by_lower.get(joined.lower()) or self.dirs.get(joined.lower()), False
         name = target.strip().lstrip("/")
         if "/" in name:
             ext = posixpath.splitext(name)[1]

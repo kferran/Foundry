@@ -212,3 +212,17 @@ def test_quarantined_or_staged_copy_does_not_make_a_name_ambiguous(vault):
     idx = build(vault)
     assert issues(idx, "ambiguous-link") == []
     assert query(idx, "SELECT target_path FROM links WHERE src='wiki/work/concepts/A.md'") == [("wiki/work/concepts/Same.md",)]
+
+
+def test_a_markdown_link_to_a_folder_is_not_dead(vault):
+    write(vault, "README.md", "Specs in [specs](docs/specs/), none in [x](docs/nothing/).\n")
+    write(vault, "docs/specs/a.md", "# A\n")
+    assert issue_messages(build(vault), "dead-link") == [
+        ("README.md", "warning", "dead-link", "dead link docs/nothing/")]
+
+
+def test_a_link_from_a_codebase_file_keeps_the_onboarding_note_from_being_an_orphan(vault):
+    write(vault, "wiki/work/concepts/AppOnboardingAssignment.md", concept("work", "AppOnboardingAssignment", "[[Index]]"))
+    write(vault, "system/codebases/app.md", '---\ntype: codebase\nname: app\npath: "/"\npartition: work\n'
+          'search_globs: ["*"]\n---\nOnboarding: [[AppOnboardingAssignment]]\n')
+    assert issues(build(vault), "orphan") == []

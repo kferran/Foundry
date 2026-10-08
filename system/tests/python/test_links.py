@@ -83,3 +83,10 @@ def test_no_tags_from_links():
 def test_dotted_path_target():
     r = links.Resolver(["wiki/2026.debrief.md"])
     assert r.resolve("wiki/2026.debrief", "x.md", "wiki", prefer_none)[0] == "wiki/2026.debrief.md"
+
+
+def test_markdown_link_to_a_folder_resolves_when_the_folder_holds_a_file():
+    r = links.Resolver(["docs/superpowers/specs/a.md"])
+    assert r.resolve("docs/superpowers/specs/", "README.md", "md", prefer_none) == ("docs/superpowers/specs", False)
+    assert r.resolve("docs/", "README.md", "md", prefer_none)[0] == "docs"
+    assert r.resolve("docs/superpowers/spikes/", "README.md", "md", prefer_none)[0] is None
