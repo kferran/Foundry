@@ -57,14 +57,15 @@ def shown(url: str) -> str:
     return re.sub(r"//[^/@]+@", "//", url)
 
 
-def fetch_base(repo, url: str, base: str | None, dest: str, depth: int | None = None, timeout: int = 600):
-    """Fetch refs/heads/<base> (the remote's HEAD when base is empty) from url into repo as dest. A URL that starts
+def fetch_base(repo, url: str, base: str | None, dest: str, depth: int | None = None, timeout: int = 600,
+               commit: str | None = None):
+    """Fetch commit, else refs/heads/<base>, else the remote's HEAD, from url into repo as dest. A URL that starts
     with "-" is refused: git reads it as an option."""
     if url.startswith("-"):
         raise ValueError("template_remote must be a URL or a path")
     opts, env = remote_git(url)
     cmd = ["git", "-C", str(repo), *opts, "fetch", "-q", "--no-tags", *(["--depth", str(depth)] if depth else []),
-           url, f"{f'refs/heads/{base}' if base else 'HEAD'}:{dest}"]
+           url, f"{commit or (f'refs/heads/{base}' if base else 'HEAD')}:{dest}"]
     try:
         return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
     except subprocess.TimeoutExpired:

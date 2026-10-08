@@ -357,6 +357,36 @@ def test_research_reads_a_pinned_copy_of_its_codebase(env, tmp_path):
     assert str(clone) in nr._deny(ctx, fm)   # the live checkout stays denied
 
 
+def test_research_code_is_one_commit_with_no_links_to_the_live_clone(env, tmp_path):
+    vault, tmp = env
+    from test_nightshift_check import registered
+    clone = registered(vault, tmp_path / "cb")
+    git(clone, "branch", "unpushed")
+    ctx = nr.Ctx(vault, NOW)
+    fm = {"id": "2026-10-08-q", "kind": "research", "partition": "work", "repo": "shop"}
+    code = nr._research_dir(ctx, fm) / "code"
+    assert "unpushed" not in git(code, "for-each-ref")
+    assert all(p.stat().st_nlink == 1 for p in (code / ".git" / "objects").rglob("*") if p.is_file())
+
+
+def test_research_code_half_built_or_moved_is_rebuilt_at_the_recorded_commit(env, tmp_path):
+    vault, tmp = env
+    from test_nightshift_check import registered
+    clone = registered(vault, tmp_path / "cb")
+    ctx = nr.Ctx(vault, NOW)
+    fm = {"id": "2026-10-08-q", "kind": "research", "partition": "work", "repo": "shop"}
+    first = git(clone, "rev-parse", "origin/HEAD").strip()
+    code = nr._research_dir(ctx, fm) / "code"
+    shutil.rmtree(code)   # a killed tick left a clone with a HEAD and no files
+    git(tmp_path, "clone", "-q", "--no-checkout", str(clone), str(code))
+    assert (nr._research_dir(ctx, fm) / "code" / "app.py").is_file()
+    write(code, "app.py", "changed\n")   # a session that moved code/ on
+    git(code, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qam", "moved")
+    nr._research_dir(ctx, fm)
+    assert git(code, "rev-parse", "HEAD").strip() == first
+    assert (code / "app.py").read_text() == "print(1)\n"
+
+
 def test_research_reads_the_template_from_its_remote_and_needs_no_code_without_a_repo(env):
     vault, tmp = env
     ctx = nr.Ctx(vault, NOW)

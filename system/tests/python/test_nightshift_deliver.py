@@ -146,6 +146,20 @@ def test_move_outside_sources_adds_only_new_entries_to_an_existing_section():
     assert out.endswith("## Web sources\n\n- https://example.com/a\n- src/app/main.py\n")
 
 
+def test_move_outside_sources_keeps_unquoted_block_wikilinks():
+    text = MIXED.replace('sources: ["[[Alpha]]", "https://example.com/a", "[[Beta]]", "src/app/main.py"]',
+                         "sources:\n  - [[Alpha]]\n  - https://example.com/a")
+    out = nd.move_outside_sources(text)
+    assert 'sources: ["[[Alpha]]"]\n' in out
+    assert out.endswith("## Web sources\n\n- https://example.com/a\n")
+
+
+def test_move_outside_sources_reads_a_quoted_key():
+    out = nd.move_outside_sources(MIXED.replace("sources:", '"sources":'))
+    assert 'sources: ["[[Alpha]]", "[[Beta]]"]\n' in out
+    assert '"sources"' not in out
+
+
 @pytest.mark.parametrize("text", [
     MIXED.replace('"https://example.com/a", ', "").replace(', "src/app/main.py"', ""),   # only wikilinks
     MIXED.replace('sources: ["[[Alpha]]", "https://example.com/a", "[[Beta]]", "src/app/main.py"]\n', ""),   # none

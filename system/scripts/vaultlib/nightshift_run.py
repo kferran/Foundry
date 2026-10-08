@@ -226,31 +226,37 @@ def _research_dir(ctx: Ctx, fm: dict) -> Path:
 
 
 def _research_code(ctx: Ctx, fm: dict, code: Path) -> None:
-    """A read-only copy of the item's repository at one commit (#77). A complete copy is kept, so a resumed
-    attempt reads the commit the first attempt read."""
-    if code.exists():
-        if nc.git(code, "rev-parse", "--verify", "--quiet", "HEAD").returncode == 0:
-            return
-        shutil.rmtree(code)   # half-built by a killed tick
+    """A read-only copy of the item's repository at one commit (#77): that commit alone, fetched into a new
+    repository, so nothing links to the registered clone and no other branch is visible. The first attempt records
+    the commit in the run directory; a resumed attempt checks it out again, and rebuilds code/ when it cannot."""
+    mark = rep.item_dir(ctx.vault, fm["id"]) / "code-commit"
+    sha = mark.read_text().strip() if mark.is_file() else ""
+    if sha and code.is_dir() and nc.git(code, "checkout", "-q", "-f", "--detach", sha).returncode == 0:
+        return
+    shutil.rmtree(code, ignore_errors=True)   # half-built by a killed tick, or never built
     repo, base = fm["repo"], fm.get("base")
     if repo == "template":   # from the template remote, never the vault
         url = str(nc.config(ctx.vault).get("template_remote") or "")
-        subprocess.run(["git", "init", "-q", str(code)], check=True)
-        try:
-            f = nc.fetch_base(code, url, base, "refs/remotes/base", depth=1)
-        except ValueError as exc:
-            f = subprocess.CompletedProcess([], 2, "", str(exc))
-        why, sha = (f.stderr.strip().splitlines() or ["no error text"])[-1], "refs/remotes/base"
         where = f"fetch {base or 'HEAD'} from {nc.shown(url)}"
     else:
         src = nc.source(ctx.vault, repo)
-        sha = nc.research_base(src, base) if src else ""
-        f = subprocess.run(["git", "clone", "-q", "--local", "--no-checkout", str(src), str(code)],
-                           capture_output=True, text=True) if sha else subprocess.CompletedProcess([], 2, "", "")
-        why, where = (f.stderr.strip().splitlines() or ["does not resolve"])[-1], f"{base or 'origin/HEAD'} in {src}"
-    if f.returncode or nc.git(code, "checkout", "-q", "--detach", sha).returncode:
+        url, sha = str(src or ""), sha or (nc.research_base(src, base) if src else "")
+        where = f"{base or 'origin/HEAD'} in {src}"
+    r = subprocess.run(["git", "init", "-q", str(code)], capture_output=True, text=True)
+    if r.returncode == 0 and not (sha or repo == "template"):
+        r = subprocess.CompletedProcess([], 2, "", "does not resolve")
+    elif r.returncode == 0:
+        try:
+            r = nc.fetch_base(code, url, base, "refs/remotes/base", depth=1, commit=sha or None)
+        except ValueError as exc:
+            r = subprocess.CompletedProcess([], 2, "", str(exc))
+    if r.returncode == 0:
+        r = nc.git(code, "checkout", "-q", "--detach", "refs/remotes/base")
+    if r.returncode:
         shutil.rmtree(code, ignore_errors=True)   # the next attempt starts again
-        raise CloneError(f"{where}: {why}")
+        raise CloneError(f"{where}: {(r.stderr.strip().splitlines() or ['no error text'])[-1]}")
+    mark.parent.mkdir(parents=True, exist_ok=True)
+    mark.write_text(nc.git(code, "rev-parse", "HEAD").stdout.strip())
 
 
 def _deny(ctx: Ctx, fm: dict) -> list:

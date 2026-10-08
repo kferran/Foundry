@@ -18,7 +18,7 @@
 - Bound tools: pytest (`test_nightshift_deliver.py`, `test_nightshift_session.py`, `test_nightshift_check.py`, `test_nightshift_run.py` under `system/tests/python/`) and the gate.
 - Commits use `git commit -F .scratch/<file>`.
 - Every "Find" text below occurs exactly once in its file at that step.
-- Ruling against spec §2.2: the commit is pinned by keeping the complete `code/` folder across attempts (a resumed attempt reuses it), and the prompt reads the commit from `code/` itself. No separate record file in the run directory.
+- Ruling against spec §2.2: the commit is pinned by keeping the complete `code/` folder across attempts (a resumed attempt reuses it), and the prompt reads the commit from `code/` itself. No separate record file in the run directory. (Reversed by the final review's fix pass: `code/` is one fetched commit, recorded in the run directory as the spec says, and checked out again on resume.)
 
 ## Review Focus
 

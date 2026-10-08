@@ -11,6 +11,7 @@ from pathlib import Path
 from . import frontmatter
 from . import nightshift_check as nc
 from . import publish
+from . import schema
 
 CODE_PATHS = ["system/scripts", "system/schemas", "system/systemd", "system/hooks", "system/nightshift", ".claude",
               "CLAUDE.md"]
@@ -174,8 +175,8 @@ def open_pr(pr: str, branch: str, pr_base: str, title: str, body_file, push_log:
     return False, f"unknown nightshift_pr {pr!r}"
 
 
-WIKILINK = re.compile(r"^\[\[[^\[\]]+\]\]$")
 WEB = "## Web sources"
+SOURCES_KEY = re.compile(r"""^["']?sources["']?\s*:""")
 
 
 def move_outside_sources(text: str) -> str:
@@ -185,12 +186,13 @@ def move_outside_sources(text: str) -> str:
     srcs = (note.data or {}).get("sources")
     if note.error or not isinstance(srcs, list):
         return text
-    keep = [str(s) for s in srcs if WIKILINK.match(str(s).strip())]
-    moved = [str(s).strip() for s in srcs if not WIKILINK.match(str(s).strip())]
-    if not moved:
-        return text
+    # schema.link_target also reads an unquoted block item "- [[A]]", which YAML parses as [['A']].
+    keep = [f"[[{schema.link_target(s)}]]" for s in srcs if schema.link_target(s) is not None]
+    moved = [str(s).strip() for s in srcs if schema.link_target(s) is None]
     fm_lines = note.fm_text.split("\n")
-    i = next(n for n, line in enumerate(fm_lines) if line.startswith("sources:"))
+    i = next((n for n, line in enumerate(fm_lines) if SOURCES_KEY.match(line)), None)
+    if not moved or i is None:
+        return text
     j = i + 1
     while j < len(fm_lines) and fm_lines[j][:1] in (" ", "\t", "-"):   # a block list's items
         j += 1
