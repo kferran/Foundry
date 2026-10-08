@@ -57,7 +57,7 @@ def push_target(vault, fm: dict) -> tuple:
         m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(\.git)?$", url)
         return url, (f"github:{m.group(1)}" if m else "")
     url = nc.git(nc.source(vault, fm["repo"]), "remote", "get-url", "origin").stdout.strip()
-    return url, str((nc.codebase(vault, fm["repo"]) or {}).get("nightshift_pr") or "")
+    return url, str(nc.setting(nc.codebase(vault, fm["repo"]) or {}, "order_pr", "nightshift_pr") or "")
 
 
 def _git_env() -> dict:
@@ -114,9 +114,9 @@ def apply_protected(runner_repo, sha: str, branch: str, files, workdir) -> tuple
     if not files:
         return True, sha
     runner = str(runner_repo)
-    env = dict(_git_env(), GIT_INDEX_FILE=str(Path(workdir) / "protected.index"), GIT_AUTHOR_NAME="Nightshift",
-               GIT_AUTHOR_EMAIL="nightshift@localhost", GIT_COMMITTER_NAME="Nightshift",
-               GIT_COMMITTER_EMAIL="nightshift@localhost")
+    env = dict(_git_env(), GIT_INDEX_FILE=str(Path(workdir) / "protected.index"), GIT_AUTHOR_NAME="Work Orders",
+               GIT_AUTHOR_EMAIL="orders@localhost", GIT_COMMITTER_NAME="Work Orders",
+               GIT_COMMITTER_EMAIL="orders@localhost")
 
     def git(*args, data=None):
         r = subprocess.run(["git", "-C", runner, *args], input=data, capture_output=True, env=env)
@@ -172,7 +172,7 @@ def open_pr(pr: str, branch: str, pr_base: str, title: str, body_file, push_log:
     if pr == "bitbucket-link":
         m = LINK.search(push_log or "")
         return (True, m.group(0)) if m else (False, "no create-PR link in the push output")
-    return False, f"unknown nightshift_pr {pr!r}"
+    return False, f"unknown order_pr {pr!r}"
 
 
 WEB = "## Web sources"

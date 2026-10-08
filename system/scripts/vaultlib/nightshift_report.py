@@ -59,7 +59,7 @@ def build(vault, date: str) -> str:
     hp = Path(vault) / DIR / f"health-{date}.json"
     health = json.loads(hp.read_text(encoding="utf-8")) if hp.is_file() else {}
     parts = [f"{k.replace('_', ' ')} {health[k]}" for k in HEALTH_ORDER if health.get(k)]
-    lines = [f"# Nightshift: {date}", "> Health: " + (" · ".join(parts) if parts else "not checked"), ""]
+    lines = [f"# Work Orders: {date}", "> Health: " + (" · ".join(parts) if parts else "not checked"), ""]
     outcomes = _outcomes(vault, date)
     if not outcomes:
         return "\n".join(lines + ["Nothing ran.", ""])

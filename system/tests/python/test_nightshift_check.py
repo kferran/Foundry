@@ -118,6 +118,27 @@ def registered(vault: Path, tmp_path: Path, name: str = "shop") -> Path:
     return clone
 
 
+def set_codebase(vault: Path, name: str, **keys) -> None:
+    """Add frontmatter keys to a registered codebase's file."""
+    p = vault / "system" / "codebases" / f"{name}.md"
+    head, _, rest = p.read_text().rpartition("---\n")
+    p.write_text(head + "".join(f'{k}: "{v}"\n' for k, v in keys.items()) + "---\n" + rest)
+
+
+def test_setting_reads_the_old_key_and_the_new_one_wins():
+    assert nc.setting({"nightshift_pr": "a"}, "order_pr", "nightshift_pr") == "a"
+    assert nc.setting({"nightshift_pr": "a", "order_pr": "b"}, "order_pr", "nightshift_pr") == "b"
+    assert nc.setting({}, "order_pr", "nightshift_pr") is None
+
+
+def test_a_codebase_plan_needs_order_pr_or_its_old_name(vault_repo, tmp_path):
+    registered(vault_repo, tmp_path)
+    fm = plan_fm(tasks="1-2", repo="shop", base="main")
+    assert any("codebase shop has no order_pr" in e for e in nc.check(vault_repo, fm, ""))
+    set_codebase(vault_repo, "shop", nightshift_pr="github:o/shop")
+    assert not any("order_pr" in e for e in nc.check(vault_repo, fm, ""))
+
+
 def test_research_may_name_a_repository_and_commit(vault_repo, tmp_path):
     registered(vault_repo, tmp_path)
     fm = plan_fm(kind="research", output="wiki/work/concepts/Answer.md", repo="shop", base=None)

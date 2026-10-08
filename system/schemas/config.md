@@ -20,8 +20,12 @@ fields:
   meetings_enabled: {kind: bool, default: "false"}
   meetings_partition: {kind: enum, values: [work, personal]}
   owner_names: {kind: list, of: string}
+  order_workspace: {kind: string}
+  run_window: {kind: string, default: "22:00-05:00"}
   nightshift_workspace: {kind: string}
-  nightshift_window: {kind: string, default: "22:00-05:00"}
+  nightshift_window: {kind: string}
 ---
 # Config
 The per-user global configuration written by `/setup` (gitignored). `system/config.example.md` is the committed example.
+
+`nightshift_workspace` and `nightshift_window` are the old names of `order_workspace` and `run_window`. They are still read when the new key is absent; the new key wins when both are set.

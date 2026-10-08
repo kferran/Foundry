@@ -77,10 +77,12 @@ def test_now_item_runs_verifies_pushes_and_reports(env):
     assert nr.main(["tick"], vault, NOW) == 0
     _, fm = only_item(vault)
     assert fm["state"] == "done" and fm["result"] == "https://github.com/o/r/pull/1"
-    assert "nightshift/" in git(tmp / "remote.git", "branch", "--list")
+    assert "order/" in git(tmp / "remote.git", "branch", "--list")
     report = (vault / "system/logs/nightshift/2026-10-07.md").read_text()
     assert "Review and merge: https://github.com/o/r/pull/1" in report
     assert not list((tmp / "ws").glob("nightshift-2026*"))  # clone removed after delivery
+    body = (vault / "system/logs/nightshift/items" / fm["id"] / "pr_body.md").read_text()
+    assert body.endswith(f"Queued as Work Order `{fm['id']}`.\n")
 
 
 def test_window_item_waits_in_daytime(env):
@@ -98,7 +100,7 @@ def test_verify_failure_blocks_without_push(env, monkeypatch):
     assert nr.main(["tick"], vault, NOW) == 1
     _, fm = only_item(vault)
     assert (fm["state"], fm["reason"]) == ("blocked", "no commits")
-    assert git(tmp / "remote.git", "branch", "--list", "nightshift/*").strip() == ""
+    assert git(tmp / "remote.git", "branch", "--list", "order/*").strip() == ""
 
 
 def test_usage_limit_waits_then_resumes(env, monkeypatch):
@@ -128,6 +130,26 @@ def test_no_result_is_failed(env, monkeypatch, tmp_path):
     assert add(vault, "--now") == 0
     assert nr.main(["tick"], vault, NOW) == 1
     assert only_item(vault)[1]["reason"] == "no result"
+
+
+def test_settings_read_the_old_keys_and_the_new_ones_win(env, tmp_path):
+    vault, _ = env
+    assert nr.Ctx(vault, NOW).workspace == tmp_path / "ws"   # the fixture sets only nightshift_workspace
+    write(vault, "system/config.md", '---\ntype: config\ntimezone: "UTC"\nnightshift_workspace: "/old"\n'
+          'order_workspace: "/new"\nnightshift_window: "21:00-04:00"\n---\n')
+    ctx = nr.Ctx(vault, NOW)
+    assert ctx.workspace == Path("/new") and ctx.window == nr.ns.parse_window("21:00-04:00")
+    write(vault, "system/config.md", '---\ntype: config\ntimezone: "UTC"\nnightshift_window: "21:00-04:00"\n'
+          'run_window: "23:00-02:00"\n---\n')
+    assert nr.Ctx(vault, NOW).window == nr.ns.parse_window("23:00-02:00")
+
+
+def test_alerts_carry_the_orders_tag(env):
+    vault, _ = env
+    ctx = nr.Ctx(vault, NOW)
+    ctx.alert("k", "something broke")
+    text = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
+    assert "[orders] something broke" in text and "[nightshift]" not in text
 
 
 def test_cancel_and_list(env, capsys):
@@ -193,7 +215,7 @@ def test_template_clone_comes_from_the_template_remote(env):
     clone = nr._clone(nr.Ctx(vault, NOW), fm)
     assert git(clone, "rev-parse", "HEAD").strip() == on_remote
     assert not (clone / "vault-only.txt").exists()
-    assert git(clone, "for-each-ref", "--format=%(refname)").split() == [f"refs/heads/nightshift/{fm['id']}", "refs/remotes/base"]
+    assert git(clone, "for-each-ref", "--format=%(refname)").split() == [f"refs/heads/order/{fm['id']}", "refs/remotes/base"]
 
 
 def test_a_failed_fetch_leaves_no_clone_and_a_half_built_one_is_rebuilt(env):
@@ -486,6 +508,26 @@ def test_delivery_runs_no_git_inside_the_session_clone(env, monkeypatch):
     out = nr._deliver_plan(ctx, fm, clone, idir, before)
     assert out["state"] == "done", out
     assert [c for c in calls if c[:3] == ["git", "-C", str(clone)]] == []
+
+
+def test_a_clone_made_before_the_rename_delivers_its_nightshift_branch(env, monkeypatch):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ctx = nr.Ctx(vault, NOW)
+    clone = nr._clone(ctx, fm)
+    git(clone, "branch", "-m", f"nightshift/{fm['id']}")   # an item already running when the vault updated
+    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir.mkdir(parents=True)
+    before = nr._before(ctx, fm, idir)
+    (clone / "done.txt").write_text("yes")
+    git(clone, "add", "done.txt")
+    git(clone, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "work")
+    (clone / ".nightshift").mkdir()
+    (clone / ".nightshift" / "result.json").write_text(RESULT)
+    monkeypatch.setattr(nr.nd, "verify_sha", lambda *a: (True, ""))
+    assert nr._deliver_plan(ctx, fm, clone, idir, before)["state"] == "done"
+    assert f"nightshift/{fm['id']}" in git(tmp / "remote.git", "branch", "--list")
 
 
 

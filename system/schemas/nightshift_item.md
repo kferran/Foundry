@@ -30,4 +30,4 @@ fields:
   reason: {kind: string}
 ---
 # Nightshift item
-One unit of unattended work (Nightshift spec §4), written by `/nightshift` and updated by `system/scripts/nightshift.py`. The body is the research brief (`kind: research`) or a free note. The runner writes only `state` and the runner fields, and never changes an item the user cancelled.
+One Work Order, a unit of unattended work (Nightshift spec §4), written by `/order` and updated by `system/scripts/nightshift.py`. The body is the research brief (`kind: research`) or a free note. The runner writes only `state` and the runner fields, and never changes an item the user cancelled.

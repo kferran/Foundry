@@ -571,3 +571,23 @@ self_edit_contract() {
   sec="$(setup_section '9. Hand-off')"
   [[ "$sec" == *'add the line `Onboarding: [[<Name>OnboardingAssignment]]` to the body of `system/codebases/<name>.md`'* ]]
 }
+
+@test "Work Orders: the /order skill, CLAUDE.md, the README and the schemas use the new names (Foreman v1 §3.1)" {
+  [ ! -e .claude/skills/nightshift ]
+  f=.claude/skills/order/SKILL.md
+  grep -qx 'name: order' "$f"
+  grep -qF '/order add|ask|list|cancel|status' "$f"
+  grep -qF 'system/scripts/nightshift.py add --kind plan' "$f"
+  grep -qF 'Work Order' "$f"
+  grep -qF -- '- `/order add|ask|list|cancel|status`:' CLAUDE.md
+  grep -qF -- '- `raw/<partition>/nightshift/`: Work Order queue notes' CLAUDE.md
+  run grep -nE '(^|[`( ])/nightshift' "$f" CLAUDE.md README.md
+  [ "$status" -eq 1 ]
+  grep -qF '| `/order add\|ask\|list\|cancel\|status` |' README.md
+  grep -qF '.claude/skills/order/' README.md
+  for k in run_window order_workspace nightshift_window nightshift_workspace; do grep -qF "\`$k\`" README.md; done
+  for k in run_window order_workspace nightshift_window nightshift_workspace; do grep -q "^  $k:" system/schemas/config.md; done
+  for k in order_pr order_hosts order_plugins nightshift_pr nightshift_hosts nightshift_plugins; do
+    grep -q "^  $k:" system/schemas/codebase.md
+  done
+}

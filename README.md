@@ -23,7 +23,7 @@ Automation runs on systemd user timers: isolated headless `claude -p` jobs for i
 - Calendar input to the brief from the Google Calendar connector
 - Error telemetry from Sentry and Azure Data Explorer
 - Meetings: Gemini notes and dropped transcripts become meeting notes, tracked actions and searchable transcripts
-- The Nightshift: queued plans and research briefs run unattended overnight
+- Work Orders: queued plans and research briefs run unattended
 - DTCC change watcher (phase 1)
 - Active Projects in the brief, and an archive of past briefings
 
@@ -72,7 +72,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 | `/lint` | Integrity report plus link, duplicate, contradiction and staleness suggestions |
 | `/impact <component> [--repo name]` | Read-only blast-radius table across registered codebases and the wiki; offers to draft an intent proposal |
 | `/backup` | Runs the gating suites (lint only on a client), commits each headless run on its own, then commits and pushes the rest according to `remote_mode` (through `vault_sync.sh` in `private`) |
-| `/nightshift add\|ask\|list\|cancel\|status` | Queues an approved plan (or a task range of one) or a research brief for an unattended run; lists, cancels and reports on queued items |
+| `/order add\|ask\|list\|cancel\|status` | Queues an approved plan (or a task range of one) or a research brief as a Work Order for an unattended run; lists, cancels and reports on queued Work Orders |
 | `/dtcc-watch [check\|status\|accept]` | Runs the DTCC change watcher by hand, checks its map, reports recent changes, or accepts held changes as the new baseline |
 | `/setup` | Onboarding; safe to re-run |
 | `/humanizer`, `/digest` | Edit prose against the vendored skill; write a session digest on demand |
@@ -83,7 +83,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 
 **Error telemetry.** `foundry-telemetry.timer` runs `telemetry_fetch.py` every hour, and `brief_prep.sh` runs it once more before the brief. Each source in `system/telemetry/<name>.md` (written by `/setup` phase 6a, gitignored) is a set of Sentry projects or one Azure Data Explorer database with a filter. Each error group becomes one `production_error` note in `raw/telemetry/` holding group keys, counts, times, opaque IDs, links and the Sentry issue title or one sample log message, ticket identifiers included; credentials and emails are masked. Sentry needs a read-only token in `~/.config/foundry/sentry.token` (mode 0600); ADX uses your `az login`. `--check <name>` tests a source, `--dry-run` prints the groups without writing.
 
-**The Nightshift.** `/nightshift` queues refined work for an unattended run: an approved plan, or a task range of one, or a research brief written with you. Queuing is your approval, and a readiness check refuses items that are not refined enough. `foundry-nightshift.timer` ticks every 15 minutes on a standalone machine or a server (never a client) and runs one due item at a time: in the nightly window (`nightshift_window`, default `22:00-05:00`), at a set time, or now. A plan item runs in a private clone under `nightshift_workspace`, is verified, pushed to a branch and ends in a pull request; it never merges or deploys. A research item reads its sources and writes one findings note. Each item runs in a fresh, confined `claude -p` session that holds no credential. The morning report, `system/logs/nightshift/<date>.md`, starts with a health banner, then "Needs you" (decisions only), which the brief carries forward. Queue notes live in `raw/<partition>/nightshift/`, tracked in your vault so an item queued on a client reaches the server. A plan item for this template is read from `template_remote`: push its branch there before queuing it, and queuing checks the remote, which needs the network and the remote's credentials.
+**Work Orders.** `/order` queues refined work for an unattended run: an approved plan, or a task range of one, or a research brief written with you. Queuing is your approval, and a readiness check refuses items that are not refined enough. `foundry-nightshift.timer` ticks every 15 minutes on a standalone machine or a server (never a client) and runs one due item at a time: in the run window (`run_window`, default `22:00-05:00`), at a set time, or now. A plan item runs in a private clone under `order_workspace`, is verified, pushed to a branch and ends in a pull request; it never merges or deploys. A research item reads its sources and writes one findings note. Each item runs in a fresh, confined `claude -p` session that holds no credential. The report, `system/logs/nightshift/<date>.md` (heading `# Work Orders: <date>`), starts with a health banner, then "Needs you" (decisions only), which the brief carries forward. Queue notes live in `raw/<partition>/nightshift/`, tracked in your vault so an item queued on a client reaches the server. A plan item for this template is read from `template_remote`: push its branch there before queuing it, and queuing checks the remote, which needs the network and the remote's credentials. Settings renamed with Work Orders: `run_window` was `nightshift_window`, `order_workspace` was `nightshift_workspace`, and a codebase's `order_pr`, `order_hosts` and `order_plugins` were `nightshift_pr`, `nightshift_hosts` and `nightshift_plugins`. The old names still work; rename them when convenient. The command, the skill and printed text say Work Orders; files, units, the queue folders and `nightshift.py` keep their names.
 
 **DTCC change watcher.** It is for a codebase that integrates with DTCC Insurance & Retirement Services. `foundry-dtcc-watch.timer` runs `dtcc_watch.py` daily, 30 minutes before the brief. No model runs. It reads DTCC's public product pages, release dates, Important Notices and API catalog, and writes one `dtcc_change` note per change to `wiki/<partition>/changes/` with the codebase paths it touches. The brief lists each change as a checkbox that carries forward until you tick it. The watcher does nothing until your vault has `system/dtcc/map.yaml` (start from `system/dtcc/map.example.yaml`).
 
@@ -131,7 +131,7 @@ CLAUDE.md                     generic rules; imports @system/config.md
 .claude/settings.json         interactive permissions
 .claude/commands/             setup brief debrief ingest query lint backup impact
 .claude/skills/humanizer/     vendored humanizer v3.0.0 (MIT): /humanizer, headless self-edit
-.claude/skills/nightshift/    /nightshift: queue plans and research briefs for unattended runs
+.claude/skills/order/         /order: queue plans and research briefs as Work Orders
 .claude/skills/dtcc-watch/    /dtcc-watch: the DTCC change watcher by hand
 .githooks/pre-commit          deterministic linter (lint_vault.sh --staged)
 .scratch/                     throwaway clones, worktrees and temp files (ignored; the gate's temp files go here)
@@ -151,7 +151,7 @@ system/
   codebases/example.md        example codebase file
   telemetry/example.md        example error source (real sources are gitignored)
   dtcc/map.example.yaml       example DTCC watch map (your map.yaml is tracked in your vault)
-  nightshift/                 session profiles for Nightshift plan and research runs
+  nightshift/                 session profiles for Work Order plan and research runs
   headless.settings.json      headless permissions
   template_source             canonical template URL
   schemas/                    one schema note per note type
@@ -283,7 +283,7 @@ Once the units are installed, the timers run real headless `claude -p` jobs. The
 - **User-level changes.** `install_hooks.sh` changes only its own entries in `~/.claude/settings.json` and `~/.claude/commands/digest.md`. It takes a backup first, shows a diff during `/setup`, applies nothing without confirmation, and can be fully reversed with `--uninstall`.
 - **Trust dialog.** The first time you open the vault, Claude Code asks whether to trust the folder and lists the permissions `.claude/settings.json` pre-approves: edits under `wiki/` and `briefings/`, the brief and debrief prep scripts, `lint_vault.sh`, and the `vault_index.py` query, index-rebuild and recall commands. Those apply to your interactive sessions only; headless runs ignore project settings entirely.
 - **Gitignored.** `raw/**` contents, `system/quarantine/*`, `system/logs/*`, `system/config.md` (it holds the machine role), `.claude/settings.local.json`, `system/index.db*`, `system/*.lock`, `wiki/.staging/`, `system/jobs/` and Obsidian workspace files.
-- **Tracked in your vault, never in the template.** `system/codebases/*.md`, `system/telemetry/*.md`, `system/dtcc/map.yaml` and `raw/<partition>/nightshift/*.md` (Nightshift queue notes): your vault's own configuration and queue, committed to your private repository so a client's changes reach the server. The template ships only the `example` files. Credentials stay outside the vault (`~/.config/foundry/`, the Azure CLI).
+- **Tracked in your vault, never in the template.** `system/codebases/*.md`, `system/telemetry/*.md`, `system/dtcc/map.yaml` and `raw/<partition>/nightshift/*.md` (Work Order queue notes): your vault's own configuration and queue, committed to your private repository so a client's changes reach the server. The template ships only the `example` files. Credentials stay outside the vault (`~/.config/foundry/`, the Azure CLI).
 
 ## Updating and uninstalling
 

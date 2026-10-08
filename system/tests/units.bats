@@ -370,6 +370,8 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   [ "$status" -eq 0 ]
   grep -q '^OnCalendar=\*:0/15$' "$UD/foundry-nightshift.timer"
   grep -q 'nightshift.py' "$UD/foundry-nightshift.service"
+  grep -qx 'Description=The Foundry: Work Orders tick' "$UD/foundry-nightshift.service"
+  grep -qx 'Description=The Foundry: Work Orders tick every 15 minutes' "$UD/foundry-nightshift.timer"
   grep -q 'enable --now .*foundry-nightshift.timer' "$STUB_SYSTEMCTL_LOG"
 }
 

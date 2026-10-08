@@ -23,6 +23,11 @@ def _fm(path: Path) -> dict:
     return (frontmatter.parse(path.read_text(encoding="utf-8")).data or {}) if path.is_file() else {}
 
 
+def setting(d: dict, new: str, old: str):
+    """A Work Orders setting under its new key, else its old nightshift_* key (Foreman v1 §3.1)."""
+    return d[new] if new in d else d.get(old)
+
+
 def config(vault) -> dict:
     return _fm(Path(vault) / "system" / "config.md")
 
@@ -154,8 +159,8 @@ def _plan(vault, fm: dict) -> list:
     src = source(vault, repo)
     if src is None:
         return [f"repo {repo!r} is not a registered codebase or 'template'"]
-    if not (codebase(vault, repo) or {}).get("nightshift_pr"):
-        errs.append(f"codebase {repo} has no nightshift_pr (github:<owner>/<repo> or bitbucket-link)")
+    if not setting(codebase(vault, repo) or {}, "order_pr", "nightshift_pr"):
+        errs.append(f"codebase {repo} has no order_pr (github:<owner>/<repo> or bitbucket-link)")
     if not base or git(src, "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}").returncode:
         return errs + [f"base {base or '(empty)'} does not resolve in {src}"]
     return errs + _plan_at(src, fm)

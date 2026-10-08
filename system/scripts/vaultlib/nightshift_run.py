@@ -73,8 +73,8 @@ class Ctx:
         cfg = nc.config(vault)
         self.tz = ZoneInfo(str(cfg.get("timezone") or "UTC"))
         self.brief_time = str(cfg.get("brief_time") or "06:00")
-        self.window = ns.parse_window(cfg.get("nightshift_window"))
-        self.workspace = Path(str(cfg.get("nightshift_workspace") or "~/code/worktrees")).expanduser()
+        self.window = ns.parse_window(nc.setting(cfg, "run_window", "nightshift_window"))
+        self.workspace = Path(str(nc.setting(cfg, "order_workspace", "nightshift_workspace") or "~/code/worktrees")).expanduser()
         self.local = now.astimezone(self.tz)
         self.date = ns.report_date(self.local, self.brief_time)
         self.alerts = {}
@@ -90,7 +90,7 @@ class Ctx:
         seen.write_text(json.dumps(data))
         path = self.vault / "system" / "logs" / f"alerts_{day}.md"
         with open(path, "a", encoding="utf-8") as f:
-            f.write(f"- {self.local.strftime('%H:%M:%S')} [nightshift] {msg}\n")
+            f.write(f"- {self.local.strftime('%H:%M:%S')} [orders] {msg}\n")
 
     def log(self, line: dict) -> None:
         path = self.vault / "system" / "logs" / f"nightshift-{self.now.strftime('%Y-%m')}.jsonl"
@@ -190,7 +190,7 @@ def _clone(ctx: Ctx, fm: dict) -> Path:
             return clone
         shutil.rmtree(clone)   # half-built by a killed tick: start again
     ctx.workspace.mkdir(parents=True, exist_ok=True)
-    branch = f"nightshift/{fm['id']}"
+    branch = f"order/{fm['id']}"
     if template:
         # From the template remote, never the vault: the vault's object store holds private notes.
         url = str(nc.config(ctx.vault).get("template_remote") or "")
@@ -314,11 +314,11 @@ def _elapsed(idir: Path) -> float:
 def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Path, resume: bool) -> dict:
     kind = fm["kind"]
     cb = nc.codebase(ctx.vault, fm.get("repo")) or {}
-    hosts = list(cb.get("nightshift_hosts") or [])
+    hosts = list(nc.setting(cb, "order_hosts", "nightshift_hosts") or [])
     web = list(fm.get("hosts") or []) if kind == "research" else []
     settings = idir / "settings.json"
     settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm))))
-    plugins = [p for p in [ss.superpowers_dir()] if p] + [Path(str(p)).expanduser() for p in cb.get("nightshift_plugins") or []]
+    plugins = [p for p in [ss.superpowers_dir()] if p] + [Path(str(p)).expanduser() for p in nc.setting(cb, "order_plugins", "nightshift_plugins") or []]
     code = nc.git(cwd / "code", "log", "-1", "--format=%h (%cs)").stdout.strip() if kind == "research" and fm.get("repo") else ""
     prompt = (ss.plan_prompt(fm) if kind == "plan" else
               ss.research_prompt(fm, body, code=f"{fm['repo']} at {code}" if code else None))
@@ -415,9 +415,13 @@ def _deliver_plan(ctx: Ctx, fm: dict, clone: Path, idir: Path, before: dict) -> 
     if (fm["repo"] != "template" and nd.protected_refs(src) != before["src"]) or nd.code_status(ctx.vault) != before["code"]:
         ctx.alert(f"containment/{fm['id']}", f"{fm['id']}: a protected branch or vault code changed during the run")
         return {"state": "failed", "reason": "containment"}
-    branch = f"nightshift/{fm['id']}"
+    branch = f"order/{fm['id']}"
     runner = ctx.workspace / "nightshift-runner.git"
     ok, sha = nd.fetch_branch(runner, clone, branch)
+    if not ok:   # a clone made before the rename to Work Orders holds nightshift/<id>
+        old = f"nightshift/{fm['id']}"
+        ok, old_sha = nd.fetch_branch(runner, clone, old)
+        branch, sha = (old, old_sha) if ok else (branch, sha)
     if not ok:
         return {"state": "blocked", "reason": "no commits", "notes": sha}
     if sha == before["base_sha"]:
@@ -451,7 +455,7 @@ def _deliver(ctx: Ctx, fm: dict, idir: Path) -> dict:
     link = ""
     if ok:
         body = idir / "pr_body.md"
-        body.write_text(f"{d['body']}\n\nQueued as Nightshift item `{fm['id']}`.\n")
+        body.write_text(f"{d['body']}\n\nQueued as Work Order `{fm['id']}`.\n")
         ok, link = nd.open_pr(pr, d["branch"], fm.get("pr_base") or "master", d["title"], body, push_log)
     if ok:
         verb = "Review and merge" if pr.startswith("github:") else "Open the pull request"
