@@ -75,7 +75,11 @@ A deterministic script that makes no model call. Intake runs it on the server an
 These follow `jira_fetch.sh` and `jira_handoffs.py` (delivered-work design §3.2).
 
 - **Session.** One confined `claude -p` session, allowed only the Slack connector's search tool (`mcp__claude_ai_Slack__slack_search_public_and_private`). `confine_deny --strict` denies every other Slack tool by name, the session has a timeout, and it writes `system/logs/chat_fetch-<YYYY-MM>.jsonl` and raises at most one `[chat]` alert a day. The exit codes match `jira_fetch.sh`: 0, 1, 2, 3, 4, 6, 7 and 127.
-- **Query.** It is built only from settings: `chat_user_id`, which leaves the fetch off while empty. There are two searches: messages from the owner today, and messages that mention the owner today. The exact search syntax is settled by a manual probe in the plan's first task.
+- **Query.** It is built only from settings: `chat_user_id`, which leaves the fetch off while empty. There are three searches, each `sort: timestamp`, `include_context: false`, `limit: 20`, following `cursor` until the last page:
+  1. from the owner: `filters: "from:<@ID> on:<date>"`;
+  2. mentions: `keywords: ["<@ID>"]`, `filters: "on:<date>"` (a `<@ID>` *filter* matches every message of the day: probed 2026-10-09);
+  3. DMs and group DMs: `filters: "is:dm on:<date>"`.
+- **Result shape (probed 2026-10-09).** The tool returns `{"results": "<markdown>", "pagination_info": "<text>"}`. Each message is a `### Result N of M` block with `Channel:`, `From: … (ID: U…)`, `Time:`, `Message_ts:`, `Permalink: [link](…)` and `Text:` lines. A reply's permalink carries `?thread_ts=<ts>&cid=<channel>`; a top-level message's does not, and its thread key is its own `Message_ts`.
 - **Checks.** `chat_threads.py extract` checks the stream: only the allowed tool, only the queries built from settings, no errors, and a result in the expected shape (fail closed). It groups the results by thread and writes one JSON line per thread: `link`, `channel`, `first_line`, `last_author`, `last_time`, `needs_reply`. Message text is masked and cut, and none of the model's own words are used.
 - **Schedule.** `foundry-chat.timer` runs on the server and standalone vaults, `OnCalendar=Mon..Fri *-*-* 08..18:00:00 {{TZ}}`, as the meetings timer does. It is installed only when `chat_user_id` is set. Because `--update` does not install new units (#35), `/setup` installs it.
 - **Setup.** A new phase, 6d Chat, follows the shape of 6c: it asks for the owner's chat user ID and runs `chat_fetch.sh --check`. A chat failure never blocks setup.
@@ -107,5 +111,5 @@ These follow `jira_fetch.sh` and `jira_handoffs.py` (delivered-work design §3.2
 
 ## 7. Open questions
 
-1. Do the Slack connector's search results carry a permalink and thread timestamp for each message, so threads can be grouped? Answered by the probe in plan 2's first task. If not, the session also needs `slack_read_thread`, and the deny list shrinks by one.
+1. ~~Do search results carry thread links?~~ Yes (probed 2026-10-09; §3.5 "Result shape"). Plan 2's first task still captures one real `claude -p` stream, to see whether the result reaches `tool_use_result` as `structuredContent` or as text content only, and the checker reads whichever it is.
 2. ~~Should chat cover private channels and DMs?~~ Yes (owner, 2026-10-09): the fetch uses `slack_search_public_and_private`.
