@@ -615,7 +615,7 @@ self_edit_contract() {
   grep -qF -- '- **5. Work Orders:** the `## Items` table and every `- [ ] ` line under "## Needs you" from `orders.md`' "$d"
   grep -qF 'No Work Orders ran today.' "$d"
   grep -qx '### 5. Work Orders' system/templates/daily-debrief.md
-  [ "$(grep -n '^### ' system/templates/daily-debrief.md | tail -n 1)" = "$(grep -n '^### 5. Work Orders$' system/templates/daily-debrief.md)" ]
+  [ "$(grep '^### ' system/templates/daily-debrief.md | tail -n 2 | head -n 1)" = '### 5. Work Orders' ]
 }
 
 # commands_section: the body of CLAUDE.md's Commands section.
@@ -646,4 +646,31 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF -- '- **🧾 Handoffs to chase:** every line of `handoffs.md` verbatim' "$f"
   grep -qF 'never carries forward; it is not part of the Active Objectives' "$f"
   grep -qF 'add it after 🎯 Active Projects' "$f"
+}
+
+@test "delivered work: digests carry Delivered, ingest skips it, the debrief lists it with Notes lines and prs.md (delivered work §3.4)" {
+  grep -qF 'Delivered (each thing handed to someone else or published in this session, one bullet each as `type — what — link`' system/hooks/digest_instructions.md
+  grep -qF 'decision, doc, analysis, message, code, review, handoff' system/hooks/digest_instructions.md
+  grep -qF "Delivered is for the debrief's Delivered Today: never compile it." .claude/commands/ingest.md
+  d=.claude/commands/debrief.md
+  grep -qF -- '- `system/logs/inputs/<date>/prs.md`:' "$d"
+  grep -qF -- '- `briefings/<date>.md`: the lines in its 📝 Notes section that start with `delivered:`.' "$d"
+  grep -qF -- '- **6. Delivered Today:**' "$d"
+  [ "$(grep '^### ' system/templates/daily-debrief.md | tail -n 1)" = '### 6. Delivered Today' ]
+  grep -qF 'add a `delivered: <type> — <what> — <link>` line to the 📝 Notes section of today'"'"'s briefing' system/agents/foreman.md
+}
+
+@test "/setup phase 6c sets the handoffs and checks the Atlassian connector; the README explains it (delivered work §3.5)" {
+  s=.claude/commands/setup.md
+  grep -qx '## 6c. Handoffs' "$s"
+  sec="$(awk '$0 == "## 6c. Handoffs" { on = 1; next } /^## / { on = 0 } on' "$s")"
+  [[ "$sec" == *'On a client, skip this phase and report "not used on a client".'* ]]
+  [[ "$sec" == *'`handoffs_site`'* ]]
+  [[ "$sec" == *'`handoffs_projects`'* ]]
+  [[ "$sec" == *'run `system/scripts/jira_fetch.sh --check` with a Bash timeout of at least 400000 ms'* ]]
+  [[ "$sec" == *'exit 3, connect Atlassian'* ]]
+  [[ "$sec" == *'A Jira failure never blocks setup'* ]]
+  grep -qF 'telemetry sources, meetings, handoffs, index, verification' "$s"
+  grep -qF '**Handoffs and delivered work.**' README.md
+  grep -qF 'the connector returns no change history' README.md
 }

@@ -436,3 +436,40 @@ handoffs_on() {
   run "$BP" 2026-10-01
   grep -qF -- '- brief_prep: handoffs: no Atlassian connector reachable' "$IN/unavailable.md"
 }
+
+# gh_says [rc]: a GitHub codebase, and a gh on PATH that lists one pull request per search, or fails with rc.
+gh_says() {
+  printf '%s\n' '#!/bin/bash' "(( ${1:-0} == 0 )) || { echo 'HTTP 401: Bad credentials' >&2; exit ${1:-0}; }" \
+    'echo "$*" >> "$(dirname "$0")/gh.args"' \
+    'case "$*" in' \
+    '  *--created*) echo "- code — opened: Add export — https://github.com/acme/shop/pull/1" ;;' \
+    '  *--reviewed-by*) echo "- review — reviewed: Fix login — https://github.com/acme/shop/pull/2" ;;' \
+    'esac' > "$STUBS/gh"
+  chmod +x "$STUBS/gh"
+  mkdir -p system/codebases
+  printf -- '---\ntype: codebase\nname: "shop"\npath: "%s"\npartition: "work"\nsearch_globs: ["*.md"]\norder_pr: "github:acme/shop"\n---\n' "$V" > system/codebases/shop.md
+}
+
+@test "debrief_prep: prs.md lists the day's pull requests in the registered GitHub repositories" {
+  gh_says
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/prs.md")" = "- code — opened: Add export — https://github.com/acme/shop/pull/1
+- review — reviewed: Fix login — https://github.com/acme/shop/pull/2" ]
+  grep -qF -- 'search prs --author @me --created 2026-10-01 --repo acme/shop --json url,title --limit 100' "$STUBS/gh.args"
+  grep -qF -- 'search prs --author @me --merged-at 2026-10-01 --repo acme/shop' "$STUBS/gh.args"
+  grep -qF -- 'search prs --reviewed-by @me --updated 2026-10-01 --repo acme/shop' "$STUBS/gh.args"
+  run grep -c prs "$IN/unavailable.md"
+  [ "$output" = "0" ]
+}
+
+@test "debrief_prep: no GitHub repository writes an empty prs.md; a failing gh is an unavailable source" {
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -e "$IN/prs.md" ]
+  [ ! -s "$IN/prs.md" ]
+  gh_says 1
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qxF -- '- debrief_prep: prs: gh search failed (see system/logs/inputs/2026-10-01/prep_errors.log)' "$IN/unavailable.md"
+}

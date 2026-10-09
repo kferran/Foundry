@@ -14,3 +14,5 @@ date: "{{date}}"
 ### 4. Unavailable Sources
 
 ### 5. Work Orders
+
+### 6. Delivered Today
