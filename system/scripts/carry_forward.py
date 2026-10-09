@@ -12,7 +12,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 LOOKBACK_DAYS = 30
-SINCE = re.compile(r"\s*_\(open since (\d{4}-\d{2}-\d{2})\)_\s*$")
+# The brief adds an age ("_(open since 2026-10-06, 3 days)_"); an item stamped twice keeps its earliest date (#84).
+SINCE = re.compile(r"\s*_\(open since (\d{4}-\d{2}-\d{2})(?:, \d+ days?)?\)_")
 
 
 def open_items(text: str):
@@ -36,8 +37,8 @@ def main(argv) -> int:
         if not path.is_file():
             continue
         for line in open_items(path.read_text(encoding="utf-8")):
-            m = SINCE.search(line)
-            print(f"{SINCE.sub('', line)} _(open since {m.group(1) if m else day})_")
+            since = min(SINCE.findall(line), default=day)
+            print(f"{SINCE.sub('', line).rstrip()} _(open since {since})_")
         return 0
     return 0
 
