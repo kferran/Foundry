@@ -70,8 +70,9 @@ Each line is `- [ ] <kind>: <statement> (<who>, since <date>[, <evidence>])`. `o
     ````
     You tick lines in the brief, and Dataview writes the tick to `Now.md`. The list is live, so a line the evidence check closes at 10:00 leaves the brief at 10:00. The brief no longer shows an age in days or a "stale" marker; each line keeps its `since <date>`. Without Dataview, the block shows as a code block, as `wiki/Index.md` does.
   - The 3–5 new objectives are written into `Now.md` as `owed` items, none repeating an open line, so they appear in the query. Headless, this goes through the publish gate. `brief_prep.sh` writes `now.md` (the open lines of both partitions) so the brief can check for repeats.
+  - DTCC changes and the Work Orders report's "Needs you" lines carried forward with the objectives. They now go into `Now.md` as `owed` lines too, on the page of the partition that holds the change note or the Work Order. A Work Order id stays in the statement and never becomes evidence, because the order is already finished and the check would close the line at once.
   - `carry_forward.py` and `carried.md` are retired.
-  - Once, on the first brief with no `Now.md` in a partition, that brief puts the previous brief's open objectives into it.
+  - Once, when the default partition has no `Now.md`, `brief_prep.sh` creates it from the previous brief's open objectives. Objectives carry no partition, so they all go to the default partition. A new page comes from `system/templates/now.md`.
 - **Owner:** ticks lines in Obsidian, or adds lines by hand in the same format.
 
 ### 3.4 The evidence closer
