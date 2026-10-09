@@ -398,3 +398,41 @@ codebase() {  # <name> <path>
   [ ! -e "$IN/projects.md" ]
   grep -qxF -- '- brief_prep: projects: active_projects.py failed (see system/logs/inputs/2026-10-01/prep_errors.log)' "$IN/unavailable.md"
 }
+
+# handoffs_on [rc] [line…]: handoffs_projects set, with jira_fetch.sh replaced by a stub that prints the lines
+# and exits rc (with a jira_fetch reason line on stderr when rc is not 0).
+handoffs_on() {
+  local rc="${1:-0}"
+  shift || true
+  grep -q '^handoffs_projects:' system/config.md || sed -i '$d' system/config.md
+  grep -q '^handoffs_projects:' system/config.md || printf '%s\n' 'handoffs_projects: ["EX"]' '---' >> system/config.md
+  printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/lines.md"
+  printf '#!/bin/bash\ncat "%s"\n(( %s == 0 )) || echo "jira_fetch: handoffs_site is not set" >&2\nexit %s\n' \
+    "$BATS_TEST_TMPDIR/lines.md" "$rc" "$rc" > system/scripts/jira_fetch.sh
+}
+
+@test "brief_prep: handoffs.md holds the fetch's lines; empty and unread while handoffs_projects is empty" {
+  printf '#!/bin/bash\necho ran > "%s/fetched"\n' "$BATS_TEST_TMPDIR" > system/scripts/jira_fetch.sh
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -e "$IN/handoffs.md" ]
+  [ ! -s "$IN/handoffs.md" ]
+  [ ! -e "$BATS_TEST_TMPDIR/fetched" ]
+  handoffs_on 0 '- [ ] [EX-1](https://example.atlassian.net/browse/EX-1) Fix EX-1 (Blake Sample, In Review, unchanged since 2026-09-21)'
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/handoffs.md")" = '- [ ] [EX-1](https://example.atlassian.net/browse/EX-1) Fix EX-1 (Blake Sample, In Review, unchanged since 2026-09-21)' ]
+  run grep -c handoffs "$IN/unavailable.md"
+  [ "$output" = "0" ]
+}
+
+@test "brief_prep: a failed handoffs fetch is an unavailable source and leaves handoffs.md empty" {
+  handoffs_on 2
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ ! -s "$IN/handoffs.md" ]
+  grep -qxF -- '- brief_prep: handoffs: handoffs_site is not set (set it with /setup)' "$IN/unavailable.md"
+  handoffs_on 3
+  run "$BP" 2026-10-01
+  grep -qF -- '- brief_prep: handoffs: no Atlassian connector reachable' "$IN/unavailable.md"
+}

@@ -1,6 +1,6 @@
 #!/bin/bash
-# Calendar, meeting actions, active projects and yesterday's focus stats into system/logs/inputs/<date>/ (spec §6.5; calendar
-# spec §5; meetings spec §2.5).
+# Calendar, meeting actions, active projects, handoffs and yesterday's focus stats into system/logs/inputs/<date>/ (spec §6.5;
+# calendar spec §5; meetings spec §2.5; delivered work spec §3.3).
 # Exits 0 whenever the date is valid; every source that could not be read gets a line in unavailable.md.
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
@@ -58,6 +58,23 @@ if [[ -f "system/logs/nightshift/$PREP_DATE.md" ]]; then
   prep_write nightshift.md cat "system/logs/nightshift/$PREP_DATE.md" || prep_unavailable "nightshift: report unreadable"
 else
   : > "$PREP_DIR/nightshift.md"
+fi
+# Handoffs to chase (delivered work spec §3.3): stalled Jira handoffs, read live every brief; empty while
+# handoffs_projects is empty or when the fetch failed.
+: > "$PREP_DIR/handoffs.md"
+if [[ -n "$(config_get handoffs_projects)" ]]; then
+  rc=0
+  prep_write handoffs.md system/scripts/jira_fetch.sh || rc=$?
+  case "$rc" in
+    0) ;;
+    2) prep_unavailable "handoffs: $(sed -n 's/^jira_fetch: //p' "$PREP_DIR/prep_errors.log" | tail -n 1) (set it with /setup)" ;;
+    3) prep_unavailable "handoffs: no Atlassian connector reachable (connect it at claude.ai with the account this machine's claude is logged in with, then re-run /setup)" ;;
+    4) prep_unavailable "handoffs: the Jira connector timed out" ;;
+    6) prep_unavailable "handoffs: the Jira connector returned an error (if it persists, reconnect Atlassian at claude.ai)" ;;
+    7) prep_unavailable "handoffs: the fetch session used an unexpected tool; nothing was read (see system/logs/alerts_$(date +%F).md)" ;;
+    127) prep_unavailable "handoffs: claude is not on PATH" ;;
+    *) prep_unavailable "handoffs: jira_fetch.sh failed (exit $rc; see system/logs/jira_fetch-$(date +%Y-%m).jsonl)" ;;
+  esac
 fi
 # New DTCC changes since the latest earlier briefing (DTCC watcher spec §7); empty without a map.
 prep_write dtcc.md system/scripts/dtcc_watch.py --brief "$PREP_DATE" \

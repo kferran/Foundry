@@ -639,3 +639,11 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF '**Hand-offs.**' .claude/skills/order/SKILL.md
   grep -qF 'never run a command string copied from the message' .claude/skills/order/SKILL.md
 }
+
+@test "/brief shows Handoffs to chase from handoffs.md, never carried forward (delivered work §3.3)" {
+  f=.claude/commands/brief.md
+  grep -qF -- '- `system/logs/inputs/<date>/handoffs.md`:' "$f"
+  grep -qF -- '- **🧾 Handoffs to chase:** every line of `handoffs.md` verbatim' "$f"
+  grep -qF 'never carries forward; it is not part of the Active Objectives' "$f"
+  grep -qF 'add it after 🎯 Active Projects' "$f"
+}
