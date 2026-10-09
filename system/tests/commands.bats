@@ -261,6 +261,33 @@ self_edit_contract() {
   grep -qF 'Where the skill says to cut a sentence, keep any fact it carries.' "$1"
 }
 
+@test "ingest: digest Corrections become preference notes (spec §6.21)" {
+  f=.claude/commands/ingest.md
+  grep -qF '**Preferences.**' "$f"
+  grep -qF 'wiki/<p>/preferences/<PascalCaseName>.md' "$f"
+  grep -qF 'before the first ` — `' "$f"
+  grep -qF 'Copy it verbatim into `statement`' "$f"
+  grep -qF "vault_index.py query \"SELECT path, statement, evidence FROM v_preference WHERE partition = '<p>'\"" "$f"
+  grep -qF 'already lists this digest in `evidence`' "$f"
+  grep -qF 'append `"[[<digest stem>]]"` to its `counter_evidence`' "$f"
+  grep -qF 'stage the old one with `superseded_by: "[[<New>]]"`' "$f"
+  grep -qF 'a `shared` digest gets no preference note' "$f"
+  grep -qF 'link only to `session_digest` inputs of this run' "$f"
+  grep -qF 'A preference has no `sources`' "$f"
+  grep -qF 'a `shared` digest'"'"'s other Corrections compile as facts' "$f"
+  grep -qF 'a replacement is a create plus a supersede' "$f"
+  grep -qF 'without emphasis markers (`*`, `_`) around it' "$f"
+  grep -qF 'A preference'"'"'s `statement` stays verbatim' <(grep -F '**Self-edit.**' "$f")
+  run grep -F 'Treat Corrections as facts about how the user wants things done and patch the note they concern' "$f"
+  [ "$status" -eq 1 ]
+  digest="$(grep -nF '**Digest sections.**' "$f" | cut -d: -f1)"
+  pref="$(grep -nF '**Preferences.**' "$f" | cut -d: -f1)"
+  edit="$(grep -nF '**Self-edit.**' "$f" | cut -d: -f1)"
+  [ -n "$pref" ]
+  [ "$digest" -lt "$pref" ]
+  [ "$pref" -lt "$edit" ]
+}
+
 @test "ingest self-edits its notes with humanizer before the summary" {
   f=.claude/commands/ingest.md
   self_edit_contract "$f"
