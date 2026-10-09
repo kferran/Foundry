@@ -273,6 +273,10 @@ self_edit_contract() {
   grep -qF 'stage the old one with `superseded_by: "[[<New>]]"`' "$f"
   grep -qF 'a `shared` digest gets no preference note' "$f"
   grep -qF 'link only to `session_digest` inputs of this run' "$f"
+  grep -qF 'A preference has no `sources`' "$f"
+  grep -qF 'a `shared` digest'"'"'s other Corrections compile as facts' "$f"
+  grep -qF 'a replacement is a create plus a supersede' "$f"
+  grep -qF 'without emphasis markers (`*`, `_`) around it' "$f"
   grep -qF 'A preference'"'"'s `statement` stays verbatim' <(grep -F '**Self-edit.**' "$f")
   run grep -F 'Treat Corrections as facts about how the user wants things done and patch the note they concern' "$f"
   [ "$status" -eq 1 ]
