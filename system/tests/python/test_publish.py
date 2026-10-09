@@ -108,6 +108,41 @@ def test_protected_fields(run):
     assert any("protected field accepted_at" in r for r in reasons(publish.validate_run(run, RID, now=LATER)[2]))
 
 
+DIGEST = ('---\ntype: session_digest\npartition: work\ncodebase: "vault"\nsession_id: "s-1"\n'
+          'created_at: "2026-10-01T11:00:00Z"\nprovenance: ["session"]\n---\n'
+          '## Corrections\n- Always run the gate before a push — after a red pull request\n')
+PREFERENCE = ('---\ntype: preference\nstatement: "Always run the gate before a push"\npartition: work\n'
+              'codebase: "vault"\nevidence: ["[[2026-10-01-s-1]]"]\ncreated_at: "2026-10-01"\n---\n'
+              '# Gate Before Push\n\nAfter a red pull request.\n')
+
+
+def test_a_preference_written_as_ingest_says_publishes(run):
+    """The note shape .claude/commands/ingest.md asks for (step Preferences) passes the gate."""
+    write(run, "raw/work/notes/2026-10-01-s-1.md", DIGEST)
+    stage_new(run, "wiki/work/preferences/GateBeforePush.md", PREFERENCE)
+    decide(run, rec("wiki/work/preferences/GateBeforePush.md"))
+    assert publish.validate_run(run, RID, now=LATER)[2] == []
+
+
+def test_a_shared_preference_is_rejected(run):
+    write(run, "raw/work/notes/2026-10-01-s-1.md", DIGEST)
+    stage_new(run, "wiki/shared/preferences/GateBeforePush.md", PREFERENCE.replace("partition: work", "partition: shared"))
+    decide(run, rec("wiki/shared/preferences/GateBeforePush.md"))
+    assert "schema: type 'preference' is not allowed in this folder" in reasons(publish.validate_run(run, RID, now=LATER)[2])
+
+
+def test_a_second_digest_appended_to_evidence_publishes(vault):
+    write(vault, "raw/work/notes/2026-10-01-s-1.md", DIGEST)
+    write(vault, "raw/work/notes/2026-10-02-s-2.md", DIGEST.replace('"s-1"', '"s-2"'))
+    old = write(vault, "wiki/work/preferences/GateBeforePush.md", PREFERENCE)
+    os.utime(old, (time.time() - 7200, time.time() - 7200))
+    publish.snapshot(vault, RID, ["wiki/work/**", "wiki/shared/**"])
+    dst = publish.record_stage(vault, RID, "wiki/work/preferences/GateBeforePush.md")
+    dst.write_text(dst.read_text().replace('["[[2026-10-01-s-1]]"]', '["[[2026-10-01-s-1]]", "[[2026-10-02-s-2]]"]'))
+    decide(vault, rec("wiki/work/preferences/GateBeforePush.md", "patch"))
+    assert publish.validate_run(vault, RID, now=LATER)[2] == []
+
+
 def test_conflicts(run):
     stage_new(run, "wiki/work/concepts/New.md", concept("work", "New"))
     decide(run, rec("wiki/work/concepts/New.md"))
