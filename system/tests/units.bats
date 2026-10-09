@@ -402,6 +402,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qxF "ExecStartPost=\"$VP/system/scripts/vault_sync.sh\" --post" "$UD/foundry-update.service.d/foundry-sync.conf"
   system/scripts/vault_index.py set system/config.md machine_role client > /dev/null
   run "$IU"
+  [ "$status" -eq 0 ]
   [ ! -e "$UD/foundry-update.timer" ]
 }
 

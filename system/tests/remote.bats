@@ -378,3 +378,24 @@ upstream_pr() {
   [ "$(git status --porcelain)" = '?? dirty.txt' ]
   alerts | grep -qF '[update] template update failed: working tree is not clean'
 }
+
+@test "--unattended alerts when a step after the merge fails, and names the merged changes (#87)" {
+  template_setup
+  upstream_commit system/scripts/commit_runs.py $'#!/bin/bash\nexit 3'
+  run "$UT" --unattended
+  [ "$status" -eq 1 ]
+  [ "$(git log -1 --format=%P | wc -w)" -eq 2 ]
+  alerts | grep -qF '[update] template update failed: merged upstream: system/scripts/commit_runs.py, then commit_runs.py --init-cutover failed'
+}
+
+@test "--unattended names a unit the update adds in its alert (#87)" {
+  template_setup
+  printf '#!/bin/bash\n' > "$STUBS/systemd-analyze"
+  chmod +x "$STUBS/systemd-analyze"
+  system/scripts/install_units.sh > /dev/null
+  rm "$SYSTEMD_USER_DIR"/foundry-nightshift.service "$SYSTEMD_USER_DIR"/foundry-nightshift.timer
+  upstream_commit new.txt hello
+  run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  alerts | grep -qF 'new unit available: foundry-nightshift.service, foundry-nightshift.timer (install with system/scripts/install_units.sh)'
+}
