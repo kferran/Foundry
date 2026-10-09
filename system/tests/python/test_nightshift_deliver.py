@@ -264,6 +264,15 @@ def test_protected_files_outside_the_allowed_folders_are_refused(tmp_path):
     assert files == [] and len(problems) == 3
 
 
+def test_protected_files_under_claude_without_the_dot_land_in_dot_claude(tmp_path):
+    clone = tmp_path / "c"   # a session cannot write a path with a .claude segment (#92)
+    _protected(clone, "claude/commands/x.md", "x")
+    _protected(clone, "claude/settings.json", "{}")
+    files, problems = nd.protected_files(clone)
+    assert files == [(".claude/commands/x.md", b"x")]
+    assert problems == [".claude/settings.json: only .claude/skills/, .claude/commands/, .claude/agents/ may be proposed"]
+
+
 def test_no_protected_files_keeps_the_commit(tmp_path):
     src = repo_with_commit(tmp_path / "src")
     sha = git(src, "rev-parse", "HEAD").strip()

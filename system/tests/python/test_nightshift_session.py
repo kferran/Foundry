@@ -87,4 +87,6 @@ def test_research_prompt_keeps_sources_to_wikilinks():
 
 
 def test_plan_prompt_routes_protected_files():
-    assert ".nightshift/protected/" in ss.plan_prompt({"plan": "docs/p.md", "tasks": "1-2"})
+    p = ss.plan_prompt({"plan": "docs/p.md", "tasks": "1-2"})
+    assert ".nightshift/protected/claude/<path under .claude/>" in p   # no .claude segment: a session can write it (#92)
+    assert ".nightshift/protected/.claude" not in p

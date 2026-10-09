@@ -87,7 +87,8 @@ PROTECTED_MAX = 256 * 1024
 
 def protected_files(clone) -> tuple:
     """Files the session proposed under .nightshift/protected/ for paths it cannot write (.claude/).
-    Returns ([(path, bytes)], [problem]); only regular files under PROTECTED_DIRS are accepted."""
+    Returns ([(path, bytes)], [problem]); only regular files under PROTECTED_DIRS are accepted. A session cannot
+    write a path with a .claude segment either, so it proposes claude/<path>, read as .claude/<path> (#92)."""
     root = Path(clone) / ".nightshift" / "protected"
     files, problems = [], []
     if not root.is_dir():
@@ -95,6 +96,7 @@ def protected_files(clone) -> tuple:
     real_root = os.path.realpath(root)
     for p in sorted(root.rglob("*")):
         rel = p.relative_to(root).as_posix()
+        rel = "." + rel if rel.startswith("claude/") else rel
         if p.is_symlink() or not os.path.realpath(p).startswith(real_root + os.sep):
             problems.append(f"{rel}: symlink refused")
         elif p.is_dir():
