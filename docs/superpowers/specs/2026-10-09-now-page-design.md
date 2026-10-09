@@ -17,7 +17,8 @@ A new session does not know where things stand. Open loops live in the brief's c
 - **Now replaces the brief's carried objectives.** There is one list: the brief shows Now's open items, and new objectives go into Now.
 - **Closing:** your tick, or checked evidence. In phase 1 the evidence is a pull request (merged or closed, read with `gh`) or a Work Order (done, failed or cancelled). A model never closes an item on its own judgement.
 - **Later phases:**
-  - watches on a timer, one connector at a time, on the meetings and Jira fetch pattern;
+  - **Phase 2 starts with inbox triage (#99)**, the first watch, built right after phase 1. A confined fetch every 30 minutes on workdays, in working hours, on the meetings and Jira pattern, sweeps inbox mail, chat DMs and mentions, and tickets assigned to or naming the owner. It skips bot mail unless the mail names the owner or a production case. Each item that needs the owner becomes an `owed` line in `Now.md`, with the message link as evidence and a proposed next step, and raises an alert once. Two inbound items that sat unseen on 2026-10-09 are the reason;
+  - further watches on a timer, one connector at a time;
   - a "draft was sent" check and other connector checks;
   - a dashboard.
 - **Cut:**
