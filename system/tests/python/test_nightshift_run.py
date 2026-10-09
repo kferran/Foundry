@@ -518,6 +518,24 @@ def test_research_copy_of_an_lfs_codebase_holds_the_files(env, tmp_path, monkeyp
     assert (nr._research_dir(ctx, fm) / "code" / "a.png").read_bytes() == b"PNGDATA\n"
 
 
+@pytest.mark.skipif(not shutil.which("git-lfs"), reason="git-lfs not installed")
+def test_research_reads_a_pointer_for_an_lfs_file_the_live_clone_never_downloaded(env, tmp_path, monkeypatch):
+    vault, _ = env
+    from test_nightshift_deliver import lfs_repo
+    src = lfs_repo(tmp_path / "cb" / "shop", monkeypatch)
+    (src / "b.png").write_bytes(b"NEWPNG\n")   # a commit fetched but never checked out: its object is not in the store
+    git(src, "add", "b.png")
+    git(src, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "b")
+    oid = git(src, "show", "HEAD:b.png").split("sha256:")[1].split()[0]
+    (src / ".git" / "lfs" / "objects" / oid[:2] / oid[2:4] / oid).unlink()
+    git(src, "update-ref", "refs/remotes/origin/HEAD", "HEAD")
+    write(vault, "system/codebases/shop.md", f'---\ntype: codebase\nname: "shop"\npath: "{src}"\npartition: "work"\n'
+          'search_globs: ["*"]\n---\n')
+    code = nr._research_dir(nr.Ctx(vault, NOW), {"id": "2026-10-09-q", "kind": "research", "partition": "work", "repo": "shop"}) / "code"
+    assert (code / "a.png").read_bytes() == b"PNGDATA\n"
+    assert (code / "b.png").read_text().startswith("version https://git-lfs.github.com/spec/v1")
+
+
 def test_research_reads_the_template_from_its_remote_and_needs_no_code_without_a_repo(env):
     vault, tmp = env
     ctx = nr.Ctx(vault, NOW)

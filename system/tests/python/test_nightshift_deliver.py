@@ -31,6 +31,8 @@ def lfs_repo(path: Path, monkeypatch) -> Path:
     home.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for var in ("XDG_CONFIG_HOME", "GIT_CONFIG_GLOBAL"):   # either would send git lfs install to the real config
+        monkeypatch.delenv(var, raising=False)
     subprocess.run(["git", "lfs", "install", "--skip-repo"], check=True, capture_output=True)
     path.mkdir(parents=True)
     git(path, "init", "-q", "-b", "master")

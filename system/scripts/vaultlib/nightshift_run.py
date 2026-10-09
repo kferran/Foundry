@@ -238,8 +238,9 @@ def _research_code(ctx: Ctx, fm: dict, code: Path) -> None:
     sha = mark.read_text().strip() if mark.is_file() else ""
     repo, base = fm["repo"], fm.get("base")
     src = None if repo == "template" else nc.source(ctx.vault, repo)
-    # LFS files come from the live clone's store for the checkout only: the copy keeps no link to it (#83).
-    lfs = ["-c", f"lfs.storage={store}"] if (store := nc.lfs_store(src)) else []
+    # LFS files come from the live clone's store for the checkout only: the copy keeps no link to it (#83). A file
+    # whose object the live clone never downloaded stays a pointer: research reads code, not binaries.
+    lfs = ["-c", f"lfs.storage={store}", "-c", "lfs.skipdownloaderrors=true"] if (store := nc.lfs_store(src)) else []
     if sha and code.is_dir() and nc.git(code, *lfs, "checkout", "-q", "-f", "--detach", sha).returncode == 0:
         return
     shutil.rmtree(code, ignore_errors=True)   # half-built by a killed tick, or never built
@@ -440,7 +441,7 @@ def _deliver_plan(ctx: Ctx, fm: dict, clone: Path, idir: Path, before: dict) -> 
     if not ok:
         return {"state": "failed", "reason": "delivery", "notes": sha}
     ok, out = nd.verify_sha(runner, sha, ctx.workspace / f"nightshift-{fm['id']}-verify", fm.get("verify") or [],
-                            idir / "verify.log", nc.lfs_store(None if fm["repo"] == "template" else src))
+                            idir / "verify.log", nc.lfs_store(src))
     if not ok:
         return {"state": "blocked", "reason": "verify", "needs": [f"Fix the failing check: {out.splitlines()[0]}"]}
     (idir / "delivery.json").write_text(json.dumps({"sha": sha, "branch": branch, "title": _text(res.get("pr_title")) or fm["id"],

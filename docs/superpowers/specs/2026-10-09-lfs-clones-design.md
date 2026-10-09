@@ -20,7 +20,8 @@ Two research items on such a codebase failed with reason `base` on the night of 
 
 Both failing checkouts read LFS objects from the live clone's store, given for that one command: `git -c lfs.storage=<store> checkout …`, where `<store>` is `<git common dir>/lfs` of the codebase's registered path (`nightshift_check.lfs_store(src)`). Nothing is written to the copy's config, so it keeps no link to the live clone.
 
-- **Research copy:** `_research_code`'s checkouts (the first one and a resumed attempt's `checkout -f`) for a registered codebase. A template copy is unchanged.
+- **Research copy:** `_research_code`'s checkouts (the first one and a resumed attempt's `checkout -f`) for a registered codebase, also with `-c lfs.skipdownloaderrors=true`: a file whose object the live clone never downloaded (a commit fetched but never checked out) stays a pointer file. Research reads code, so a pointer is enough. A template copy is unchanged.
+- git-lfs may leave an empty `lfs/tmp` folder (and, after a failed checkout, a log) in the live clone's store. It writes no objects there.
 - **Verify checkout:** `verify_sha` takes the store as an optional argument; `_deliver_plan` passes it for a registered codebase.
 
 A plan that adds or changes an LFS file finds no object for it in the live clone's store, so its verify checkout fails and the item blocks with git-lfs's error. Uploading new LFS objects is left out until a Work Order needs it.
