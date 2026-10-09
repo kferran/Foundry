@@ -15,6 +15,7 @@ A new session does not know where things stand. Open loops live in the brief's c
 - **One `Now.md` checklist per partition** (`work`, `personal`), at `wiki/<partition>/Now.md`, not one note per item. It moves to per-item notes only if parallel edits ever conflict.
 - **Three kinds:** `owed` (you owe it), `waiting` (someone owes you), `draft` (a message not yet sent).
 - **Now replaces the brief's carried objectives.** There is one list: the brief shows Now's open items, and new objectives go into Now.
+- **You tick in the brief.** The brief shows Now through a Dataview `TASK` query, so a tick in the brief changes `Now.md`. You never have to open the Now page. If the tick does not reach `Now.md`, the fallback is one Obsidian embed per partition and section.
 - **Closing:** your tick, or checked evidence. In phase 1 the evidence is a pull request (merged or closed, read with `gh`) or a Work Order (done, failed or cancelled). A model never closes an item on its own judgement.
 - **Later phases:**
   - **Phase 2 starts with inbox triage (#99)**, the first watch, built right after phase 1. A confined fetch every 30 minutes on workdays, in working hours, on the meetings and Jira pattern, sweeps inbox mail, chat DMs and mentions, and tickets assigned to or naming the owner. It skips bot mail unless the mail names the owner or a production case. Each item that needs the owner becomes an `owed` line in `Now.md`, with the message link as evidence and a proposed next step, and raises an alert once. Two inbound items that sat unseen on 2026-10-09 are the reason;
@@ -43,7 +44,7 @@ A new session does not know where things stand. Open loops live in the brief's c
 - [ ] waiting: Access to the staging logs (Blake Sample, since 2026-10-07, EX-12)
 ```
 
-Each line is `- [ ] <kind>: <statement> (<who>, since <date>[, <evidence>])`. `owed` and `draft` go under Needs you, and `waiting` goes under Waiting. You close a line by ticking it (`[x]`), or drop it with `[-]`, as with brief objectives. A checked close appends `_(closed: <how> <date>)_`. A ticked or dropped line stays 7 days, then the next write removes it.
+Each line is `- [ ] <kind>: <statement> (<who>, since <date>[, <evidence>])`. `owed` and `draft` go under Needs you, and `waiting` goes under Waiting. You close a line by ticking it (`[x]`), or drop it with `[-]`, as with brief objectives. A checked close appends `_(closed: <how> <date>)_`. A tick by hand carries no date, so each `now.py` write first stamps every ticked or dropped line that has no stamp with `_(closed: ticked <date>)_`. A line stays 7 days after its stamp, then the next write removes it.
 
 ### 3.2 The writer: `system/scripts/now.py`
 
@@ -58,8 +59,17 @@ Each line is `- [ ] <kind>: <statement> (<who>, since <date>[, <evidence>])`. `o
 - **Sessions (CLAUDE.md rule):** when something becomes owed, waiting or an unsent draft, record it with `now.py add`. Before calling anything unsent or still waiting, check its evidence.
 - **SessionStart recall:** loads the open lines of the session partition's `Now.md` first, before digests, untruncated. When the budget is short, digests are cut first.
 - **The brief:**
-  - The "Carried forward" block becomes **From Now**: the open lines of both partitions' `Now.md`, as plain bullets with their age. You tick on the Now page, as with project actions.
-  - The 3–5 new objectives are written into `Now.md` as `owed` items. Headless, this goes through the publish gate.
+  - The "Carried forward" block and the **New objectives** checkboxes become one **From Now** block: a Dataview `TASK` query over both partitions' `Now.md`, open lines only, grouped by section:
+    ````
+    ```dataview
+    TASK
+    FROM "wiki/work/Now" OR "wiki/personal/Now"
+    WHERE !completed AND status != "-"
+    GROUP BY section
+    ```
+    ````
+    You tick lines in the brief, and Dataview writes the tick to `Now.md`. The list is live, so a line the evidence check closes at 10:00 leaves the brief at 10:00. The brief no longer shows an age in days or a "stale" marker; each line keeps its `since <date>`. Without Dataview, the block shows as a code block, as `wiki/Index.md` does.
+  - The 3–5 new objectives are written into `Now.md` as `owed` items, none repeating an open line, so they appear in the query. Headless, this goes through the publish gate. `brief_prep.sh` writes `now.md` (the open lines of both partitions) so the brief can check for repeats.
   - `carry_forward.py` and `carried.md` are retired.
   - Once, on the first brief with no `Now.md` in a partition, that brief puts the previous brief's open objectives into it.
 - **Owner:** ticks lines in Obsidian, or adds lines by hand in the same format.
@@ -77,15 +87,17 @@ A failed check (no `gh`, a network error) leaves the line open and is logged. Th
 - **pytest (`now.py`):**
   - add: section, format, idempotency, `shared` refused, page created;
   - list;
-  - prune after 7 days;
+  - stamp a hand tick or drop with no date; prune 7 days after the stamp;
   - check: PR merged, closed or open, Work Order done or running, `gh` missing; the lock.
 - **pytest (recall):** Now's open lines come first and untruncated, and the digests are cut first.
 - **bats:**
   - `brief_prep.sh` writes `now.md` (open lines of both partitions) in place of `carried.md`;
-  - the brief, CLAUDE.md and setup text;
+  - the brief text carries the From Now query, and CLAUDE.md and setup text;
   - the intake path calls `now.py check`.
 
 Every test fails before the change. Bound tools: pytest, bats (`prep.bats`, `commands.bats`, `memory.bats`) and the gate.
+
+**Manual check before merge:** no test can drive Obsidian, so the owner opens a scratch brief with the From Now query, ticks one line, and confirms `Now.md` changed. If it did not, the plan switches the block to embeds before the PR.
 
 ## 5. Rollout
 
