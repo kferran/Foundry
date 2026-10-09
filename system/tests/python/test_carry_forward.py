@@ -31,6 +31,16 @@ def test_open_items_carry_with_their_first_date(vault):
     ]
 
 
+def test_a_stamp_with_an_age_keeps_its_date_and_two_stamps_keep_the_earlier(vault):
+    write(vault, "briefings/2026-10-08.md", briefing(   # the brief adds the age; #84
+        "- [ ] **Aged** _(open since 2026-10-06, 2 days)_\n"
+        "- [ ] **Doubled** _(open since 2026-10-06, 1 day)_ _(open since 2026-10-07)_\n"))
+    assert run(vault, "2026-10-09").stdout.splitlines() == [
+        "- [ ] **Aged** _(open since 2026-10-06)_",
+        "- [ ] **Doubled** _(open since 2026-10-06)_",
+    ]
+
+
 def test_skipped_days_look_further_back_and_debriefs_are_ignored(vault):
     write(vault, "briefings/2026-10-03.md", briefing("- [ ] **Friday item**\n"))
     write(vault, "briefings/2026-10-05.debrief.md", "- [ ] not an objective\n")
