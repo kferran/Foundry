@@ -49,6 +49,12 @@ def git(repo, *args) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
 
 
+def lfs_store(src) -> str:
+    """The live clone's Git LFS object store, which the runner's own checkouts read (#83), or ""."""
+    d = git(src, "rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip() if src else ""
+    return f"{d}/lfs" if d else ""
+
+
 def remote_git(url: str) -> tuple:
     """git -c options and environment for talking to a remote: no prompts; the gh credential helper for GitHub HTTPS."""
     env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_TERMINAL_PROMPT="0", GIT_SSH_COMMAND="ssh -o BatchMode=yes")

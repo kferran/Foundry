@@ -501,6 +501,23 @@ def test_research_code_half_built_or_moved_is_rebuilt_at_the_recorded_commit(env
     assert (code / "app.py").read_text() == "print(1)\n"
 
 
+@pytest.mark.skipif(not shutil.which("git-lfs"), reason="git-lfs not installed")
+def test_research_copy_of_an_lfs_codebase_holds_the_files(env, tmp_path, monkeypatch):
+    vault, _ = env
+    from test_nightshift_deliver import lfs_repo
+    src = lfs_repo(tmp_path / "cb" / "shop", monkeypatch)
+    git(src, "update-ref", "refs/remotes/origin/HEAD", "HEAD")   # research reads the remote's default branch
+    write(vault, "system/codebases/shop.md", f'---\ntype: codebase\nname: "shop"\npath: "{src}"\npartition: "work"\n'
+          'search_globs: ["*"]\n---\n')
+    ctx = nr.Ctx(vault, NOW)
+    fm = {"id": "2026-10-09-q", "kind": "research", "partition": "work", "repo": "shop"}
+    code = nr._research_dir(ctx, fm) / "code"
+    assert (code / "a.png").read_bytes() == b"PNGDATA\n"
+    assert "lfs.storage" not in git(code, "config", "--list", "--local")   # no link to the live clone (#77)
+    (code / "a.png").unlink()   # a resumed attempt checks the copy out again
+    assert (nr._research_dir(ctx, fm) / "code" / "a.png").read_bytes() == b"PNGDATA\n"
+
+
 def test_research_reads_the_template_from_its_remote_and_needs_no_code_without_a_repo(env):
     vault, tmp = env
     ctx = nr.Ctx(vault, NOW)

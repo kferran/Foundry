@@ -139,14 +139,16 @@ def apply_protected(runner_repo, sha: str, branch: str, files, workdir) -> tuple
     return True, new
 
 
-def verify_sha(runner_repo, sha: str, vdir, cmds, log_path) -> tuple:
-    """Run the verify commands on a private checkout of sha, so nothing they do reaches the commit that is pushed."""
+def verify_sha(runner_repo, sha: str, vdir, cmds, log_path, lfs_store: str = "") -> tuple:
+    """Run the verify commands on a private checkout of sha, so nothing they do reaches the commit that is pushed.
+    LFS files come from lfs_store, the live clone's store (#83): the runner's repository holds none."""
     vdir = Path(vdir)
     shutil.rmtree(vdir, ignore_errors=True)
+    lfs = ["-c", f"lfs.storage={lfs_store}"] if lfs_store else []
     try:
         subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", str(runner_repo), str(vdir)], check=True,
                        capture_output=True, env=_git_env())
-        subprocess.run(["git", "-C", str(vdir), "-c", "advice.detachedHead=false", "checkout", "-q", "--detach", sha],
+        subprocess.run(["git", "-C", str(vdir), "-c", "advice.detachedHead=false", *lfs, "checkout", "-q", "--detach", sha],
                        check=True, capture_output=True, env=_git_env())
         return run_verify(vdir, cmds, log_path)
     finally:

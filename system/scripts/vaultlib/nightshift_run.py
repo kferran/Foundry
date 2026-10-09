@@ -236,15 +236,17 @@ def _research_code(ctx: Ctx, fm: dict, code: Path) -> None:
     the commit in the run directory; a resumed attempt checks it out again, and rebuilds code/ when it cannot."""
     mark = rep.item_dir(ctx.vault, fm["id"]) / "code-commit"
     sha = mark.read_text().strip() if mark.is_file() else ""
-    if sha and code.is_dir() and nc.git(code, "checkout", "-q", "-f", "--detach", sha).returncode == 0:
+    repo, base = fm["repo"], fm.get("base")
+    src = None if repo == "template" else nc.source(ctx.vault, repo)
+    # LFS files come from the live clone's store for the checkout only: the copy keeps no link to it (#83).
+    lfs = ["-c", f"lfs.storage={store}"] if (store := nc.lfs_store(src)) else []
+    if sha and code.is_dir() and nc.git(code, *lfs, "checkout", "-q", "-f", "--detach", sha).returncode == 0:
         return
     shutil.rmtree(code, ignore_errors=True)   # half-built by a killed tick, or never built
-    repo, base = fm["repo"], fm.get("base")
     if repo == "template":   # from the template remote, never the vault
         url = str(nc.config(ctx.vault).get("template_remote") or "")
         where = f"fetch {base or 'HEAD'} from {nc.shown(url)}"
     else:
-        src = nc.source(ctx.vault, repo)
         url, sha = str(src or ""), sha or (nc.research_base(src, base) if src else "")
         where = f"{base or 'origin/HEAD'} in {src}"
     r = subprocess.run(["git", "init", "-q", str(code)], capture_output=True, text=True)
@@ -256,7 +258,7 @@ def _research_code(ctx: Ctx, fm: dict, code: Path) -> None:
         except ValueError as exc:
             r = subprocess.CompletedProcess([], 2, "", str(exc))
     if r.returncode == 0:
-        r = nc.git(code, "checkout", "-q", "--detach", "refs/remotes/base")
+        r = nc.git(code, *lfs, "checkout", "-q", "--detach", "refs/remotes/base")
     if r.returncode:
         shutil.rmtree(code, ignore_errors=True)   # the next attempt starts again
         raise CloneError(f"{where}: {(r.stderr.strip().splitlines() or ['no error text'])[-1]}")
@@ -438,7 +440,7 @@ def _deliver_plan(ctx: Ctx, fm: dict, clone: Path, idir: Path, before: dict) -> 
     if not ok:
         return {"state": "failed", "reason": "delivery", "notes": sha}
     ok, out = nd.verify_sha(runner, sha, ctx.workspace / f"nightshift-{fm['id']}-verify", fm.get("verify") or [],
-                            idir / "verify.log")
+                            idir / "verify.log", nc.lfs_store(None if fm["repo"] == "template" else src))
     if not ok:
         return {"state": "blocked", "reason": "verify", "needs": [f"Fix the failing check: {out.splitlines()[0]}"]}
     (idir / "delivery.json").write_text(json.dumps({"sha": sha, "branch": branch, "title": _text(res.get("pr_title")) or fm["id"],

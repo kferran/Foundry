@@ -22,6 +22,37 @@ def repo_with_commit(path: Path) -> Path:
     return path
 
 
+LFS = pytest.mark.skipif(not shutil.which("git-lfs"), reason="git-lfs not installed")
+
+
+def lfs_repo(path: Path, monkeypatch) -> Path:
+    """A repository whose a.png is in Git LFS, under a temporary HOME so the user's git config is untouched (#83)."""
+    home = path.parent / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    subprocess.run(["git", "lfs", "install", "--skip-repo"], check=True, capture_output=True)
+    path.mkdir(parents=True)
+    git(path, "init", "-q", "-b", "master")
+    git(path, "lfs", "track", "*.png")
+    (path / "a.png").write_bytes(b"PNGDATA\n")
+    git(path, "add", ".")
+    git(path, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "a")
+    return path
+
+
+@LFS
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_verify_reads_lfs_files_from_the_live_clone(tmp_path, monkeypatch):
+    src = lfs_repo(tmp_path / "src", monkeypatch)
+    sha = git(src, "rev-parse", "HEAD").strip()
+    runner = tmp_path / "runner.git"
+    assert nd.fetch_branch(runner, src, "master") == (True, sha)
+    ok, out = nd.verify_sha(runner, sha, tmp_path / "vdir", ["grep -q PNGDATA a.png"], tmp_path / "v.log",
+                            lfs_store=str(src / ".git" / "lfs"))
+    assert ok, out
+
+
 def test_protected_refs(tmp_path):
     r = repo_with_commit(tmp_path / "r")
     assert list(nd.protected_refs(r)) == ["refs/heads/master"]
