@@ -158,3 +158,40 @@ def test_digest_sections_handles_bold_headings():
     assert "Shipped it." in text
     assert "Ship more." in text
     assert "Used X." not in text
+
+
+def now_page(vault, partition, lines):
+    write(vault, f"wiki/{partition}/Now.md",
+          f'---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-09"\npartition: {partition}\n---\n# Now\n\n'
+          "## Needs you\n" + "".join(f"{line}\n" for line in lines) + "\n## Waiting\n")
+
+
+def test_now_lines_come_first_and_only_the_session_partitions(cli, vault):
+    config(vault, "personal")
+    digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00")
+    now_page(vault, "personal", ["- [ ] owed: Mine (since 2026-10-09)", "- [x] owed: Done (since 2026-10-01)"])
+    now_page(vault, "work", ["- [ ] owed: Work only (since 2026-10-09)"])
+    out = cli("recall", "--cwd", str(vault)).stdout
+    assert "### Now (open loops)\n- [ ] owed: Mine (since 2026-10-09)\n" in out
+    assert out.index("### Now") < out.index("### Recent session digests")
+    assert "Done" not in out
+    assert "Work only" not in out
+
+
+def test_digests_are_cut_before_now_lines(cli, vault):
+    config(vault)
+    lines = [f"- [ ] owed: Item {i} with some words to fill the line (since 2026-10-09)" for i in range(20)]
+    now_page(vault, "personal", lines)
+    digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00", body="## Outcome\n" + "word " * 1500)
+    out = cli("recall", "--cwd", str(vault), "--budget-chars", "2500").stdout
+    assert len(out) <= 2500
+    assert lines[-1] in out
+    assert "…[truncated]" in out
+
+
+def test_now_alone_over_budget_is_truncated_with_a_marker(cli, vault):
+    config(vault)
+    now_page(vault, "personal", [f"- [ ] owed: Item {i} (since 2026-10-09)" for i in range(200)])
+    out = cli("recall", "--cwd", str(vault), "--budget-chars", "1500").stdout
+    assert len(out) <= 1500
+    assert out.endswith("…[truncated]\n")

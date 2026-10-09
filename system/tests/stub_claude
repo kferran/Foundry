@@ -15,6 +15,11 @@ case "${STUB_MODE:-write}" in
   brief)
     mkdir -p "$s/briefings"
     printf -- '---\ntype: briefing\ndate: "%s"\n---\n# Brief\n' "$(date +%F)" > "$s/briefings/$(date +%F).md" ;;
+  brief_now)  # a brief that also adds a new objective to the work Now page
+    mkdir -p "$s/briefings" "$s/wiki/work"
+    printf -- '---\ntype: briefing\ndate: "%s"\n---\n# Brief\n' "$(date +%F)" > "$s/briefings/$(date +%F).md"
+    printf -- '---\ntype: concept\ntags: [now]\ncompiled_at: "%s"\npartition: work\n---\n# Now\n\n## Needs you\n- [ ] owed: New objective (since %s)\n\n## Waiting\n' \
+      "$(date +%F)" "$(date +%F)" > "$s/wiki/work/Now.md" ;;
   nothing) ;;
   fail) exit 1 ;;
   fail2) exit 2 ;;

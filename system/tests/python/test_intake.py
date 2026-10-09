@@ -1,3 +1,4 @@
+import fcntl
 import json
 import os
 import shutil
@@ -432,3 +433,21 @@ def test_archive_rename_failure_does_not_double_ingest(iv, monkeypatch):
     assert len(calls(iv)) == 1
     assert not (iv / "raw/inbox/a.md").exists()
     assert any(p.name.startswith("a-dup-") for p in (iv / "raw/archive").iterdir())
+
+
+def test_each_intake_tick_closes_now_lines_on_finished_work_orders(iv):
+    write(iv, "raw/work/nightshift/2026-10-08-x.md",
+          '---\ntype: "nightshift_item"\nid: "2026-10-08-x"\npartition: "work"\nkind: "plan"\nstate: "done"\n---\n')
+    write(iv, "wiki/work/Now.md", '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-08"\npartition: work\n---\n'
+          "# Now\n\n## Needs you\n\n## Waiting\n- [ ] waiting: X runs (since 2026-10-08, 2026-10-08-x)\n")
+    Intake(iv, now=later()).run()
+    assert f"_(closed: Work Order done {today()})_" in (iv / "wiki/work/Now.md").read_text()
+
+
+def test_a_busy_run_lock_skips_the_now_check(iv):
+    write(iv, "wiki/work/Now.md", '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-08"\npartition: work\n---\n'
+          "# Now\n\n## Needs you\n- [x] owed: A (since 2026-10-08)\n\n## Waiting\n")
+    with open(iv / "system/run.lock", "a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        Intake(iv, now=later()).check_now()
+    assert "_(closed:" not in (iv / "wiki/work/Now.md").read_text()

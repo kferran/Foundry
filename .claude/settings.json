@@ -5,6 +5,8 @@
       "Edit(/wiki/**)", "Edit(/briefings/**)",
       "Bash(system/scripts/brief_prep.sh:*)",
       "Bash(system/scripts/debrief_prep.sh:*)",
+      "Bash(system/scripts/now.py add:*)",
+      "Bash(system/scripts/now.py list:*)",
       "Bash(system/scripts/lint_vault.sh:*)",
       "Bash(system/scripts/vault_index.py query:*)",
       "Bash(system/scripts/vault_index.py related:*)",

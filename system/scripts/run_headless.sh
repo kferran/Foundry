@@ -145,7 +145,7 @@ fi
 run_id="$RUN_TS-$cmd-$(od -An -N2 -tx1 /dev/urandom | tr -d ' \n')"
 case "$cmd" in
   ingest) if [[ "$partition" == shared ]]; then targets=("wiki/shared/**"); else targets=("wiki/$partition/**" "wiki/shared/**"); fi ;;
-  brief) targets=("briefings/$TODAY.md") ;;
+  brief) targets=("briefings/$TODAY.md" "wiki/work/Now.md" "wiki/personal/Now.md") ;;  # new objectives go to Now
   debrief) targets=("briefings/$TODAY.debrief.md") ;;
 esac
 started="$(date -Iseconds)"

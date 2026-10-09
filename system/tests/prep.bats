@@ -262,20 +262,26 @@ codebase() {  # <name> <path>
   grep -qxF -- '- brief_prep: telemetry: a source failed (see system/logs/telemetry-2026-10.jsonl)' "$IN/unavailable.md"
 }
 
-@test "brief_prep: open objectives from the latest earlier briefing land in carried.md" {
+@test "brief_prep: the first run seeds the default partition's Now page from the previous brief, and now.md lists it" {
   mkdir -p briefings
   printf -- '---\ntype: briefing\n---\n### 1. Active Objectives\n- [ ] **Open item**\n- [x] **Done item**\n### 2. Unavailable Sources\n' > briefings/2026-09-29.md
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
-  [ "$(cat "$IN/carried.md")" = "- [ ] **Open item** _(open since 2026-09-29)_" ]
+  [ "$(cat "$IN/now.md")" = "$(printf '## personal\n- [ ] owed: **Open item** (since 2026-09-29)')" ]
+  [ ! -e "$IN/carried.md" ]
+  printf -- '- [ ] **Later item**\n' >> briefings/2026-09-29.md
+  run "$BP" 2026-10-01
+  run grep -c 'Later item' wiki/personal/Now.md
+  [ "$output" = "0" ]
 }
 
-@test "brief_prep: no earlier briefing writes an empty carried.md and no unavailable line" {
+@test "brief_prep: no earlier briefing writes an empty now.md and no unavailable line" {
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
-  [ -f "$IN/carried.md" ]
-  [ ! -s "$IN/carried.md" ]
-  run grep -c 'carried' "$IN/unavailable.md"
+  [ -f "$IN/now.md" ]
+  [ ! -s "$IN/now.md" ]
+  [ -f wiki/personal/Now.md ]
+  run grep -c 'now' "$IN/unavailable.md"
   [ "$output" = "0" ]
 }
 

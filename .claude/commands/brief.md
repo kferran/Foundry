@@ -9,7 +9,7 @@ $ARGUMENTS
 
 ## Mode
 
-- **Headless run.** The line above is a run id (`YYYYmmddTHHMMSS-brief-xxxx`); the date is its first 8 digits as `YYYY-MM-DD`. Write only `wiki/.staging/<run_id>/briefings/<date>.md`. Use Read, Glob and Grep and the `system/scripts/vault_index.py` read commands only: never run prep scripts, `git` or anything that needs the network.
+- **Headless run.** The line above is a run id (`YYYYmmddTHHMMSS-brief-xxxx`); the date is its first 8 digits as `YYYY-MM-DD`. Write only `wiki/.staging/<run_id>/briefings/<date>.md` and the Now pages `wiki/.staging/<run_id>/wiki/<partition>/Now.md` (see **Add to Now**). Use Read, Glob and Grep and the `system/scripts/vault_index.py` read commands only: never run prep scripts, `git` or anything that needs the network.
 - **Interactive run.** The line is empty (meaning today: run `date +%F`) or a date. Edit `briefings/<date>.md` directly. If `system/logs/inputs/<date>/` does not exist, run `system/scripts/brief_prep.sh <date>` first, with a Bash timeout of at least 300000 ms (it fetches the calendar from the connector).
 - **Headless tool rules.** Bash runs only `system/scripts/vault_index.py` commands, one per call, exactly as shown: no `cd`, loops, `;`, `&&`, pipes or redirects, or the call is denied. Create files with Write (it makes missing directories) and change them with Edit. If a call is denied, carry on with what you have and still write your output: a run that writes nothing fails.
 
@@ -25,7 +25,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - `system/logs/inputs/<date>/actions.md`: open action items from meeting notes, in three sections: **Yours**, **Waiting on** (everyone else's, by owner) and **Notices** (meetings cut short, quarantined meeting sources, archived duplicates).
 - `system/logs/inputs/<date>/projects.md`: active projects from `wiki/<partition>/ActiveProjects.md`, in priority order, each with its next open actions (**Next:**) and the open decisions waiting on the user (**Decisions waiting:**), plus **Notices** for list entries that could not be read. Headless runs read this file and never open project pages.
 - `system/logs/inputs/<date>/unavailable.md`: sources the prep script could not read.
-- `system/logs/inputs/<date>/carried.md`: open objectives carried from the latest earlier briefing, one `- [ ] … _(open since YYYY-MM-DD)_` line each (empty when nothing is open).
+- `system/logs/inputs/<date>/now.md`: the open lines of `wiki/work/Now.md` and `wiki/personal/Now.md`, under `## work` and `## personal`, one `- [ ] <kind>: <statement> (<who>, since <date>[, <evidence>])` line each (empty when nothing is open).
 - `system/logs/inputs/<date>/dtcc.md`: new DTCC changes since the latest earlier briefing, one `- [ ] DTCC: …` line each (empty when the vault has no DTCC map or nothing changed).
 - `system/logs/inputs/<date>/nightshift.md`: the Work Orders report for this morning (empty when nothing ran).
 - `system/logs/inputs/<date>/handoffs.md`: Jira tickets you reported that someone else holds, open with no status-category change for 7 days, one `- [ ] ` line each, oldest first (empty when handoffs are off, none are stalled, or the fetch failed).
@@ -39,7 +39,22 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 
 - If `briefings/<date>.md` exists: headless, run `system/scripts/vault_index.py stage briefings/<date>.md <run_id>` and Edit `wiki/.staging/<run_id>/briefings/<date>.md`; interactive, edit the file. Update the sections below and keep everything the user wrote. Never edit the **📝 Notes** section: it holds the user's notes for the day.
 - Otherwise create it from `system/templates/daily-briefing.md`: replace `{{date}}`, set `{{status}}` to `active`, and fill `{{brief_time}}` and `{{debrief_time}}` from config. Keep the `![[<date>.debrief]]` line.
-- **🌅 Morning Alignment → Active Objectives:** today's fixed commitments from the calendar, then **Carried forward**: every line of `carried.md` verbatim, in its order, with its age in days after the date ("_(open since 2026-10-06, 3 days)_"), and "**stale**" before the item when it is 7 or more days old; omit the heading when `carried.md` is empty. Then **DTCC changes**: every line of `dtcc.md` verbatim, in its order; omit the heading when `dtcc.md` is empty. These lines are not among the 3–5 new objectives. Then **Work Orders**: every `- [ ] ` line under "## Needs you" in `nightshift.md`, verbatim; omit the heading when there are none. Then **New objectives**: 3–5 objectives as `- [ ] ` checkboxes, none repeating a carried item. The user ticks `[x]` when done or `[-]` to drop; ticked items do not carry. Tie each to a superpower from config where one fits, and hand each concrete slice to a capability: one of the `capability` values in `system/schemas/concept.md` (the Workcell that declares it does the work). Then list your open meeting actions from `actions.md` (**Yours**) with their meeting links and days open, and then a **Waiting on** block with everyone else's, by owner.
+- **🌅 Morning Alignment → Active Objectives:** today's fixed commitments from the calendar, then **From Now**: this Dataview block, verbatim. It lists the open lines of both Now pages live, and the user ticks them here (`[x]` done, `[-]` dropped); the tick lands on the Now page.
+
+  ```dataview
+  TASK
+  FROM "wiki/work/Now" OR "wiki/personal/Now"
+  WHERE !completed AND status != "-"
+  GROUP BY section
+  ```
+
+  Then list your open meeting actions from `actions.md` (**Yours**) with their meeting links and days open, and then a **Waiting on** block with everyone else's, by owner.
+- **Add to Now:** these become `owed` lines on a Now page, each `- [ ] owed: <statement> (since <date>)`, none repeating an open line in `now.md`:
+  - every line of `dtcc.md`, without its `- [ ] `, on the page of the partition whose `wiki/<partition>/changes/` holds its note;
+  - every `- [ ] ` line under "## Needs you" in `nightshift.md`, without its `- [ ] `, on the page of the partition whose `raw/<partition>/nightshift/` holds that Work Order (its id is in the line's parentheses). The id stays in the statement and never goes after the date: a line whose evidence is a finished Work Order closes itself;
+  - **New objectives**: 3–5 objectives, on the page of the partition the work belongs to (`default_partition` from config when it is unclear). Tie each to a superpower from config where one fits, and hand each concrete slice to a capability: one of the `capability` values in `system/schemas/concept.md` (the Workcell that declares it does the work).
+
+  Never link or copy `work` content into the `personal` page or the reverse. Interactive: run `system/scripts/now.py add --partition <partition> --kind owed --statement "<statement>"` once per line (it skips a repeat). Headless: when `wiki/<partition>/Now.md` exists, run `system/scripts/vault_index.py stage wiki/<partition>/Now.md <run_id>`, then Edit `wiki/.staging/<run_id>/wiki/<partition>/Now.md` and add each line at the end of its `## Needs you` section, changing and removing nothing else. When it does not exist, Write that staged file as `system/templates/now.md` with `{{date}}` and `{{partition}}` filled, and the lines under `## Needs you`.
 - **🌅 Morning Alignment → Unavailable Sources:** one bullet per missing source, or "None."
 - **🎯 Active Projects:** copy each project block from `projects.md` in its order: the project heading with its link and focus, then its `Next:` and `Decisions waiting:` items as plain `- ` bullets, never `- [ ] ` (the user ticks them on the project page). Write "None." when `projects.md` says None. When an existing briefing has no 🎯 Active Projects section, add it before the Friction Matrix. A new objective may name a project action and link the project page, but never repeats the action's text as its own checkbox.
 - **🧾 Handoffs to chase:** every line of `handoffs.md` verbatim, in its order. Omit the section when `handoffs.md` is empty. The list is rebuilt from Jira every brief and never carries forward; it is not part of the Active Objectives. When an existing briefing has no 🧾 Handoffs to chase section and `handoffs.md` is not empty, add it after 🎯 Active Projects.

@@ -4,7 +4,7 @@ import re
 import sqlite3
 from pathlib import Path
 
-from . import frontmatter
+from . import frontmatter, now
 from .index import Index
 
 HARD_CAP = 9500
@@ -87,6 +87,12 @@ def build(vault, scope, budget, workcell_session=False) -> str:
     if len(head) > budget:
         return ""
     out = head
+    # The partition's open Now lines come first and whole; digests take what is left (Now page spec §3.3).
+    lines = now.open_lines(now.read(vault, partition)) if partition in now.PARTITIONS else []
+    if lines:
+        block = "\n### Now (open loops)\n" + "\n".join(lines) + "\n"
+        marker = "\n…[truncated]\n"
+        out += block if len(out) + len(block) <= budget else block[: budget - len(out) - len(marker)] + marker
     conn = _open_index(vault)
     if conn is None:
         return out

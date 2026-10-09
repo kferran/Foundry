@@ -552,12 +552,26 @@ self_edit_contract() {
   grep -qF 'skip phases 3, 6, 6a and 9' ".claude/commands/setup.md"
 }
 
-@test "/brief carries open objectives forward as checkboxes with their age" {
+@test "/brief shows From Now as a Dataview query and adds its new lines to the Now pages (Now page spec §3.3)" {
   f=.claude/commands/brief.md
-  grep -qF 'carried.md' "$f"
-  grep -qF '**Carried forward**' "$f"
-  grep -qF 'stale' "$f"
-  grep -qF '`- [ ] ` checkboxes' "$f"
+  grep -qF 'system/logs/inputs/<date>/now.md' "$f"
+  grep -qF '**From Now**: this Dataview block, verbatim' "$f"
+  grep -qxF '  FROM "wiki/work/Now" OR "wiki/personal/Now"' "$f"
+  grep -qxF '  WHERE !completed AND status != "-"' "$f"
+  grep -qF 'system/scripts/now.py add --partition <partition> --kind owed' "$f"
+  grep -qF 'system/scripts/vault_index.py stage wiki/<partition>/Now.md <run_id>' "$f"
+  grep -qF 'never goes after the date' "$f"
+  run grep -nE 'carried|Carried forward|stale' "$f"
+  [ "$status" -eq 1 ]
+  grep -qF 'tick [x] when done or [-] to drop. The tick lands on the Now page.' system/templates/daily-briefing.md
+}
+
+@test "CLAUDE.md and the settings let sessions record Now lines (Now page spec §3.2)" {
+  grep -qF 'system/scripts/now.py add --partition <work|personal> --kind <owed|waiting|draft>' CLAUDE.md
+  grep -qF 'Before calling anything unsent or still waiting, check its evidence.' CLAUDE.md
+  jq -e '.permissions.allow | index("Bash(system/scripts/now.py add:*)")' .claude/settings.json >/dev/null
+  jq -e '.permissions.allow | index("Bash(system/scripts/now.py list:*)")' .claude/settings.json >/dev/null
+  grep -qF '**The Now page.**' README.md
 }
 
 @test "the README says update_template.sh lists new units and never installs them (#35)" {
@@ -634,7 +648,7 @@ self_edit_contract() {
 @test "the brief and the debrief report Work Orders (Foreman v1 §3.4)" {
   b=.claude/commands/brief.md
   grep -qF -- '- **🛠 Work Orders:** the `## Items` table from `nightshift.md` verbatim' "$b"
-  grep -qF 'Then **Work Orders**: every `- [ ] ` line under "## Needs you" in `nightshift.md`, verbatim' "$b"
+  grep -qF 'every `- [ ] ` line under "## Needs you" in `nightshift.md`, without its `- [ ] `' "$b"
   run grep -nE 'Overnight|Nightshift' "$b"
   [ "$status" -eq 1 ]
   d=.claude/commands/debrief.md

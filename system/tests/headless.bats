@@ -111,6 +111,13 @@ teardown() {
   [ -f "briefings/$(TZ=America/Denver date +%F).md" ]
 }
 
+@test "a brief may publish a Now page (Now page spec §3.3)" {
+  STUB_MODE=brief_now run "$RH" brief
+  [ "$status" -eq 0 ]
+  grep -qF -- '- [ ] owed: New objective' wiki/work/Now.md
+  [ "$(jq -r '.publish.published | sort | join(" ")' "$LEDGER")" = "briefings/$(TZ=America/Denver date +%F).md wiki/work/Now.md" ]
+}
+
 @test "claude failure and timeout are recorded and staging is quarantined" {
   STUB_MODE=fail run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 1 ]
