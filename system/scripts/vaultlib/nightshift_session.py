@@ -51,9 +51,10 @@ def plan_prompt(fm: dict) -> str:
     return (f"Load superpowers:executing-plans with the Skill tool and execute {scope} of {fm['plan']} in this repository. "
             "Commit after each task. Skip any step that pushes, opens a pull request or waits for a merge. "
             "After each task, update .nightshift/progress.md (task number, status, commit). "
-            "You cannot write under .claude/: for a file the plan puts in .claude/skills/, .claude/commands/ or "
-            ".claude/agents/, write its full content to .nightshift/protected/<that same path> instead; the runner "
-            "adds it to the branch. "
+            "You cannot write under .claude/, nor any path with a .claude folder in it: for a file the plan puts in "
+            ".claude/skills/, .claude/commands/ or .claude/agents/, write its full content to "
+            ".nightshift/protected/claude/<path under .claude/> instead (no leading dot, for example "
+            ".nightshift/protected/claude/commands/brief.md); the runner adds it to the branch as .claude/<path>. "
             "If you are blocked, stop and record the question. Finish by writing .nightshift/result.json: "
             '{"status": "done" or "blocked", "summary": "...", "tests_run": ["..."], "pr_title": "...", '
             '"pr_body": "...", "questions": ["..."]}. ' + CONTRACT)

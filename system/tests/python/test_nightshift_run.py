@@ -550,7 +550,7 @@ def test_research_reads_the_template_from_its_remote_and_needs_no_code_without_a
 def test_protected_files_reach_the_pushed_branch(env, monkeypatch, tmp_path):
     vault, tmp = env
     writes = tmp_path / "pw.txt"
-    writes.write_text(f"done.txt=yes\n.nightshift/protected/.claude/skills/demo/SKILL.md=hello\\n\n"
+    writes.write_text(f"done.txt=yes\n.nightshift/protected/claude/skills/demo/SKILL.md=hello\\n\n"
                       f".nightshift/result.json={RESULT}\n")
     monkeypatch.setenv("NIGHTSHIFT_STUB_WRITE", str(writes))
     assert add(vault, "--now") == 0
