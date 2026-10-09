@@ -79,5 +79,5 @@ def test_production_error_message_field_is_known(vault):
 def test_an_empty_adx_filter_value_lints_clean(vault):
     write(vault, "system/codebases/shop.md", CODEBASE)
     write(vault, "system/telemetry/prod-shared.md", src("prod-shared", kind='"adx"', adx_cluster='"https://example.kusto.windows.net"',
-                                                        adx_database='"prod"', adx_filter='{instanceId: ""}'))
+                                                        adx_database='"prod"', adx_filter='{deployment.instance: ""}'))
     assert [i for i in issues(vault) if i[0].startswith("system/telemetry/")] == []

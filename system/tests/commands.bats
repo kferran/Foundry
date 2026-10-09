@@ -555,8 +555,8 @@ self_edit_contract() {
 @test "an empty ADX filter value for shared services is documented (#94 A)" {
   sec="$(sed -n '/^## 6a\. Telemetry/,/^## 7\./p' ".claude/commands/setup.md")"
   [[ "$sec" == *'A filter value of `""` selects the rows that lack the attribute'* ]]
-  grep -qF 'An empty filter value (`adx_filter: {instanceId: ""}`) selects the rows that lack that attribute' README.md
-  grep -qF 'An empty value, `{instanceId: ""}`, selects the rows that lack the attribute' system/telemetry/example.md
+  grep -qF 'An empty filter value (`adx_filter: {deployment.instance: ""}`) selects the rows that lack that attribute' README.md
+  grep -qF 'An empty value, `{deployment.instance: ""}`, selects the rows that lack the attribute' system/telemetry/example.md
 }
 
 @test "/brief shows From Now as a Dataview query and adds its new lines to the Now pages (Now page spec §3.3)" {

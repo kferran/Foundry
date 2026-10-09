@@ -158,10 +158,10 @@ def test_an_empty_filter_value_selects_rows_without_the_attribute(vault):
     """#94 A: shared services log without the instance attribute; tostring() of a missing attribute is ""."""
     write(vault, "system/codebases/shop.md", '---\ntype: codebase\nname: "shop"\npath: "~"\npartition: "work"\nsearch_globs: ["*"]\n---\n')
     write(vault, "system/telemetry/shared.md", '---\ntype: telemetry_source\nname: "shared"\ncodebase: "shop"\nenvironment: "prod"\n'
-          'kind: "adx"\nadx_cluster: "https://e"\nadx_database: "d"\nadx_filter: {instanceId: ""}\n---\n')
+          'kind: "adx"\nadx_cluster: "https://e"\nadx_database: "d"\nadx_filter: {deployment.instance: ""}\n---\n')
     src = t.load_sources(vault)[0]
-    assert src.adx_filter == {"instanceId": ""}
-    want = '| where tostring(ResourceAttributes["instanceId"]) == ""'
+    assert src.adx_filter == {"deployment.instance": ""}
+    want = '| where tostring(ResourceAttributes["deployment.instance"]) == ""'
     assert want in t.kql_logs(src, NOW - timedelta(hours=1), NOW).splitlines()
     assert want in t.kql_spans(src, NOW - timedelta(hours=1), NOW).splitlines()
     reopen = t.kql_reopen("log", t._filters(src), "2026-10-05T10:00:00Z", "2026-10-05T11:00:00Z", {"service": "api"})

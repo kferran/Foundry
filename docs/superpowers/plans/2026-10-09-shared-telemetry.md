@@ -53,10 +53,10 @@ def test_an_empty_filter_value_selects_rows_without_the_attribute(vault):
     """#94 A: shared services log without the instance attribute; tostring() of a missing attribute is ""."""
     write(vault, "system/codebases/shop.md", '---\ntype: codebase\nname: "shop"\npath: "~"\npartition: "work"\nsearch_globs: ["*"]\n---\n')
     write(vault, "system/telemetry/shared.md", '---\ntype: telemetry_source\nname: "shared"\ncodebase: "shop"\nenvironment: "prod"\n'
-          'kind: "adx"\nadx_cluster: "https://e"\nadx_database: "d"\nadx_filter: {instanceId: ""}\n---\n')
+          'kind: "adx"\nadx_cluster: "https://e"\nadx_database: "d"\nadx_filter: {deployment.instance: ""}\n---\n')
     src = t.load_sources(vault)[0]
-    assert src.adx_filter == {"instanceId": ""}
-    want = '| where tostring(ResourceAttributes["instanceId"]) == ""'
+    assert src.adx_filter == {"deployment.instance": ""}
+    want = '| where tostring(ResourceAttributes["deployment.instance"]) == ""'
     assert want in t.kql_logs(src, NOW - timedelta(hours=1), NOW).splitlines()
     assert want in t.kql_spans(src, NOW - timedelta(hours=1), NOW).splitlines()
     reopen = t.kql_reopen("log", t._filters(src), "2026-10-05T10:00:00Z", "2026-10-05T11:00:00Z", {"service": "api"})
@@ -81,7 +81,7 @@ Replace with:
 def test_an_empty_adx_filter_value_lints_clean(vault):
     write(vault, "system/codebases/shop.md", CODEBASE)
     write(vault, "system/telemetry/prod-shared.md", src("prod-shared", kind='"adx"', adx_cluster='"https://example.kusto.windows.net"',
-                                                        adx_database='"prod"', adx_filter='{instanceId: ""}'))
+                                                        adx_database='"prod"', adx_filter='{deployment.instance: ""}'))
     assert [i for i in issues(vault) if i[0].startswith("system/telemetry/")] == []
 ````
 
@@ -103,8 +103,8 @@ Replace with:
 @test "an empty ADX filter value for shared services is documented (#94 A)" {
   sec="$(sed -n '/^## 6a\. Telemetry/,/^## 7\./p' ".claude/commands/setup.md")"
   [[ "$sec" == *'A filter value of `""` selects the rows that lack the attribute'* ]]
-  grep -qF 'An empty filter value (`adx_filter: {instanceId: ""}`) selects the rows that lack that attribute' README.md
-  grep -qF 'An empty value, `{instanceId: ""}`, selects the rows that lack the attribute' system/telemetry/example.md
+  grep -qF 'An empty filter value (`adx_filter: {deployment.instance: ""}`) selects the rows that lack that attribute' README.md
+  grep -qF 'An empty value, `{deployment.instance: ""}`, selects the rows that lack the attribute' system/telemetry/example.md
 }
 
 ````
@@ -131,7 +131,7 @@ Replace with:
 ````text
 An example ADX source. `/setup` phase 6a writes real ones next to it (gitignored). A Sentry source sets `kind: "sentry"`, `sentry_url`, `sentry_org` and `sentry_projects` instead of the `adx_*` fields.
 
-`adx_filter` selects rows by resource attribute, for example `{instanceId: "U1"}`. An empty value, `{instanceId: ""}`, selects the rows that lack the attribute: shared services that log without it. Give them a second source on the same database.
+`adx_filter` selects rows by resource attribute, for example `{deployment.instance: "u1"}`. An empty value, `{deployment.instance: ""}`, selects the rows that lack the attribute: shared services that log without it. Give them a second source on the same database.
 ````
 
 
@@ -144,7 +144,7 @@ Edit 1 in `README.md`. Find:
 Replace with:
 
 ````text
-**Error telemetry.** `foundry-telemetry.timer` runs `telemetry_fetch.py` every hour, and `brief_prep.sh` runs it once more before the brief. Each source in `system/telemetry/<name>.md` (written by `/setup` phase 6a, gitignored) is a set of Sentry projects or one Azure Data Explorer database with a filter. An empty filter value (`adx_filter: {instanceId: ""}`) selects the rows that lack that attribute, so shared services that log without it get a source of their own; an instance filter and an empty filter never select the same row. Each error group becomes one `production_error` note in `raw/telemetry/` holding group keys, counts, times, opaque IDs, links and the Sentry issue title or one sample log message, ticket identifiers included; credentials and emails are masked. Sentry needs a read-only token in `~/.config/foundry/sentry.token` (mode 0600); ADX uses your `az login`. `--check <name>` tests a source, `--dry-run` prints the groups without writing.
+**Error telemetry.** `foundry-telemetry.timer` runs `telemetry_fetch.py` every hour, and `brief_prep.sh` runs it once more before the brief. Each source in `system/telemetry/<name>.md` (written by `/setup` phase 6a, gitignored) is a set of Sentry projects or one Azure Data Explorer database with a filter. An empty filter value (`adx_filter: {deployment.instance: ""}`) selects the rows that lack that attribute, so shared services that log without it get a source of their own; an instance filter and an empty filter never select the same row. Each error group becomes one `production_error` note in `raw/telemetry/` holding group keys, counts, times, opaque IDs, links and the Sentry issue title or one sample log message, ticket identifiers included; credentials and emails are masked. Sentry needs a read-only token in `~/.config/foundry/sentry.token` (mode 0600); ADX uses your `az login`. `--check <name>` tests a source, `--dry-run` prints the groups without writing.
 ````
 
 
@@ -176,7 +176,7 @@ Write `.scratch/msg-1.txt`:
 ```text
 docs(telemetry): an empty ADX filter value covers shared services (#94 A)
 
-tostring() of a missing resource attribute is "", so adx_filter: {instanceId: ""}
+tostring() of a missing resource attribute is "", so adx_filter: {deployment.instance: ""}
 already selects the rows that lack it. Document it in the example source, the
 README and /setup phase 6a, and pin it with tests (load, lint, logs, spans and
 reopen KQL).

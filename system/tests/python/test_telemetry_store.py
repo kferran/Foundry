@@ -211,3 +211,11 @@ def test_long_type_names_are_not_redacted(vault):
     text = (vault / "raw/telemetry/prod-adx-a-0123456789ab.md").read_text()
     assert "high_entropy" not in text
     assert f'exception: "{scope}#9908"' in text and f"| scope | {scope} |" in text
+
+
+def test_the_stored_reopen_query_keeps_an_empty_filter_value(vault):
+    """#94 A: a shared-services source's empty filter reaches the note's reopen KQL."""
+    want = '| where tostring(ResourceAttributes["deployment.instance"]) == ""'
+    st = Store(vault); st.load()
+    st.upsert(group(reopen=None, filters=[want]), NOW)
+    assert want in (vault / NOTE).read_text().splitlines()
