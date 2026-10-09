@@ -6,7 +6,7 @@ An Obsidian + Claude Code "second brain" vault template.
 
 ## What The Foundry is
 
-The Foundry is a template repository that becomes your vault. You clone it (or create a repo from it), run `claude` inside it, and run `/setup`. Setup configures the vault for your machine, your schedule and your codebases. Nothing specific to a machine or a user is committed. Per-user state is generated at setup time and gitignored.
+The Foundry is a template repository that becomes your vault. You clone it (or create a repo from it), run `claude` inside it, and run `/setup`. Setup configures the vault for your machine, your schedule and your codebases. Nothing specific to a machine or a user is committed. Per-user state is generated at setup time and gitignored. Describe your own vault in `README.local.md` at the vault root (its machines, codebases and what runs where): this README describes the template and changes with each template update, and template updates never touch `README.local.md`.
 
 The vault compiles itself. Raw inputs (files you drop in, plus short digests of your Claude Code sessions) are compiled in batches into a wiki of concepts, entities, summaries and preferences. The wiki is split into `work`, `personal` and `shared` partitions, and links are not allowed to cross between `work` and `personal`. A derived SQLite FTS5 index lets agents ask the index for the notes they need before reading anything, so a lookup reads only the notes that answer it rather than the whole wiki.
 
@@ -285,7 +285,7 @@ Once the units are installed, the timers run real headless `claude -p` jobs. The
 - **User-level changes.** `install_hooks.sh` changes only its own entries in `~/.claude/settings.json` and `~/.claude/commands/digest.md`. It takes a backup first, shows a diff during `/setup`, applies nothing without confirmation, and can be fully reversed with `--uninstall`.
 - **Trust dialog.** The first time you open the vault, Claude Code asks whether to trust the folder and lists the permissions `.claude/settings.json` pre-approves: edits under `wiki/` and `briefings/`, the brief and debrief prep scripts, `lint_vault.sh`, and the `vault_index.py` query, index-rebuild and recall commands. Those apply to your interactive sessions only; headless runs ignore project settings entirely.
 - **Gitignored.** `raw/**` contents, `system/quarantine/*`, `system/logs/*`, `system/config.md` (it holds the machine role), `.claude/settings.local.json`, `system/index.db*`, `system/*.lock`, `wiki/.staging/`, `system/jobs/` and Obsidian workspace files.
-- **Tracked in your vault, never in the template.** `system/codebases/*.md`, `system/telemetry/*.md`, `system/dtcc/map.yaml` and `raw/<partition>/nightshift/*.md` (Work Order queue notes): your vault's own configuration and queue, committed to your private repository so a client's changes reach the server. The template ships only the `example` files. Credentials stay outside the vault (`~/.config/foundry/`, the Azure CLI).
+- **Tracked in your vault, never in the template.** `README.local.md` (your vault's own notes), `system/codebases/*.md`, `system/telemetry/*.md`, `system/dtcc/map.yaml` and `raw/<partition>/nightshift/*.md` (Work Order queue notes): your vault's own configuration and queue, committed to your private repository so a client's changes reach the server. The template ships only the `example` files. Credentials stay outside the vault (`~/.config/foundry/`, the Azure CLI).
 
 ## Updating and uninstalling
 

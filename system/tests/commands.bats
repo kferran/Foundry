@@ -674,3 +674,10 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF '**Handoffs and delivered work.**' README.md
   grep -qF 'the connector returns no change history' README.md
 }
+
+@test "the README names README.local.md as the vault's own notes, which the template never ships (#90)" {
+  head -n 12 README.md | grep -qF "Describe your own vault in \`README.local.md\`"
+  grep -qF -- "- **Tracked in your vault, never in the template.** \`README.local.md\` (your vault's own notes)," README.md
+  run git ls-files --error-unmatch README.local.md
+  [ "$status" -ne 0 ]
+}
