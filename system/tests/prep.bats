@@ -398,3 +398,78 @@ codebase() {  # <name> <path>
   [ ! -e "$IN/projects.md" ]
   grep -qxF -- '- brief_prep: projects: active_projects.py failed (see system/logs/inputs/2026-10-01/prep_errors.log)' "$IN/unavailable.md"
 }
+
+# handoffs_on [rc] [line…]: handoffs_projects set, with jira_fetch.sh replaced by a stub that prints the lines
+# and exits rc (with a jira_fetch reason line on stderr when rc is not 0).
+handoffs_on() {
+  local rc="${1:-0}"
+  shift || true
+  grep -q '^handoffs_projects:' system/config.md || sed -i '$d' system/config.md
+  grep -q '^handoffs_projects:' system/config.md || printf '%s\n' 'handoffs_projects: ["EX"]' '---' >> system/config.md
+  printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/lines.md"
+  printf '#!/bin/bash\ncat "%s"\n(( %s == 0 )) || echo "jira_fetch: handoffs_site is not set" >&2\nexit %s\n' \
+    "$BATS_TEST_TMPDIR/lines.md" "$rc" "$rc" > system/scripts/jira_fetch.sh
+}
+
+@test "brief_prep: handoffs.md holds the fetch's lines; empty and unread while handoffs_projects is empty" {
+  printf '#!/bin/bash\necho ran > "%s/fetched"\n' "$BATS_TEST_TMPDIR" > system/scripts/jira_fetch.sh
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -e "$IN/handoffs.md" ]
+  [ ! -s "$IN/handoffs.md" ]
+  [ ! -e "$BATS_TEST_TMPDIR/fetched" ]
+  handoffs_on 0 '- [ ] [EX-1](https://example.atlassian.net/browse/EX-1) Fix EX-1 (Blake Sample, In Review, unchanged since 2026-09-21)'
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/handoffs.md")" = '- [ ] [EX-1](https://example.atlassian.net/browse/EX-1) Fix EX-1 (Blake Sample, In Review, unchanged since 2026-09-21)' ]
+  run grep -c handoffs "$IN/unavailable.md"
+  [ "$output" = "0" ]
+}
+
+@test "brief_prep: a failed handoffs fetch is an unavailable source and leaves handoffs.md empty" {
+  handoffs_on 2
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ ! -s "$IN/handoffs.md" ]
+  grep -qxF -- '- brief_prep: handoffs: handoffs_site is not set (set it with /setup)' "$IN/unavailable.md"
+  handoffs_on 3
+  run "$BP" 2026-10-01
+  grep -qF -- '- brief_prep: handoffs: no Atlassian connector reachable' "$IN/unavailable.md"
+}
+
+# gh_says [rc]: a GitHub codebase, and a gh on PATH that lists one pull request per search, or fails with rc.
+gh_says() {
+  printf '%s\n' '#!/bin/bash' "(( ${1:-0} == 0 )) || { echo 'HTTP 401: Bad credentials' >&2; exit ${1:-0}; }" \
+    'echo "$*" >> "$(dirname "$0")/gh.args"' \
+    'case "$*" in' \
+    '  *--created*) echo "- code — opened: Add export — https://github.com/acme/shop/pull/1" ;;' \
+    '  *--reviewed-by*) echo "- review — reviewed: Fix login — https://github.com/acme/shop/pull/2" ;;' \
+    'esac' > "$STUBS/gh"
+  chmod +x "$STUBS/gh"
+  mkdir -p system/codebases
+  printf -- '---\ntype: codebase\nname: "shop"\npath: "%s"\npartition: "work"\nsearch_globs: ["*.md"]\norder_pr: "github:acme/shop"\n---\n' "$V" > system/codebases/shop.md
+}
+
+@test "debrief_prep: prs.md lists the day's pull requests in the registered GitHub repositories" {
+  gh_says
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/prs.md")" = "- code — opened: Add export — https://github.com/acme/shop/pull/1
+- review — reviewed: Fix login — https://github.com/acme/shop/pull/2" ]
+  grep -qF -- 'search prs --author @me --created 2026-10-01 --repo acme/shop --json url,title --limit 100' "$STUBS/gh.args"
+  grep -qF -- 'search prs --author @me --merged-at 2026-10-01 --repo acme/shop' "$STUBS/gh.args"
+  grep -qF -- 'search prs --reviewed-by @me --updated 2026-10-01 --repo acme/shop' "$STUBS/gh.args"
+  run grep -c prs "$IN/unavailable.md"
+  [ "$output" = "0" ]
+}
+
+@test "debrief_prep: no GitHub repository writes an empty prs.md; a failing gh is an unavailable source" {
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -e "$IN/prs.md" ]
+  [ ! -s "$IN/prs.md" ]
+  gh_says 1
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qxF -- '- debrief_prep: prs: gh search failed (see system/logs/inputs/2026-10-01/prep_errors.log)' "$IN/unavailable.md"
+}

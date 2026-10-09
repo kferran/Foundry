@@ -70,6 +70,37 @@ else
   : > "$PREP_DIR/orders.md"
 fi
 
+# Pull requests for Delivered Today (delivered work spec §3.4): opened or merged by you that day, or reviewed by
+# you and updated that day, in the registered GitHub repositories. Empty when none is registered.
+github_repos() {  # owner/repo, one per line: each codebase's order_pr (or nightshift_pr), and a GitHub template_remote
+  local name pr
+  while IFS= read -r name; do
+    pr="$(codebase_get "$name" order_pr)"
+    [[ -n "$pr" ]] || pr="$(codebase_get "$name" nightshift_pr)"
+    [[ "$pr" != github:* ]] || printf '%s\n' "${pr#github:}"
+  done < <(codebases_list)
+  config_get template_remote | sed -nE 's#^.*github\.com[:/]([^/]+/[^/]+)$#\1#p' | sed 's/\.git$//'
+}
+prs_md() {
+  local r
+  local -a repos=() args=()
+  mapfile -t repos < <(github_repos)
+  (( ${#repos[@]} )) || return 0
+  command -v gh > /dev/null 2>&1 || return 3
+  for r in "${repos[@]}"; do args+=(--repo "$r"); done
+  args+=(--json url,title --limit 100)
+  gh search prs --author @me --created "$PREP_DATE" "${args[@]}" --jq '.[] | "- code — opened: \(.title) — \(.url)"' || return 1
+  gh search prs --author @me --merged-at "$PREP_DATE" "${args[@]}" --jq '.[] | "- code — merged: \(.title) — \(.url)"' || return 1
+  gh search prs --reviewed-by @me --updated "$PREP_DATE" "${args[@]}" --jq '.[] | "- review — reviewed: \(.title) — \(.url)"' || return 1
+}
+rc=0
+prep_write prs.md prs_md || rc=$?
+case "$rc" in
+  0) ;;
+  3) prep_unavailable "prs: gh is not installed; pull requests are not listed" ;;
+  *) prep_unavailable "prs: gh search failed (see $PREP_DIR/prep_errors.log)" ;;
+esac
+
 prep_meetings
 prep_write focus.md system/scripts/focus_stats.sh "$PREP_DATE" || prep_unavailable "focus: focus_stats.sh failed"
 [[ -s "system/logs/obsidian_focus_$PREP_DATE.log" ]] || prep_unavailable "focus: no focus log for $PREP_DATE"

@@ -20,6 +20,7 @@ from pathlib import Path
 VAULT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
 from vaultlib.index import Index  # noqa: E402
+from vaultlib.stream import blocks, messages  # noqa: E402
 
 PREFIX = "mcp__claude_ai_Google_Drive"
 TOOLS = {"search": f"{PREFIX}__search_files", "read": f"{PREFIX}__read_file_content"}
@@ -32,23 +33,6 @@ class Fail(Exception):
     def __init__(self, code, reason):
         super().__init__(reason)
         self.code, self.reason = code, reason
-
-
-def messages(text):
-    out = []
-    for line in text.splitlines():
-        try:
-            m = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(m, dict):
-            out.append(m)
-    return out
-
-
-def blocks(m, kind):
-    content = (m.get("message") or {}).get("content")
-    return [b for b in content if isinstance(b, dict) and b.get("type") == kind] if isinstance(content, list) else []
 
 
 def names_drive(content):

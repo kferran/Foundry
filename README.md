@@ -65,8 +65,8 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 
 | Command | What it does |
 |---|---|
-| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, a DTCC changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Briefings and debriefs from before yesterday move to `briefings/archive/<YYYY-MM>/` |
-| `/debrief [date]` | The Foreman writes `briefings/<date>.debrief.md` (embedded in the briefing): commits per repo, digest outcomes, headless runs, alerts, focus and agent health |
+| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, 🧾 Handoffs to chase when handoffs are set up, a DTCC changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Briefings and debriefs from before yesterday move to `briefings/archive/<YYYY-MM>/` |
+| `/debrief [date]` | The Foreman writes `briefings/<date>.debrief.md` (embedded in the briefing): commits per repo, digest outcomes, headless runs, alerts, focus, agent health and what you delivered today |
 | `/ingest <raw file>` | Compiles one raw input into `wiki/`; the intake timer runs it headless in batches |
 | `/query <question>` | Answers from compiled `wiki/` notes only, through the index |
 | `/lint` | Integrity report plus link, duplicate, contradiction and staleness suggestions |
@@ -92,6 +92,8 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 **Meetings fetch: retrying a skipped Doc.** After three failed reads of one Gemini Doc (any non-zero exit, timeouts and usage limits included), the fetch alerts once ("`<id>` failed 3 reads; it is skipped from now on") and skips it, because it counts failures in this month's and last month's `system/logs/meetings_fetch-<YYYY-MM>.jsonl`. To fetch it again: delete that Doc's `"step": "read"` lines from those two log files, then set `system/logs/meetings_fetch.since` to a time before the Doc was created (ISO 8601, UTC), so the next run's search window includes it. The next fetch reads it once more; the `.since` file moves forward again on success. (#44)
 
 **Debrief inputs.** The prep files in `system/logs/inputs/<date>/` (git commits, session digests, focus, and `orders.md`, the open Work Orders report), alerts, the run ledger `system/logs/runs-<YYYY-MM>.jsonl`, the telemetry run log `system/logs/telemetry-<YYYY-MM>.jsonl`, and agent metrics in `system/logs/metrics/*.json`. An agent whose 3 most recent metric files all show `test_suite_passed: false` is reported under Agent Health; the debrief does not act on it.
+
+**Handoffs and delivered work.** With `handoffs_site` and `handoffs_projects` set (`/setup` phase 6c), each brief runs `jira_fetch.sh`: a confined `claude -p` session that may call only the Atlassian connector's JQL search, with a query built from those settings. It lists under 🧾 Handoffs to chase the tickets you reported that someone else holds and that have had no status-category change for 7 days (the connector returns no change history, so a move inside one category, such as In Progress to In Review, does not reset the clock). The vault keeps no copy of the tickets. The debrief lists what you delivered under 6. Delivered Today: each digest's Delivered section, `delivered:` lines in the briefing's 📝 Notes (the Foreman adds one when you ask it to log something), and pull requests you opened, merged or reviewed in the registered GitHub repositories (`gh`, logged in; a codebase's `order_pr: github:<owner>/<repo>` and a GitHub `template_remote`).
 
 **Workcells.** Work goes to the Workcell whose `capabilities` include the one the work needs, never by name:
 
