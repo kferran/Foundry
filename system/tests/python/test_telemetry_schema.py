@@ -74,3 +74,10 @@ def test_production_error_message_field_is_known(vault):
     rows = idx.connect().execute("SELECT code, message FROM issues WHERE path LIKE 'raw/telemetry/%'").fetchall()
     assert not [r for r in rows if r[0] in ("unknown-field", "schema")], rows
     assert [i for i in issues(vault) if i[0].startswith("raw/telemetry/")] == []
+
+
+def test_an_empty_adx_filter_value_lints_clean(vault):
+    write(vault, "system/codebases/shop.md", CODEBASE)
+    write(vault, "system/telemetry/prod-shared.md", src("prod-shared", kind='"adx"', adx_cluster='"https://example.kusto.windows.net"',
+                                                        adx_database='"prod"', adx_filter='{instanceId: ""}'))
+    assert [i for i in issues(vault) if i[0].startswith("system/telemetry/")] == []
