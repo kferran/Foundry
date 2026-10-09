@@ -27,7 +27,7 @@ a.add_argument("--kind", required=True)
 a.add_argument("--statement", required=True)
 a.add_argument("--who", default="")
 a.add_argument("--evidence", default="")
-sub.add_parser("list").add_argument("--partition")
+sub.add_parser("list").add_argument("--partition", choices=now.PARTITIONS)
 sub.add_parser("check")
 sub.add_parser("seed").add_argument("date")
 args = p.parse_args()
@@ -48,6 +48,9 @@ if args.cmd == "seed":
 try:
     with intake.lock("run.lock", timeout=float(os.environ.get("NOW_LOCK_WAIT", "60"))):
         if args.cmd == "add":
+            # The one-time seed keys on the default page existing: a session must not create it first.
+            if args.partition == default_partition(VAULT):
+                now.seed(VAULT, args.partition, intake.today())
             status, line = now.add(VAULT, args.partition, args.kind, args.statement, intake.today(),
                                    args.who, args.evidence)
             print(f"{status}: {line}")

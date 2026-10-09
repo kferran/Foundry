@@ -204,7 +204,9 @@ git push
 
 On the machine that pushed the pending branch, its side is already checked out: run `git merge origin/<branch>` there instead (`<branch>` is the vault's branch), then resolve, commit and push.
 
-The next server sync clears the marker, deletes the pending branch and starts a brief or debrief that was skipped today. The pre-commit hook rejects any file that still holds conflict markers; if a client note that bypassed the hook blocks your commit, the hook names it: fix it, or commit with `--no-verify` knowingly.
+The next server sync clears the marker, deletes the pending branch and starts a brief or debrief that was skipped today.
+
+`wiki/<partition>/Now.md` is the one note both machines write: you tick lines on the client, and the server closes lines on checked evidence. The server rewrites the page only when it closes a line, but a tick on the client next to a line the server just closed can still conflict. Resolve it as above, keeping both changes. The pre-commit hook rejects any file that still holds conflict markers; if a client note that bypassed the hook blocks your commit, the hook names it: fix it, or commit with `--no-verify` knowingly.
 
 ## Requirements
 

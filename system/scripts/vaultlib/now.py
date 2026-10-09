@@ -18,6 +18,8 @@ NEEDS, WAITING = "## Needs you", "## Waiting"
 KEEP_DAYS = 7
 LOOKBACK_DAYS = 30
 FAILURE_ALERT = 3
+GH_TIMEOUT = 10
+WIKILINK = re.compile(r"\[\[(?:[^\]|]*\|)?([^\]|]*)\]\]")
 LINE = re.compile(r"^- \[(?P<mark>.)\] (?P<kind>owed|waiting|draft): (?P<statement>.+) "
                   r"\((?:(?P<who>[^(),]+), )?since (?P<since>\d{4}-\d{2}-\d{2})(?:, (?P<evidence>[^\s(),]+))?\)"
                   r"(?: _\(closed: .*\)_)?$")
@@ -65,11 +67,14 @@ def open_lines(text: str) -> list:
 
 
 def stamp_and_prune(text: str, today: str) -> str:
-    """Stamp a ticked or dropped line that has no close date; drop one closed more than KEEP_DAYS ago."""
+    """Stamp a ticked or dropped line that has no close date; drop one closed more than KEEP_DAYS ago; a reopened
+    line loses its old stamp."""
     cutoff = (date.fromisoformat(today) - timedelta(days=KEEP_DAYS)).isoformat()
     out = []
     for line in text.split("\n"):
-        if CLOSED.match(line):
+        if line.startswith("- [ ] "):
+            line = STAMP.sub("", line).rstrip()
+        elif CLOSED.match(line):
             stamp = STAMP.search(line)
             if not stamp:
                 line = f"{line.rstrip()} _(closed: ticked {today})_"
@@ -125,7 +130,7 @@ def evidence_state(vault, evidence: str, gh: str = "gh"):
     if PR_URL.match(evidence):
         try:
             out = subprocess.run([gh, "pr", "view", evidence, "--json", "state", "-q", ".state"],
-                                 capture_output=True, text=True, timeout=60)
+                                 capture_output=True, text=True, timeout=GH_TIMEOUT)
         except FileNotFoundError:
             raise CheckFailed("gh is not installed")
         except subprocess.TimeoutExpired:
@@ -159,28 +164,33 @@ def _failed(vault, today: str, line: str, reason: str, alert) -> None:
 
 
 def check(vault, today: str, alert, gh: str = "gh") -> int:
-    """Close each open line whose evidence shows it is finished, then stamp and prune. Returns the lines closed."""
-    closed = 0
+    """Close each open line whose evidence shows it is finished. Returns the lines closed.
+
+    The page is written only when a line closes, and from a fresh read, so a tick made while gh ran is kept.
+    The first failed pull-request check skips the others until the next tick."""
+    closed, gh_down = 0, False
     for partition in PARTITIONS:
-        text = read(vault, partition)
-        if not text:
-            continue
-        lines = text.split("\n")
-        for i, line in enumerate(lines):
+        found = {}
+        for line in open_lines(read(vault, partition)):
             m = LINE.match(line)
-            if not m or m.group("mark") != " " or not m.group("evidence"):
+            if not m or not m.group("evidence") or (gh_down and PR_URL.match(m.group("evidence"))):
                 continue
             try:
                 how = evidence_state(vault, m.group("evidence"), gh)
             except CheckFailed as exc:
                 _failed(vault, today, line, str(exc), alert)
+                gh_down = True
                 continue
             if how:
-                lines[i] = f"- [x]{line[5:]} _(closed: {how} {today})_"
+                found[line] = how
+        if not found:
+            continue
+        lines = read(vault, partition).split("\n")
+        for i, line in enumerate(lines):
+            if line in found:
+                lines[i] = f"- [x]{line[5:]} _(closed: {found[line]} {today})_"
                 closed += 1
-        new = stamp_and_prune("\n".join(lines), today)
-        if new != text:
-            write(vault, partition, new)
+        write(vault, partition, stamp_and_prune("\n".join(lines), today))
     return closed
 
 
@@ -198,7 +208,8 @@ def latest_open_objectives(vault, day: str) -> list:
         out = []
         for line in (section.group(0) if section else "").splitlines():
             if line.startswith("- [ ] "):
-                text = re.sub(r"^\*\*stale\*\*\s*", "", SINCE.sub("", line[6:]).strip())
+                # Plain text: a link may point into the other partition, and the seed bypasses the publish gate.
+                text = WIKILINK.sub(r"\1", re.sub(r"^\*\*stale\*\*\s*", "", SINCE.sub("", line[6:]).strip()))
                 out.append((text, min(SINCE.findall(line), default=earlier)))
         return out
     return []

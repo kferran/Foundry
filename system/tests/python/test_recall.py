@@ -195,3 +195,11 @@ def test_now_alone_over_budget_is_truncated_with_a_marker(cli, vault):
     out = cli("recall", "--cwd", str(vault), "--budget-chars", "1500").stdout
     assert len(out) <= 1500
     assert out.endswith("…[truncated]\n")
+
+
+def test_a_budget_smaller_than_the_marker_never_overflows(cli, vault):
+    config(vault)
+    now_page(vault, "personal", [f"- [ ] owed: Item {i} (since 2026-10-09)" for i in range(50)])
+    head = cli("recall", "--cwd", str(vault), "--budget-chars", "9500").stdout.split("\n### Now")[0]
+    out = cli("recall", "--cwd", str(vault), "--budget-chars", str(len(head) + 5)).stdout
+    assert len(out) <= len(head) + 5

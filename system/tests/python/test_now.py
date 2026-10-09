@@ -139,16 +139,52 @@ def test_a_failed_check_leaves_the_line_open_and_the_third_failure_alerts_once(v
     assert "- [ ] owed: PR" in page(vault)
 
 
-def test_check_stamps_hand_ticks_and_writes_nothing_when_nothing_changes(vault, tmp_path):
+def test_check_writes_only_when_it_closes_a_line_and_the_next_write_stamps_hand_ticks(vault, tmp_path):
     prepare(vault)
     now.add(vault, "work", "owed", "A", TODAY)
     path = vault / "wiki/work/Now.md"
     path.write_text(path.read_text().replace("- [ ] owed: A", "- [x] owed: A"))
+    before = path.read_text()
     now.check(vault, TODAY, [].append, gh_stub(tmp_path))
+    assert path.read_text() == before  # fewer server rewrites of a page the client edits
+    now.add(vault, "work", "owed", "B", TODAY, evidence="https://github.com/acme/shop/pull/7")
     assert "- [x] owed: A (since 2026-10-09) _(closed: ticked 2026-10-09)_" in page(vault)
-    before = path.stat().st_mtime_ns
-    now.check(vault, TODAY, [].append, gh_stub(tmp_path))
-    assert path.stat().st_mtime_ns == before
+
+
+def test_check_keeps_a_tick_made_while_gh_runs(vault, tmp_path):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Call vendor", TODAY)
+    now.add(vault, "work", "owed", "PR", TODAY, evidence="https://github.com/acme/shop/pull/7")
+    stub = tmp_path / "gh"
+    stub.write_text(f"#!/bin/bash\nsed -i 's/- \\[ \\] owed: Call vendor/- [x] owed: Call vendor/' "
+                    f"{vault}/wiki/work/Now.md\necho MERGED\n")
+    stub.chmod(0o755)
+    assert now.check(vault, TODAY, [].append, str(stub)) == 1
+    text = page(vault)
+    assert "- [x] owed: Call vendor (since 2026-10-09)" in text
+    assert "_(closed: PR merged 2026-10-09)_" in text
+
+
+def test_a_failed_pr_check_skips_the_other_prs_this_tick(vault, tmp_path):
+    prepare(vault)
+    now.add(vault, "work", "owed", "One", TODAY, evidence="https://github.com/acme/shop/pull/7")
+    now.add(vault, "personal", "owed", "Two", TODAY, evidence="https://github.com/acme/shop/pull/8")
+    order(vault, "2026-10-08-done-item", "done")
+    now.add(vault, "work", "waiting", "Order", TODAY, evidence="2026-10-08-done-item")
+    assert now.check(vault, TODAY, [].append, str(tmp_path / "no-such-gh")) == 1  # the Work Order still closes
+    assert len((vault / "system/logs/now-2026-10.jsonl").read_text().splitlines()) == 1
+
+
+def test_a_reopened_line_loses_its_stamp():
+    text = "- [ ] owed: Again (since 2026-10-01) _(closed: ticked 2026-10-02)_\n"
+    assert now.stamp_and_prune(text, TODAY) == "- [ ] owed: Again (since 2026-10-01)\n"
+
+
+def test_seed_turns_wikilinks_into_plain_text(vault):
+    prepare(vault)
+    write(vault, "briefings/2026-10-08.md", "### 1. Objectives\n- [ ] DTCC: Change ([[dtcc-c1|C1]]) and [[Plan]]\n### 2.\n")
+    now.seed(vault, "work", TODAY)
+    assert now.open_lines(page(vault)) == ["- [ ] owed: DTCC: Change (C1) and Plan (since 2026-10-08)"]
 
 
 def test_seed_takes_the_previous_briefs_open_objectives_once(vault):
@@ -161,7 +197,7 @@ def test_seed_takes_the_previous_briefs_open_objectives_once(vault):
     assert now.open_lines(page(vault)) == [
         "- [ ] owed: **Ask** about the 409 (since 2026-10-01)",
         "- [ ] owed: **Old** thing (since 2026-09-20)",
-        "- [ ] owed: DTCC: Change ([[c1]]) (since 2026-10-07)"]
+        "- [ ] owed: DTCC: Change (c1) (since 2026-10-07)"]
     assert now.seed(vault, "work", "2026-10-09") == 0
 
 
@@ -210,3 +246,18 @@ def test_a_hand_written_line_is_listed_and_left_alone(vault, tmp_path):
     path.write_text(path.read_text().replace("## Waiting\n", "## Waiting\n- [ ] call the bank back\n"))
     assert now.check(vault, TODAY, [].append, gh_stub(tmp_path)) == 0
     assert now.open_lines(page(vault)) == ["- [ ] owed: A (since 2026-10-09)", "- [ ] call the bank back"]
+
+
+def test_cli_add_seeds_the_missing_default_page_first(vault):
+    prepare(vault)
+    write(vault, "briefings/2026-10-01.md", "### 1. Objectives\n- [ ] **Old objective**\n### 2.\n")
+    r = cli(vault, "add", "--partition", "work", "--kind", "owed", "--statement", "New")
+    assert r.returncode == 0, r.stderr
+    lines = now.open_lines(page(vault))
+    assert lines[0] == "- [ ] owed: **Old objective** (since 2026-10-01)"
+    assert lines[1].startswith("- [ ] owed: New (since ")
+
+
+def test_cli_list_refuses_an_unknown_partition(vault):
+    prepare(vault)
+    assert cli(vault, "list", "--partition", "../x").returncode == 2

@@ -572,6 +572,8 @@ self_edit_contract() {
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py add:*)")' .claude/settings.json >/dev/null
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py list:*)")' .claude/settings.json >/dev/null
   grep -qF '**The Now page.**' README.md
+  grep -qF 'Never stage or edit `wiki/<p>/Now.md` either' .claude/commands/ingest.md
+  grep -qF '`wiki/<partition>/Now.md` is the one note both machines write' README.md
 }
 
 @test "the README says update_template.sh lists new units and never installs them (#35)" {

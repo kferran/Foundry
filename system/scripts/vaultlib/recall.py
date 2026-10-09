@@ -92,10 +92,11 @@ def build(vault, scope, budget, workcell_session=False) -> str:
     if lines:
         block = "\n### Now (open loops)\n" + "\n".join(lines) + "\n"
         marker = "\n…[truncated]\n"
-        out += block if len(out) + len(block) <= budget else block[: budget - len(out) - len(marker)] + marker
+        room = budget - len(out)
+        out += block if len(block) <= room else (block[: room - len(marker)] + marker if room > len(marker) else "")
     conn = _open_index(vault)
     if conn is None:
-        return out
+        return out[:budget]
     try:
         rows = recent_digests(conn, partition, name)
     finally:
