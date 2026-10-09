@@ -31,7 +31,7 @@ Intake never rewrites a briefing (two-machines §5.6). The updates therefore go 
 - **Each entry ends with a blank line.** On the client the owner ticks a checkbox on line N; on the server the writer appends after the blank line N+1. Because one unchanged line separates the two changes, git merges them without a conflict. A sync test pins this.
 - **Template:** `system/templates/daily-briefing.md` gains `## 🕑 Today so far` and `![[{{date}}.today]]`, placed before `## 📝 Notes`. `/brief` keeps that line, and adds the section to an existing briefing that lacks it.
 - **Archive:** `brief_prep.sh` moves `<date>.today.md` along with its briefing (the archive regex `(\.debrief)?` becomes `(\.debrief|\.today)?`).
-- **Schema:** none. The file is a generated embed like `<date>.debrief.md`, which has none. The linter and the index skip it as they skip the debrief; the plan confirms that.
+- **Schema:** `system/schemas/today.md` (`type: today`). `briefings/` is schema-checked, and a file without frontmatter fails lint (`missing frontmatter`), as `<date>.debrief.md` would without `system/schemas/debrief.md`.
 
 ### 3.2 Entries
 
@@ -45,7 +45,7 @@ Entries are chronological, and each starts with the local time and a kind. Copie
 
 - 10:09 **meeting** [[2026-10-09-1009-pilot-sync]]: 2 decisions; yours: "Send the capability doc"
 
-- 11:12 **chat** #uat-testing: "UAT is currently not working" (you replied 11:52) https://example.slack.com/archives/C1/p1
+- 11:52 **chat** #uat-testing: "UAT is currently not working" (you replied) https://example.slack.com/archives/C1/p1
 
 - [ ] Reply in #team-x: "Can you confirm pre-prod…" (Blake Sample, 14:05) https://example.slack.com/archives/C2/p2 _(chat)_
 
@@ -53,7 +53,7 @@ Entries are chronological, and each starts with the local time and a kind. Copie
 
 - **session.** One entry per digest: the first sentence of Outcome, with each Delivered bullet as a `delivered:` sub-bullet. The link is the digest note. Each Follow-ups bullet becomes its own `- [ ] … _(follow-up, session HH:MM)_` entry. A follow-up whose normalized text (case-folded, whitespace folded) is already in today's file is skipped.
 - **meeting.** One entry per meeting imported today: the note link, the number of bullets under `## Decisions`, and the owner's open action items quoted. Ownership is decided by `owner_names`, the same rule `meeting_actions.py` uses. Meeting actions stay plain text, because they are ticked on the meeting note.
-- **chat.** One entry per thread the owner posted in or was mentioned in today. If someone mentioned the owner after the owner's last message in that thread, the entry is a `- [ ] Reply in …` line instead. Each thread is written once a day: a later "needs reply" for a thread already listed adds the `- [ ]` line only.
+- **chat.** One entry per thread the owner posted in or was mentioned in today, and one per DM or group DM conversation with a message today. Top-level DM messages are grouped by conversation (most DMs have no threads, so grouping them by message would leave every DM waiting on a reply); the entry links that conversation's earliest top-level message of the day. If someone mentioned the owner after the owner's last message in that thread, the entry is a `- [ ] Reply in …` line instead. Each thread is written once a day: a later "needs reply" for a thread already listed adds the `- [ ]` line only.
 
 ### 3.3 Writer: `system/scripts/today_log.py`
 
@@ -68,7 +68,13 @@ A deterministic script that makes no model call. Intake runs it on the server an
 
 ### 3.4 Digests from client sessions
 
-`/setup` phase 5a offers the memory hooks on a client too (today it says "On a client, never install the hooks"). A client digest is a new file in `raw/<p>/notes/`, so it syncs without a conflict, and the server compiles it like any other digest. The code needs no change: `mem_env_ok` checks only the session environment.
+`/setup` phase 5a offers the memory hooks on a client too (today it says "On a client, never install the hooks"). The hook code needs no change: `mem_env_ok` checks only the session environment.
+
+**Open decision D1 (owner).** `.gitignore:11` ignores `raw/**` (template design "Raw inputs in git": compiled `wiki/` is the durable record), so a client digest never reaches the server. Client digests need one of:
+1. un-ignore `raw/*/notes/*.md`: pending digests (already redacted at capture) enter the private origin's history;
+2. leave §3.4 out: client sessions stay invisible to the brief.
+
+Plan 1 builds everything else first and stops before its client-digest task until the owner decides.
 
 ### 3.5 Chat fetch: `system/scripts/chat_fetch.sh` and `chat_threads.py`
 
@@ -81,16 +87,17 @@ These follow `jira_fetch.sh` and `jira_handoffs.py` (delivered-work design §3.2
   3. DMs and group DMs: `filters: "is:dm on:<date>"`.
 - **Result shape (probed 2026-10-09).** The tool returns `{"results": "<markdown>", "pagination_info": "<text>"}`. Each message is a `### Result N of M` block with `Channel:`, `From: … (ID: U…)`, `Time:`, `Message_ts:`, `Permalink: [link](…)` and `Text:` lines. A reply's permalink carries `?thread_ts=<ts>&cid=<channel>`; a top-level message's does not, and its thread key is its own `Message_ts`.
 - **Checks.** `chat_threads.py extract` checks the stream: only the allowed tool, only the queries built from settings, no errors, and a result in the expected shape (fail closed). It groups the results by thread and writes one JSON line per thread: `link`, `channel`, `first_line`, `last_author`, `last_time`, `needs_reply`. Message text is masked and cut, and none of the model's own words are used.
-- **Schedule.** `foundry-chat.timer` runs on the server and standalone vaults, `OnCalendar=Mon..Fri *-*-* 08..18:00:00 {{TZ}}`, as the meetings timer does. It is installed only when `chat_user_id` is set. Because `--update` does not install new units (#35), `/setup` installs it.
+- **Large results.** A tool result too large for the stream is replaced by a `<persisted-output>` marker. The checker fails closed on it; if the probe shows the result reaches the stream only as text, `limit` drops until a page fits, and the plan stops at its probe task if none does.
+- **Schedule.** `foundry-chat.timer` runs on the server and standalone vaults, `OnCalendar=Mon..Fri *-*-* 08..18:30:00 {{TZ}}`: hourly like the meetings timer, at half past so the two connector sessions do not start together. It is installed only when `chat_user_id` is set. Because `--update` does not install new units (#35), `/setup` installs it.
 - **Setup.** A new phase, 6d Chat, follows the shape of 6c: it asks for the owner's chat user ID and runs `chat_fetch.sh --check`. A chat failure never blocks setup.
 
 ### 3.6 Carry-forward
 
-`carry_forward.py <date>` also reads the `- [ ] ` lines of the same earlier day's `<day>.today.md` (or its archived copy). It prints them like section 1 items, with `_(open since <that day>)_` and the single-stamp rule from #84. The next brief lists them under **Carried forward**.
+`carry_forward.py <date>` also reads the `- [ ] ` lines of the earlier briefing day's `<day>.today.md` and of every later day's `.today.md` up to yesterday (in place or archived), so a day with no briefing does not drop its follow-ups. It prints them like section 1 items, with `_(open since <that day>)_` and the single-stamp rule from #84. The next brief lists them under **Carried forward**.
 
 ### 3.7 Debrief
 
-`debrief_prep.sh` writes `system/logs/inputs/<date>/today_open.md` with the open `- [ ] ` lines of `<date>.today.md`. `/debrief` lists them under **Open from today**, or writes "None." Delivered Today is unchanged.
+`debrief_prep.sh` writes `system/logs/inputs/<date>/today_open.md` with the open `- [ ] ` lines of `<date>.today.md`. `/debrief` lists them under an **Open from today** heading inside section 1 (a new numbered section would break the rule that `### 6. Delivered Today` is last), or writes "None." Delivered Today is unchanged.
 
 ## 4. Out of scope
 
