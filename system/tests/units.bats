@@ -73,7 +73,7 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   run "$IU"
   [ "$status" -eq 0 ]
   grep -qx -- '--user daemon-reload' "$STUB_SYSTEMCTL_LOG"
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-nightshift.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "a second run reports every unit unchanged and rewrites nothing" {
@@ -210,7 +210,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
     [ -f "$UD/$n" ]
   done
   [ ! -e "$UD/foundry-focus.service" ]
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-sync.timer foundry-nightshift.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-sync.timer foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "machine_role client installs nothing and says so" {
@@ -322,7 +322,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qxF "ExecStart=\"$VP/system/scripts/meetings_fetch.sh\"" "$UD/foundry-meetings.service"
   grep -qx 'TimeoutStartSec=35min' "$UD/foundry-meetings.service"
   grep -qxF "Environment=\"CLAUDE_BIN=$STUBS/claude\"" "$UD/foundry-meetings.service"
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-meetings.timer foundry-nightshift.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-meetings.timer foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
   set_role server
   run "$IU"
   [ "$status" -eq 0 ]
@@ -386,4 +386,31 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -q '^OnCalendar=\*-\*-\* 05:30:00 ' "$UD/foundry-dtcc-watch.timer"
   grep -q 'dtcc_watch.py' "$UD/foundry-dtcc-watch.service"
   grep -q 'enable --now .*foundry-dtcc-watch.timer' "$STUB_SYSTEMCTL_LOG"
+}
+
+@test "standalone and server get the template update every morning at 05:30, a server with its sync drop-in (#87)" {
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qxF "ExecStart=\"$VP/system/scripts/update_template.sh\" --unattended" "$UD/foundry-update.service"
+  grep -qx 'OnCalendar=\*-\*-\* 05:30:00 America/Denver' "$UD/foundry-update.timer"
+  grep -qx 'Persistent=true' "$UD/foundry-update.timer"
+  [ ! -e "$UD/foundry-update.service.d" ]
+  system/scripts/vault_index.py set system/config.md machine_role server > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'TimeoutStartSec=35min' "$UD/foundry-update.service.d/foundry-sync.conf"
+  grep -qxF "ExecStartPost=\"$VP/system/scripts/vault_sync.sh\" --post" "$UD/foundry-update.service.d/foundry-sync.conf"
+  system/scripts/vault_index.py set system/config.md machine_role client > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ ! -e "$UD/foundry-update.timer" ]
+}
+
+@test "--update keeps a timer the owner disabled disabled, and re-enables only enabled ones (#87)" {
+  "$IU" > /dev/null
+  printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$STUB_SYSTEMCTL_LOG"\n[[ "$*" != *"is-enabled --quiet foundry-nightshift.timer"* ]]\n' > "$STUBS/systemctl"
+  : > "$STUB_SYSTEMCTL_LOG"
+  run "$IU" --update
+  [ "$status" -eq 0 ]
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
 }

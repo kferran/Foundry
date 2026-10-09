@@ -103,6 +103,11 @@ if [[ "$role" != client ]]; then
   UNITS+=(foundry-nightshift.service foundry-nightshift.timer)
   ENABLE+=(foundry-nightshift.timer)
 fi
+# Template update: standalone and server, every morning (#87); a client gets updates through sync.
+if [[ "$role" != client ]]; then
+  UNITS+=(foundry-update.service foundry-update.timer)
+  ENABLE+=(foundry-update.timer)
+fi
 # DTCC watcher: standalone and server, only when the vault has a map (DTCC watcher spec §7).
 if [[ "$role" != client ]] && [[ -f system/dtcc/map.yaml ]]; then
   UNITS+=(foundry-dtcc-watch.service foundry-dtcc-watch.timer)
@@ -112,10 +117,10 @@ fi
 # service's own prep step and a timeout raised by two sync deadlines plus margin.
 DROPINS=()
 [[ "$role" != server ]] || DROPINS=(foundry-intake.service.d/foundry-sync.conf foundry-brief.service.d/foundry-sync.conf
-                                    foundry-debrief.service.d/foundry-sync.conf)
-declare -A DROPIN_TIMEOUT=([foundry-intake]=105min [foundry-brief]=60min [foundry-debrief]=60min)
+                                    foundry-debrief.service.d/foundry-sync.conf foundry-update.service.d/foundry-sync.conf)
+declare -A DROPIN_TIMEOUT=([foundry-intake]=105min [foundry-brief]=60min [foundry-debrief]=60min [foundry-update]=35min)
 declare -A DROPIN_PREP=([foundry-intake]="" [foundry-brief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/brief_prep.sh"'
-                        [foundry-debrief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/debrief_prep.sh"')
+                        [foundry-debrief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/debrief_prep.sh"' [foundry-update]="")
 # --update (update_template.sh) re-renders only what this vault installed: a unit a new template adds is
 # reported, never installed or enabled, so /setup's ask-before-installing holds (#35). Drop-ins follow their
 # service.
@@ -125,7 +130,10 @@ if [[ "$mode" == update ]]; then
   for n in "${UNITS[@]}"; do
     if [[ " ${have[*]} " == *" $n "* ]]; then keep+=("$n"); else echo "new unit available: $n (install it with system/scripts/install_units.sh)"; fi
   done
-  for n in "${ENABLE[@]}"; do [[ " ${keep[*]} " != *" $n "* ]] || keep_enable+=("$n"); done
+  # Only what is enabled now stays enabled: a timer the owner disabled stays off across updates (#87).
+  for n in "${ENABLE[@]}"; do
+    [[ " ${keep[*]} " != *" $n "* ]] || ! "$SYSTEMCTL" --user is-enabled --quiet "$n" || keep_enable+=("$n")
+  done
   for d in "${DROPINS[@]}"; do [[ " ${keep[*]} " != *" ${d%%.d/*} "* ]] || keep_dropins+=("$d"); done
   UNITS=("${keep[@]}") ENABLE=("${keep_enable[@]}") DROPINS=("${keep_dropins[@]}")
 fi

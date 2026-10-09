@@ -1,0 +1,9 @@
+[Unit]
+Description=The Foundry: template update every morning before the brief
+
+[Timer]
+OnCalendar=*-*-* 05:30:00 {{TZ}}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

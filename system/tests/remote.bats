@@ -228,7 +228,7 @@ upstream_commit() {  # <file> <text>
   grep -qx 'unchanged foundry-brief.service' <<< "$output"
   [ ! -e "$SYSTEMD_USER_DIR/foundry-nightshift.timer" ]
   [ ! -e "$SYSTEMD_USER_DIR/foundry-nightshift.service" ]
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "update_template on a server re-renders the sync drop-ins of the services it installed" {
@@ -305,4 +305,97 @@ upstream_commit() {  # <file> <text>
   run "$UT"
   [ "$status" -eq 1 ]
   [[ "$output" == *"setup_remote.sh"* ]]
+}
+
+# alerts: today's update alerts in the vault's timezone.
+alerts() { cat "system/logs/alerts_$(TZ=America/Denver date +%F).md" 2>/dev/null; }
+
+# upstream_pr <n> <title> <file>: a pull request merged on the template's default branch, as GitHub writes it.
+upstream_pr() {
+  git -C "$W" checkout -q -b "pr$1"
+  printf '%s\n' "$3" > "$W/$3"
+  git -C "$W" add -A
+  git -C "$W" commit -qm "$2"
+  git -C "$W" checkout -q -
+  git -C "$W" merge -q --no-ff "pr$1" -m "Merge pull request #$1 from someone/pr$1" -m "$2"
+  git -C "$W" push -q
+}
+
+@test "--unattended merges and raises one alert listing the merged pull requests (#87)" {
+  template_setup
+  upstream_pr 7 "Add the export job" a.txt
+  upstream_commit b.txt direct
+  run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  [ "$(cat a.txt)" = a.txt ]
+  [ "$(git log -1 --format=%P | wc -w)" -eq 2 ]
+  [ "$(alerts | grep -c '\[update\]')" -eq 1 ]
+  alerts | grep -qF '[update] template updated: merged 2 change(s): upstream: b.txt; #7 Add the export job'
+}
+
+@test "--unattended with nothing new merges nothing and stays silent (#87)" {
+  template_setup
+  before="$(git rev-parse HEAD)"
+  run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  [ "$(git rev-parse HEAD)" = "$before" ]
+  [ -z "$(alerts)" ]
+}
+
+@test "--unattended aborts a conflict, leaves the vault unchanged and alerts (#87)" {
+  template_setup
+  upstream_commit "my notes.txt" theirs
+  printf 'ours\n' > "my notes.txt"
+  git commit -qam ours
+  before="$(git rev-parse HEAD)"
+  run "$UT" --unattended
+  [ "$status" -eq 1 ]
+  [ ! -e .git/MERGE_HEAD ]
+  [ "$(git rev-parse HEAD)" = "$before" ]
+  [ -z "$(git status --porcelain)" ]
+  alerts | grep -qF '[update] template update stopped on a conflict in my notes.txt; the vault is unchanged.'
+}
+
+@test "--unattended skips with an alert while another run holds run.lock (#87)" {
+  template_setup
+  upstream_commit new.txt hello
+  exec 8> system/run.lock
+  flock 8
+  UPDATE_LOCK_WAIT=1 run "$UT" --unattended
+  exec 8>&-
+  [ "$status" -eq 0 ]
+  [ ! -e new.txt ]
+  alerts | grep -qF '[update] template update skipped: another run held run.lock'
+}
+
+@test "--unattended fails with an alert on uncommitted changes and never commits them (#87)" {
+  template_setup
+  upstream_commit new.txt hello
+  echo x > dirty.txt
+  run "$UT" --unattended
+  [ "$status" -eq 1 ]
+  [ ! -e new.txt ]
+  [ "$(git status --porcelain)" = '?? dirty.txt' ]
+  alerts | grep -qF '[update] template update failed: working tree is not clean'
+}
+
+@test "--unattended alerts when a step after the merge fails, and names the merged changes (#87)" {
+  template_setup
+  upstream_commit system/scripts/commit_runs.py $'#!/bin/bash\nexit 3'
+  run "$UT" --unattended
+  [ "$status" -eq 1 ]
+  [ "$(git log -1 --format=%P | wc -w)" -eq 2 ]
+  alerts | grep -qF '[update] template update failed: merged upstream: system/scripts/commit_runs.py, then commit_runs.py --init-cutover failed'
+}
+
+@test "--unattended names a unit the update adds in its alert (#87)" {
+  template_setup
+  printf '#!/bin/bash\n' > "$STUBS/systemd-analyze"
+  chmod +x "$STUBS/systemd-analyze"
+  system/scripts/install_units.sh > /dev/null
+  rm "$SYSTEMD_USER_DIR"/foundry-nightshift.service "$SYSTEMD_USER_DIR"/foundry-nightshift.timer
+  upstream_commit new.txt hello
+  run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  alerts | grep -qF 'new unit available: foundry-nightshift.service, foundry-nightshift.timer (install with system/scripts/install_units.sh)'
 }
