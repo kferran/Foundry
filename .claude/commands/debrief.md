@@ -23,6 +23,8 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - `system/logs/inputs/<date>/digests.md`: the day's session digests from every partition.
 - `system/logs/inputs/<date>/focus.md`: top notes and Focus Fragmentation Warnings.
 - `system/logs/inputs/<date>/orders.md`: the open Work Orders report, which collects everything since this morning's brief (empty when nothing ran).
+- `system/logs/inputs/<date>/prs.md`: pull requests you opened, merged or reviewed today in the registered GitHub repositories, one `- <type> — <what> — <link>` line each (empty when none or no GitHub repository is registered).
+- `briefings/<date>.md`: the lines in its 📝 Notes section that start with `delivered:`.
 - `system/logs/inputs/<date>/unavailable.md`: sources the prep script could not read.
 - `system/logs/alerts_<date>.md`: pipeline alerts.
 - Today's meetings: `system/scripts/vault_index.py query "SELECT path, title, partition FROM v_meeting WHERE date = '<date>'"`.
@@ -39,6 +41,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - **3. Agent Health:** every agent whose 3 most recent metric files all show `test_suite_passed: false`, with the files. Report only; the user decides what to do. Otherwise "No repeated failures."
 - **4. Unavailable Sources:** one bullet per missing source, or "None."
 - **5. Work Orders:** the `## Items` table and every `- [ ] ` line under "## Needs you" from `orders.md`, verbatim. Write "No Work Orders ran today." when the file is empty or says "Nothing ran." In both cases, copy its `> Held:` line verbatim when there is one. When an existing debrief has no 5. Work Orders section, add it at the end.
+- **6. Delivered Today:** what you delivered, as `type — what — link` lines under one bold label per type (**Decisions**, **Docs**, **Analyses**, **Messages**, **Code**, **Reviews**, **Handoffs**), from the `## Delivered` bullets of each digest in `digests.md`, the briefing's `delivered:` lines and the lines of `prs.md`, each once; or "Nothing recorded." When an existing debrief has no 6. Delivered Today section, add it after 5. Work Orders.
 - Frontmatter: `type: debrief`, `date: "<date>"`. Never add, change or remove `provenance`; the gate stamps it.
 
 ## Self-edit
