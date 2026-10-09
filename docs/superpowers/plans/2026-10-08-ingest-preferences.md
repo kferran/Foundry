@@ -147,7 +147,7 @@ Replace with:
 Edit 2 in `.claude/commands/ingest.md`. Find:
 
 ````text
-8. **Digest sections.** Compile Outcome, Decisions and Facts learned as facts. Treat Corrections as facts about how the user wants things done and patch the note they concern. Open questions / friction become friction facts.
+8. **Digest sections.** Compile Outcome, Decisions and Facts learned as facts. Treat Corrections as facts about how the user wants things done and patch the note they concern. Open questions / friction become friction facts. Delivered is for the debrief's Delivered Today: never compile it.
 9. **Meeting inputs.** An input with `type: meeting_input` holds one meeting's summary, decisions and details; its `meeting` field links the meeting note. Merge its facts and decisions into concept notes, and in each one put the meeting note (its `meeting` field) in `sources` and leave the input out, so the meeting note lists those concepts as backlinks. Read the transcript (`system/scripts/vault_index.py show <meeting note name>.transcript`) only when the summary and details leave a fact unclear. Set `capability` only on a note for work the meeting assigns. Never stage anything under `wiki/<p>/meetings/`: the gate rejects the whole run. Meetings are `work` or `personal`, so a `wiki/shared/` note never cites a meeting (the partition wall).
 10. **Self-edit.** Read `.claude/skills/humanizer/SKILL.md` once, then edit the prose of every note you created or changed against its sections A, B, C and E (wording). Skip section D (formatting). Keep every fact, name, number, date and link, and leave frontmatter, code, paths and `_decisions.jsonl` unchanged. Where the skill says to cut a sentence, keep any fact it carries. On a patched note, edit only the text this run wrote. Headless, edit only the staged copies under `wiki/.staging/<run_id>/`.
 11. **Finish** with a short summary: one line per decision (decision, target).
@@ -156,7 +156,7 @@ Edit 2 in `.claude/commands/ingest.md`. Find:
 Replace with:
 
 ````text
-8. **Digest sections.** Compile Outcome, Decisions and Facts learned as facts. A Correction that fixes a fact in an existing note also patches that note, and every Correction of a `work` or `personal` digest goes to a preference note (step 9). Open questions / friction become friction facts.
+8. **Digest sections.** Compile Outcome, Decisions and Facts learned as facts. A Correction that fixes a fact in an existing note also patches that note, and every Correction of a `work` or `personal` digest goes to a preference note (step 9). Open questions / friction become friction facts. Delivered is for the debrief's Delivered Today: never compile it.
 9. **Preferences.** For each bullet in the `## Corrections` section of a `session_digest` input whose partition `<p>` is `work` or `personal` (a `shared` digest gets no preference note: there are no shared preferences):
    - **Statement:** the bullet's text before the first ` — ` (space, em dash, space), or the whole bullet when it has none, without the leading `- ` and the spaces around it. Copy it verbatim into `statement`: no rewording, no added or dropped words, the same case and punctuation. A preference counts the digest as evidence only when the digest holds the exact statement.
    - **Find a match:** run `system/scripts/vault_index.py query "SELECT path, statement, evidence FROM v_preference WHERE partition = '<p>'"`, then read the candidates it returns.
