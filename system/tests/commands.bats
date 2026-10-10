@@ -710,6 +710,19 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'add a `delivered: <type> — <what> — <link>` line to the 📝 Notes section of today'"'"'s briefing' system/agents/foreman.md
 }
 
+@test "stale claims get corrected: the CLAUDE.md rule, the digest section and the ingest rule (#85)" {
+  grep -qF -- '- **Stale claims:** When a vault note contradicts the code, a document or what this session established, correct it' CLAUDE.md
+  d=system/hooks/digest_instructions.md
+  grep -qF 'Stale claims (each vault note this session showed to be out of date' "$d"
+  corrections="$(grep -bo 'Corrections (' "$d" | cut -d: -f1)"
+  stale="$(grep -bo 'Stale claims (' "$d" | cut -d: -f1)"
+  delivered="$(grep -bo 'Delivered (' "$d" | cut -d: -f1)"
+  [ "$corrections" -lt "$stale" ]
+  [ "$stale" -lt "$delivered" ]
+  grep -qF 'is a **patch** of the note it names' .claude/commands/ingest.md
+  grep -qF 'A Stale claims bullet never becomes a preference note' .claude/commands/ingest.md
+}
+
 @test "/setup phase 6c sets the handoffs and checks the Atlassian connector; the README explains it (delivered work §3.5)" {
   s=.claude/commands/setup.md
   grep -qx '## 6c. Handoffs' "$s"

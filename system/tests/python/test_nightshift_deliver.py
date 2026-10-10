@@ -278,3 +278,31 @@ def test_no_protected_files_keeps_the_commit(tmp_path):
     sha = git(src, "rev-parse", "HEAD").strip()
     assert nd.protected_files(src) == ([], [])
     assert nd.apply_protected(tmp_path / "runner.git", sha, "master", [], tmp_path) == (True, sha)
+
+
+def test_research_stale_claims_become_one_digest_input_for_ingest(vault: Path, tmp_path):
+    """#85: a findings note's Stale claims reach ingest as a one-section session digest."""
+    from vaultlib import frontmatter, schema
+    findings = tmp_path / "A.md"
+    findings.write_text(concept("work", "Answer", "Found it.\n\n## Stale claims\n"
+                                "- [[Kafka]]: retries 3 times → retries 5 times (src/app/retry.py:12)\n\n## Web sources\n- x\n",
+                                provenance='["headless"]'))
+    fm = {"output": "wiki/work/concepts/A.md", "partition": "work", "id": "2026-10-10-retry-check"}
+    ok, detail = nd.publish_research(vault, fm, findings)
+    assert ok, detail
+    path = vault / "raw/work/notes/2026-10-10-retry-check.stale-claims.md"
+    note = frontmatter.parse(path.read_text())
+    assert note.body == "## Stale claims\n- [[Kafka]]: retries 3 times → retries 5 times (src/app/retry.py:12)\n"
+    ntype, issues = schema.validate_note(schema.load_schemas(vault), path.relative_to(vault).as_posix(), note,
+                                         schema.Context(vault))
+    assert ntype == "session_digest"
+    assert [i.message for i in issues if i.severity == "error"] == []
+    assert note.data["work_order"] == "2026-10-10-retry-check"
+
+
+def test_research_without_stale_claims_writes_no_digest(vault: Path, tmp_path):
+    findings = tmp_path / "A.md"
+    findings.write_text(concept("work", "Answer", "Found it.\n\n## Stale claims\n", provenance='["headless"]'))
+    ok, _ = nd.publish_research(vault, {"output": "wiki/work/concepts/A.md", "partition": "work", "id": "x"}, findings)
+    assert ok
+    assert not (vault / "raw/work/notes").exists()

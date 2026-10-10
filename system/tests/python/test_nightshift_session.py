@@ -90,3 +90,9 @@ def test_plan_prompt_routes_protected_files():
     p = ss.plan_prompt({"plan": "docs/p.md", "tasks": "1-2"})
     assert ".nightshift/protected/claude/<path under .claude/>" in p   # no .claude segment: a session can write it (#92)
     assert ".nightshift/protected/.claude" not in p
+
+
+def test_research_prompt_asks_for_stale_claims():
+    r = ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")
+    assert "## Stale claims" in r
+    assert "- [[Note]]: <the old claim> → <the current fact> (<evidence>)" in r
