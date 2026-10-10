@@ -721,6 +721,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   [ "$stale" -lt "$delivered" ]
   grep -qF 'is a **patch** of the note it names' .claude/commands/ingest.md
   grep -qF 'A Stale claims bullet never becomes a preference note' .claude/commands/ingest.md
+  grep -qF 'whose bullets are only ever a **patch**' .claude/commands/ingest.md
 }
 
 @test "/setup phase 6c sets the handoffs and checks the Atlassian connector; the README explains it (delivered work §3.5)" {

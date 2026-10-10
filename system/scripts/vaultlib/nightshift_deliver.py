@@ -226,7 +226,10 @@ def publish_research(vault, fm: dict, findings: Path) -> tuple:
     except publish.PublishError as exc:
         return False, str(exc)
     if report.get("status") == "published":
-        stale_claims_input(vault, fm, findings.read_text(encoding="utf-8"))
+        try:
+            stale_claims_input(vault, fm, findings.read_text(encoding="utf-8"))
+        except OSError as exc:  # the findings are published: the item is done either way
+            return True, f"{fm['output']} (its stale claims did not reach ingest: {exc.__class__.__name__}: {exc})"
         return True, fm["output"]
     return False, f"publish gate: {report.get('status')}: {report.get('problems') or report.get('conflicts')}"
 
@@ -244,11 +247,18 @@ def stale_claims_input(vault, fm: dict, text: str):
     bullets = [line for line in body[start:end] if line.startswith("- ")]
     if not bullets:
         return None
-    path = Path(vault) / "raw" / fm["partition"] / "notes" / f"{fm['id']}.stale-claims.md"
+    name = f"{fm['id']}.stale-claims"
+    raw = Path(vault) / "raw" / fm["partition"]
+    for folder in (raw / "notes", raw / "archive", Path(vault) / "system" / "quarantine" / "poisoned"):
+        if folder.is_dir() and any(p.name.startswith(name) for p in folder.iterdir()):
+            return None  # a second delivery of the same Work Order: ingest already has it
+    path = raw / "notes" / f"{name}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(f'---\ntype: session_digest\npartition: {fm["partition"]}\ncodebase: "vault"\n'
+    # provenance headless: the bullets come from a session that read untrusted sources (ingest patches only).
+    tmp.write_text(f'---\ntype: session_digest\npartition: {fm["partition"]}\ncodebase: {json.dumps(fm.get("repo") or "vault")}\n'
                    f'session_id: "order-{fm["id"]}"\ncreated_at: "{datetime.now().astimezone().isoformat(timespec="seconds")}"\n'
-                   f'work_order: "{fm["id"]}"\n---\n{STALE}\n' + "\n".join(bullets) + "\n", encoding="utf-8")
+                   f'work_order: "{fm["id"]}"\nprovenance: ["headless"]\n---\n{STALE}\n' + "\n".join(bullets) + "\n",
+                   encoding="utf-8")
     os.replace(tmp, path)
     return path
