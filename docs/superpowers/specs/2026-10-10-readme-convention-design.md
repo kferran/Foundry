@@ -16,7 +16,7 @@ A vault made from the template carries the template's `README.md`, which describ
   - the quick start, linking to the setup prompt in `FOUNDRY.md` (Getting started). The prompt stays in the manual because a client clones the private vault, whose README is the vault's own (a refinement of the grill's answer, made while planning);
   - a link to `FOUNDRY.md`;
   - a marker line, `<!-- foundry:landing -->`.
-- **`.gitattributes` holds `README.md merge=ours`.** Git has no built-in `ours` driver, so `update_template.sh` merges with `git -c merge.ours.driver=true merge …`. The driver is defined only for the template merge:
+- **`update_template.sh` marks `README.md` `merge=ours` for its own merge only:** it writes the rule to a temporary attributes file and merges with `git -c core.attributesFile=<file> -c merge.ours.driver=true merge …` (git has no built-in `ours` driver). The final review found that an in-tree `.gitattributes` would not apply on the first update, because git reads attributes from the vault's checkout, which does not have the file yet. So there is no `.gitattributes`:
   - in a template update, a README the vault has changed keeps the vault's version;
   - in `vault_sync.sh`'s merges between machines, no driver is defined, so git merges the README normally, and an edit on both machines conflicts the usual way and loses nothing.
 
@@ -30,7 +30,7 @@ A vault made from the template carries the template's `README.md`, which describ
 
 - `README.md` → `FOUNDRY.md` (`git mv`), then a new `README.md` landing page.
 - `FOUNDRY.md`: a line near the top saying a vault's README is its own and this file is the manual. "Tracked in your vault, never in the template" gains `README.md`. "Updating" explains the `merge=ours` rule.
-- `.gitattributes`: `README.md merge=ours`.
+- No `.gitattributes`: the rule lives in `update_template.sh` (see §2).
 - `update_template.sh`: `-c merge.ours.driver=true` on the merge.
 - `.claude/commands/setup.md`: a new step after 9 (Hand-off) that writes the stub README. Line 5's "the README's setup prompt" becomes "the setup prompt in `FOUNDRY.md`, Getting started".
 - References to README sections move to `FOUNDRY.md`: `vault_sync.sh`, `backup.md`, `check_deps.sh`, `CLAUDE.md` if it cites one, and the tests.
@@ -46,7 +46,7 @@ A vault made from the template carries the template's `README.md`, which describ
 - **bats (`commands.bats`, `vault_integrity.bats`):**
   - every existing README text check moves to `FOUNDRY.md`;
   - the landing page has the marker, the setup prompt and the link;
-  - `.gitattributes` has the rule;
+  - `update_template.sh` carries the rule and the driver;
   - `setup.md` has the stub step and its marker condition.
 
 Bound tools: bats (`remote.bats`, `commands.bats`, `vault_integrity.bats`), pytest for any test that reads the README, and the gate.

@@ -160,7 +160,7 @@ setup() {
 
 # Files the template owns (Plan 9 spec §6), never the user's notes. ':!system/codebases' also drops
 # system/codebases/example.md, so each check lists it on its own.
-OWN=(CLAUDE.md README.md FOUNDRY.md .gitattributes .gitignore .claude .githooks system wiki/Index.md ':!system/codebases')
+OWN=(CLAUDE.md README.md FOUNDRY.md .gitignore .claude .githooks system wiki/Index.md ':!system/codebases')
 # Split into pieces so this file, which lies inside system/, does not match itself.
 OLD="jar""vis|opt""imus|wheel""jack|ultra[ -]mag""nus|sound""wave|tele""traan|the a""rk|auto""bot|bumble""bee|coding""agent|system""maintenance|(^|[^a-z])cr""ew|fl""eet|task""_id|agent""_owner|assigned""_agent|agent""_name|chief of st""aff"
 

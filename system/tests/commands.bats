@@ -766,14 +766,17 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF '[FOUNDRY.md](FOUNDRY.md)' README.md
   grep -qF '[the manual'"'"'s Getting started](FOUNDRY.md#getting-started)' README.md
   [ "$(wc -l < README.md)" -le 40 ]
-  grep -qx 'README.md merge=ours' .gitattributes
-  grep -qF 'g -c merge.ours.driver=true merge --no-ff --no-edit "$ref"' system/scripts/update_template.sh
+  grep -qF 'g -c core.attributesFile="$attrs" -c merge.ours.driver=true merge --no-ff --no-edit "$ref"' system/scripts/update_template.sh
+  grep -qF 'README.md merge=ours' system/scripts/update_template.sh
   grep -qF 'This file is its manual.' FOUNDRY.md
   grep -qF '**Your README survives updates:**' FOUNDRY.md
   grep -qF 'Your vault'"'"'s `README.md` (the template ships only its landing page)' FOUNDRY.md
   sec="$(setup_section "9a. The vault's README")"
-  [[ "$sec" == *'Only when the first line of `README.md` is `<!-- foundry:landing -->`'* ]]
+  [[ "$sec" == *'only when the first line of `README.md` is `<!-- foundry:landing -->`'* ]]
   [[ "$sec" == *'Write no marker line'* ]]
+  [[ "$sec" == *'Skip this step on a client'* ]]
+  [[ "$sec" == *'when `remote_mode` is `keep`'* ]]
+  [ ! -e .gitattributes ]
   grep -qF 'the setup prompt in `FOUNDRY.md`, Getting started' .claude/commands/setup.md
   grep -qF '(FOUNDRY.md: Sync conflicts)' system/scripts/vault_sync.sh .claude/commands/backup.md
   run grep -rn 'README: Sync conflicts' system/scripts .claude

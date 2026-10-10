@@ -1,3 +1,0 @@
-# A vault owns its README.md: update_template.sh merges with this driver defined (merge.ours.driver=true), so a
-# README the vault changed keeps its version. Sync merges define no driver and merge it normally (#90).
-README.md merge=ours

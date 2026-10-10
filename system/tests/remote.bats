@@ -400,14 +400,13 @@ upstream_pr() {
   alerts | grep -qF 'new unit available: foundry-nightshift.service, foundry-nightshift.timer (install with system/scripts/install_units.sh)'
 }
 
-# A vault with the template's .gitattributes and README.md in its base commit (#90).
+# A vault with a README.md in its base commit and no .gitattributes, as on the first update after #90.
 readme_setup() {
-  cp "$REPO/.gitattributes" .gitattributes
   printf 'landing\n' > README.md
   template_setup
 }
 
-@test "update_template keeps a README the vault changed and leaves no merge driver in its config (#90)" {
+@test "update_template keeps a README the vault changed, the first update included, and leaves no merge config (#90)" {
   readme_setup
   upstream_commit README.md "new landing"
   printf 'my vault\n' > README.md
@@ -418,6 +417,9 @@ readme_setup() {
   [ "$(git log -1 --format=%P | wc -w)" -eq 2 ]
   run git config --get merge.ours.driver
   [ "$status" -eq 1 ]
+  run git config --get core.attributesFile
+  [ "$status" -eq 1 ]
+  [ ! -e .gitattributes ]
 }
 
 @test "update_template gives an unedited README the template's new one (#90)" {
