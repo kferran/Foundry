@@ -46,13 +46,13 @@
 Edit 1 in `system/tests/python/test_intake.py`. Find:
 
 ````text
-    assert any(p.name.startswith("a-dup-") for p in (iv / "raw/archive").iterdir())
+    assert "_(closed:" not in (iv / "wiki/work/Now.md").read_text()
 ````
 
 Replace with:
 
 ````text
-    assert any(p.name.startswith("a-dup-") for p in (iv / "raw/archive").iterdir())
+    assert "_(closed:" not in (iv / "wiki/work/Now.md").read_text()
 
 
 # -- the Notes block goes out once, after midnight (#61) ----------------------
