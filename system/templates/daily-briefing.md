@@ -10,7 +10,7 @@ status: "{{status}}"
 
 ### 1. Active Objectives & Context Boundaries
 
-<!-- Objectives are checkboxes: tick [x] when done or [-] to drop. Open items carry into the next briefing. -->
+<!-- From Now lists the open lines of wiki/<partition>/Now.md: tick [x] when done or [-] to drop. The tick lands on the Now page. -->
 
 ### 2. Unavailable Sources
 

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import frontmatter, meetings, publish, redact as redactmod, schema as schemamod
+from . import frontmatter, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
 
 FRESH_SECONDS = 60
 MAX_ATTEMPTS = 3
@@ -252,6 +252,15 @@ class Intake:
             if not seen:
                 self.alert(f"briefing {path.name} {problem}; the blocks after it wait until it is fixed")
                 _append_jsonl(record_path, {"kind": "alert", "briefing": rel, "reason": problem, "date": day})
+
+    # -- the Now page (Now page spec §3.4) -------------------------------
+    def check_now(self) -> None:
+        """Close Now lines on checked evidence; a busy run.lock skips this tick."""
+        try:
+            with self.lock("run.lock", timeout=0):
+                nowmod.check(self.vault, self.today(), self.alert)
+        except TimeoutError:
+            pass
 
     # -- inbox -----------------------------------------------------------
     def process_inbox(self) -> bool:
@@ -675,6 +684,10 @@ class Intake:
         try:
             with self.lock("intake.lock", timeout=0):
                 self.extract_briefing()
+                try:
+                    self.check_now()
+                except Exception as exc:  # noqa: BLE001 - meetings, inbox and digests still run
+                    self.alert(f"Now check failed ({exc.__class__.__name__}: {exc}); will retry")
                 try:
                     self.import_meetings()
                 except Exception as exc:  # noqa: BLE001 - inbox and digests still run

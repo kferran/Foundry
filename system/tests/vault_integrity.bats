@@ -20,14 +20,14 @@ setup() {
 @test "vault scripts and hook are executable" {
   for s in vault_index.py lint_vault.sh check_deps.sh verify_setup.sh focus_stats.sh track_obsidian.sh \
            brief_prep.sh debrief_prep.sh install_units.sh setup_remote.sh update_template.sh \
-           discover_codebases.sh inspect_codebase.sh inspect_codebase.py; do
+           discover_codebases.sh inspect_codebase.sh inspect_codebase.py now.py; do
     [ -x "system/scripts/$s" ]
   done
   [ -x .githooks/pre-commit ]
 }
 
 @test "a schema note exists for every template type" {
-  for t in wiki-concept:concept daily-briefing:briefing daily-debrief:debrief intent-shaper:plan_gate; do
+  for t in wiki-concept:concept now:concept daily-briefing:briefing daily-debrief:debrief intent-shaper:plan_gate; do
     file="system/templates/${t%%:*}.md"
     type="${t##*:}"
     grep -q "^type: $type\$" "$file"

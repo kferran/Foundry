@@ -16,6 +16,7 @@ TEMPLATE_TARGETS = {
     "daily-briefing.md": "briefings/2026-09-30.md",
     "daily-debrief.md": "briefings/2026-09-30.debrief.md",
     "intent-shaper.md": "wiki/work/plans/Sample.md",
+    "now.md": "wiki/work/Now.md",
 }
 NOT_NOTES = {"production-error.md"}  # body fragment filled by telemetry_store.render_body, no frontmatter
 EXPECTED = {"schema", "concept", "index", "briefing", "debrief", "plan_gate",

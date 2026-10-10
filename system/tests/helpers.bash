@@ -6,6 +6,7 @@ make_vault() {
   cp -r "$REPO/system/tests/fixtures/vault" "$V"
   mkdir -p "$V/system" "$V/.claude"
   cp -r "$REPO/system/schemas" "$V/system/schemas"
+  cp -r "$REPO/system/templates" "$V/system/templates"
   mkdir -p "$V/system/scripts"
   cp -r "$REPO/system/scripts/." "$V/system/scripts/"
   rm -rf "$V/system/scripts/__pycache__" "$V/system/scripts/vaultlib/__pycache__"
