@@ -25,7 +25,11 @@ status: "{{status}}"
 
 ## 📝 Notes
 
-<!-- Yours: /brief never edits this section. Put `#wiki-ingest-start` and `#wiki-ingest-end` on lines of their own around a block to send it to the wiki. -->
+<!-- Yours: /brief never edits this section. Write between the markers below: the block goes to the wiki once, just after midnight. A block marked anywhere else in the briefing goes within a few minutes. -->
+
+#wiki-ingest-start
+
+#wiki-ingest-end
 
 ## 🌌 Evening Debriefing ({{debrief_time}})
 

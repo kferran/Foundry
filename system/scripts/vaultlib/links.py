@@ -9,6 +9,7 @@ SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:", re.I)
 TAG = re.compile(r"(?<![\w/&#(\]])#([A-Za-z][\w/-]*)")
 FENCE = re.compile(r"^\s*(```|~~~)")
 INLINE = re.compile(r"`[^`\n]*`")
+MARKERS = ("#wiki-ingest-start", "#wiki-ingest-end")  # ingest control lines, not tags (#61)
 
 
 @dataclass
@@ -51,6 +52,8 @@ def extract(body: str, body_line: int):
             if SCHEME.match(href) or href.startswith("#"):
                 continue
             found.append(Link(href, href.split("#", 1)[0] or None, lineno, "md"))
+        if line.strip() in MARKERS:
+            continue
         # Remove link syntax before matching tags to prevent tag leakage
         line_for_tags = MD.sub(" ", WIKI.sub(" ", line))
         for m in TAG.finditer(line_for_tags):
