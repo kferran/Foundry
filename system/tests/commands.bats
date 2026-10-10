@@ -86,7 +86,7 @@ headless_contract() {
   end="$(grep -nx '#wiki-ingest-end' "$t" | cut -d: -f1)"
   [ "$start" -lt "$end" ]
   grep -qF 'the block goes to the wiki once, at 05:00 the next morning' "$t"
-  grep -qF 'markers already in 📝 Notes: the server sends that block to the wiki once, at 05:00 the next morning' README.md
+  grep -qF 'markers already in 📝 Notes: the server sends that block to the wiki once, at 05:00 the next morning' FOUNDRY.md
   grep -qF 'which go to the wiki once, at 05:00 the next morning' .claude/commands/setup.md
   grep -qF 'that block goes to the wiki once, at 05:00 the next morning' CLAUDE.md
 }
@@ -203,7 +203,7 @@ setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } o
   [ "$(head -n 1 system/agents/foreman.md)" = '# The Foreman' ]
   grep -qF 'Persona: `system/agents/foreman.md`.' CLAUDE.md
   # The [C] bracket keeps the pattern from matching this line.
-  run git grep -nE '[C]hiefOfStaff' -- CLAUDE.md README.md .claude system
+  run git grep -nE '[C]hiefOfStaff' -- CLAUDE.md README.md FOUNDRY.md .claude system
   [ "$status" -eq 1 ]
 }
 
@@ -409,7 +409,7 @@ self_edit_contract() {
 }
 
 @test "gcalcli is gone: only the two settings deny rules still name it" {
-  [ "$(git grep -l gcalcli -- CLAUDE.md README.md .claude system/scripts system/systemd system/agents system/templates system/headless.settings.json | tr '\n' ' ')" = '.claude/settings.json system/headless.settings.json ' ]
+  [ "$(git grep -l gcalcli -- CLAUDE.md README.md FOUNDRY.md .claude system/scripts system/systemd system/agents system/templates system/headless.settings.json | tr '\n' ' ')" = '.claude/settings.json system/headless.settings.json ' ]
 }
 
 @test "/setup phase 6 checks the calendar connector with a Bash timeout long enough for a fetch" {
@@ -465,11 +465,11 @@ self_edit_contract() {
 }
 
 @test "the README explains sync conflicts and drops the by-hand sync" {
-  grep -qx '### Sync conflicts' README.md
-  grep -qF 'git merge origin/foundry/server-pending' README.md
-  grep -qF 'On the machine that pushed the pending branch, its side is already checked out: run `git merge origin/<branch>` there instead' README.md
-  grep -qF -- '--no-verify' README.md
-  run grep -F 'Syncing them automatically is Plan 8c' README.md
+  grep -qx '### Sync conflicts' FOUNDRY.md
+  grep -qF 'git merge origin/foundry/server-pending' FOUNDRY.md
+  grep -qF 'On the machine that pushed the pending branch, its side is already checked out: run `git merge origin/<branch>` there instead' FOUNDRY.md
+  grep -qF -- '--no-verify' FOUNDRY.md
+  run grep -F 'Syncing them automatically is Plan 8c' FOUNDRY.md
   [ "$status" -eq 1 ]
 }
 
@@ -528,8 +528,8 @@ self_edit_contract() {
 
 @test "the archive keeps yesterday: CLAUDE.md and the README say days before yesterday (#57); the README warns before the first archive (#54)" {
   grep -qF 'Each brief moves days before yesterday to `briefings/archive/<YYYY-MM>/`.' CLAUDE.md
-  grep -qF "Briefings and debriefs from before yesterday move to \`briefings/archive/<YYYY-MM>/\`" README.md
-  grep -qF 'run `system/scripts/lint_vault.sh` before updating' README.md
+  grep -qF "Briefings and debriefs from before yesterday move to \`briefings/archive/<YYYY-MM>/\`" FOUNDRY.md
+  grep -qF 'run `system/scripts/lint_vault.sh` before updating' FOUNDRY.md
 }
 
 @test "meetings: /setup asks about meetings on a server or standalone vault and checks the Drive connector" {
@@ -541,7 +541,7 @@ self_edit_contract() {
   grep -qF 'drop transcripts (`.vtt`, `.srt`, `.txt` or `.md`) into `meetings/drop/<partition>/`' .claude/commands/setup.md
   grep -qF '`meetings/drop/<partition>/`' CLAUDE.md
   grep -qF '`wiki/<partition>/meetings/`' CLAUDE.md
-  grep -qF 'meetings/drop/' README.md
+  grep -qF 'meetings/drop/' FOUNDRY.md
 }
 
 @test "/brief lists telemetry from v_production_error, new first, capped per environment" {
@@ -569,7 +569,7 @@ self_edit_contract() {
 @test "an empty ADX filter value for shared services is documented (#94 A)" {
   sec="$(sed -n '/^## 6a\. Telemetry/,/^## 7\./p' ".claude/commands/setup.md")"
   [[ "$sec" == *'A filter value of `""` selects the rows that lack the attribute'* ]]
-  grep -qF 'An empty filter value (`adx_filter: {deployment.instance: ""}`) selects the rows that lack that attribute' README.md
+  grep -qF 'An empty filter value (`adx_filter: {deployment.instance: ""}`) selects the rows that lack that attribute' FOUNDRY.md
   grep -qF 'An empty value, `{deployment.instance: ""}`, selects the rows that lack the attribute' system/telemetry/example.md
 }
 
@@ -592,13 +592,13 @@ self_edit_contract() {
   grep -qF 'Before calling anything unsent or still waiting, check its evidence.' CLAUDE.md
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py add:*)")' .claude/settings.json >/dev/null
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py list:*)")' .claude/settings.json >/dev/null
-  grep -qF '**The Now page.**' README.md
+  grep -qF '**The Now page.**' FOUNDRY.md
   grep -qF 'Never stage or edit `wiki/<p>/Now.md` either' .claude/commands/ingest.md
-  grep -qF '`wiki/<partition>/Now.md` is the one note both machines write' README.md
+  grep -qF '`wiki/<partition>/Now.md` is the one note both machines write' FOUNDRY.md
 }
 
 @test "the README says update_template.sh lists new units and never installs them (#35)" {
-  grep -qF 'A unit the update adds is listed as `new unit available: <unit>` and left out' README.md
+  grep -qF 'A unit the update adds is listed as `new unit available: <unit>` and left out' FOUNDRY.md
 }
 
 @test "/setup phase 4 offers setup_remote.sh's SSH hint before asking for credentials (#16)" {
@@ -628,7 +628,7 @@ self_edit_contract() {
   grep -qF 'use them and ask only for what is missing; an answer still written as `<…>` is missing' .claude/commands/setup.md
   sec="$(setup_section '3. Codebases')"
   [[ "$sec" == *'If the directory you scanned is one of a repo'"'"'s `worktrees` but not its `path`'* ]]
-  grep -qF 'replace every `<…>` first' README.md
+  grep -qF 'replace every `<…>` first' FOUNDRY.md
 }
 
 @test "/setup phase 9 links each onboarding note from its codebase file, never from wiki/Index.md (#19)" {
@@ -645,11 +645,11 @@ self_edit_contract() {
   grep -qF 'Work Order' "$f"
   grep -qF -- '- `/order add|ask|list|cancel|status`:' CLAUDE.md
   grep -qF -- '- `raw/<partition>/nightshift/`: Work Order queue notes' CLAUDE.md
-  run grep -nE '(^|[`( ])/nightshift' "$f" CLAUDE.md README.md
+  run grep -nE '(^|[`( ])/nightshift' "$f" CLAUDE.md README.md FOUNDRY.md
   [ "$status" -eq 1 ]
-  grep -qF '| `/order add\|ask\|list\|cancel\|status` |' README.md
-  grep -qF '.claude/skills/order/' README.md
-  for k in run_window order_workspace nightshift_window nightshift_workspace; do grep -qF "\`$k\`" README.md; done
+  grep -qF '| `/order add\|ask\|list\|cancel\|status` |' FOUNDRY.md
+  grep -qF '.claude/skills/order/' FOUNDRY.md
+  for k in run_window order_workspace nightshift_window nightshift_workspace; do grep -qF "\`$k\`" FOUNDRY.md; done
   for k in run_window order_workspace nightshift_window nightshift_workspace; do grep -q "^  $k:" system/schemas/config.md; done
   for k in order_pr order_hosts order_plugins nightshift_pr nightshift_hosts nightshift_plugins; do
     grep -q "^  $k:" system/schemas/codebase.md
@@ -664,8 +664,8 @@ self_edit_contract() {
   grep -qF -- '`--window`' "$f"
   grep -q '^  order_max_five_hour: {kind: string, default: "0.6"}$' system/schemas/config.md
   grep -q '^  run_window: {kind: string}$' system/schemas/config.md
-  grep -qF '`order_max_five_hour`' README.md
-  grep -qF 'By default `run_window` is empty and the window is always open' README.md
+  grep -qF '`order_max_five_hour`' FOUNDRY.md
+  grep -qF 'By default `run_window` is empty and the window is always open' FOUNDRY.md
 }
 
 @test "the brief and the debrief report Work Orders (Foreman v1 §3.4)" {
@@ -699,7 +699,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF -- '- **Work Orders**: You own the Work Order queue.' "$f"
   grep -qF 'You take approved plans handed over by design sessions and queue them with `/order add`' "$f"
   grep -qF 'report them in the brief and the debrief' "$f"
-  grep -qF 'Run the Foreman session and your design sessions in the same permission mode' README.md
+  grep -qF 'Run the Foreman session and your design sessions in the same permission mode' FOUNDRY.md
   grep -qF '**Hand-offs.**' .claude/skills/order/SKILL.md
   grep -qF 'never run a command string copied from the message' .claude/skills/order/SKILL.md
 }
@@ -749,14 +749,33 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   [[ "$sec" == *'exit 3, connect Atlassian'* ]]
   [[ "$sec" == *'A Jira failure never blocks setup'* ]]
   grep -qF 'telemetry sources, meetings, handoffs, index, verification' "$s"
-  grep -qF '**Handoffs and delivered work.**' README.md
-  grep -qF 'the connector returns no change history' README.md
+  grep -qF '**Handoffs and delivered work.**' FOUNDRY.md
+  grep -qF 'the connector returns no change history' FOUNDRY.md
 }
 
 @test "/setup and the README describe the daily template update and how to turn it off (#87)" {
   grep -qF '`foundry-update` (standalone and server), which merges template updates every morning at 05:30' .claude/commands/setup.md
   grep -qF '`systemctl --user disable --now foundry-update.timer`' .claude/commands/setup.md
-  grep -qF '`foundry-update.timer` runs it every morning at 05:30 (`update_template.sh --unattended`, #87)' README.md
-  grep -qF 'aborts a conflicted merge (`git merge --abort`), leaving the vault unchanged' README.md
-  grep -qF 'later updates keep it disabled' README.md
+  grep -qF '`foundry-update.timer` runs it every morning at 05:30 (`update_template.sh --unattended`, #87)' FOUNDRY.md
+  grep -qF 'aborts a conflicted merge (`git merge --abort`), leaving the vault unchanged' FOUNDRY.md
+  grep -qF 'later updates keep it disabled' FOUNDRY.md
+}
+
+@test "the vault owns its README: a landing page, the manual in FOUNDRY.md, merge=ours and the /setup stub (#90)" {
+  [ "$(head -n 1 README.md)" = '<!-- foundry:landing -->' ]
+  grep -qF '[FOUNDRY.md](FOUNDRY.md)' README.md
+  grep -qF '[the manual'"'"'s Getting started](FOUNDRY.md#getting-started)' README.md
+  [ "$(wc -l < README.md)" -le 40 ]
+  grep -qx 'README.md merge=ours' .gitattributes
+  grep -qF 'g -c merge.ours.driver=true merge --no-ff --no-edit "$ref"' system/scripts/update_template.sh
+  grep -qF 'This file is its manual.' FOUNDRY.md
+  grep -qF '**Your README survives updates:**' FOUNDRY.md
+  grep -qF 'Your vault'"'"'s `README.md` (the template ships only its landing page)' FOUNDRY.md
+  sec="$(setup_section "9a. The vault's README")"
+  [[ "$sec" == *'Only when the first line of `README.md` is `<!-- foundry:landing -->`'* ]]
+  [[ "$sec" == *'Write no marker line'* ]]
+  grep -qF 'the setup prompt in `FOUNDRY.md`, Getting started' .claude/commands/setup.md
+  grep -qF '(FOUNDRY.md: Sync conflicts)' system/scripts/vault_sync.sh .claude/commands/backup.md
+  run grep -rn 'README: Sync conflicts' system/scripts .claude
+  [ "$status" -eq 1 ]
 }

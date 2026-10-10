@@ -160,7 +160,7 @@ for attempt in 1 2; do
         git merge --abort || block "merge conflict with origin/$branch, and git merge --abort failed" "$paths"$'\n'
         pending="foundry/$role-pending"
         net push -q --force origin "HEAD:refs/heads/$pending" || alert "could not push $pending to origin"
-        block "merge conflict with origin/$branch; resolve it by merging origin/$pending (README: Sync conflicts)" \
+        block "merge conflict with origin/$branch; resolve it by merging origin/$pending (FOUNDRY.md: Sync conflicts)" \
           "pending branch: $pending"$'\n'"$paths"$'\n'
       fi
       [[ ! -e "$git_dir/MERGE_HEAD" ]] || git merge --abort
