@@ -453,7 +453,8 @@ def test_a_busy_run_lock_skips_the_now_check(iv):
     assert "_(closed:" not in (iv / "wiki/work/Now.md").read_text()
 
 
-# -- the Notes block goes out once, after midnight (#61) ----------------------
+
+# -- the Notes block goes out once, early the next morning (#61) --------------
 NOTES_BRIEF = ("# Briefing\n### 1. Objectives\n#wiki-ingest-start\nright away\n#wiki-ingest-end\n"
                "## 📝 Notes\n<!-- yours -->\n#wiki-ingest-start\n{notes}\n#wiki-ingest-end\n## 🌌 Evening\n")
 
@@ -470,29 +471,40 @@ def yesterday():
     return (datetime.now(TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
 
 
+def at(iv, hour):
+    """An Intake whose wall clock reads today at <hour>:30 in the vault's timezone."""
+    intake = Intake(iv, now=later())
+    fixed = datetime.now(TZ).replace(hour=hour, minute=30)
+    intake.dt = lambda: fixed
+    return intake
+
+
 def test_todays_notes_block_waits_while_other_blocks_go_now(iv):
     briefing(iv, NOTES_BRIEF.format(notes="draft one"))
-    Intake(iv, now=later()).extract_briefing()
+    at(iv, 10).extract_briefing()
     briefing(iv, NOTES_BRIEF.format(notes="draft two"))
-    Intake(iv, now=later()).extract_briefing()
+    at(iv, 11).extract_briefing()
     assert [d.read_text() for d in drops(iv)] == ["right away\n"]
 
 
-def test_after_midnight_the_notes_block_goes_once(iv):
+def test_the_notes_block_goes_once_from_five_and_never_before(iv):
     path = dated(iv, yesterday(), NOTES_BRIEF.format(notes="final notes"))
-    Intake(iv, now=later()).extract_briefing()
-    assert [d.read_text() for d in drops(iv)] == ["final notes\n"]  # its other blocks went out on their day
-    path.write_text(NOTES_BRIEF.format(notes="edited after midnight"))
+    at(iv, 0).extract_briefing()  # a client may still sync its last edits overnight
+    assert drops(iv) == []
+    at(iv, 5).extract_briefing()
+    # its block outside Notes goes too: it had not gone on its day
+    assert sorted(d.read_text() for d in drops(iv)) == ["final notes\n", "right away\n"]
+    path.write_text(NOTES_BRIEF.format(notes="edited later"))
     old = time.time() - 600
     os.utime(path, (old, old))
-    Intake(iv, now=later()).extract_briefing()
-    assert len(drops(iv)) == 1
+    at(iv, 5).extract_briefing()
+    assert len(drops(iv)) == 2
     assert [r["kind"] for r in blocks_log(iv)].count("notes") == 1
 
 
 def test_an_empty_notes_block_makes_no_drop(iv):
-    dated(iv, yesterday(), NOTES_BRIEF.format(notes="   "))
-    Intake(iv, now=later()).extract_briefing()
+    dated(iv, yesterday(), NOTES_BRIEF.format(notes="   ").replace("right away", " "))
+    at(iv, 5).extract_briefing()
     assert drops(iv) == []
 
 
@@ -500,7 +512,7 @@ def test_an_archived_briefing_and_a_debrief_are_not_read(iv):
     day = yesterday()
     dated(iv, f"archive/{day[:7]}/{day}", NOTES_BRIEF.format(notes="archived"))
     dated(iv, f"{day}.debrief", NOTES_BRIEF.format(notes="debrief"))
-    Intake(iv, now=later()).extract_briefing()
+    at(iv, 5).extract_briefing()
     assert drops(iv) == []
 
 
@@ -511,13 +523,31 @@ def test_a_notes_block_already_sent_is_not_sent_again(iv):
         {"kind": "block", "briefing": f"briefings/{day}.md", "hash": hashlib.sha256(b"sent before").hexdigest(),
          "drop": "raw/inbox/x.md", "time": "t"}) + "\n")
     dated(iv, day, "## 📝 Notes\n#wiki-ingest-start\nsent before\n#wiki-ingest-end\n")
-    Intake(iv, now=later()).extract_briefing()
+    at(iv, 5).extract_briefing()
     assert drops(iv) == []
 
 
 def test_a_broken_notes_section_waits_and_alerts(iv):
     dated(iv, yesterday(), "## 📝 Notes\n#wiki-ingest-start\nhalf typed\n")
-    Intake(iv, now=later()).extract_briefing()
+    at(iv, 5).extract_briefing()
     assert drops(iv) == []
     assert "unterminated" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
     assert "notes" not in [r["kind"] for r in blocks_log(iv)]
+
+
+def test_a_broken_marker_after_notes_does_not_hold_the_notes_back(iv):
+    dated(iv, yesterday(), "## 📝 Notes\n#wiki-ingest-start\nmy notes\n#wiki-ingest-end\n## 🌌 Evening\n"
+          "#wiki-ingest-start\nhalf typed\n")
+    at(iv, 5).extract_briefing()
+    assert [d.read_text() for d in drops(iv)] == ["my notes\n"]
+    assert "notes" in [r["kind"] for r in blocks_log(iv)]
+    assert "unterminated" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
+
+
+def test_a_heading_of_your_own_inside_notes_keeps_the_block_waiting(iv):
+    text = "## 📝 Notes\n## Ideas\n#wiki-ingest-start\n{}\n#wiki-ingest-end\n## 🌌 Evening\n"
+    briefing(iv, text.format("draft one"))
+    at(iv, 10).extract_briefing()
+    briefing(iv, text.format("draft two"))
+    at(iv, 11).extract_briefing()
+    assert drops(iv) == []

@@ -25,7 +25,7 @@ status: "{{status}}"
 
 ## 📝 Notes
 
-<!-- Yours: /brief never edits this section. Write between the markers below: the block goes to the wiki once, just after midnight. A block marked anywhere else in the briefing goes within a few minutes. -->
+<!-- Yours: /brief never edits this section. Write between the markers below: the block goes to the wiki once, at 05:00 the next morning. A block marked anywhere else in the briefing goes within a few minutes. -->
 
 #wiki-ingest-start
 

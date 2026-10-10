@@ -21,6 +21,8 @@ SKIP_SUFFIXES = ("~", ".tmp", ".swp", ".crdownload", ".part")
 RAW_NAME = re.compile(r"^[A-Za-z0-9._ -]+$")
 START, END = "#wiki-ingest-start", "#wiki-ingest-end"
 NOTES = "## 📝 Notes"
+NOTES_END = "## 🌌"  # the section the template puts after Notes
+NOTES_HOUR = 5  # local hour the Notes pass starts: after a client's overnight sync, before the 06:00 brief
 BRIEFING_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 CAP_EXIT = 4
 INVALID_INPUT_EXIT = 2
@@ -200,7 +202,11 @@ class Intake:
             self.alert("briefing extraction skipped: run.lock busy")
 
     def _extract_notes_locked(self) -> None:
-        """After midnight, send each earlier briefing's 📝 Notes blocks once (#61); the archive is never read."""
+        """From NOTES_HOUR, send each earlier briefing's 📝 Notes blocks once (#61), and any other block it holds
+        that has not gone yet; the archive is never read. NOTES_HOUR leaves a client the night to sync its last
+        edits, and the 06:00 brief archives the briefing after it."""
+        if self.dt().hour < NOTES_HOUR:
+            return
         record_path = self.logs / "extracted_blocks.jsonl"
         done = {r.get("briefing") for r in self._jsonl(record_path) if r.get("kind") == "notes"}
         for path in sorted((self.vault / "briefings").glob("*.md")):
@@ -213,8 +219,8 @@ class Intake:
 
     def _extract_locked(self, path: Path, notes: bool = False) -> bool:
         """Drop each new #wiki-ingest block; the briefing is never rewritten (two-machine spec §5.6).
-        Blocks inside 📝 Notes wait for the end of the day (#61): notes=False sends the others, notes=True only
-        those. True when the briefing was read and nothing blocked its blocks."""
+        Blocks inside 📝 Notes wait for the end of the day (#61): notes=False sends the others, notes=True sends
+        all. True when the briefing was read and no broken marker kept its Notes back."""
         try:
             if not path.is_file():
                 return False
@@ -226,27 +232,30 @@ class Intake:
             return False
         if START not in text:
             return True
-        blocks, current, problem, in_notes = [], None, "", False
+        blocks, current, problem, in_notes, past_notes, hits_notes = [], None, "", False, False, False
         for line in text.split("\n"):
             stripped = line.strip()
             if current is None and line.startswith("## "):
-                in_notes = stripped == NOTES
+                if in_notes:  # Notes ends at the template's next section; a heading of your own stays in it
+                    in_notes = not stripped.startswith(NOTES_END)
+                    past_notes = not in_notes
+                else:
+                    in_notes = stripped == NOTES
             if stripped == START:
                 if current is not None:
-                    problem = "has a nested #wiki-ingest-start"
+                    problem, hits_notes = "has a nested #wiki-ingest-start", not past_notes
                     current = None
                     break
-                current, block_in_notes = [], in_notes
+                current, block_in_notes, start_past = [], in_notes, past_notes
             elif stripped == END and current is not None:
-                if block_in_notes == notes:
-                    blocks.append(current)
+                blocks.append((current, block_in_notes))
                 current = None
             elif current is not None:
                 current.append(line)
         if current is not None:
-            problem = "has an unterminated #wiki-ingest-start"
-        if problem and notes:
-            blocks = []  # a broken Notes section waits until it is fixed
+            problem, hits_notes = "has an unterminated #wiki-ingest-start", not start_past
+        # Today only blocks outside Notes go; later, everything not sent yet, unless a broken marker reaches Notes.
+        blocks = [lines for lines, inside in blocks if (not inside if not notes else not (inside and hits_notes))]
         rel = path.relative_to(self.vault).as_posix()
         record_path = self.logs / "extracted_blocks.jsonl"
         known = {(r.get("briefing"), r.get("hash")) for r in self._jsonl(record_path) if r.get("kind") == "block"}
@@ -274,7 +283,7 @@ class Intake:
             if not seen:
                 self.alert(f"briefing {path.name} {problem}; the blocks after it wait until it is fixed")
                 _append_jsonl(record_path, {"kind": "alert", "briefing": rel, "reason": problem, "date": day})
-        return not problem
+        return not (problem and hits_notes)
 
     # -- the Now page (Now page spec §3.4) -------------------------------
     def check_now(self) -> None:

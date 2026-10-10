@@ -1,4 +1,4 @@
-# Notes markers: the Notes block goes to the wiki once, after midnight
+# Notes markers: the Notes block goes to the wiki once, the next morning
 
 **Date:** 2026-10-09
 **Status:** Draft for the owner's review.
@@ -12,14 +12,14 @@ The briefing's `## 📝 Notes` section ships empty. To send notes to the wiki, t
 
 - The template puts both markers inside `## 📝 Notes`.
 - **Every `#wiki-ingest` block inside the Notes section waits for the end of the day.** A block anywhere else in the briefing still goes out as it does now.
-- **The end of the day is just after midnight (option A).** On each intake tick after midnight, the daemon sends the Notes-section blocks of every earlier-day briefing still in `briefings/` (not the archive), once per briefing. The 06:00 brief archives the file after that.
-- **Known gap, accepted:** notes that reach the server after the 06:00 archive are not sent.
+- **The end of the day is the next morning (option A, from 05:00 after the final review).** On each intake tick from 05:00, the daemon sends the Notes-section blocks of every earlier-day briefing still in `briefings/` (not the archive), once per briefing. The 06:00 brief archives the file after that.
+- **Known gap, accepted:** edits that reach the server after 05:00 the next morning are not sent. (Starting at midnight lost a client's late-evening edits that synced after the first tick, so the final review moved the pass to 05:00.)
 
 ## 3. Changes
 
 ### 3.1 The template
 
-`system/templates/daily-briefing.md`, under `## 📝 Notes`, keeps its comment, reworded to say the block is sent once after midnight, and adds:
+`system/templates/daily-briefing.md`, under `## 📝 Notes`, keeps its comment, reworded to say the block is sent once at 05:00 the next morning, and adds:
 
 ```
 #wiki-ingest-start
@@ -39,13 +39,13 @@ An empty block is skipped, as it already is.
 
 ### 3.3 Wording
 
-The Notes wording in the README (client section), the `/setup` client notes and `CLAUDE.md`'s directory map: notes go between the pre-placed markers in 📝 Notes and reach the wiki once, after midnight. A block written elsewhere in the briefing goes out within a few minutes.
+The Notes wording in the README (client section), the `/setup` client notes and `CLAUDE.md`'s directory map: notes go between the pre-placed markers in 📝 Notes and reach the wiki once, at 05:00 the next morning. A block written elsewhere in the briefing goes out within a few minutes.
 
 ## 4. Tests
 
 - **pytest (`test_intake.py`):**
   - a Notes block edited several times today produces no drop today;
-  - after midnight it produces exactly one drop, and later edits produce no more;
+  - from 05:00 the next morning it produces exactly one drop, and later edits produce no more;
   - an empty Notes block produces none;
   - a block outside Notes still goes out right away;
   - a briefing already archived is not read;
