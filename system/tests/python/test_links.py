@@ -90,3 +90,8 @@ def test_markdown_link_to_a_folder_resolves_when_the_folder_holds_a_file():
     assert r.resolve("docs/superpowers/specs/", "README.md", "md", prefer_none) == ("docs/superpowers/specs", False)
     assert r.resolve("docs/", "README.md", "md", prefer_none)[0] == "docs"
     assert r.resolve("docs/superpowers/spikes/", "README.md", "md", prefer_none)[0] is None
+
+
+def test_ingest_marker_lines_are_not_tags():
+    body = "#wiki-ingest-start\nnotes #real\n  #wiki-ingest-end  \nsee #wiki-ingest-start inline\n"
+    assert links.extract(body, 1)[1] == {"real", "wiki-ingest-start"}

@@ -77,6 +77,20 @@ headless_contract() {
   grep -qF 'Never edit the **📝 Notes** section' "$f"
 }
 
+@test "the briefing template's Notes section holds the ingest markers, sent once the next morning (#61)" {
+  t=system/templates/daily-briefing.md
+  notes="$(sed -n '/^## 📝 Notes$/,/^## 🌌 /p' "$t")"
+  [ "$(grep -cx '#wiki-ingest-start' <<< "$notes")" -eq 1 ]
+  [ "$(grep -cx '#wiki-ingest-end' <<< "$notes")" -eq 1 ]
+  start="$(grep -nx '#wiki-ingest-start' "$t" | cut -d: -f1)"
+  end="$(grep -nx '#wiki-ingest-end' "$t" | cut -d: -f1)"
+  [ "$start" -lt "$end" ]
+  grep -qF 'the block goes to the wiki once, at 05:00 the next morning' "$t"
+  grep -qF 'markers already in 📝 Notes: the server sends that block to the wiki once, at 05:00 the next morning' README.md
+  grep -qF 'which go to the wiki once, at 05:00 the next morning' .claude/commands/setup.md
+  grep -qF 'that block goes to the wiki once, at 05:00 the next morning' CLAUDE.md
+}
+
 @test "debrief: headless contract, its own file, template sections" {
   f=.claude/commands/debrief.md
   headless_contract "$f"
