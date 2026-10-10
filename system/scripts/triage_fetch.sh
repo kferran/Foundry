@@ -43,7 +43,7 @@ alert_once() {  # <key> <text>: at most one alert a day per key
 }
 fail() {  # <exit> <reason>
   logline "$1" "$2"
-  case "$1" in 1|3|6|7) alert_once "Inbox triage failed (exit $1):" "$2" ;; esac
+  case "$1" in 1|2|3|4|6|7) alert_once "Inbox triage failed (exit $1):" "$2" ;; esac
   echo "triage_fetch: $2" >&2
   exit "$1"
 }
@@ -61,7 +61,10 @@ if (( ! check )); then
   [[ -z "$held" ]] || skip "$held"
 fi
 
-q="$(system/scripts/triage.py query)" || fail 1 "could not build the query"
+started="$(date +%s)"  # the tick's start, before its search: the next tick searches from here
+qrc=0
+q="$(system/scripts/triage.py query 2>&1)" || qrc=$?
+(( qrc == 0 )) || fail "$qrc" "${q#triage: }"
 owners="$(system/scripts/vault_index.py field system/config.md owner_names 2>/dev/null | paste -sd ',' - || true)"
 claude_bin="${CLAUDE_BIN:-claude}"
 command -v "$claude_bin" > /dev/null 2>&1 || fail 127 "claude not found ($claude_bin)"
@@ -101,11 +104,11 @@ if (( check )); then
   exit 0
 fi
 wrc=0
-system/scripts/triage.py record < "$work/found.json" > "$work/added.txt" 2> "$work/record.err" || wrc=$?
+system/scripts/triage.py record "$started" < "$work/found.json" > "$work/added.txt" 2> "$work/record.err" || wrc=$?
 (( wrc == 0 )) || fail "$wrc" "$(sed 's/^triage: //' "$work/record.err" | head -n 1)"
 added="$(wc -l < "$work/added.txt")"
 if (( added > 0 )); then
-  printf -- '- %s [triage] %s new: %s\n' "$(date +%H:%M:%S)" "$added" "$(paste -sd ';' "$work/added.txt" | sed 's/;/; /g')" \
+  printf -- '- %s [triage] %s new: %s\n' "$(date +%H:%M:%S)" "$added" "$(paste -sd '\t' "$work/added.txt" | sed 's/\t/; /g')" \
     >> "system/logs/alerts_$(date +%F).md"
 fi
 [[ "$(jq -r '.full' "$work/found.json")" != true ]] \

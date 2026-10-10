@@ -4,7 +4,7 @@
 Usage: triage.py query                 print this tick's Gmail query
        triage.py hold                  print why this tick is skipped (usage ceiling), or nothing
        triage.py extract <query>       check a session's stream on stdin; print {"items": [...], "full": bool}
-       triage.py record                read extract's JSON on stdin; add the new Now lines under run.lock and print them
+       triage.py record <start epoch>  read extract's JSON on stdin; add the new Now lines under run.lock and print them
 Exit: 0 ok, 1 claude error or a result in an unexpected shape, 2 usage, 3 no connector, 4 run.lock busy,
 6 connector error, 7 unexpected tool use or another query. A non-zero exit writes one reason line to stderr.
 """
@@ -31,15 +31,16 @@ def main(argv) -> int:
                 print(reason)
         elif len(argv) == 3 and argv[1] == "extract":
             print(json.dumps(triage.extract(messages(sys.stdin.read()), argv[2])))
-        elif argv[1:] == ["record"]:
+        elif len(argv) == 3 and argv[1] == "record" and argv[2].isdigit():
+            # argv[2] is the epoch the tick started at, before its search: the next tick searches from there.
             found = json.loads(sys.stdin.read())
-            partition = str(triage.config(VAULT).get("triage_partition") or "work")
+            partition = triage.partition(VAULT)
             with intake.lock("run.lock", timeout=120):
                 added = triage.record(VAULT, partition, found, intake.today(), intake.dt().isoformat(timespec="seconds"),
-                                      int(time.time()))
+                                      int(argv[2]))
             print("".join(f"{a}\n" for a in added), end="")
         else:
-            raise triage.Fail(2, "usage: triage.py query | hold | extract <query> | record")
+            raise triage.Fail(2, "usage: triage.py query | hold | extract <query> | record <start epoch>")
     except triage.Fail as f:
         print(f"triage: {f.reason}", file=sys.stderr)
         return f.code

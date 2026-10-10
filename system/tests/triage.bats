@@ -107,3 +107,12 @@ ITEM='{"items": [{"thread_id": "a1", "who": "Blake", "ask": "asks how to proceed
   run "$TF" --bogus
   [ "$status" -eq 2 ]
 }
+
+@test "a bad triage_partition stops before any session and alerts once a day" {
+  sed -i 's/^triage_partition: "work"$/triage_partition: "shared"/' system/config.md
+  gmail_says "$G" "$Q" "$ITEM"
+  run "$TF"
+  [ "$status" -eq 2 ]
+  [ ! -e "$BATS_TEST_TMPDIR/args" ]
+  grep -qF '[triage] Inbox triage failed (exit 2): triage_partition must be one of work, personal' "$ALERTS"
+}

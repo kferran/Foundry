@@ -123,3 +123,23 @@ def test_hold_reads_the_newest_usage_reading(vault):
           json.dumps({"usage5": 0.8, "usage5_at": (stamp - timedelta(hours=1)).isoformat()}))
     assert "80%" in tr.hold(vault, stamp)
     assert tr.hold(vault, stamp + timedelta(hours=5)) == ""
+
+
+def test_the_owners_own_replies_never_make_a_thread_new():
+    t = thread()
+    t["messages"].append({"id": "m2", "date": "2026-10-09T22:00:00Z", "sender": "me@example.com", "labelIds": ["SENT"]})
+    sent_only = {**thread("b2"), "messages": [
+        {"id": "m3", "date": "2026-10-09T23:00:00Z", "sender": "me@example.com", "labelIds": ["SENT", "INBOX"]}]}
+    got = tr.extract(stream([t, sent_only], items=[item(), item("b2")]), Q)
+    assert [(i["thread_id"], i["date"], i["sender"]) for i in got["items"]] == [("a1", "2026-10-09T20:24:00Z", "blake@example.com")]
+
+
+def test_angle_brackets_cannot_reach_the_now_page():
+    assert tr.one_line("<!-- hide --> <b>x</b>") == "‹!-- hide --› ‹b›x‹/b›"
+
+
+def test_a_bad_triage_partition_is_a_settings_error_before_any_session(vault):
+    write(vault, "system/config.md", '---\ntype: config\ntriage_partition: "shared"\n---\n')
+    with pytest.raises(tr.Fail) as e:
+        tr.query(vault, 10_000, TODAY)
+    assert e.value.code == 2 and "triage_partition" in e.value.reason

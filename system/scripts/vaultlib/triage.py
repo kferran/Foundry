@@ -60,8 +60,17 @@ def _append(vault, today: str, record: dict) -> None:
         fh.write(json.dumps(record) + "\n")
 
 
+def partition(vault) -> str:
+    """triage_partition (default work), checked before any session runs."""
+    value = str(config(vault).get("triage_partition") or "work")
+    if value not in nowmod.PARTITIONS:
+        raise Fail(2, f"triage_partition must be one of {', '.join(nowmod.PARTITIONS)}, not {value!r}")
+    return value
+
+
 def query(vault, now_epoch: int, today: str) -> str:
     """Mail since the last successful tick (with an overlap), or the last two hours on the first run."""
+    partition(vault)
     ticks = [r.get("epoch") for r in records(vault, today) if r.get("kind") == "tick" and isinstance(r.get("epoch"), int)]
     after = max(ticks) - OVERLAP_SECONDS if ticks else now_epoch - FIRST_LOOKBACK_SECONDS
     return f"in:inbox after:{after} {EXCLUDE}"
@@ -134,13 +143,19 @@ def threads(got: list) -> dict:
             if not (isinstance(t, dict) and isinstance(t.get("id"), str) and str(t.get("viewUrl", "")).startswith("https://")
                     and msgs):
                 raise Fail(1, "a thread lacks an id, a link or its messages")
+            # A thread comes back whole when one message matches: the owner's own replies never make it new.
+            msgs = [m for m in msgs if "SENT" not in (m.get("labelIds") or [])]
+            if not msgs:
+                continue
             latest = max(msgs, key=lambda m: str(m.get("date", "")))
             out[t["id"]] = {"link": t["viewUrl"], "date": str(latest.get("date", "")), "sender": str(latest.get("sender", ""))}
     return out
 
 
 def one_line(text) -> str:
+    """Mail text as one short plain line: no newline, link or HTML syntax can reach the Now page."""
     text = re.sub(r"\s+", " ", str(text or "")).strip().replace("[", "(").replace("]", ")")
+    text = text.replace("<", "‹").replace(">", "›")
     return text if len(text) <= TEXT_MAX else text[: TEXT_MAX - 1].rstrip() + "…"
 
 
