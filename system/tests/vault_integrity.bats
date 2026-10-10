@@ -20,7 +20,7 @@ setup() {
 @test "vault scripts and hook are executable" {
   for s in vault_index.py lint_vault.sh check_deps.sh verify_setup.sh focus_stats.sh track_obsidian.sh \
            brief_prep.sh debrief_prep.sh install_units.sh setup_remote.sh update_template.sh \
-           discover_codebases.sh inspect_codebase.sh inspect_codebase.py now.py; do
+           discover_codebases.sh inspect_codebase.sh inspect_codebase.py now.py triage.py triage_fetch.sh; do
     [ -x "system/scripts/$s" ]
   done
   [ -x .githooks/pre-commit ]
@@ -90,7 +90,7 @@ setup() {
 @test "unit templates: only *.in files, services carry {{VAULT_ROOT}}, no machine paths" {
   shopt -s nullglob
   files=(system/systemd/*.in system/systemd/dropins/*.in)
-  [ "${#files[@]}" -eq 20 ]
+  [ "${#files[@]}" -eq 22 ]
   [ -z "$(find system/systemd -type f ! -name '*.in')" ]
   for f in system/systemd/*.service.in system/systemd/dropins/*.in; do
     grep -q '{{VAULT_ROOT}}' "$f"

@@ -27,6 +27,8 @@ fields:
   nightshift_window: {kind: string}
   handoffs_site: {kind: string}
   handoffs_projects: {kind: list, of: string}
+  triage_enabled: {kind: bool, default: "false"}
+  triage_partition: {kind: enum, values: [work, personal]}
 ---
 # Config
 The per-user global configuration written by `/setup` (gitignored). `system/config.example.md` is the committed example.
@@ -34,5 +36,7 @@ The per-user global configuration written by `/setup` (gitignored). `system/conf
 `run_window` is the window for Work Orders queued with `--window`, as `HH:MM-HH:MM`; empty (the default) or `00:00-24:00` means always. `order_max_five_hour` is the 5-hour usage fraction at or above which no new Work Order starts.
 
 `handoffs_site` (the Jira site's host name) and `handoffs_projects` (Jira project keys) turn on the brief's Handoffs to chase (delivered work spec §3.1); it stays off while `handoffs_projects` is empty.
+
+`triage_enabled` turns on inbox triage on a standalone machine or a server (inbox triage spec): every 30 minutes on workdays, mail that needs the owner becomes an `owed` line on the Now page of `triage_partition` (default `work`).
 
 `nightshift_workspace` and `nightshift_window` are the old names of `order_workspace` and `run_window`. They are still read when the new key is absent; the new key wins when both are set.

@@ -1,0 +1,12 @@
+[Unit]
+Description=The Foundry: inbox triage
+
+[Service]
+Type=oneshot
+WorkingDirectory={{VAULT_ROOT}}
+Environment="TZ={{TZ}}"
+Environment="PATH={{UNIT_PATH}}"
+Environment="CLAUDE_BIN={{CLAUDE_BIN}}"
+# The server listing and one search session with its kill margin (inbox triage spec §3.1).
+TimeoutStartSec=10min
+ExecStart="{{VAULT_ROOT}}/system/scripts/triage_fetch.sh"

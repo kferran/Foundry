@@ -93,6 +93,12 @@ if [[ "$role" != client && "$(config_get meetings_enabled false)" == true ]]; th
   UNITS+=(foundry-meetings.service foundry-meetings.timer)
   ENABLE+=(foundry-meetings.timer)
 fi
+# Inbox triage (inbox triage spec §3.2): standalone and server, only when turned on. It writes the Now page under
+# run.lock; the sync timer commits it.
+if [[ "$role" != client && "$(config_get triage_enabled false)" == true ]]; then
+  UNITS+=(foundry-triage.service foundry-triage.timer)
+  ENABLE+=(foundry-triage.timer)
+fi
 # Error telemetry (Plan 11): standalone and server, only when a source is enabled.
 if [[ "$role" != client ]] && [[ -n "$(system/scripts/telemetry_fetch.py --list 2>/dev/null)" ]]; then
   UNITS+=(foundry-telemetry.service foundry-telemetry.timer)

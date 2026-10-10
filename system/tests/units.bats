@@ -340,6 +340,29 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   [ ! -e "$UD/foundry-meetings.timer" ]
 }
 
+@test "inbox triage is installed only with triage_enabled, on a server or standalone, every 30 minutes on workdays" {
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ ! -e "$UD/foundry-triage.timer" ]
+  system/scripts/vault_index.py set system/config.md triage_enabled true > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'new foundry-triage.service' <<< "$output"
+  grep -qxF 'OnCalendar=Mon..Fri *-*-* 08..17:00,30:00 America/Denver' "$UD/foundry-triage.timer"
+  grep -qx 'Persistent=false' "$UD/foundry-triage.timer"
+  grep -qxF "ExecStart=\"$VP/system/scripts/triage_fetch.sh\"" "$UD/foundry-triage.service"
+  grep -qxF "Environment=\"CLAUDE_BIN=$STUBS/claude\"" "$UD/foundry-triage.service"
+  grep -q -- 'foundry-triage.timer' "$STUB_SYSTEMCTL_LOG"
+  set_role server
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ -f "$UD/foundry-triage.timer" ]
+  set_role client
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ ! -e "$UD/foundry-triage.timer" ]
+}
+
 @test "a vault with an enabled telemetry source gets the telemetry timer; one without does not" {
   run "$IU"
   [ "$status" -eq 0 ]

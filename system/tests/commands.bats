@@ -782,3 +782,15 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   run grep -rn 'README: Sync conflicts' system/scripts .claude
   [ "$status" -eq 1 ]
 }
+
+@test "inbox triage: /setup asks for it and checks the connector; the manual and the config schema describe it (#99)" {
+  sec="$(setup_section '6b. Meetings')"
+  [[ "$sec" == *'watch the inbox during the day for mail that needs you (`triage_enabled`, default `false`)'* ]]
+  [[ "$sec" == *'system/scripts/triage_fetch.sh --check'* ]]
+  [[ "$sec" == *'`triage_partition`'* ]]
+  grep -qF '**Inbox triage.**' FOUNDRY.md
+  grep -qF 'The links and dates come from the search results, never from the model'"'"'s words.' FOUNDRY.md
+  grep -qF 'triage_enabled: {kind: bool, default: "false"}' system/schemas/config.md
+  grep -qF 'triage_partition: {kind: enum, values: [work, personal]}' system/schemas/config.md
+  grep -qF 'triage_enabled: "false"' system/config.example.md
+}
