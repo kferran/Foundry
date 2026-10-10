@@ -69,7 +69,9 @@ def research_prompt(fm: dict, body: str, code: str | None = None) -> str:
             "concept, tags, compiled_at (today), partition, provenance [\"headless\"] and sources (sources lists only vault "
             "notes, as wikilinks ([[Note]]); list web pages and code paths under a ## Web sources heading at the end of "
             "the body); then the findings, "
-            "each with its source. Finish by writing out/result.json: "
+            "each with its source. When your sources contradict a vault note under context/, add a ## Stale claims "
+            "section with one bullet per claim: - [[Note]]: <the old claim> → <the current fact> (<evidence>); "
+            "leave the section out when there are none. Finish by writing out/result.json: "
             '{"status": "done" or "blocked", "summary": "...", "questions": ["..."]}. ' + CONTRACT + "\n\n" + body)
 
 
