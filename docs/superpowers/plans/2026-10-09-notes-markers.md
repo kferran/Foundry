@@ -15,7 +15,7 @@
 - Work on branch `feat/notes-markers`. Commit there; do not push or open a pull request.
 - New prose follows the Writing rules in `CLAUDE.md`. Template rule: no machine, employer or people names.
 - Run the suites from the repository root with `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch` (`mkdir -p .scratch/tmp` once), outside a sandbox. The gate is `system/scripts/verify_setup.sh`. Never run two gates at once.
-- Bound tools: pytest (`test_intake.py`), bats (`commands.bats`) and the gate.
+- Bound tools: pytest (`test_intake.py`, `test_links.py`, and `test_cli.py`, which pins that the briefing template adds no tags), bats (`commands.bats`) and the gate.
 - bats ruling R1: no mid-test `!`, no `&&` assertion chains, no wall-clock timing assertions.
 - Commits use `git commit -F .scratch/<file>`.
 - Every "Find" text below occurs exactly once in its file at that step.
@@ -26,6 +26,7 @@
 - **Upgrade day:** a Notes block already sent by the old behavior (same briefing, same hash) is not sent again. Test: `test_a_notes_block_already_sent_is_not_sent_again`.
 - **A broken Notes section:** nothing is sent, it is alerted once a day, and the briefing is not marked done, so a fix still goes out. Test: `test_a_broken_notes_section_waits_and_alerts`.
 - **The archive and debriefs:** never read for Notes. Test: `test_an_archived_briefing_and_a_debrief_are_not_read`.
+- **Markers are not tags:** the vault index skips the two marker lines, so every briefing carries no tags from the template (`test_cli.py::test_the_briefing_template_adds_no_tags`, `test_ingest_marker_lines_are_not_tags`). Obsidian's own tag pane still lists them; that is display only.
 - **The accepted gap:** notes that reach the server after the 06:00 archive are not sent. The README says so.
 
 ---
@@ -33,8 +34,8 @@
 ### Task 1: Notes markers and the midnight send
 
 **Files:**
-- Modify: `system/scripts/vaultlib/intake.py`, `system/templates/daily-briefing.md`, `README.md`, `.claude/commands/setup.md`, `CLAUDE.md`
-- Test: `system/tests/python/test_intake.py`, `system/tests/commands.bats`
+- Modify: `system/scripts/vaultlib/intake.py`, `system/scripts/vaultlib/links.py`, `system/templates/daily-briefing.md`, `README.md`, `.claude/commands/setup.md`, `CLAUDE.md`
+- Test: `system/tests/python/test_intake.py`, `system/tests/python/test_links.py`, `system/tests/commands.bats`
 
 **Interfaces:**
 - Produces `Intake._extract_locked(path, notes=False) -> bool`, which is True when the briefing was read and no marker problem blocked it, and `Intake._extract_notes_locked()`.
@@ -152,10 +153,28 @@ Replace with:
 ````
 
 
+Edit 1 in `system/tests/python/test_links.py`. Find:
+
+````text
+    assert r.resolve("docs/superpowers/spikes/", "README.md", "md", prefer_none)[0] is None
+````
+
+Replace with:
+
+````text
+    assert r.resolve("docs/superpowers/spikes/", "README.md", "md", prefer_none)[0] is None
+
+
+def test_ingest_marker_lines_are_not_tags():
+    body = "#wiki-ingest-start\nnotes #real\n  #wiki-ingest-end  \nsee #wiki-ingest-start inline\n"
+    assert links.extract(body, 1)[1] == {"real", "wiki-ingest-start"}
+````
+
+
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `python3 -m pytest -q system/tests/python/test_intake.py`
-Expected: FAIL, 3 failed (the Notes block goes out on the day, is never sent after midnight, and a broken Notes section in an earlier briefing is never alerted). The empty-block, archive and already-sent tests pass before the change: they pin what must not start happening.
+Run: `python3 -m pytest -q system/tests/python/test_intake.py system/tests/python/test_links.py`
+Expected: FAIL, 4 failed (the Notes block goes out on the day, is never sent after midnight, a broken Notes section in an earlier briefing is never alerted, and marker lines count as tags). The empty-block, archive and already-sent tests pass before the change: they pin what must not start happening.
 
 Run: `bats system/tests/commands.bats`
 Expected: FAIL, 1 `not ok` (the template and wording test).
@@ -310,6 +329,34 @@ Replace with:
 ````
 
 
+Edit 1 in `system/scripts/vaultlib/links.py`. Find:
+
+````text
+INLINE = re.compile(r"`[^`\n]*`")
+````
+
+Replace with:
+
+````text
+INLINE = re.compile(r"`[^`\n]*`")
+MARKERS = ("#wiki-ingest-start", "#wiki-ingest-end")  # ingest control lines, not tags (#61)
+````
+
+Edit 2 in `system/scripts/vaultlib/links.py`. Find:
+
+````text
+            found.append(Link(href, href.split("#", 1)[0] or None, lineno, "md"))
+````
+
+Replace with:
+
+````text
+            found.append(Link(href, href.split("#", 1)[0] or None, lineno, "md"))
+        if line.strip() in MARKERS:
+            continue
+````
+
+
 Edit 1 in `system/templates/daily-briefing.md`. Find:
 
 ````text
@@ -388,6 +435,6 @@ extracted_blocks.jsonl) before the 06:00 brief archives the file. Blocks
 elsewhere in the briefing still go out within minutes.
 ```
 
-Run: `git add system/scripts/vaultlib/intake.py system/templates/daily-briefing.md README.md .claude/commands/setup.md CLAUDE.md system/tests/python/test_intake.py system/tests/commands.bats`
+Run: `git add system/scripts/vaultlib/intake.py system/scripts/vaultlib/links.py system/tests/python/test_links.py system/templates/daily-briefing.md README.md .claude/commands/setup.md CLAUDE.md system/tests/python/test_intake.py system/tests/commands.bats`
 
 Run: `git commit -q -F .scratch/msg-1.txt`
