@@ -1,7 +1,7 @@
 # Server brief noise: focus is not tracked here
 
 **Date:** 2026-10-11
-**Status:** A fix (fast lane, `2026-10-11-fast-lane-design.md`): this page is its record; no plan.
+**Status:** Superseded (owner, 2026-10-11). The focus tracker is deleted outright: `2026-10-11-simplification-review.md`, step 1, lists every file. With the input gone, the unavailable line goes with it, and this fix is not needed. Kept as the record of the symptom.
 **Issue:** none yet; open one with the sentence below when the fix ships.
 
 ## 1. The wrong behaviour
