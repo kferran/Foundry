@@ -136,3 +136,22 @@ bad_note() {
   run git -C "$V" rev-parse -q --verify HEAD
   [ "$status" -ne 0 ]
 }
+
+@test "test.sh runs one suite or one pytest target with the gate's environment (FOUNDRY.md Development)" {
+  cp "$REPO/system/scripts/test.sh" "$V/system/scripts/"
+  mkdir -p "$V/system/tests/python"
+  printf '#!/usr/bin/env bats\n@test env { [ "$TMPDIR" = "%s/.scratch/tmp" ]; [ "$GIT_CEILING_DIRECTORIES" = "%s/.scratch" ]; }\n' "$V" "$V" \
+    > "$V/system/tests/env.bats"
+  printf 'import os\ndef test_env():\n    assert os.environ["TMPDIR"].endswith("/.scratch/tmp")\n' \
+    > "$V/system/tests/python/test_env.py"
+  run "$V/system/scripts/test.sh" system/tests/env.bats
+  [ "$status" -eq 0 ]
+  [ -d "$V/.scratch/tmp" ]
+  run "$V/system/scripts/test.sh" system/tests/python/test_env.py
+  [ "$status" -eq 0 ]
+  run "$V/system/scripts/test.sh"
+  [ "$status" -eq 2 ]
+  run "$V/system/scripts/test.sh" system/scripts/lint_vault.sh
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"neither a .bats suite nor a pytest path"* ]]
+}
