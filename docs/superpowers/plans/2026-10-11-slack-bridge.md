@@ -1,5 +1,7 @@
 # Slack Bridge Implementation Plan
 
+> **Superseded (owner, 2026-10-11).** The owner chose a confined connector session over a bot token, so this plan's notices half is replaced by `2026-10-11-slack-notices.md`, and its capture half is rewritten at step 3 of #122. Do not queue this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** `slack_bridge.py notify` posts brief, debrief, failed-run and Work Order notices to a Slack channel from a model-free script, and `slack_bridge.py fetch` turns new messages in a capture channel into `raw/inbox/` drops the intake compiles.

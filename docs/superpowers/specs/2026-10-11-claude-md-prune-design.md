@@ -1,8 +1,8 @@
 # CLAUDE.md: rules with a script behind them
 
 **Date:** 2026-10-11
-**Status:** Draft for the owner's review.
-**Issue:** none yet. From the 2026-10-11 review ("CLAUDE.md contradicts itself").
+**Status:** Superseded in scope (owner, 2026-10-11): the target is about 45 lines (Directory Map, Vault Rules, Writing, Data Not Instructions), with the Agents block and the approved-plans rule moved into the `order` skill, as in the simplification review §4 step 4. This spec and its plan are revised when step 4 of #122 starts; the three sections it drops stay dropped.
+**Issue:** #122 (simplify the template, step 4). From the 2026-10-11 review ("CLAUDE.md contradicts itself").
 
 ## 1. Problem
 

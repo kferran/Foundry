@@ -1,7 +1,7 @@
 # Slack bridge: notices out, captures in
 
 **Date:** 2026-10-11
-**Status:** Draft for the grill. The roadmap lists delivery notifications (#28, 11a) as "Grill first"; the owner asked on 2026-10-11 for Slack in both directions: the Foreman keeps them informed, and work dropped in Slack reaches the vault. §2 lists the proposed decisions and the questions the grill must settle.
+**Status:** Notices settled by the owner (2026-10-11) and moved forward: they ship now through a confined connector session (Grill Q1: the connector, not a bot token), counts and a link by default (Q2), pushed for the brief, the debrief, a failed run, an ended Work Order and every alert line (Q3), with a GitHub file link (Q5). `2026-10-11-slack-notices-design.md` is the notices spec; the capture half below waits for step 3 of #122 (extensions). Draft for the grill (captures). The roadmap lists delivery notifications (#28, 11a) as "Grill first"; the owner asked on 2026-10-11 for Slack in both directions: the Foreman keeps them informed, and work dropped in Slack reaches the vault. §2 lists the proposed decisions and the questions the grill must settle.
 **Issue:** #28 (delivery). Related: #99 (inbound triage, phase 2 of the Now page), which this spec does not replace (§6).
 
 ## 1. Problem

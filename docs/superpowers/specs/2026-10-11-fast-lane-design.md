@@ -1,7 +1,7 @@
 # The fast lane: fixes without a spec
 
 **Date:** 2026-10-11
-**Status:** Draft for the owner's review. A process change, no code.
+**Status:** Approved by the owner (2026-10-11) with broader criteria: a fix may touch anything except the safety surfaces in §2. A process change, no code.
 **Issue:** none yet. Came out of the 2026-10-11 review of the template ("process cost is high for one person").
 
 ## 1. Problem
@@ -12,7 +12,7 @@ The roadmap already has one exception: "Briefing notes and archive: no spec or p
 
 ## 2. Decisions (proposed)
 
-- **Two lanes.** A **fix** is a change whose scope is clear from one sentence, that touches no schema, no settings file, no unit template and no headless command text, and that a failing test can pin. Everything else is a **feature** and keeps the full process.
+- **Two lanes** (owner, 2026-10-11: "broad, guard safety"). A **fix** is a change whose scope is clear from one sentence and that a failing test can pin, and that touches none of the safety surfaces: permissions and settings files (`.claude/settings.json`, `system/headless.settings.json`, the Work Order settings), the sandbox, the publish gate, redaction, and new note types. A fix that edits the `ingest`, `brief` or `debrief` command text also re-runs the live acceptance steps. Everything else is a **feature** and keeps the full process.
 - **A fix needs:** a GitHub issue or a line in a review that states the wrong behaviour, one failing test that passes after the change, the gate green, and a pull request whose body is the issue line and the test name. No spec, no grill, and no plan unless it runs as a Work Order (below).
 - **A fix may run as a Work Order.** The readiness check reads the plan from a file committed at the Work Order's base (`nightshift_check._plan_at` runs `git show <base>:<plan>`), so a pull request description cannot be the plan. A fix that runs as a Work Order needs a short plan file with its task list in the `### Task N:` form, committed at that base. The check's rules (no protected branch, no deploy) apply unchanged.
 - **Promotion rule.** A fix that grows past its one sentence, or that a reviewer asks a design question about, stops and becomes a feature. The owner decides; the default when in doubt is the feature lane.
@@ -23,11 +23,11 @@ The roadmap already has one exception: "Briefing notes and archive: no spec or p
 - `FOUNDRY.md` Development: a paragraph after the workflow sentence that defines the two lanes, the fix criteria and the promotion rule.
 - `docs/superpowers/roadmap.md`: the process paragraph ("A new idea, or a row not yet specified, gets a grilling session…") gains one sentence: a fix as defined in Development skips the grill, the spec and the plan. `FOUNDRY.md` adds that a fix run as a Work Order still carries a short plan file (§2).
 - `.github/` has no templates today; none is added. The pull request body convention is text in `FOUNDRY.md`.
-- The first fixes through the lane: the server brief noise (`2026-10-11-server-brief-noise-design.md` is written as the one-page record it needs, no plan), and the `~/.config/foundry/**` deny rule when the Slack bridge does not ship first. **Open question:** both break this spec's own fix criteria. The deny rule is a settings file change, and the server brief noise edits `brief.md` and `debrief.md`, which are headless command text. Either the criteria allow these or the two go through the feature lane; PR #115 may also make the brief noise fix unnecessary.
+- The first fixes through the lane are the small changes inside each step of #122 (simplify the template). The server brief noise needs no fix: the focus tracker's deletion removes it. The `~/.config/foundry/**` deny rule is a settings file change, so it stays in the feature lane.
 
 ## 4. Tests
 
-bats, `commands.bats`: `FOUNDRY.md` names both lanes and the four fix criteria (one `grep -qF` per criterion), and the roadmap's process paragraph names the fast lane. Each fails before the change. Bound tools: bats and the gate.
+bats, `commands.bats`: `FOUNDRY.md` names both lanes, the fix criteria and the safety surfaces (one `grep -qF` each), and the promotion rule. The roadmap sentence ships with the roadmap update (#121), which owns that file today. Each fails before the change. Bound tools: bats and the gate.
 
 ## 5. Out of scope
 
