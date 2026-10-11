@@ -35,6 +35,7 @@
 Codebases are defined in `system/codebases/`. Read the relevant file before touching code.
 
 ## Vault Rules
+- **Approvals:** Do the work you were asked to do without asking to proceed. Ask the user only for what is theirs to decide: a choice of scope or taste with no sensible default, an outward action (send, post, file, merge, deploy, delete) not already authorized, or an exception to a safety rule. Batch the questions into one ask, each with your recommendation, and keep working on everything that does not depend on the answer. An approved plan needs no further approval to run.
 - **Invocation:** Run vault scripts exactly as `system/scripts/<name> …` from the vault root.
 - **Index first:** Before reading notes to find context, query the index (`system/scripts/vault_index.py related|query|backlinks`). Read only the notes it returns. Never grep or read all of `wiki/`.
 - **Schemas:** Every note's frontmatter must match `system/schemas/<type>.md`. A new note type requires a new schema note.
