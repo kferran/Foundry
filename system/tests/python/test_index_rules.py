@@ -226,3 +226,15 @@ def test_a_link_from_a_codebase_file_keeps_the_onboarding_note_from_being_an_orp
     write(vault, "system/codebases/app.md", '---\ntype: codebase\nname: app\npath: "/"\npartition: work\n'
           'search_globs: ["*"]\n---\nOnboarding: [[AppOnboardingAssignment]]\n')
     assert issues(build(vault), "orphan") == []
+
+
+def test_a_codebase_file_never_competes_with_the_entity_of_the_same_name(vault):
+    """system/codebases/app.md is named after the codebase; [[App]] means the entity note, with no ambiguity."""
+    write(vault, "wiki/work/entities/App.md", concept("work", "App"))
+    write(vault, "system/codebases/app.md", '---\ntype: codebase\nname: app\npath: "/"\npartition: work\n'
+          'search_globs: ["*"]\n---\nThe app.\n')
+    write(vault, "wiki/work/concepts/Ref.md", concept("work", "Ref", "See [[App]] and [[system/codebases/app]]."))
+    idx = build(vault)
+    assert issues(idx, "ambiguous-link") == []
+    assert query(idx, "SELECT target_raw, target_path FROM links WHERE src='wiki/work/concepts/Ref.md' ORDER BY target_raw") == [
+        ("App", "wiki/work/entities/App.md"), ("system/codebases/app", "system/codebases/app.md")]
