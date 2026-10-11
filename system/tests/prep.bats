@@ -230,6 +230,7 @@ codebase() {  # <name> <path>
   system/scripts/vault_index.py set system/config.md meetings_enabled true > /dev/null
   mkdir -p wiki/work/meetings
   printf -- '---\ntype: meeting\ntitle: "Sync"\ndate: "2026-09-30"\nstart: "2026-09-30T09:00:00-06:00"\npartition: work\nsource: "gdoc:FAKE-x"\ntranscript: "[[s.transcript]]"\n---\n# Sync\n\n## Action items\n- [ ] [Blake Sample] Slides: Prepare them.\n' > wiki/work/meetings/s.md
+  printf '{"time":"2026-09-30T16:00:00-06:00","kind":"imported","source":"raw/meetings/FAKE-x.gdoc.md","note":"wiki/work/meetings/s.md","complete":true}\n' > system/logs/meetings-2026-09.jsonl
   printf '{"time":"2026-10-01T08:00:00-06:00","step":"search","doc":"search","exit":0,"reason":""}\n{"time":"2026-10-01T09:00:00-06:00","step":"search","doc":"search","exit":3,"reason":"no Google Drive connector reachable"}\n' > system/logs/meetings_fetch-2026-10.jsonl
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
@@ -315,10 +316,13 @@ codebase() {  # <name> <path>
   today="$(TZ=America/Denver date +%F)"
   mkdir -p briefings
   printf 'x\n' > briefings/2026-09-29.md
-  flock system/run.lock sleep 4 &
+  # The holder keeps run.lock for the whole run, however long the prep steps take, and is released afterwards.
+  flock system/run.lock sleep 60 &
+  holder=$!
   sleep 0.5
   ARCHIVE_LOCK_WAIT=1 run "$BP"
-  wait
+  kill "$holder"
+  wait "$holder" || true
   [ "$(TZ=America/Denver date +%F)" = "$today" ] || skip "the date changed during the run"
   [ "$status" -eq 0 ]
   [ -f briefings/2026-09-29.md ]
@@ -478,4 +482,46 @@ gh_says() {
   run "$DP" 2026-10-01
   [ "$status" -eq 0 ]
   grep -qxF -- '- debrief_prep: prs: gh search failed (see system/logs/inputs/2026-10-01/prep_errors.log)' "$IN/unavailable.md"
+}
+
+@test "brief_prep: friction.md lists the flagged notes no earlier brief named, then the count" {
+  printf -- '---\ntype: concept\ntags: []\ncompiled_at: 2026-09-30\npartition: work\nis_friction: "true"\n---\n# Stuck\n' > wiki/work/concepts/Stuck.md
+  printf -- '---\ntype: concept\ntags: []\ncompiled_at: 2026-09-29\npartition: work\nis_friction: "true"\n---\n# Known\n' > wiki/work/concepts/Known.md
+  mkdir -p briefings
+  printf -- '---\ntype: briefing\ndate: "2026-09-30"\nstatus: active\n---\n## 🛑 Blockers\n- **Friction**:\n  - [[Known]]\n  1 open friction note\n' > briefings/2026-09-30.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qx -- '- \[\[Stuck\]\]' "$IN/friction.md"
+  run grep -c 'Known' "$IN/friction.md"
+  [ "$status" -eq 1 ]
+  grep -qx '2 open friction notes' "$IN/friction.md"
+}
+
+@test "brief_prep: people.md holds the Before today's meetings blocks, empty when no event names an entity" {
+  mkdir -p wiki/personal/entities
+  printf -- '---\ntype: concept\ntags: []\ncompiled_at: 2026-09-30\npartition: personal\n---\n# Standup Team\n' > wiki/personal/entities/StandupTeam.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -f "$IN/people.md" ]
+  [ ! -s "$IN/people.md" ]
+  calendar_says '{"status":"ok","reason":"","events":[{"start_date":"2026-10-01","start_time":"09:00","end_date":"2026-10-01","end_time":"09:30","title":"Standup Team sync"}]}'
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qx '### \[\[StandupTeam|Standup Team\]\] (09:00 Standup Team sync)' "$IN/people.md"
+}
+
+@test "prep scripts: a server or client writes no focus file and no focus line; standalone does as today" {
+  system/scripts/vault_index.py set system/config.md machine_role server > /dev/null
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ ! -e "$IN/focus_yesterday.md" ]
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ ! -e "$IN/focus.md" ]
+  run grep -c 'focus' "$IN/unavailable.md"
+  [ "$status" -ne 0 ]  # no focus line, or no unavailable.md at all
+  system/scripts/vault_index.py set system/config.md machine_role standalone > /dev/null
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qx -- '- brief_prep: focus_yesterday: no focus log for 2026-09-30' "$IN/unavailable.md"
 }

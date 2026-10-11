@@ -52,10 +52,23 @@ def section(text, heading):
     return out
 
 
+def imported(vault, note, when):
+    rec = {"time": when, "kind": "imported", "source": "raw/meetings/x.gdoc.md", "note": note, "complete": True}
+    path = vault / f"system/logs/meetings-{when[:7]}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec) + "\n")
+
+
+def brief(vault, day):
+    write(vault, f"briefings/{day}.md", f'---\ntype: briefing\ndate: "{day}"\nstatus: active\n---\n')
+
+
 def test_the_users_open_actions_first_then_everyone_elses_by_owner(av):
     name = "2026-10-05-1500-weekly-sync"
     write(av, f"wiki/work/meetings/{name}.md", meeting("work", name, body=ACTIONS))
     write(av, f"wiki/work/meetings/{name}.transcript.md", transcript("work", name, "- [ ] [Avery Sample] Not a note."))
+    imported(av, f"wiki/work/meetings/{name}.md", "2026-10-05T16:00:00-06:00")
     text = actions(av)
     assert text.startswith("# Meeting actions for 2026-10-06\n")
     assert section(text, "Yours") == [
@@ -67,13 +80,76 @@ def test_the_users_open_actions_first_then_everyone_elses_by_owner(av):
         "### Unassigned", f"- Unowned: Someone should follow up. ([[{name}]], 2026-10-05)"]
 
 
-def test_others_actions_drop_off_after_14_days_and_the_users_stay(av):
-    old = "2026-09-20-0900-kickoff"
-    write(av, f"wiki/personal/meetings/{old}.md", meeting("personal", old, "Kickoff", body=ACTIONS))
-    text = actions(av)
-    assert len(section(text, "Yours")) == 2 and "16 days open" in section(text, "Yours")[0]
-    assert section(text, "Waiting on") == ["None."]
-    assert len(section(actions(av, "2026-10-04"), "Waiting on")) == 6
+def test_waiting_on_lists_only_what_was_imported_since_the_previous_weekday_brief(av):
+    brief(av, "2026-10-05")  # Monday, run at 06:00 America/Denver
+    before, after = "2026-10-02-0900-friday", "2026-10-05-1500-monday"
+    for name in (before, after):
+        write(av, f"wiki/work/meetings/{name}.md", meeting("work", name, body=ACTIONS))
+    imported(av, f"wiki/work/meetings/{before}.md", "2026-10-05T05:30:00-06:00")
+    imported(av, f"wiki/work/meetings/{after}.md", "2026-10-05T16:00:00-06:00")
+    waiting = section(actions(av, "2026-10-06"), "Waiting on")
+    assert f"[[{after}]]" in "".join(waiting) and f"[[{before}]]" not in "".join(waiting)
+    assert len(section(actions(av, "2026-10-06"), "Yours")) == 4  # the user's own, any age
+
+
+def test_a_friday_meeting_imported_monday_morning_prints_on_tuesday(av):
+    brief(av, "2026-10-05")
+    name = "2026-10-02-1730-late-friday"
+    write(av, f"wiki/work/meetings/{name}.md", meeting("work", name, body=ACTIONS))
+    imported(av, f"wiki/work/meetings/{name}.md", "2026-10-05T08:00:00-06:00")
+    assert f"[[{name}]]" in "".join(section(actions(av, "2026-10-06"), "Waiting on"))
+
+
+def test_a_weekend_brief_lists_no_waiting_on_and_monday_covers_since_friday(av):
+    brief(av, "2026-10-09")  # Friday
+    name = "2026-10-09-1500-friday"
+    write(av, f"wiki/work/meetings/{name}.md", meeting("work", name, body=ACTIONS))
+    imported(av, f"wiki/work/meetings/{name}.md", "2026-10-09T16:00:00-06:00")
+    assert section(actions(av, "2026-10-10"), "Waiting on") == ["None."]
+    assert section(actions(av, "2026-10-11"), "Waiting on") == ["None."]
+    assert f"[[{name}]]" in "".join(section(actions(av, "2026-10-12"), "Waiting on"))
+
+
+def test_no_earlier_briefing_uses_a_seven_day_window(av):
+    old, recent = "2026-09-27-0900-old", "2026-10-01-0900-recent"
+    for name in (old, recent):
+        write(av, f"wiki/work/meetings/{name}.md", meeting("work", name, body=ACTIONS))
+    imported(av, f"wiki/work/meetings/{old}.md", "2026-09-28T10:00:00-06:00")
+    imported(av, f"wiki/work/meetings/{recent}.md", "2026-10-01T10:00:00-06:00")
+    waiting = "".join(section(actions(av, "2026-10-06"), "Waiting on"))
+    assert f"[[{recent}]]" in waiting and f"[[{old}]]" not in waiting
+
+
+def test_a_meeting_with_no_import_record_falls_back_to_its_start_time(av):
+    """system/logs is per machine: a client or a restored vault has the notes and no import log."""
+    brief(av, "2026-10-05")
+    inside, before = "2026-10-05-1500-no-log", "2026-10-02-0900-old-no-log"
+    for name in (inside, before):
+        write(av, f"wiki/work/meetings/{name}.md", meeting("work", name, body=ACTIONS))
+    waiting = "".join(section(actions(av, "2026-10-06"), "Waiting on"))
+    assert f"[[{inside}]]" in waiting and f"[[{before}]]" not in waiting
+
+
+def test_an_imported_note_that_is_gone_or_deprecated_is_skipped(av):
+    brief(av, "2026-10-05")
+    gone, dep = "2026-10-05-0900-gone", "2026-10-05-1000-dep"
+    write(av, f"wiki/work/meetings/{dep}.md", meeting("work", dep, body=ACTIONS, status="deprecated"))
+    imported(av, f"wiki/work/meetings/{gone}.md", "2026-10-05T16:00:00-06:00")
+    imported(av, f"wiki/work/meetings/{dep}.md", "2026-10-05T16:00:00-06:00")
+    assert section(actions(av, "2026-10-06"), "Waiting on") == ["None."]
+
+
+def test_a_bare_first_name_joins_the_one_full_name_that_starts_with_it(av):
+    brief(av, "2026-10-05")
+    name = "2026-10-05-1500-sync"
+    body = ("## Action items\n- [ ] [Gavin] Send link: Send the link.\n- [ ] [Gavin Sample] Fix 1133: Fix it.\n"
+            "- [ ] [Blake] Spec: Update the spec.\n- [ ] [Blake Sample] Deck: Make the deck.\n"
+            "- [ ] [Blake Samples] Other: Another Blake.\n")
+    write(av, f"wiki/work/meetings/{name}.md", meeting("work", name, body=body))
+    imported(av, f"wiki/work/meetings/{name}.md", "2026-10-05T16:00:00-06:00")
+    waiting = section(actions(av, "2026-10-06"), "Waiting on")
+    assert waiting.count("### Gavin Sample") == 1 and "### Gavin" not in waiting
+    assert "### Blake" in waiting  # two full names start with Blake: left as written
 
 
 def test_deprecated_meetings_are_ignored(av):

@@ -102,6 +102,9 @@ case "$rc" in
 esac
 
 prep_meetings
-prep_write focus.md system/scripts/focus_stats.sh "$PREP_DATE" || prep_unavailable "focus: focus_stats.sh failed"
-[[ -s "system/logs/obsidian_focus_$PREP_DATE.log" ]] || prep_unavailable "focus: no focus log for $PREP_DATE"
+# The focus tracker runs on a standalone machine only (one-screen brief spec §3.5).
+if [[ "$(config_get machine_role standalone)" == standalone ]]; then
+  prep_write focus.md system/scripts/focus_stats.sh "$PREP_DATE" || prep_unavailable "focus: focus_stats.sh failed"
+  [[ -s "system/logs/obsidian_focus_$PREP_DATE.log" ]] || prep_unavailable "focus: no focus log for $PREP_DATE"
+fi
 exit 0
