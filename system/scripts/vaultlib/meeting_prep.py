@@ -116,9 +116,11 @@ def render(vault, day: str, calendar) -> str:
             return ""
         page = now.read(vault, partition) if partition in now.PARTITIONS else ""
         blocks = []
-        for _, title, start, event in chosen:
+        for path, title, start, event in chosen:
             lines = _now_lines(page, title) + _actions(vault, conn, title)
-            heading = f"### [[{title}]] ({start or 'all day'} {event})"
+            stem = Path(path).stem  # links resolve by file name; the title is the display text
+            link = stem if stem == title else f"{stem}|{title}"
+            heading = f"### [[{link}]] ({start or 'all day'} {event})"
             blocks.append("\n".join([heading, *lines[:MAX_LINES]]) + "\n")
     finally:
         conn.close()

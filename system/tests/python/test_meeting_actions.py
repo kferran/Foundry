@@ -120,6 +120,16 @@ def test_no_earlier_briefing_uses_a_seven_day_window(av):
     assert f"[[{recent}]]" in waiting and f"[[{old}]]" not in waiting
 
 
+def test_a_meeting_with_no_import_record_falls_back_to_its_start_time(av):
+    """system/logs is per machine: a client or a restored vault has the notes and no import log."""
+    brief(av, "2026-10-05")
+    inside, before = "2026-10-05-1500-no-log", "2026-10-02-0900-old-no-log"
+    for name in (inside, before):
+        write(av, f"wiki/work/meetings/{name}.md", meeting("work", name, body=ACTIONS))
+    waiting = "".join(section(actions(av, "2026-10-06"), "Waiting on"))
+    assert f"[[{inside}]]" in waiting and f"[[{before}]]" not in waiting
+
+
 def test_an_imported_note_that_is_gone_or_deprecated_is_skipped(av):
     brief(av, "2026-10-05")
     gone, dep = "2026-10-05-0900-gone", "2026-10-05-1000-dep"

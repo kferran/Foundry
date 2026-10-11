@@ -70,25 +70,46 @@ def _when(record, tz):
     return when if when.tzinfo else when.replace(tzinfo=tz)
 
 
-def imported_notes(vault, day: str) -> list:
-    """(note path, meeting date) for each meeting note imported since the window start, each once, in log order;
-    a note that is gone or deprecated is skipped."""
-    start, tz, seen, out = window_start(vault, day), _zone(_config()), set(), []
+def _note(vault, path: str):
+    """(data, body) of an active meeting note, or None when it is gone or deprecated."""
+    try:
+        note = frontmatter.parse((Path(vault) / path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return None
+    data = note.data or {}
+    return None if data.get("status") == "deprecated" else (data, note.body)
+
+
+def imported_notes(vault, day: str, meetings=()) -> list:
+    """(note path, meeting date, body) for each meeting note imported since the window start, each once, in log
+    order; a note that is gone or deprecated is skipped. system/logs is per machine: a meeting note in `meetings`
+    (the index's (path, date) rows) with no import record in any log falls back to its own start time, so a
+    client or a restored vault prints the same window from the notes alone."""
+    start, tz, logged, out = window_start(vault, day), _zone(_config()), set(), []
     for r in _records():
-        if r.get("kind") != "imported" or not isinstance(r.get("note"), str) or r["note"] in seen:
+        if r.get("kind") != "imported" or not isinstance(r.get("note"), str) or r["note"] in logged:
             continue
+        logged.add(r["note"])
         when = _when(r, tz)
         if when is None or when <= start:
             continue
-        seen.add(r["note"])
+        found = _note(vault, r["note"])
+        if found:
+            data, body = found
+            out.append((r["note"], str(data.get("date") or r["note"].rsplit("/", 1)[-1][:10]), body))
+    for path, held in meetings:
+        if path in logged:
+            continue
+        found = _note(vault, path)
+        if not found:
+            continue
+        data, body = found
         try:
-            note = frontmatter.parse((Path(vault) / r["note"]).read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError):
+            began = datetime.fromisoformat(str(data.get("start") or ""))
+        except ValueError:
             continue
-        data = note.data or {}
-        if data.get("status") == "deprecated":
-            continue
-        out.append((r["note"], str(data.get("date") or r["note"].rsplit("/", 1)[-1][:10]), note.body))
+        if (began if began.tzinfo else began.replace(tzinfo=tz)) > start:
+            out.append((path, str(held), body))
     return out
 
 
@@ -149,7 +170,7 @@ def main(argv):
                 days = (day - held_on).days
                 mine.append(f"- [{bracket}] {text} ([[{Path(path).stem}]], {days} day{'' if days == 1 else 's'} open)")
     if day.weekday() < 5:
-        for path, held, body in imported_notes(VAULT, day.isoformat()):
+        for path, held, body in imported_notes(VAULT, day.isoformat(), rows):
             for owners, _, text in open_actions(body):
                 if any(o.casefold() in me for o in owners):
                     continue

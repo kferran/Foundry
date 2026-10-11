@@ -24,6 +24,10 @@ status: "{{status}}"
 - **Pipeline**:
 - **Communication Debt**:
 
+## ⏳ Waiting on
+
+<!-- Everyone else's open meeting actions from the meetings imported since the previous weekday brief, by owner. Printed once; tick them on the meeting notes. -->
+
 ## 📝 Notes
 
 <!-- Yours: /brief never edits this section. Write between the markers below: the block goes to the wiki once, at 05:00 the next morning. A block marked anywhere else in the briefing goes within a few minutes. -->

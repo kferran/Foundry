@@ -35,7 +35,7 @@ def test_an_event_naming_an_entity_prints_its_block_in_calendar_order(vault):
     cal = calendar(vault, ("2026-10-06", "10:00", "2026-10-06", "10:30", "Acme / Porch sync"),
                    ("2026-10-06", "09:00", "2026-10-06", "09:30", "Avery Sync"))
     assert meeting_prep.render(vault, "2026-10-06", cal) == (
-        "### [[Avery Sample]] (09:00 Avery Sync)\n"
+        "### [[AverySample|Avery Sample]] (09:00 Avery Sync)\n"
         "- owed: Send the capability doc (Avery Sample, since 2026-10-03)\n"
         "- waiting: Lincoln contact name (Avery Sample, since 2026-10-05)\n"
         "- draft: Reply to [[Avery Sample]] on the pilot (since 2026-10-04)\n"
@@ -87,6 +87,6 @@ def test_the_script_reads_the_days_calendar_and_is_empty_without_one(vault):
     calendar(vault, ("2026-10-06", "09:00", "2026-10-06", "09:30", "Avery Sync"))
     p = subprocess.run([sys.executable, str(vault / "system/scripts/meeting_prep.py"), "2026-10-06"],
                        capture_output=True, text=True)
-    assert p.returncode == 0 and p.stdout.startswith("### [[Avery Sample]] (09:00 Avery Sync)\n")
+    assert p.returncode == 0 and p.stdout.startswith("### [[AverySample|Avery Sample]] (09:00 Avery Sync)\n")
     assert subprocess.run([sys.executable, str(vault / "system/scripts/meeting_prep.py"), "bad"],
                           capture_output=True).returncode == 2

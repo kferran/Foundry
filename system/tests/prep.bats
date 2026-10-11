@@ -507,7 +507,7 @@ gh_says() {
   calendar_says '{"status":"ok","reason":"","events":[{"start_date":"2026-10-01","start_time":"09:00","end_date":"2026-10-01","end_time":"09:30","title":"Standup Team sync"}]}'
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
-  grep -qx '### \[\[Standup Team\]\] (09:00 Standup Team sync)' "$IN/people.md"
+  grep -qx '### \[\[StandupTeam|Standup Team\]\] (09:00 Standup Team sync)' "$IN/people.md"
 }
 
 @test "prep scripts: a server or client writes no focus file and no focus line; standalone does as today" {

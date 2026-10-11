@@ -522,7 +522,14 @@ self_edit_contract() {
   grep -qF 'replace the old `## 🛑 Real-Time Workflow Friction Matrix` heading with `## 🛑 Blockers`' "$f"
   run grep -F 'SELECT path, title FROM v_concept WHERE is_friction = 1' "$f"
   [ "$status" -eq 1 ]
+  grep -qF '**⏳ Waiting on:**' "$f"
+  grep -qF 'after the Blockers section' "$f"
   t=system/templates/daily-briefing.md
+  blockers_line="$(grep -nx '## 🛑 Blockers' "$t" | cut -d: -f1)"
+  waiting_line="$(grep -nx '## ⏳ Waiting on' "$t" | cut -d: -f1)"
+  notes_line="$(grep -nx '## 📝 Notes' "$t" | cut -d: -f1)"
+  [ "$blockers_line" -lt "$waiting_line" ]
+  [ "$waiting_line" -lt "$notes_line" ]
   grep -qxF -- '- **Telemetry**:' "$t"
   grep -qxF -- '- **Friction**:' "$t"
   grep -qxF -- '- **Pipeline**:' "$t"
@@ -736,7 +743,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF -- '- `system/logs/inputs/<date>/handoffs.md`:' "$f"
   grep -qF -- '- **🧾 Handoffs to chase:** every line of `handoffs.md` verbatim' "$f"
   grep -qF 'never carries forward; it is not part of the Active Objectives' "$f"
-  grep -qF 'add it after 🎯 Active Projects' "$f"
+  grep -qF 'add it after ⏳ Waiting on' "$f"
 }
 
 @test "delivered work: digests carry Delivered, ingest skips it, the debrief lists it with Notes lines and prs.md (delivered work §3.4)" {
