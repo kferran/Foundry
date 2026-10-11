@@ -81,10 +81,23 @@ setup() {
   [ "$(jq '.hooks // {} | length' "$f")" = "0" ]
 }
 
-@test "interactive settings end with the read-only status rules a vault merges against, in order" {
-  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(system/scripts/telemetry_fetch.py --list)","Bash(system/scripts/telemetry_fetch.py --check *)","Bash(system/scripts/dtcc_watch.py --check)","Bash(systemctl --user list-timers *)"]'
-  run jq -c '.permissions.allow[-8:]' .claude/settings.json
+@test "interactive settings end with the routine-command rules a vault merges against, in order" {
+  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(system/scripts/telemetry_fetch.py --list)","Bash(system/scripts/telemetry_fetch.py --check *)","Bash(system/scripts/dtcc_watch.py --check)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/dtcc_watch.py)","Bash(system/scripts/dtcc_watch.py --status)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/jira_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(git show:*)"]'
+  run jq -c '.permissions.allow | .[index("Bash(system/scripts/vault_index.py recall:*)"):]' .claude/settings.json
   [ "$output" = "$want" ]
+}
+
+@test "interactive settings keep the boundaries as prompts: config changes, installs, other remotes, force pushes, connector writes" {
+  f=.claude/settings.json
+  run jq -r '.permissions.allow[]' "$f"
+  [ "$status" -eq 0 ]
+  while IFS= read -r rule; do
+    case "$rule" in
+      *"vault_index.py set"*|*"vault_index.py stage"*|*"install_units.sh)"*|*"install_units.sh:*"*|*"install_hooks.sh)"*|*"install_hooks.sh:*"*|*"update_template.sh"*|*"--accept"*|*"--force"*|*"git push:*"*|*"mcp__"*|*"nightshift.py tick"*)
+        echo "boundary rule allowed: $rule"
+        return 1 ;;
+    esac
+  done <<< "$output"
 }
 
 @test "unit templates: only *.in files, services carry {{VAULT_ROOT}}, no machine paths" {
