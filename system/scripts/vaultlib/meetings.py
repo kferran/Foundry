@@ -33,6 +33,11 @@ DRIVE_URL = re.compile(r"https?://(?:drive|docs)\.google\.com/[^\s)\]>]*")
 EMPTY_LINK = re.compile(r"\[([^\[\]\n]*)\]\(\s*\)")
 CONTROL = re.compile(r"[\x00-\x1f\x7f\x85  ]+")
 SECTIONS = {"summary": "summary", "decisions": "decisions", "next steps": "actions", "details": "details"}
+# Google's own text in a Gemini Doc, never the meeting's: the "wasn't produced" notice and the review-and-survey footer.
+BOILERPLATE = re.compile(r"^\s*(?:\\?\[|\*)?\s*(?:A summary wasn[’']t produced|Details weren[’']t produced"
+                         r"|If the meeting was transcribed|Visit the help center|You should review Gemini[’']s notes"
+                         r"|How is the quality of|📝 Notes\s*$|📖 Transcript\s*$)")
+DATE_LINE = re.compile(r"^\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}, \d{4}\s*$")  # a tab's date
 HEADING_EVERY = 300  # seconds of cue offsets between ### headings in a plain transcript
 SLUG_MAX = 60
 
@@ -108,7 +113,7 @@ def _gemini_body(text: str):
         if line.startswith("Invited "):
             invited = MAILTO.findall(line)
             continue
-        if current:
+        if current and not (BOILERPLATE.match(line) or DATE_LINE.match(line)):
             sections[current].append(line)
     actions = []
     for line in sections["actions"]:
@@ -119,6 +124,12 @@ def _gemini_body(text: str):
             actions.append(([], BULLET.match(line).group(1).strip()))
     text_of = {k: "\n".join(v).strip() for k, v in sections.items()}
     return invited or _speakers(turns), text_of, actions, turns, complete
+
+
+def _require_notes(sections, actions, turns):
+    """A Doc whose notes are only Google's boilerplate and that holds no transcript is not a meeting: quarantine it."""
+    if not any(sections.values()) and not actions and not turns:
+        raise ParseError("Gemini produced no notes and no transcript")
 
 
 def parse_gdoc(text: str, tz) -> Meeting:
@@ -139,6 +150,7 @@ def parse_gdoc(text: str, tz) -> Meeting:
     except ValueError:
         raise ParseError("the Doc title carries an invalid start date or time")
     attendees, sections, actions, turns, complete = _gemini_body(note.body)
+    _require_notes(sections, actions, turns)
     return Meeting(match.group(1).strip(), start, f"gdoc:{doc_id}", doc_title, attendees, sections["summary"],
                    sections["decisions"], actions, sections["details"], turns, complete)
 
@@ -234,6 +246,7 @@ def parse_drop(name: str, data: bytes, tz, start: datetime) -> Meeting:
     meeting = Meeting(drop_title(name), start, "", name)
     if suffix == ".md" and _is_gemini(text):
         attendees, sections, actions, turns, complete = _gemini_body(text)
+        _require_notes(sections, actions, turns)
         return replace(meeting, attendees=attendees, summary=sections["summary"], decisions=sections["decisions"],
                        actions=actions, details=sections["details"], turns=turns, complete=complete)
     if suffix in (".vtt", ".srt"):
