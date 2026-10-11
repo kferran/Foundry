@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Work on branch `feat/slack-bridge-impl`. Commit there; do not push or open a pull request.
-- Run the suites from the repository root with `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch`, outside a sandbox. The gate is `system/scripts/verify_setup.sh`. Never run two gates at once.
+- Run the suites from the repository root through `system/scripts/test.sh <suite.bats | pytest path> [args…]`, which sets the gate's environment, outside a sandbox. The gate is `system/scripts/verify_setup.sh`. Never run two gates at once.
 - Bound tools: pytest (`test_slack.py`, `test_slack_notify.py`, `test_slack_fetch.py`, `test_nightshift_run.py`, `test_schema_notes.py`), bats (`slack.bats`, `units.bats`, `vault_integrity.bats`, `setup.bats`), the gate. The live step (one real notice, one real capture on the server) is the owner's, recorded under `docs/superpowers/spikes/`.
 - Commits use `git commit -F .scratch/<file>`.
 - Edits are described by place and content; the implementer anchors them in the current file text.

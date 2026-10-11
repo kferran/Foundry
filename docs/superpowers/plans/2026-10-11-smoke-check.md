@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Work on branch `feat/smoke-check`. Commit there; do not push or open a pull request.
-- Run the suites from the repository root with `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch`, outside a sandbox. The gate is `system/scripts/verify_setup.sh`. Never run two gates at once.
+- Run the suites from the repository root through `system/scripts/test.sh <suite.bats | pytest path> [args…]`, which sets the gate's environment, outside a sandbox. The gate is `system/scripts/verify_setup.sh`. Never run two gates at once.
 - Bound tools: bats (`smoke.bats`, `calendar.bats`, `units.bats`, the `update_template` suite in `scripts.bats`), the gate.
 - Commits use `git commit -F .scratch/<file>`.
 - Edits are described by place and content; the implementer anchors them in the current file text.
@@ -34,7 +34,7 @@
 - Test: `system/tests/calendar.bats`
 
 - [ ] **Step 1: Write the test:** with `stub_claude_calendar`, `calendar_fetch.sh --check` exits 0 and prints `calendar_fetch: the connector listed <n> events`; `--check extra` exits 2.
-- [ ] **Step 2: Run it to verify it fails.** `bats system/tests/calendar.bats -f check`.
+- [ ] **Step 2: Run it to verify it fails.** `system/scripts/test.sh system/tests/calendar.bats -f check`.
 - [ ] **Step 3: Implement** the flag on the `meetings_fetch.sh --check` pattern: same session, today's date, count the extracted rows, print the line instead of the TSV.
 - [ ] **Step 4: Run the suite.** Expected: PASS.
 - [ ] **Step 5: Commit.** `.scratch/msg-1.txt`: `feat(calendar): calendar_fetch.sh --check reports the event count`.

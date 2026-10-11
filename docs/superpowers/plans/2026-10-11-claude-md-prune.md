@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Work on branch `fix/claude-md-prune`. Commit there; do not push or open a pull request.
-- Run the suites from the repository root with `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch`. The gate is `system/scripts/verify_setup.sh`.
+- Run the suites from the repository root through `system/scripts/test.sh <suite.bats | pytest path> [args…]`, which sets the gate's environment. The gate is `system/scripts/verify_setup.sh`.
 - Bound tools: bats (`commands.bats`) and the gate.
 - Commits use `git commit -F .scratch/<file>`.
 - Edits are described by place and content; the implementer anchors them in the current file text.
@@ -33,7 +33,7 @@
 
 - [ ] **Step 1: Extend the "CLAUDE.md carries the vault rules" test:** add `Strategic Intent Shaper|Friction Identification|Production Telemetry Routing` to the retired-rules `grep -nE` and assert status 1; add `[ "$(wc -l < CLAUDE.md)" -le 120 ]`.
 - [ ] **Step 2: Add a test** `impact.md names the plan note and the test commands of an intent proposal`: `grep -qF 'the plan note' .claude/commands/impact.md` and `grep -qF 'test commands' .claude/commands/impact.md`.
-- [ ] **Step 3: Run:** `bats system/tests/commands.bats -f 'CLAUDE.md carries|impact.md names'`. Expected: both fail.
+- [ ] **Step 3: Run:** `system/scripts/test.sh system/tests/commands.bats -f 'CLAUDE.md carries|impact.md names'`. Expected: both fail.
 
 ### Task 2: The prune
 

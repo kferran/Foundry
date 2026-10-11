@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Work on branch `feat/usage-ceiling`. Commit there; do not push or open a pull request.
-- Run the suites from the repository root with `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch`, outside a sandbox (the headless tests need `bwrap`). The gate is `system/scripts/verify_setup.sh`. Never run two gates at once.
+- Run the suites from the repository root through `system/scripts/test.sh <suite.bats | pytest path> [args…]`, which sets the gate's environment, outside a sandbox (the headless tests need `bwrap`). The gate is `system/scripts/verify_setup.sh`. Never run two gates at once.
 - Bound tools: pytest (`test_intake.py`, `test_nightshift_report.py`, `test_nightshift_sched.py`), bats (`headless.bats`, `meetings.bats`, `nightshift.bats`), the gate.
 - Commits use `git commit -F .scratch/<file>`.
 - Edits are described by place and content; the implementer anchors them in the current file text.

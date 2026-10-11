@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Work on branch `feat/ingest-evals`. Commit there; do not push or open a pull request.
-- Run the suites from the repository root with `TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch` (`mkdir -p .scratch/tmp` once), outside a sandbox. The gate is `system/scripts/verify_setup.sh`. Never run two gates at once.
+- Run the suites from the repository root through `system/scripts/test.sh <suite.bats | pytest path> [args…]`, which sets the gate's environment, outside a sandbox. The gate is `system/scripts/verify_setup.sh`. Never run two gates at once.
 - Bound tools: pytest (`test_eval_check.py`), bats (`evals.bats`), the gate. The real-model baseline run (Task 5) is the owner's step, outside this plan's Work Order.
 - Commits use `git commit -F .scratch/<file>`.
 - Edits are described by place and content; the implementer anchors them in the current file text.
@@ -38,7 +38,7 @@
 - Produces: `evals.check(run_dir: Path, vault: Path, expect: dict) -> list[str]` (failed-check lines, empty when all hold); the CLI exits 0 or 1 and prints the lines.
 
 - [ ] **Step 1: Write the tests.** One test per check kind (`decisions`, `creates`, `patches`, `untouched`, `walls`, `publish`, `absent`, `body_contains`, `body_lacks`): build a run directory and a small vault under `tmp_path`, assert an empty list on the matching case and the expected line on the mismatch. `walls`: a `shared` note whose `sources` names a `work` input, and a `work` note linking a `personal` note. `untouched`: one byte changed.
-- [ ] **Step 2: Run them to verify they fail.** `python3 -m pytest -q system/tests/python/test_eval_check.py`. Expected: all fail (module missing).
+- [ ] **Step 2: Run them to verify they fail.** `system/scripts/test.sh system/tests/python/test_eval_check.py`. Expected: all fail (module missing).
 - [ ] **Step 3: Implement** `vaultlib/evals.py` with one function per check and `check()` dispatching on the keys present; `eval_check.py` loads `expect.yaml` with `vaultlib.yamlload`, calls `check`, prints and exits.
 - [ ] **Step 4: Run the tests.** Expected: PASS.
 - [ ] **Step 5: Commit.** `.scratch/msg-1.txt`:
@@ -60,7 +60,7 @@ checks over a run's staging directory and the published vault. No model.
 - Produces: `eval_ingest.sh [--case <name>…] [--runs N] [--max-usd D] [--local]`; one summary line per case; exit 1 when a case is under its `min_pass_rate`; a jsonl line per run in `system/logs/evals/ingest-<YYYY-MM>.jsonl`.
 
 - [ ] **Step 1: Write the tests.** With `CLAUDE_BIN=system/tests/stub_claude` and a one-case golden directory under the test's vault: a run writes one jsonl line (`case`, `repeat`, `run_id`, `exit`, `publish`, `cost`, `failed`) and prints `<case>: 1/1 (min 1.0) PASS`; `--max-usd 0` prints `skipped (budget)` for the case and exits 1; a case without `expect.yaml` is refused by name; `--local` reads `system/tests/golden/local/` too.
-- [ ] **Step 2: Run them to verify they fail.** `bats system/tests/evals.bats`.
+- [ ] **Step 2: Run them to verify they fail.** `system/scripts/test.sh system/tests/evals.bats`.
 - [ ] **Step 3: Implement.** Source `lib_config.sh`; for each case and repeat copy the fixture vault to `mktemp -d`, overlay `vault/`, `vault_index.py rebuild`, copy inputs to `raw/inbox/`, run `run_headless.sh ingest` as the intake does, read cost from the result line in the run's `out.jsonl`, run `eval_check.py`, append the record, stop on budget. Summary and exit code last.
 - [ ] **Step 4: Run the tests and the gate.** Expected: PASS; gate exit 0.
 - [ ] **Step 5: Commit.** `.scratch/msg-2.txt`:
