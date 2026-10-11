@@ -67,9 +67,9 @@ headless_contract() {
   grep -qx '## 🎯 Active Projects' "$t"
   unavailable_line="$(grep -nx '### 2. Unavailable Sources' "$t" | cut -d: -f1)"
   projects_line="$(grep -nx '## 🎯 Active Projects' "$t" | cut -d: -f1)"
-  friction_line="$(grep -n '^## 🛑 ' "$t" | cut -d: -f1)"
+  blockers_line="$(grep -nx '## 🛑 Blockers' "$t" | cut -d: -f1)"
   [ "$unavailable_line" -lt "$projects_line" ]
-  [ "$projects_line" -lt "$friction_line" ]
+  [ "$projects_line" -lt "$blockers_line" ]
   grep -qF 'system/logs/inputs/<date>/projects.md' "$f"
   grep -qF 'plain `- ` bullets, never `- [ ] `' "$f"
   grep -qF '![[{{date}}.debrief]]' system/templates/daily-briefing.md
@@ -503,10 +503,37 @@ self_edit_contract() {
   f=.claude/commands/brief.md
   grep -qF '`system/logs/inputs/<date>/actions.md`' "$f"
   grep -qF '**Waiting on**' "$f"
-  grep -qF 'its Notices go under Systemic Blockers' "$f"
+  grep -qF 'its Notices go under **Pipeline**' "$f"
   grep -qF 'except `system/quarantine/meetings/`' "$f"
   grep -qF "SELECT path, title, partition FROM v_meeting WHERE date = '<date>'" .claude/commands/debrief.md
   grep -qF -- '--include-transcripts' .claude/commands/query.md
+}
+
+@test "the one-screen brief: order, the people block, friction and Recurring as prep files give them, role-aware lines" {
+  f=.claude/commands/brief.md
+  grep -qF '`system/logs/inputs/<date>/friction.md`' "$f"
+  grep -qF '`system/logs/inputs/<date>/people.md`' "$f"
+  grep -qF '**Before today'"'"'s meetings**' "$f"
+  grep -qF 'print `people.md` verbatim' "$f"
+  grep -qF 'print `friction.md` verbatim' "$f"
+  grep -qF 'Recurring: N groups' "$f"
+  grep -qF 'one brief'"'"'s worth: the meetings imported since the previous weekday brief' "$f"
+  grep -qF 'Omit **Focus Drift** when `focus_yesterday.md` does not exist' "$f"
+  grep -qF 'replace the old `## 🛑 Real-Time Workflow Friction Matrix` heading with `## 🛑 Blockers`' "$f"
+  run grep -F 'SELECT path, title FROM v_concept WHERE is_friction = 1' "$f"
+  [ "$status" -eq 1 ]
+  t=system/templates/daily-briefing.md
+  grep -qxF -- '- **Telemetry**:' "$t"
+  grep -qxF -- '- **Friction**:' "$t"
+  grep -qxF -- '- **Pipeline**:' "$t"
+  grep -qxF -- '- **Communication Debt**:' "$t"
+  run grep -c 'Focus Drift' "$t"
+  [ "$status" -eq 1 ]
+  d=.claude/commands/debrief.md
+  grep -qF 'Omit the Focus paragraph when `focus.md` does not exist' "$d"
+  grep -qF 'Omit **3. Agent Health** when `system/logs/metrics/` holds no file' "$d"
+  grep -qF 'Before today'"'"'s meetings' FOUNDRY.md
+  grep -qF 'imported since the previous weekday brief' FOUNDRY.md
 }
 
 @test "meetings: /ingest compiles a meeting input into concepts that cite the meeting note, never under meetings/" {

@@ -499,15 +499,15 @@ gh_says() {
 
 @test "brief_prep: people.md holds the Before today's meetings blocks, empty when no event names an entity" {
   mkdir -p wiki/personal/entities
-  printf -- '---\ntype: concept\ntags: []\ncompiled_at: 2026-09-30\npartition: personal\n---\n# Standup Crew\n' > wiki/personal/entities/StandupCrew.md
+  printf -- '---\ntype: concept\ntags: []\ncompiled_at: 2026-09-30\npartition: personal\n---\n# Standup Team\n' > wiki/personal/entities/StandupTeam.md
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
   [ -f "$IN/people.md" ]
   [ ! -s "$IN/people.md" ]
-  calendar_says '{"status":"ok","reason":"","events":[{"start_date":"2026-10-01","start_time":"09:00","end_date":"2026-10-01","end_time":"09:30","title":"Standup Crew sync"}]}'
+  calendar_says '{"status":"ok","reason":"","events":[{"start_date":"2026-10-01","start_time":"09:00","end_date":"2026-10-01","end_time":"09:30","title":"Standup Team sync"}]}'
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
-  grep -qx '### \[\[Standup Crew\]\] (09:00 Standup Crew sync)' "$IN/people.md"
+  grep -qx '### \[\[Standup Team\]\] (09:00 Standup Team sync)' "$IN/people.md"
 }
 
 @test "prep scripts: a server or client writes no focus file and no focus line; standalone does as today" {
