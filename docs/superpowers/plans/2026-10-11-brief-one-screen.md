@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Work on branch `feat/brief-one-screen` of `kferran/Foundry`, created from `docs/brief-one-screen` (the spec and this plan are its first commits). Every task commits there. No task pushes or opens a pull request; no task touches the vault's `master`.
+- Work on branch `feat/brief-one-screen` of this repository, created from `docs/brief-one-screen` (the spec and this plan are its first commits). Every task commits there. No task pushes or opens a pull request; no task touches the vault's `master`.
 - Template rule: never commit a hostname, user path, remote URL, employer, client, codebase or people name. Fixtures use "Avery Sample", "Blake Sample", "Gavin Sample", `acme`, `example.com`.
 - New prose follows the Writing rules in `CLAUDE.md`.
 - Run every command from the repository root after `mkdir -p .scratch/tmp` and `export TMPDIR=$PWD/.scratch/tmp GIT_CEILING_DIRECTORIES=$PWD/.scratch`. Read a test verdict from its exit code, never through a pipe. Never run two gates at once.
@@ -26,7 +26,7 @@
 
 1. **A vault with no earlier briefing** (first morning, or a client's first interactive `/brief`): Waiting on must fall back to a 7-day window and friction must print every flagged note, never crash on an empty `briefings/`. Pinned in Task 2 (`test_no_earlier_briefing_uses_a_seven_day_window`) and Task 3 (`test_with_no_earlier_briefing_every_flagged_note_is_new`).
 2. **An `imported` record whose meeting note was deprecated or deleted since** must be skipped, not raise. Pinned in Task 2 (`test_an_imported_note_that_is_gone_or_deprecated_is_skipped`).
-3. **An entity alias inside a longer word** ("Alex" in "Alexandria sync") must not match; a title with punctuation ("Acme / Porch sync") must. Pinned in Task 4 (`test_whole_word_match_only`).
+3. **An entity alias inside a longer word** ("Alex" in "Alexandria sync") must not match; a title with punctuation ("Acme / Beta sync") must. Pinned in Task 4 (`test_whole_word_match_only`).
 4. **A Now line that names the entity inside a wikilink or in the statement** (`who` empty) must count for that entity. Pinned in Task 4 (`test_now_lines_match_by_who_or_by_name_in_the_statement`).
 5. **An existing briefing with the old Friction Matrix heading** edited by `/brief` the morning after the update must come out with the Blockers heading once, not both. Pinned in Task 6 (the `commands.bats` assertion on the replace rule).
 
@@ -376,7 +376,7 @@ Expected: PASS.
   ```
   ### [[Avery Sample]] (09:00 Avery Sync)
   - owed: Send the capability doc (Avery Sample, since 2026-10-03)
-  - waiting: Lincoln contact name (Avery Sample, since 2026-10-05)
+  - waiting: vendor contact name (Avery Sample, since 2026-10-05)
   - action: Draft plan: Send the draft. ([[2026-10-05-1500-weekly-sync]])
   ```
   Line 2 lines are the Now lines verbatim without their `- [ ] ` prefix, `owed` then `waiting` then `draft`; line 3 lines are the entity's open meeting actions, newest meeting first, only when the entity is one of the owners. An entity with nothing to show prints its heading line alone (builder's call, per spec §6).
@@ -398,7 +398,7 @@ NOW = ("---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition:
        "- [ ] owed: Send the capability doc (Avery Sample, since 2026-10-03)\n"
        "- [ ] draft: Reply to [[Avery Sample]] on the pilot (since 2026-10-04)\n"
        "- [ ] owed: Unrelated line (since 2026-10-04)\n\n## Waiting\n"
-       "- [ ] waiting: Lincoln contact name (Avery Sample, since 2026-10-05)\n")
+       "- [ ] waiting: vendor contact name (Avery Sample, since 2026-10-05)\n")
 ACTIONS = "## Action items\n- [ ] [Avery Sample] Draft plan: Send the draft.\n- [ ] [Blake Sample] Deck: Make it.\n"
 
 
@@ -407,7 +407,7 @@ def calendar(vault, *rows):
     return write(vault, "system/logs/inputs/2026-10-06/calendar.tsv", text)
 
 
-def setup(vault):
+def seed(vault):
     write(vault, "system/config.md", '---\ntype: config\ntimezone: "America/Denver"\ndefault_partition: "work"\n'
           'owner_names: ["Casey Owner"]\n---\n')
     write(vault, "wiki/work/entities/AverySample.md", concept("work", "Avery Sample", aliases='["Avery", "A. Sample"]'))
@@ -419,33 +419,33 @@ def setup(vault):
 
 
 def test_an_event_naming_an_entity_prints_its_block_in_calendar_order(vault):
-    setup(vault)
-    cal = calendar(vault, ("2026-10-06", "10:00", "2026-10-06", "10:30", "Acme / Porch sync"),
+    seed(vault)
+    cal = calendar(vault, ("2026-10-06", "10:00", "2026-10-06", "10:30", "Acme / Beta sync"),
                    ("2026-10-06", "09:00", "2026-10-06", "09:30", "Avery Sync"))
     assert meeting_prep.render(vault, "2026-10-06", cal) == (
         "### [[Avery Sample]] (09:00 Avery Sync)\n"
         "- owed: Send the capability doc (Avery Sample, since 2026-10-03)\n"
-        "- waiting: Lincoln contact name (Avery Sample, since 2026-10-05)\n"
+        "- waiting: vendor contact name (Avery Sample, since 2026-10-05)\n"
         "- draft: Reply to [[Avery Sample]] on the pilot (since 2026-10-04)\n"
         "- action: Draft plan: Send the draft. ([[2026-10-05-1500-weekly-sync]])\n\n"
-        "### [[Acme]] (10:00 Acme / Porch sync)\n")
+        "### [[Acme]] (10:00 Acme / Beta sync)\n")
 
 
 def test_whole_word_match_only(vault):
     assert meeting_prep.matches("Alexandria sync", "Alex") is False
-    assert meeting_prep.matches("acme / porch SYNC", "Acme") is True
+    assert meeting_prep.matches("acme / beta SYNC", "Acme") is True
     assert meeting_prep.matches("1:1 with A. Sample", "A. Sample") is True
 
 
 def test_now_lines_match_by_who_or_by_name_in_the_statement(vault):
-    setup(vault)
+    seed(vault)
     cal = calendar(vault, ("2026-10-06", "09:00", "2026-10-06", "09:30", "Avery Sync"))
     out = meeting_prep.render(vault, "2026-10-06", cal)
     assert "Reply to [[Avery Sample]]" in out and "Unrelated line" not in out
 
 
 def test_five_entities_and_five_lines_at_most_and_each_entity_once(vault):
-    setup(vault)
+    seed(vault)
     for i in range(7):
         write(vault, f"wiki/work/entities/Person{i}.md", concept("work", f"Person{i}"))
     rows = [("2026-10-06", f"{9 + i:02d}:00", "2026-10-06", f"{9 + i:02d}:30", f"Person{i} sync") for i in range(7)]
@@ -459,13 +459,13 @@ def test_five_entities_and_five_lines_at_most_and_each_entity_once(vault):
 
 
 def test_a_personal_entity_never_appears_in_a_work_brief_and_no_match_is_empty(vault):
-    setup(vault)
+    seed(vault)
     cal = calendar(vault, ("2026-10-06", "09:00", "2026-10-06", "09:30", "Blake Sample 1:1"))
     assert meeting_prep.render(vault, "2026-10-06", cal) == ""
 
 
 def test_the_script_reads_the_days_calendar_and_is_empty_without_one(vault):
-    setup(vault)
+    seed(vault)
     shutil.copytree(REPO / "system/scripts", vault / "system/scripts", dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns("__pycache__"))
     p = subprocess.run([sys.executable, str(vault / "system/scripts/meeting_prep.py"), "2026-10-06"],

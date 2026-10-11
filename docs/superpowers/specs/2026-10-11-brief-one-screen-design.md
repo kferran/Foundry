@@ -2,11 +2,11 @@
 
 **Date:** 2026-10-11
 **Status:** Draft for the owner's review. Scope settled in a grill with the owner on 2026-10-11; the decisions below are the owner's unless marked "my call".
-**Lineage:** `2026-10-09-now-page-design.md` (#102: the Now page replaced the carried-forward list), `2026-10-07-active-projects-design.md`, `2026-10-05-meetings-design.md` §2.5 (meeting actions in the brief), `2026-10-03-calendar-connector-design.md` (calendar.tsv), `2026-10-05-error-monitoring-design.md` (the telemetry tables). Findings: the live-vault review of 2026-10-11 (PorchOS `docs/reviews/2026-10-11-vault-review.md`, §2.4 and §3.1).
+**Lineage:** `2026-10-09-now-page-design.md` (#102: the Now page replaced the carried-forward list), `2026-10-07-active-projects-design.md`, `2026-10-05-meetings-design.md` §2.5 (meeting actions in the brief), `2026-10-03-calendar-connector-design.md` (calendar.tsv), `2026-10-05-error-monitoring-design.md` (the telemetry tables). Findings: the live-vault review of 2026-10-11 (§2.4 and §3.1).
 
 ## 1. Intent
 
-The weekday brief is a dispatch list. The owner reads it at a desk in Obsidian and turns it into queued work: Work Orders for carried items and research, sessions for projects. A section earns its place only when it changes what gets queued that morning. In the live vault the brief grew from 3.6 KB to 55 KB in five days (about 8,000 words), mostly from sections that never changed a decision: closed carried items printed in full (fixed by #102), two weeks of everyone's action items, 118 friction note names, repeated telemetry rows, and daily lines for sources the server never has.
+The weekday brief is a dispatch list. The owner reads it at a desk in Obsidian and turns it into queued work: Work Orders for carried items and research, sessions for projects. A section earns its place only when it changes what gets queued that morning. In a live vault the brief grew more than tenfold in five days, mostly from sections that never changed a decision: closed carried items printed in full (fixed by #102), two weeks of everyone's action items, over a hundred friction note names, repeated telemetry rows, and daily lines for sources the server never has.
 
 What the owner used on a weekday: the carried items, Active Projects and the telemetry New tables ("which of these gets an RCA"). What the owner skipped: Waiting on and friction. On review, both stay, in a form that can be read and queued from.
 
@@ -42,12 +42,12 @@ The Friction Matrix heading goes: its bullets become four parts under one `## �
 - The owner does not read weekend briefs. A Saturday or Sunday brief prints no Waiting on, and Monday's covers everything imported since Friday's brief. On a Tuesday that is Monday's meetings.
 - An item prints once and lives on the meeting note after that. There is no rolling window and no cap.
 - **Yours** (the owner's own open actions) keeps its current rule: every open item, any age, with days open.
-- Grouping stays by owner, as today. My call: within one brief, an owner written as a bare first name ("Gavin") joins the group of the owner whose full name starts with it ("Gavin Monson") when exactly one such owner appears in that brief; otherwise it stays as written. No entity lookup.
+- Grouping stays by owner, as today. My call: within one brief, an owner written as a bare first name ("Gavin") joins the group of the owner whose full name starts with it ("Gavin Sample") when exactly one such owner appears in that brief; otherwise it stays as written. No entity lookup.
 
 ### 3.3 Friction: new since the last brief, plus a count (owner)
 
 - `brief_prep.sh` writes `system/logs/inputs/<date>/friction.md`: the active concept notes with `is_friction` true that no earlier brief has listed, one `- [[Name]]` per line, newest `compiled_at` first, and a final line `N open friction notes` counting every active one.
-- "Listed before" is read from the briefings themselves, never from a ledger (my call, from the reviewer's fifth question: `system/logs/` is per machine, briefings sync): a note was listed when its `[[Name]]` link appears under the Friction heading, or under the old "Friction notes" bullet, of any briefing in `briefings/` or `briefings/archive/`. The first brief after the update therefore prints only the notes flagged since the last old-style brief, and the 118-name backlog is already "listed". A note that loses the flag and gains it again prints again only if no briefing named it in the meantime, which is the right reading of "new".
+- "Listed before" is read from the briefings themselves, never from a ledger (my call, from the reviewer's fifth question: `system/logs/` is per machine, briefings sync): a note was listed when its `[[Name]]` link appears under the Friction heading, or under the old "Friction notes" bullet, of any briefing in `briefings/` or `briefings/archive/`. The first brief after the update therefore prints only the notes flagged since the last old-style brief, and the existing backlog is already "listed". A note that loses the flag and gains it again prints again only if no briefing named it in the meantime, which is the right reading of "new".
 - `/brief` prints the lines verbatim under **Friction**, then the count. Note names only: the owner opens the note to queue from it.
 
 ### 3.4 Telemetry: New in full, Recurring as a line (owner for New; my call for the rest)
@@ -94,7 +94,7 @@ On a weekday with ten meetings, the brief above the 📝 Notes section is under 
 
 ## 5. Tests
 
-- **pytest (`test_meeting_actions.py`):** a Tuesday brief lists the items imported after Monday's brief and not those imported before it; a Friday meeting imported Monday 08:00 prints on Tuesday; a Monday brief lists everything imported since Friday's brief; a Saturday brief lists none; with no earlier briefing the window is 7 days; Yours still lists an item 20 days old; "Gavin" and "Gavin Monson" in one brief are one group; two full names starting with "Gavin" leave the bare name as written.
+- **pytest (`test_meeting_actions.py`):** a Tuesday brief lists the items imported after Monday's brief and not those imported before it; a Friday meeting imported Monday 08:00 prints on Tuesday; a Monday brief lists everything imported since Friday's brief; a Saturday brief lists none; with no earlier briefing the window is 7 days; Yours still lists an item 20 days old; "Gavin" and "Gavin Sample" in one brief are one group; two full names starting with "Gavin" leave the bare name as written.
 - **pytest (`test_friction.py`, new):** a flagged note prints once and is counted after; a note named under the old "Friction notes" bullet of an archived briefing is not new; a note flagged, unflagged and flagged again prints again only when no briefing named it in between; an inactive flagged note is neither printed nor counted.
 - **pytest (`test_meeting_prep.py`, new):** an event title holding an entity title matches; an alias matches; a partial word does not; a person in two events appears once; lines stop at five in the stated order; a day with no match writes an empty file; a personal-partition entity never appears in a work brief.
 - **bats (`prep.bats`):** `brief_prep.sh` on a server writes no focus file and no focus line; on a standalone machine it does as today; `friction.md` and `people.md` are written and listed in `unavailable.md` when their script fails.
