@@ -509,3 +509,19 @@ gh_says() {
   [ "$status" -eq 0 ]
   grep -qx '### \[\[Standup Crew\]\] (09:00 Standup Crew sync)' "$IN/people.md"
 }
+
+@test "prep scripts: a server or client writes no focus file and no focus line; standalone does as today" {
+  system/scripts/vault_index.py set system/config.md machine_role server > /dev/null
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ ! -e "$IN/focus_yesterday.md" ]
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ ! -e "$IN/focus.md" ]
+  run grep -c 'focus' "$IN/unavailable.md"
+  [ "$status" -ne 0 ]  # no focus line, or no unavailable.md at all
+  system/scripts/vault_index.py set system/config.md machine_role standalone > /dev/null
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qx -- '- brief_prep: focus_yesterday: no focus log for 2026-09-30' "$IN/unavailable.md"
+}
