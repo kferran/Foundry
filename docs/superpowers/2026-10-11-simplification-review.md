@@ -1,7 +1,7 @@
 # Simplification review: a template to clone, not a framework to maintain
 
 **Date:** 2026-10-11
-**Scope:** the template at `master` (6535249) plus the review branch. Three read-only passes: the clone-and-install path, the code shape under `system/`, and the prompt and process layer. Claims below were checked against the files named; line numbers are from `master`.
+**Scope:** the template at `master` (6535249) plus the review branch. Three read-only passes: the clone-and-install path, the code shape under `system/`, and the prompt and process layer. Claims below were checked against the files named; line numbers are from that commit. Since then `master` merged inbox triage (#109, +422 lines under `system/`): a fourth confined connector fetch (Gmail), a fourth `claude` flag set, and one more unit, off by default (`triage_enabled`). It adds to findings 10 and 11 and changes no conclusion.
 **Owner's goal:** a template a new user clones and installs and then has a personal operating system running, with nothing brittle to build on.
 
 ## 1. Verdict
