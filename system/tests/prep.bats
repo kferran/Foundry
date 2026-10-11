@@ -480,3 +480,16 @@ gh_says() {
   [ "$status" -eq 0 ]
   grep -qxF -- '- debrief_prep: prs: gh search failed (see system/logs/inputs/2026-10-01/prep_errors.log)' "$IN/unavailable.md"
 }
+
+@test "brief_prep: friction.md lists the flagged notes no earlier brief named, then the count" {
+  printf -- '---\ntype: concept\ntags: []\ncompiled_at: 2026-09-30\npartition: work\nis_friction: "true"\n---\n# Stuck\n' > wiki/work/concepts/Stuck.md
+  printf -- '---\ntype: concept\ntags: []\ncompiled_at: 2026-09-29\npartition: work\nis_friction: "true"\n---\n# Known\n' > wiki/work/concepts/Known.md
+  mkdir -p briefings
+  printf -- '---\ntype: briefing\ndate: "2026-09-30"\nstatus: active\n---\n## 🛑 Blockers\n- **Friction**:\n  - [[Known]]\n  1 open friction note\n' > briefings/2026-09-30.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qx -- '- \[\[Stuck\]\]' "$IN/friction.md"
+  run grep -c 'Known' "$IN/friction.md"
+  [ "$status" -eq 1 ]
+  grep -qx '2 open friction notes' "$IN/friction.md"
+}

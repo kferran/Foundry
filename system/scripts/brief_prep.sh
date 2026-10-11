@@ -56,6 +56,9 @@ NOW_LOCK_WAIT="${ARCHIVE_LOCK_WAIT:-60}" system/scripts/now.py seed "$PREP_DATE"
   || prep_unavailable "now: the first Now page was not seeded (see $PREP_DIR/prep_errors.log)"
 prep_write now.md system/scripts/now.py list \
   || prep_unavailable "now: now.py list failed (see $PREP_DIR/prep_errors.log)"
+# Friction notes no earlier brief has listed, plus the count (one-screen brief spec §3.3).
+prep_write friction.md system/scripts/friction_notes.py "$PREP_DATE" \
+  || prep_unavailable "friction: friction_notes.py failed (see $PREP_DIR/prep_errors.log)"
 # The Work Orders report for this morning (Nightshift spec §6); empty when nothing ran.
 if [[ -f "system/logs/nightshift/$PREP_DATE.md" ]]; then
   prep_write nightshift.md cat "system/logs/nightshift/$PREP_DATE.md" || prep_unavailable "nightshift: report unreadable"
