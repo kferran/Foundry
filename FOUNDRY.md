@@ -313,6 +313,8 @@ Both installers also accept `--dry-run`.
 
 Work follows the superpowers workflow: brainstorm → spec in [`docs/superpowers/specs/`](docs/superpowers/specs/) → plan in [`docs/superpowers/plans/`](docs/superpowers/plans/) → test-driven implementation in small, focused commits. Spike results go in [`docs/superpowers/spikes/`](docs/superpowers/spikes/). Every finding from the design reviews is traced in spec §13.
 
+**Two lanes.** That workflow is the feature lane. A fix takes the fast lane and skips the grill, the spec and the plan. A fix is a change whose scope is clear from one sentence, with one failing test that passes after the change and the gate green, that touches none of the safety surfaces: permissions and settings files, the sandbox, the publish gate, redaction, and new note types. A fix that edits the `ingest`, `brief` or `debrief` command text also re-runs the live acceptance steps (below). It ships as a pull request whose body is the issue line or review finding it fixes and the name of its test. A fix may run as a Work Order: the readiness check reads the plan from a file committed at the Work Order's base, so it then needs a short plan file with its `### Task N:` list. A fix that grows past its sentence, or draws a design question in review, stops and becomes a feature; the default when in doubt is the feature lane.
+
 The gating suites must pass at the end of every task. One command runs them all and exits non-zero if any fails:
 
 ```sh
