@@ -59,6 +59,9 @@ prep_write now.md system/scripts/now.py list \
 # Friction notes no earlier brief has listed, plus the count (one-screen brief spec §3.3).
 prep_write friction.md system/scripts/friction_notes.py "$PREP_DATE" \
   || prep_unavailable "friction: friction_notes.py failed (see $PREP_DIR/prep_errors.log)"
+# Before today's meetings (one-screen brief spec §3.6): reads calendar.tsv, the entity notes and the Now page.
+prep_write people.md system/scripts/meeting_prep.py "$PREP_DATE" \
+  || prep_unavailable "people: meeting_prep.py failed (see $PREP_DIR/prep_errors.log)"
 # The Work Orders report for this morning (Nightshift spec §6); empty when nothing ran.
 if [[ -f "system/logs/nightshift/$PREP_DATE.md" ]]; then
   prep_write nightshift.md cat "system/logs/nightshift/$PREP_DATE.md" || prep_unavailable "nightshift: report unreadable"

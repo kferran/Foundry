@@ -316,10 +316,13 @@ codebase() {  # <name> <path>
   today="$(TZ=America/Denver date +%F)"
   mkdir -p briefings
   printf 'x\n' > briefings/2026-09-29.md
-  flock system/run.lock sleep 4 &
+  # The holder keeps run.lock for the whole run, however long the prep steps take, and is released afterwards.
+  flock system/run.lock sleep 60 &
+  holder=$!
   sleep 0.5
   ARCHIVE_LOCK_WAIT=1 run "$BP"
-  wait
+  kill "$holder"
+  wait "$holder" || true
   [ "$(TZ=America/Denver date +%F)" = "$today" ] || skip "the date changed during the run"
   [ "$status" -eq 0 ]
   [ -f briefings/2026-09-29.md ]
@@ -492,4 +495,17 @@ gh_says() {
   run grep -c 'Known' "$IN/friction.md"
   [ "$status" -eq 1 ]
   grep -qx '2 open friction notes' "$IN/friction.md"
+}
+
+@test "brief_prep: people.md holds the Before today's meetings blocks, empty when no event names an entity" {
+  mkdir -p wiki/personal/entities
+  printf -- '---\ntype: concept\ntags: []\ncompiled_at: 2026-09-30\npartition: personal\n---\n# Standup Crew\n' > wiki/personal/entities/StandupCrew.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ -f "$IN/people.md" ]
+  [ ! -s "$IN/people.md" ]
+  calendar_says '{"status":"ok","reason":"","events":[{"start_date":"2026-10-01","start_time":"09:00","end_date":"2026-10-01","end_time":"09:30","title":"Standup Crew sync"}]}'
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qx '### \[\[Standup Crew\]\] (09:00 Standup Crew sync)' "$IN/people.md"
 }
