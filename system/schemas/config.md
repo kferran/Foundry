@@ -33,6 +33,8 @@ fields:
   rca_assignee: {kind: string}
   triage_enabled: {kind: bool, default: "false"}
   triage_partition: {kind: enum, values: [work, personal]}
+  slack_notify_channel: {kind: string}
+  slack_connector: {kind: string, default: "plugin:slack:slack"}
 ---
 # Config
 The per-user global configuration written by `/setup` (gitignored). `system/config.example.md` is the committed example.
@@ -44,5 +46,7 @@ The per-user global configuration written by `/setup` (gitignored). `system/conf
 `rca_project` (a Jira project key) turns on filing approved `/rca` drafts to `handoffs_site`, as `rca_issue_type` (default `Bug`) with `rca_labels` and, when set, the Atlassian account ID `rca_assignee` (RCA spec §3.4); filing stays off while `rca_project` is empty.
 
 `triage_enabled` turns on inbox triage on a standalone machine or a server (inbox triage spec): every 30 minutes on workdays, mail that needs the owner becomes an `owed` line on the Now page of `triage_partition` (default `work`).
+
+`slack_notify_channel` turns on Slack notices on a standalone machine or a server (Slack notices spec): a Slack channel ID, or the owner's user ID for a direct message; empty is off. `slack_connector` is the connector as `claude mcp list` names it (default `plugin:slack:slack`).
 
 `nightshift_workspace` and `nightshift_window` are the old names of `order_workspace` and `run_window`. They are still read when the new key is absent; the new key wins when both are set.

@@ -23,6 +23,8 @@ rca_labels: []                  # labels /rca puts on each ticket, e.g. ["produc
 rca_assignee: ""                # Atlassian account ID to assign /rca tickets to; empty leaves them unassigned
 triage_enabled: "false"         # server and standalone: every 30 minutes on workdays, mail that needs you goes to the Now page
 triage_partition: "work"        # work | personal: the Now page triage writes to
+slack_notify_channel: ""        # server and standalone: a Slack channel ID, or your user ID for a DM; empty is off
+slack_connector: "plugin:slack:slack"  # the Slack connector as `claude mcp list` names it
 superpowers:
   - "<strategic anchor>"
 ---

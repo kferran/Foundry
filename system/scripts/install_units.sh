@@ -99,6 +99,12 @@ if [[ "$role" != client && "$(config_get triage_enabled false)" == true ]]; then
   UNITS+=(foundry-triage.service foundry-triage.timer)
   ENABLE+=(foundry-triage.timer)
 fi
+# Slack notices (Slack notices spec §3.3): standalone and server, only when a channel is set. They write only
+# gitignored logs, so they get no sync drop-in.
+if [[ "$role" != client && -n "$(config_get slack_notify_channel "")" ]]; then
+  UNITS+=(foundry-notify.service foundry-notify.timer)
+  ENABLE+=(foundry-notify.timer)
+fi
 # Error telemetry (Plan 11): standalone and server, only when a source is enabled.
 if [[ "$role" != client ]] && [[ -n "$(system/scripts/telemetry_fetch.py --list 2>/dev/null)" ]]; then
   UNITS+=(foundry-telemetry.service foundry-telemetry.timer)
