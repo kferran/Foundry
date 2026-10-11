@@ -4,9 +4,11 @@
 Usage: notify.py collect              print {"message", "lines", "cursor"} for what happened since the last notice,
                                       or nothing; the first run only sets the cursor
        notify.py tool                 print the send tool's name for the configured connector
-       notify.py check <collected>    check a session's stream on stdin against collect's JSON file
+       notify.py check <collected>    check a session's stream on stdin against collect's JSON file; prints the
+                                      drift when the post reached the channel but not exactly
        notify.py commit <collected>   move the cursor to the one in collect's JSON file
-Exit: 0 ok, 1 claude error, 2 usage, 3 no connector, 6 connector error, 7 unexpected tool use or other arguments.
+Exit: 0 ok (or posted with drift), 1 claude error, 2 usage, 3 no connector, 4 the account usage limit, 6 connector
+error, 7 the session broke its rules (another tool, channel or argument, or text nobody collected).
 A non-zero exit writes one reason line to stderr.
 """
 import json
@@ -40,7 +42,9 @@ def main(argv) -> int:
         elif len(argv) == 3 and argv[1] == "check":
             collected = json.loads(Path(argv[2]).read_text())
             channel = str(notify.config(VAULT).get("slack_notify_channel") or "")
-            notify.check(messages(sys.stdin.read()), tool(), channel, collected["lines"])
+            drift = notify.check(messages(sys.stdin.read()), tool(), channel, collected["message"], collected["lines"])
+            if drift:
+                print(drift)
         elif len(argv) == 3 and argv[1] == "commit":
             notify.commit(VAULT, json.loads(Path(argv[2]).read_text())["cursor"])
         else:

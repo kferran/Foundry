@@ -15,6 +15,10 @@ STATE = Path("system/logs/notify/state.json")
 LINE_MAX = 200
 MESSAGE_MAX = 4000
 TAG = "[notify]"
+TRIAGE_TEXT = re.compile(r"(?<=\[triage\] )(\d+) new: .*$")
+POST_ARGS = {"channel_id", "message", "unfurl_app_links"}
+EXTRA_TEXT = 500  # a posted text this much longer than the collected one carries text nobody collected
+LIMIT = re.compile(r"usage limit|rate limit|limit reached|hit your limit", re.I)
 OPEN_NEEDS = ("owed", "draft")
 
 
@@ -87,7 +91,7 @@ def _run_event(vault, rec: dict):
     cmd = rec.get("command")
     if cmd not in ("brief", "debrief"):
         return None
-    day = str(rec.get("finished_at") or "")[:10]
+    day = str(rec.get("started_at") or rec.get("finished_at") or "")[:10]  # the briefing is named for the start
     name = cmd.capitalize()
     if rec.get("exit") != 0:
         return f"{name} {day} failed (exit {rec.get('exit')})"
@@ -101,6 +105,18 @@ def _cut(text: str) -> str:
     return text if len(text) <= LINE_MAX else text[:LINE_MAX - 1] + "…"
 
 
+def _alert(line: str) -> str:
+    """An alert line as sent. Triage lines carry mail text (senders and asks a model wrote), so only their count
+    goes out: text from outside the vault never reaches the posting session's prompt."""
+    body = line[2:]
+    m = TRIAGE_TEXT.search(body)
+    return _cut("Alert " + (body[:m.start()] + f"{m.group(1)} new" if m else body))
+
+
+def _sans_time(event: str) -> str:
+    return re.sub(r"^Alert \d{2}:\d{2}:\d{2} ", "Alert ", event)
+
+
 def collect(vault, now: datetime) -> tuple:
     """(new event lines, the cursor after them). The first run returns no events and a cursor at the end of every
     source, so turning notices on sends no backlog."""
@@ -109,7 +125,7 @@ def collect(vault, now: datetime) -> tuple:
     state = _load(vault)
     first = not state
     cursor = {"ledger": dict(state.get("ledger", {})), "alerts": dict(state.get("alerts", {})),
-              "outcomes": list(state.get("outcomes", []))}
+              "outcomes": list(state.get("outcomes", [])), "sent": dict(state.get("sent", {}))}
     runs, orders, alerts = [], [], []
     months = {now.strftime("%Y-%m"), (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")}
     for month in sorted(months):
@@ -129,10 +145,17 @@ def collect(vault, now: datetime) -> tuple:
         path = logs / f"alerts_{day}.md"
         if not path.is_file():
             continue
-        text = path.read_text(errors="replace").splitlines()
-        seen = len(text) if first else int(cursor["alerts"].get(path.name, 0))
-        cursor["alerts"][path.name] = len(text)
-        alerts += [_cut("Alert " + x[2:]) for x in text[seen:] if x.startswith("- ") and TAG not in x]
+        new, end = _new_lines(path, 0 if first else int(cursor["alerts"].get(path.name, 0)))
+        cursor["alerts"][path.name] = end
+        sent = cursor["sent"].setdefault(day, [])
+        for x in [] if first else new:
+            if not x.startswith("- ") or TAG in x:
+                continue
+            event = _alert(x)
+            if _sans_time(event) in sent:  # an alert repeated each tick while a problem lasts goes out once a day
+                continue
+            sent.append(_sans_time(event))
+            alerts.append(event)
     for path in sorted((logs / "nightshift" / "items").glob("*/outcome.json")):
         try:
             out = json.loads(path.read_text())
@@ -147,6 +170,7 @@ def collect(vault, now: datetime) -> tuple:
             orders.append(_cut(f"Work Order {oid} {out.get('state')}" + (f": {detail}" if detail else "")))
     keep = {f"alerts_{d}.md" for d in ((now - timedelta(days=1)).strftime("%F"), now.strftime("%F"))}
     cursor["alerts"] = {k: v for k, v in cursor["alerts"].items() if k in keep}
+    cursor["sent"] = {k: v for k, v in cursor["sent"].items() if f"alerts_{k}.md" in keep}
     return runs + orders + alerts, cursor
 
 
@@ -168,17 +192,23 @@ def _norm(text: str) -> str:
     return " ".join(text.split())
 
 
-def check(stream, tool: str, channel: str, lines: list) -> None:
-    """The session called `tool` once, on `channel`, with only channel_id and message, the message holding every
-    event line; anything else raises Fail (exit codes as the connector fetches)."""
-    calls, named, errors = {}, False, []
+def check(stream, tool: str, channel: str, message_text: str, lines: list) -> str:
+    """Read a posting session. Returns "" when it posted as asked, or the drift when the post reached the channel
+    but not exactly (posted twice, an event line missing): the events count as sent either way, so a good post is
+    never repeated. Raises Fail 7 when the session broke its rules (another tool, another channel, an argument
+    other than the channel, the text and link previews, or text nobody collected), so notify.sh holds notices
+    until the owner looks; Fail 1, 3, 4 or 6 when nothing was posted."""
+    calls, named, errors, ok, result = {}, False, set(), set(), None
     for m in stream:
         if m.get("type") == "assistant":
             for b in blocks(m, "tool_use"):
                 if b.get("name") not in ("ToolSearch", tool):
                     raise Fail(7, f"the session used an unexpected tool: {b.get('name')}")
-                if b.get("name") == tool and any(c.get("name") == tool for c in calls.values()):
-                    raise Fail(7, "the session posted more than once")
+                args = b.get("input") or {}
+                if b.get("name") == tool and (args.get("channel_id") != channel or set(args) - POST_ARGS):
+                    raise Fail(7, "the session posted to another channel or with other arguments")
+                if b.get("name") == tool and len(str(args.get("message") or "")) > len(message_text) + EXTRA_TEXT:
+                    raise Fail(7, "the session posted text nobody collected")
                 calls[b.get("id")] = b
         if m.get("type") == "user":
             for b in blocks(m, "tool_result"):
@@ -187,17 +217,22 @@ def check(stream, tool: str, channel: str, lines: list) -> None:
                 if call.get("name") == "ToolSearch" and isinstance(content, list) and any(
                         isinstance(c, dict) and c.get("tool_name") == tool for c in content):
                     named = True
-                if call.get("name") == tool and b.get("is_error"):
-                    errors.append(json.dumps(content)[:200])
-    posts = [c for c in calls.values() if c.get("name") == tool]
-    if not posts:
-        raise Fail(1 if named else 3, f"the session never called {tool}" if named else "no Slack connector reachable")
-    args = posts[0].get("input") or {}
-    if set(args) != {"channel_id", "message"} or args.get("channel_id") != channel:
-        raise Fail(7, "the session posted with other arguments than the channel and the message")
-    posted = _norm(str(args.get("message") or ""))
-    missing = [x for x in lines if _norm(x) not in posted]
+                if call.get("name") == tool:
+                    (errors if b.get("is_error") else ok).add(b.get("tool_use_id"))
+        if m.get("type") == "result":
+            result = m
+    posted = [c for i, c in calls.items() if c.get("name") == tool and i in ok]
+    if not posted:
+        if errors:
+            raise Fail(6, "the connector returned an error")
+        if result and result.get("is_error") and LIMIT.search(str(result.get("result") or "")):
+            raise Fail(4, "the account usage limit stopped the session")
+        if result is None or named:
+            raise Fail(1, f"the session never called {tool}")
+        raise Fail(3, "no Slack connector reachable")
+    drift = [f"posted {len(posted)} times"] if len(posted) > 1 else []
+    text = _norm(str(posted[0].get("input", {}).get("message") or ""))
+    missing = [x for x in lines if _norm(x) not in text]
     if missing:
-        raise Fail(7, f"the posted message lacks {len(missing)} of its event lines")
-    if errors:
-        raise Fail(6, f"the connector returned an error: {errors[0]}")
+        drift.append(f"{len(missing)} of {len(lines)} event lines missing from the post")
+    return "; ".join(drift)

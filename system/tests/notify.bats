@@ -53,18 +53,33 @@ slack_posts() {
   [ ! -e "$STUB_ARGS" ]
 }
 
-@test "a refused post keeps the cursor and alerts once a day, and the next tick sends it again" {
+@test "a session that breaks its rules holds notices until the hold file goes, without feeding the same lines again" {
   printf -- '- 06:10:00 [intake] one\n' >> "$ALERTS"
+  slack_posts "$(system/scripts/notify.py collect | jq -r .message)" mcp__plugin_slack_slack__slack_send_message_draft
+  run "$N"
+  [ "$status" -eq 7 ]
+  [ -s system/logs/notify/hold ]
+  printf -- '- 06:20:00 [intake] two\n' >> "$ALERTS"
+  rm -f "$STUB_ARGS"
+  run "$N"
+  [ "$status" -eq 5 ]
+  [ ! -e "$STUB_ARGS" ]
+  rm system/logs/notify/hold
   msg="$(system/scripts/notify.py collect | jq -r .message)"
-  slack_posts "$msg" mcp__plugin_slack_slack__slack_send_message_draft
-  run "$N"
-  [ "$status" -eq 7 ]
-  run "$N"
-  [ "$status" -eq 7 ]
-  [ "$(grep -c '\[notify\] Notices failed (exit 7)' "$ALERTS")" -eq 1 ]
-  slack_posts "$msg"
+  [ "$msg" = "• Alert 06:20:00 [intake] two" ]
+}
+
+@test "a post that drifted counts as sent and alerts once a day" {
+  printf -- '- 06:10:00 [intake] one\n' >> "$ALERTS"
+  printf -- '- 06:10:01 [intake] two\n' >> "$ALERTS"
+  slack_posts "• Alert 06:10:00 [intake] one"
   run "$N"
   [ "$status" -eq 0 ]
+  grep -qF '[notify] Notice posted with drift: 1 of 2 event lines missing from the post' "$ALERTS"
+  rm -f "$STUB_ARGS"
+  run "$N"
+  [ "$status" -eq 0 ]
+  [ ! -e "$STUB_ARGS" ]
 }
 
 @test "an empty channel starts no session, and --check then refuses" {
