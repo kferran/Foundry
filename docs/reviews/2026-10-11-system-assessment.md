@@ -1,7 +1,9 @@
 # The Foundry as a CTO's chief of staff: an assessment
 
 **Date:** 2026-10-11
-**Reviewed:** the template repository at commit `6535249` (the manual `FOUNDRY.md`, `CLAUDE.md`, the design spec and roadmap under `docs/superpowers/`, the commands in `.claude/commands/`, the `order` and `dtcc-watch` skills, the Foreman and Workcell personas, `system/scripts/` and `system/hooks/`, the schemas and templates, and the test suites). The wiki in this clone is empty, so the review covers the machinery, not the quality of a compiled vault in daily use.
+**Reviewed:** the template repository at commit `6535249` (the manual `FOUNDRY.md`, `CLAUDE.md`, the design spec and roadmap under `docs/superpowers/`, the commands in `.claude/commands/`, the `order` and `dtcc-watch` skills, the Foreman and Workcell personas, `system/scripts/` and `system/hooks/`, the schemas and templates, and the test suites).
+
+**Scope: template, not PorchOS.** This repository is the template that PorchOS, the owner's live vault, is cloned from and updated through `update_template.sh`. Everything below is about the machinery PorchOS inherits (commands, scripts, hooks, schemas, prompts, rules), and nothing here measures PorchOS's compiled wiki, its entity notes, its run ledger or how its briefs read. Where a finding says "nothing seeds X" or "no feature uses Y", it is a statement about template code; PorchOS may hold that content by hand, and the finding still stands because no template feature reads it. Recommendations are marked **template** (ships to every vault through the update) or **vault** (PorchOS content or settings, done in that repository).
 
 ## 1. Verdict
 
@@ -91,17 +93,19 @@ The system is about 10,800 lines of shell and Python, 19 schemas, 15 systemd uni
 
 ## 6. Recommendations, in order
 
-1. **Delivery first.** Ship the deterministic notice after the brief and debrief (ntfy for phone, Slack DM for desk), plus a failure notice. This is a small script and a config key, and it changes whether the brief gets read.
-2. **Communications intake through the confined-fetch pattern.** A model-free or single-tool fetch of unread Gmail threads and Slack mentions since yesterday, reduced to sender, subject, age and the friction keywords already used by `/ingest`, written to `system/logs/inputs/<date>/comms.md`. The brief's Communication Debt line and the Now page then have real inputs without giving headless runs connector credentials.
-3. **Seed and use entities.** One script that writes a `people` entity note per direct report and frequent calendar attendee (name, team, last 1:1, open lines from Now mentioning them), and a brief section "Before each 1:1 today". This is the cheapest step toward the chief-of-staff framing.
-4. **A small eval set before the next feature.** Ten digests and inbox files with expected decisions for `/ingest`, scored by a script in the gate; three weekly numbers in the Friday debrief (Now lines closed, brief items ticked, Work Orders merged without a follow-up fix).
-5. **Trim `CLAUDE.md`.** Remove the intent-shaper section and template until something consumes them, drop the Hyprland-only rule into the focus script's own docs, and rewrite the section headings in the plain register the file asks for.
-6. **A hosted fallback for the brief.** Keep a Claude Code Routine that produces a minimal brief from the calendar and the Now page when the server misses its slot. It also answers the Mac question for the day you are away from the server.
-7. **Memory depth later, measured.** Before embeddings, try two cheap changes: include the last digest from each registered codebase, not only the session's, and show per-folder overview notes first. Measure recall hits in the digest Open questions section.
+1. **Delivery first** (template; the channel and target are vault settings). Ship the deterministic notice after the brief and debrief (ntfy for phone, Slack DM for desk), plus a failure notice. This is a small script and a config key, and it changes whether the brief gets read.
+2. **Communications intake through the confined-fetch pattern** (template; the accounts are vault settings). A model-free or single-tool fetch of unread Gmail threads and Slack mentions since yesterday, reduced to sender, subject, age and the friction keywords already used by `/ingest`, written to `system/logs/inputs/<date>/comms.md`. The brief's Communication Debt line and the Now page then have real inputs without giving headless runs connector credentials.
+3. **Seed and use entities** (template for the script, schema and brief section; vault for the people themselves). One script that writes a `people` entity note per direct report and frequent calendar attendee (name, team, last 1:1, open lines from Now mentioning them), and a brief section "Before each 1:1 today". This is the cheapest step toward the chief-of-staff framing. If PorchOS already holds people notes by hand, the script should adopt them, and the brief section can ship first.
+4. **A small eval set before the next feature** (template for the scorer and the gate; vault for the fixtures, since real digests are PorchOS data and stay out of the template). Ten digests and inbox files with expected decisions for `/ingest`, scored by a script in the gate; three weekly numbers in the Friday debrief (Now lines closed, brief items ticked, Work Orders merged without a follow-up fix).
+5. **Trim `CLAUDE.md`** (template; it reaches PorchOS on the next update). Remove the intent-shaper section and template until something consumes them, drop the Hyprland-only rule into the focus script's own docs, and rewrite the section headings in the plain register the file asks for.
+6. **A hosted fallback for the brief** (vault; a Claude Code Routine on the PorchOS account, not template code). A minimal brief from the calendar and the Now page when the server misses its slot. It also answers the Mac question for the day you are away from the server.
+7. **Memory depth later, measured** (template). Before embeddings, try two cheap changes: include the last digest from each registered codebase, not only the session's, and show per-folder overview notes first. Measure recall hits in the digest Open questions section.
+
+A second review against PorchOS itself would read its `system/logs/runs-*.jsonl`, `system/quarantine/`, the last two weeks of briefings and a sample of compiled notes, and would answer the questions §7 leaves open.
 
 ## 7. What this review does not show
 
-The wiki here is empty, so nothing above measures how good a compiled vault is after a week of real inputs, how often the publish gate rejects runs, or how the brief reads on a busy day. The live vault's `system/logs/runs-*.jsonl` and quarantine would answer those. Claims about the alternatives come from vendor pages and third-party posts dated between February and September 2026; the retirement of ChatGPT Pulse and the cloud execution of Cowork tasks are reported by secondary sources only.
+The wiki here is empty, so nothing above measures how good PorchOS's compiled vault is after a week of real inputs, how often its publish gate rejects runs, or how its brief reads on a busy day. PorchOS's `system/logs/runs-*.jsonl` and quarantine would answer those. Claims about the alternatives come from vendor pages and third-party posts dated between February and September 2026; the retirement of ChatGPT Pulse and the cloud execution of Cowork tasks are reported by secondary sources only.
 
 ## Sources
 
