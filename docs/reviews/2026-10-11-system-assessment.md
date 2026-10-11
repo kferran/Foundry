@@ -101,7 +101,7 @@ The system is about 10,800 lines of shell and Python, 19 schemas, 15 systemd uni
 6. **A hosted fallback for the brief** (vault; a Claude Code Routine on the PorchOS account, not template code). A minimal brief from the calendar and the Now page when the server misses its slot. It also answers the Mac question for the day you are away from the server.
 7. **Memory depth later, measured** (template). Before embeddings, try two cheap changes: include the last digest from each registered codebase, not only the session's, and show per-folder overview notes first. Measure recall hits in the digest Open questions section.
 
-A second review against PorchOS itself would read its `system/logs/runs-*.jsonl`, `system/quarantine/`, the last two weeks of briefings and a sample of compiled notes, and would answer the questions §7 leaves open.
+The companion review of PorchOS itself, from its briefings, run commits, Work Orders and compiled wiki, is `docs/reviews/2026-10-11-vault-review.md` in the PorchOS repository. It confirms findings 5.1 and 5.2 from live use and shows that PorchOS already holds the entity notes finding 5.3 asks for.
 
 ## 7. What this review does not show
 
