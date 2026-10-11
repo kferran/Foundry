@@ -17,6 +17,8 @@ meetings_partition: ""          # work | personal: where fetched meetings go (em
 owner_names: []                 # your names as they appear in meeting action items, e.g. ["Avery Sample"]
 handoffs_site: ""               # server and standalone: your Jira site's host name, e.g. example.atlassian.net
 handoffs_projects: []           # Jira project keys whose stalled handoffs the brief lists, e.g. ["EX"]; empty is off
+triage_enabled: "false"         # server and standalone: every 30 minutes on workdays, mail that needs you goes to the Now page
+triage_partition: "work"        # work | personal: the Now page triage writes to
 superpowers:
   - "<strategic anchor>"
 ---

@@ -1,0 +1,9 @@
+[Unit]
+Description=The Foundry: inbox triage every 30 minutes on workdays
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 08..17:00,30:00 {{TZ}}
+Persistent=false
+
+[Install]
+WantedBy=timers.target
