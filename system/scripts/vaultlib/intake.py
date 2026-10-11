@@ -310,8 +310,16 @@ class Intake:
                     return
             elif filed < rcamod.PER_TICK:
                 filed += 1  # rca_file.sh logs and alerts its own failures; the next tick retries
-                subprocess.run([str(self.vault / "system" / "scripts" / "rca_file.sh"), partition, stem], cwd=self.vault,
-                               capture_output=True)
+                try:
+                    with self.lock("run.lock", timeout=0):
+                        rcamod.approve(self.vault, partition, stem)
+                except TimeoutError:
+                    return
+                try:
+                    subprocess.run([str(self.vault / "system" / "scripts" / "rca_file.sh"), partition, stem],
+                                   cwd=self.vault, capture_output=True, timeout=600)
+                except (subprocess.TimeoutExpired, OSError) as exc:
+                    self.alert(f"RCA filing of {stem} did not finish ({exc.__class__.__name__}); will retry")
 
     # -- inbox -----------------------------------------------------------
     def process_inbox(self) -> bool:

@@ -33,9 +33,15 @@ def note_path(vault, partition: str, stem: str) -> Path:
     return Path(vault) / "wiki" / partition / "rca" / f"{stem}.md"
 
 
+def _status(path: Path):
+    data = frontmatter.parse(path.read_text(encoding="utf-8")).data or {}
+    return None if data.get("type") != "rca" or data.get("ticket") else str(data.get("status") or "draft")
+
+
 def pending(vault) -> list:
-    """(action, partition, stem) for each Now line with rca:<stem> evidence that you ticked (file) or dropped (reject),
-    whose note is still a draft without a ticket."""
+    """(action, partition, stem) for each Now line with rca:<stem> evidence that you ticked (file) or dropped (reject)
+    while its note is a draft without a ticket, then each note already approved without a ticket (its Now line may be
+    pruned by now)."""
     out = []
     for partition in nowmod.PARTITIONS:
         for line in nowmod.read(vault, partition).split("\n"):
@@ -45,18 +51,25 @@ def pending(vault) -> list:
                 continue
             stem = ev[4:]
             path = note_path(vault, partition, stem)
-            if not STEM.match(stem) or not path.is_file():
-                continue
-            data = frontmatter.parse(path.read_text(encoding="utf-8")).data or {}
-            if data.get("type") == "rca" and data.get("status", "draft") == "draft" and not data.get("ticket"):
+            if STEM.match(stem) and path.is_file() and _status(path) == "draft":
                 out.append(("reject" if m.group("mark") == "-" else "file", partition, stem))
+        for path in sorted((Path(vault) / "wiki" / partition / "rca").glob("*.md")):
+            if STEM.match(path.stem) and _status(path) == "approved":
+                out.append(("file", partition, path.stem))
     return out
+
+
+def approve(vault, partition: str, stem: str) -> None:
+    """Under run.lock: a ticked draft is approved, so the approval outlives its Now line."""
+    path = note_path(vault, partition, stem)
+    if _status(path) == "draft":
+        set_scalar(path, "status", "approved")
 
 
 def draft(text: str) -> tuple:
     """(summary, description) from the note's ## Ticket draft section."""
     body = frontmatter.parse(text).body
-    section = re.search(r"(?ms)^## Ticket draft\s*$(.*?)(?=^## |\Z)", body)
+    section = re.search(r"(?ms)^## Ticket draft\s*$(.*)\Z", body)  # the last section: the description may hold ## headings
     if not section:
         raise Fail(2, "the note has no ## Ticket draft section")
     m = re.search(r"(?ms)^\*\*Summary:\*\*[ \t]*(.*?)[ \t]*$\s*^\*\*Description:\*\*[ \t]*$(.*)", section.group(1))
@@ -101,6 +114,11 @@ def _find_key(value):
             if found:
                 return found
     return None
+
+
+def called(stream) -> bool:
+    """Whether the session called the create tool at all: if it did, a ticket may exist whatever extract says."""
+    return any(b.get("name") == TOOL for m in stream if m.get("type") == "assistant" for b in blocks(m, "tool_use"))
 
 
 def extract(stream, args: dict) -> str:

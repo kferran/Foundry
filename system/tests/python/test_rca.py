@@ -41,6 +41,23 @@ def test_pending_finds_ticked_and_dropped_drafts_only(vault):
     assert rca.pending(vault) == [("file", "work", "a-ticked"), ("reject", "work", "b-dropped")]
 
 
+def test_an_approved_draft_stays_pending_after_its_now_line_is_pruned(vault):
+    prepare(vault)
+    path = note(vault, "a-approved")
+    line(vault, "a-approved", "x")
+    rca.approve(vault, "work", "a-approved")
+    assert 'status: "approved"' in path.read_text()
+    (vault / "wiki/work/Now.md").write_text(now.read(vault, "work").replace("- [x] owed: Review RCA draft: a-approved", ""))
+    assert rca.pending(vault) == [("file", "work", "a-approved")]
+
+
+def test_a_description_keeps_its_own_headings(vault):
+    prepare(vault)
+    note(vault, body=DRAFT + "\n## Root cause\n\nThe reference is empty.\n")
+    assert rca.arguments(vault, "work", "2026-10-11-orders")["description"].endswith(
+        "## Root cause\n\nThe reference is empty.")
+
+
 def test_arguments_come_from_the_settings_and_the_draft_only(vault):
     prepare(vault)
     note(vault)
@@ -92,6 +109,14 @@ def test_the_session_check_reads_the_key_and_refuses_anything_else(vault):
         with pytest.raises(rca.Fail) as e:
             rca.extract(s, args)
         assert e.value.code == code
+
+
+def test_called_says_whether_the_session_called_the_create_tool(vault):
+    prepare(vault)
+    note(vault)
+    args = rca.arguments(vault, "work", "2026-10-11-orders")
+    assert rca.called(stream({**args, "summary": "something else"})) is True
+    assert rca.called(stream(args, tool="mcp__claude_ai_Atlassian__editJiraIssue")) is False
 
 
 def test_filed_writes_the_key_to_the_note_and_the_now_line(vault):

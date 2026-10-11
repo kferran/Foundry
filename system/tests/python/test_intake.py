@@ -581,4 +581,7 @@ def test_the_intake_tick_rejects_dropped_drafts_and_files_ticked_ones_up_to_the_
         rca_draft(iv, f"ticked{n}", "x")
     Intake(iv, now=later()).file_rcas()
     assert 'status: "rejected"' in (iv / "wiki/work/rca/dropped.md").read_text()
-    assert len((iv / "filer.calls").read_text().splitlines()) == 3
+    calls = (iv / "filer.calls").read_text().splitlines()
+    assert len(calls) == 3
+    for call in calls:
+        assert 'status: "approved"' in (iv / f"wiki/work/rca/{call.split()[1]}.md").read_text()

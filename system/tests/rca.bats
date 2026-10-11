@@ -61,6 +61,28 @@ jira_says() {
   [ "$(grep -c '\[rca\] Filing' "$ALERTS")" -eq 1 ]
 }
 
+@test "a create call that saved no key blocks the next session until the marker goes" {
+  jira_says "$C" "$(jq -c '.summary = "something else"' <<< "$ARGS")"
+  run "$RF" work "$STEM"
+  [ "$status" -eq 7 ]
+  [ -e "system/logs/rca/work-$STEM.attempt" ]
+  rm -f "$STUB_ARGS"
+  run "$RF" work "$STEM"
+  [ "$status" -eq 5 ]
+  [ ! -e "$STUB_ARGS" ]
+  grep -qx 'status: draft' "wiki/work/rca/$STEM.md"
+  rm "system/logs/rca/work-$STEM.attempt"
+  run "$RF" work "$STEM"
+  [ "$status" -eq 7 ]
+}
+
+@test "a session that never called the create tool leaves no marker" {
+  jira_says mcp__claude_ai_Atlassian__editJiraIssue "$ARGS"
+  run "$RF" work "$STEM"
+  [ "$status" -eq 7 ]
+  [ ! -e "system/logs/rca/work-$STEM.attempt" ]
+}
+
 @test "a ticket already created is only written back, never filed twice" {
   mkdir -p system/logs/rca
   printf 'EX-5\n' > "system/logs/rca/work-$STEM.key"

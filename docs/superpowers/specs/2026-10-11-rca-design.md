@@ -63,7 +63,7 @@ Body sections, in this order:
 ### 3.3 `system/scripts/rca_file.sh` and `vaultlib/rca.py`
 
 - The intake tick (`Intake.run`, after `check_now`) runs `rca.pending(vault)`: ticked Now lines with `rca:<stem>` evidence whose note has no `ticket` and status `draft`.
-- For each one, `rca_file.sh <note>` runs one confined session allowed only `mcp__claude_ai_Atlassian__createJiraIssue`.
+- For each one, `rca_file.sh <partition> <note stem>` runs one confined session allowed only `mcp__claude_ai_Atlassian__createJiraIssue`.
   - The arguments are built from the settings and the note's Ticket draft, never from free text: `cloudId` (`handoffs_site`), `projectKey` (`rca_project`), `issueTypeName` (`rca_issue_type`, default `Bug`), `summary`, `description` (Markdown), `labels` (`rca_labels`) and `assignee_account_id` (`rca_assignee`, optional).
   - `rca.py` checks that the session called only that tool, once, with exactly those arguments, and reads the key from the tool result.
 - Under `run.lock`, it writes `ticket: <KEY>` and `status: filed` into the note, and closes the Now line's stamp as `_(closed: filed <KEY> <date>)_`.
