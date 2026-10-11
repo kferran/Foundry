@@ -322,3 +322,31 @@ def render_input(m: Meeting, name: str, partition: str, created_at: datetime) ->
             f"created_at: \"{created_at.isoformat(timespec='seconds')}\"\n---\n"
             f"# Meeting: {_one_line(safe(m.title))}\n\n## Summary\n{m.summary or 'None.'}\n\n"
             f"## Decisions\n{m.decisions or 'None.'}\n\n## Details\n{m.details or 'None.'}\n")
+
+
+# -- reading meeting notes back (meetings spec §2.5; shared by meeting_actions.py and meeting_prep.py) ---
+OPEN_ACTION = re.compile(r"^- \[ \] (?:\[([^\]]+)\] )?(.+)$")
+
+
+def owner_names(vault) -> set:
+    """The owner's names from config owner_names, stripped and case-folded; empty without a config."""
+    try:
+        data = frontmatter.parse((Path(vault) / "system" / "config.md").read_text(encoding="utf-8")).data or {}
+    except (OSError, UnicodeDecodeError):
+        return set()
+    names = data.get("owner_names")
+    return {n.strip().casefold() for n in names if isinstance(n, str)} if isinstance(names, list) else set()
+
+
+def open_actions(body: str) -> list:
+    """(owners, bracket text, action text) for each unticked line under ## Action items of a meeting note body."""
+    out, on = [], False
+    for line in body.split("\n"):
+        if line.startswith("## "):
+            on = line.strip() == "## Action items"
+            continue
+        match = OPEN_ACTION.match(line.strip()) if on else None
+        if match:
+            owners = [o.strip() for o in (match.group(1) or "").split(",") if o.strip()]
+            out.append((owners, match.group(1), match.group(2).strip()))
+    return out

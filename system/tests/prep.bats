@@ -230,6 +230,7 @@ codebase() {  # <name> <path>
   system/scripts/vault_index.py set system/config.md meetings_enabled true > /dev/null
   mkdir -p wiki/work/meetings
   printf -- '---\ntype: meeting\ntitle: "Sync"\ndate: "2026-09-30"\nstart: "2026-09-30T09:00:00-06:00"\npartition: work\nsource: "gdoc:FAKE-x"\ntranscript: "[[s.transcript]]"\n---\n# Sync\n\n## Action items\n- [ ] [Blake Sample] Slides: Prepare them.\n' > wiki/work/meetings/s.md
+  printf '{"time":"2026-09-30T16:00:00-06:00","kind":"imported","source":"raw/meetings/FAKE-x.gdoc.md","note":"wiki/work/meetings/s.md","complete":true}\n' > system/logs/meetings-2026-09.jsonl
   printf '{"time":"2026-10-01T08:00:00-06:00","step":"search","doc":"search","exit":0,"reason":""}\n{"time":"2026-10-01T09:00:00-06:00","step":"search","doc":"search","exit":3,"reason":"no Google Drive connector reachable"}\n' > system/logs/meetings_fetch-2026-10.jsonl
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
