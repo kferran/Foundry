@@ -278,6 +278,8 @@ self_edit_contract() {
 @test "ingest: digest Corrections become preference notes (spec §6.21)" {
   f=.claude/commands/ingest.md
   grep -qF '**Preferences.**' "$f"
+  grep -qF '**Not every Correction is a preference.**' "$f"
+  grep -qF 'answers a question (a username, where a credential or file is kept, which note to read)' "$f"
   grep -qF 'wiki/<p>/preferences/<PascalCaseName>.md' "$f"
   grep -qF 'before the first ` — `' "$f"
   grep -qF 'Copy it verbatim into `statement`' "$f"

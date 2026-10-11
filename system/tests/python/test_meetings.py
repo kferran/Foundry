@@ -117,6 +117,52 @@ def test_gemini_doc_without_decisions_and_cut_short():
     assert len(m.turns) == 3
 
 
+NOT_PRODUCED = """📝 Notes
+
+Oct 9, 2026
+
+## Weekly sync - Planning
+
+### Summary
+
+A summary wasn't produced for this meeting because there wasn't enough conversation in a supported language.
+
+If the meeting was transcribed, you can review the transcript linked in the meeting records section of this document.
+
+[Visit the help center for troubleshooting information](https://support.google.com/meet?p=tnfm_troubleshooting)
+
+### Details
+
+Details weren't produced for this meeting.
+"""
+FOOTER = """
+
+*You should review Gemini's notes to make sure they're accurate.* [*Get tips and learn how Gemini takes notes*](https://support.google.com/meet/answer/14754931)
+
+*How is the quality of* ***these specific notes?*** [*Take a short survey*](https://example.com/survey) *to let us know your feedback*
+"""
+
+
+def test_googles_not_produced_notice_is_not_meeting_content():
+    m = meetings.parse_gdoc(gdoc(NOT_PRODUCED + TRANSCRIPT + END), TZ)
+    assert (m.summary, m.decisions, m.details, m.actions) == ("", "", "", [])
+    assert len(m.turns) == 3 and m.complete is True
+
+
+def test_a_doc_with_no_notes_and_no_transcript_is_a_parse_error():
+    with pytest.raises(meetings.ParseError, match="no notes and no transcript"):
+        meetings.parse_gdoc(gdoc(NOT_PRODUCED), TZ)
+    with pytest.raises(meetings.ParseError, match="no notes and no transcript"):
+        meetings.parse_drop("sync.md", (NOT_PRODUCED + "\n## Weekly sync - Transcript\n").encode(), TZ,
+                            datetime(2026, 10, 9, 10, 0, tzinfo=TZ))
+
+
+def test_the_review_and_survey_footer_is_dropped_from_a_full_doc():
+    m = meetings.parse_gdoc(gdoc(NOTES + FOOTER + TRANSCRIPT + END), TZ)
+    assert m.details == "- **Plan**: Avery proposed moving the launch ([00:01:10](https://docs.google.com/document/d/FAKE-doc-0001/edit#heading=h.fake1))."
+    assert "Gemini" not in m.details and "survey" not in m.details
+
+
 def test_impromptu_meeting_and_a_title_with_dashes():
     m = meetings.parse_gdoc(gdoc(title="Meeting started 2026/10/05 09:05 MDT - Notes by Gemini"), TZ)
     assert (m.title, m.start) == ("Meeting started", datetime(2026, 10, 5, 9, 5, tzinfo=TZ))
