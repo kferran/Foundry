@@ -6,14 +6,15 @@
 
 ## 1. Problem
 
-Calendar, meetings, handoffs and the Work Order sessions all drive `claude -p` with `--settings`, `--disallowedTools`, `--permission-mode dontAsk` and stream-json output, and name connector tools like `mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql`. Telemetry and the DTCC watcher depend on outside APIs. `foundry-update.timer` merges the template at 05:30 and re-renders units, and `claude` updates itself. After either, the first sign of a break is a brief that says "calendar: the fetch session used an unexpected tool", or nothing at all when the break is in a fetch the brief does not run that day.
+Calendar, meetings, handoffs, inbox triage and the Work Order sessions all drive `claude -p` with `--settings`, `--disallowedTools`, `--permission-mode dontAsk` and stream-json output, and name connector tools like `mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql`. Telemetry and the DTCC watcher depend on outside APIs. `foundry-update.timer` merges the template at 05:30 and re-renders units, and `claude` updates itself. After either, the first sign of a break is a brief that says "calendar: the fetch session used an unexpected tool", or nothing at all when the break is in a fetch the brief does not run that day.
 
 `system_health.bats` already checks that the `claude` version is unchanged "since the last health check" and tells the owner to re-run spike item 12. It runs only when someone runs `verify_setup.sh --health`.
 
 ## 2. Decisions (proposed)
 
 - **One script, `system/scripts/smoke_check.sh`, runs every fetch's check mode and the version check.** It prints one line per source (`ok`, `failed: <reason>`, `off`) and exits 0 when all configured sources pass.
-- **It runs after each unattended template update and once a day**, from `update_template.sh --unattended` as an `after_merge` step and from a new `foundry-smoke.timer` at `brief_time` minus 30 minutes (so a failure is in the alerts file before the brief reads it). A run costs one connector session per enabled connector, so a daily run is the ceiling.
+- **It runs after each unattended template update and once a day**, from `update_template.sh --unattended` after its last step and from a new `foundry-smoke.timer` at `brief_time` minus 30 minutes (so a failure is in the alerts file before the brief reads it). A run costs one connector session per enabled connector, so a daily run is the ceiling.
+- **Open question: the timer's minute.** `brief_time` minus 30 is the DTCC watcher's time (`{{DTCC_TIME}}` in `install_units.sh`), so the two would start together; they share no lock (the watcher takes `system/dtcc.lock`, and the `--check` modes take no lock). The daily update is moving to `brief_time` minus 45 (#117) and holds `run.lock` while it runs; with the update step below, the check would also run 15 minutes before the timer's run on an update day. Pick a minute, or drop the timer on days the update ran.
 - **A failure is one alert a day per source**, `[smoke]`-tagged, and the brief lists it under Systemic Blockers as alerts already are. No new brief section.
 - **A `claude` version change is reported, not blocked.** The script records the version in `system/logs/claude.version`; a change raises one alert naming both versions and the acceptance steps to re-run. Pinning or rolling back `claude` is the owner's call.
 - **`calendar_fetch.sh` gains `--check`** (the others have it): one confined session that lists today's events and reports the count, as `meetings_fetch.sh --check` does.
@@ -30,6 +31,7 @@ For a server or standalone machine (a client exits 0 with `client: no checks`):
 | calendar | `calendar_fetch.sh --check` | never (the brief always reads it) |
 | meetings | `meetings_fetch.sh --check` | `meetings_enabled` false |
 | handoffs | `jira_fetch.sh --check` | `handoffs_projects` empty |
+| triage | `triage_fetch.sh --check` | `triage_enabled` not true (`--check` skips that gate itself, so the smoke check applies it) |
 | telemetry | `telemetry_fetch.py --check <name>` per source in `--list` | no source |
 | dtcc | `dtcc_watch.py --check` | no `system/dtcc/map.yaml` |
 | slack | `slack_bridge.py --check` | neither Slack channel set (when the Slack bridge ships) |
@@ -38,8 +40,8 @@ Each check runs under `timeout` (the fetch's own timeout plus a margin) and its 
 
 ### 3.2 Triggers
 
-- `update_template.sh`: after `install_units.sh --update`, `after_merge "smoke check" system/scripts/smoke_check.sh --quiet`. A failed check does not undo the merge; `after_merge` already names the merge in its message.
-- `foundry-smoke.service.in` and `foundry-smoke.timer.in` (`OnCalendar` at `brief_time` minus 30 minutes in `TZ`, `Persistent=true`); `install_units.sh` adds them for server and standalone.
+- `update_template.sh --unattended`: after the "template updated" alert, `system/scripts/smoke_check.sh --quiet 9>&-`, and its exit does not change the update's. It must not be an `after_merge` step: a failed `after_merge` step dies 1 with "template update failed: merged …, then <step> failed" and skips the "template updated" alert and its new-unit notice. The smoke check's own `[smoke]` alerts report a failed source.
+- `foundry-smoke.service.in` and `foundry-smoke.timer.in` (`OnCalendar` at `brief_time` minus 30 minutes in `TZ`, `Persistent=true`, through the existing `{{DTCC_TIME}}` placeholder unless the open question in §2 moves it); `install_units.sh` adds them for server and standalone. `install_units.sh --update` never installs a unit a vault does not have, so an existing vault gets "new unit available: foundry-smoke" in the update alert and the owner installs it by running `system/scripts/install_units.sh`.
 
 ### 3.3 `calendar_fetch.sh --check`
 
@@ -55,7 +57,7 @@ The version test reads `system/logs/claude.version` instead of its own record, s
 
 ## 4. Tests
 
-bats (`smoke.bats`): with stub fetches on `PATH` that exit 0, every configured line reads `ok` and nothing is alerted; a stub that exits 6 gives `failed:` for that source, one alert line, and a second run the same day adds no second alert; a disabled source reads `off` and is not run (the stub records calls); a changed version alerts once and rewrites the file; a client exits 0 with no checks; `units.bats`: the smoke timer renders at `brief_time` minus 30 minutes and only for server and standalone; `calendar.bats`: `--check` prints the count line with the calendar stub. `update_template.sh`'s test adds the smoke step to the unattended sequence.
+bats (`smoke.bats`): with stub fetches on `PATH` that exit 0, every configured line reads `ok` and nothing is alerted; a stub that exits 6 gives `failed:` for that source, one alert line, and a second run the same day adds no second alert; a disabled source reads `off` and is not run (the stub records calls); a changed version alerts once and rewrites the file; a client exits 0 with no checks; `units.bats`: the smoke timer renders at `brief_time` minus 30 minutes and only for server and standalone; `calendar.bats`: `--check` prints the count line with the calendar stub. `update_template.sh`'s test adds the smoke step to the unattended sequence, after the "template updated" alert, and a failing smoke stub leaves that alert and the update's exit 0.
 
 Each fails before the change. Bound tools: bats and the gate.
 

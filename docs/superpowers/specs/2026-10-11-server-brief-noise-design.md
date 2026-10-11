@@ -10,8 +10,10 @@ On a server, the brief lists "focus_yesterday: no focus log for <date>" under Un
 
 ## 2. The fix
 
-- `brief_prep.sh` and `debrief_prep.sh`: when `machine_role` is `server`, write an empty `focus_yesterday.md` (or `focus.md`) and no `prep_unavailable` line for focus. Standalone behaviour is unchanged.
-- `brief.md` and `debrief.md`: when the focus file is empty and the role is `server`, the Focus Drift line reads "Focus: not tracked on a server." The commands already read `machine_role` for other rules; where they do not, `brief_prep.sh` writes the line into the file itself so the command copies it.
+- `brief_prep.sh` and `debrief_prep.sh`: when `machine_role` is `server`, write `focus_yesterday.md` (or `focus.md`) holding the line "Focus: not tracked on a server." and no `prep_unavailable` line for focus. Standalone behaviour is unchanged.
+- `brief.md` and `debrief.md`: one sentence each, so the Focus Drift line (brief) and the focus item (debrief) copy a "not tracked" line from the focus file. The commands do not read `machine_role` (only `setup.md` and `backup.md` do), which is why the prep scripts write the line.
+
+**Overlap with #115.** PR #115 (branch `feat/brief-one-screen`, commit `ebcf3a2`) already skips the focus step in both prep scripts unless `machine_role` is `standalone`: a server or client writes no focus file and no unavailable line. If #115 merges, drop this spec, or reduce it to the "not tracked" line if that line is still wanted.
 
 ## 3. Test
 

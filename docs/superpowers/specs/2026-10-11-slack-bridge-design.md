@@ -18,10 +18,11 @@ Proposed (the recommendation in each case; the grill may change any of them):
 
 - **One Slack app, one bot token, no model.** Both directions call Slack's Web API from a Python script on the telemetry pattern (`telemetry_fetch.py`: standard library HTTP, a token outside the vault, a jsonl log, one alert a day per failure kind). No `claude -p` session runs for a notice or a capture. The alternative is the confined connector session (`jira_fetch.sh`, `meetings_fetch.sh`): no Slack app to create, and in exchange a model call, a 5-minute timeout and the account usage ceiling on every tick, which is the wrong dependency for the one notice that must reach the owner when the account limit stopped the brief. **Grill Q1:** bot token or connector?
 - **Notices are counts by default.** A notice holds counts and a link to the briefing; it never holds note text unless `slack_notify_detail` is `headlines`, and then only Now statements and Work Order titles, passed through `redact.py` and cut at 120 characters. A Slack workspace is usually a work system; the counts default keeps `personal` lines out of it without a partition switch. **Grill Q2:** counts or headlines as the default?
-- **Four notice events in v1:** the brief, the debrief, a brief or debrief that failed, and a Work Order that ended (done, failed or needs you). Alerts raised by the intake, the telemetry fetch or the watchers are not pushed one by one; they reach Slack as a count in the next brief or debrief notice. #28 proposed the same wait. **Grill Q3:** should a failed headless run (any `alerts_<date>.md` line) push at once?
+- **Four notice events in v1:** the brief, the debrief, a brief or debrief that failed, and a Work Order that ended (`done`, `failed`, `blocked` or `cancelled`, the final states `nightshift_run._finish` writes to `outcome.json`; a failed or blocked one carries its `needs` lines). Alerts raised by the intake, the telemetry fetch or the watchers are not pushed one by one; they reach Slack as a count in the next brief or debrief notice. #28 proposed the same wait. **Grill Q3:** should a failed headless run (any `alerts_<date>.md` line) push at once?
 - **One capture channel, one partition.** `slack_capture_channel` names a channel or DM the owner writes to on purpose. Every new message there becomes vault input. The partition is `slack_capture_partition` (default: `default_partition`, or `personal` when that is `shared`). A second channel for the other partition is a later phase. **Grill Q4:** is one channel enough to start?
 - **A capture is an inbox drop.** Fetched messages are written under `raw/inbox/`, so the intake timer redacts, compiles and archives them as it does any other drop. No new note type, no new ingest rule. One file per fetch tick, holding every new message of that tick, so a burst of five messages costs one headless run against the daily cap. The owner sees a ✅ reaction on each captured message once its file is written.
 - **Commands in the capture channel are a later phase.** A message is content to compile. `now:`, `order:` or `/query` prefixes acting on the vault are out of scope here (§5). #28's and #98's earlier cuts of chat prefixes stand.
+- **Grill Q5:** the briefing link's form, which must open on a client whose vault is at another path (§3.3).
 - **Server or standalone only.** A client runs no units (two-machine spec §3.3).
 
 ## 3. Changes
@@ -36,7 +37,7 @@ Proposed (the recommendation in each case; the grill may change any of them):
 `slack.py` holds the client and the two flows. `slack_bridge.py` is the CLI:
 
 ```
-slack_bridge.py notify brief|debrief <date> [--exit <n>]   # after the brief or the debrief
+slack_bridge.py notify brief|debrief [<date>] [--exit <status>]   # after the brief or the debrief
 slack_bridge.py notify order <item id>                      # after a Work Order ends
 slack_bridge.py fetch                                       # the capture tick
 slack_bridge.py --check                                     # auth.test, both channels resolvable
@@ -56,14 +57,14 @@ slack_bridge.py --check                                     # auth.test, both ch
 |---|---|---|---|
 | `brief <date>` | `system/logs/inputs/<date>/now.md`, `unavailable.md`, `nightshift.md`, `alerts_<date>.md`, `raw/telemetry/` | `Brief <date>: <n> needs you, <n> waiting, <n> alerts, <n> sources unavailable, <n> new error groups` and the briefing link | up to 5 open `owed` statements |
 | `debrief <date>` | `system/logs/inputs/<date>/git.md`, `orders.md`, `prs.md`, `digests.md` | `Debrief <date>: <n> commits in <n> repos, <n> Work Orders ended, <n> pull requests, <n> digests` and the link | the Work Orders' titles and outcomes |
-| `brief`/`debrief` with `--exit` non-zero | the exit code, the latest `runs-<YYYY-MM>.jsonl` line for that command | `Brief <date> failed (exit <n>): <ledger reason>`; exit 4 reads `account usage limit reached; inputs left in place` | nothing more |
-| `order <id>` | `system/logs/nightshift/items/<id>/outcome.json` | `Work Order <id> <done/failed/needs you>` | the item title, and the pull request or findings note link |
+| `brief`/`debrief` with `--exit` other than `0` | the exit status, and the latest line in `system/logs/alerts_<date>.md` that names the command (the ledger `runs-<YYYY-MM>.jsonl` records `exit` but no reason) | `Brief <date> failed (exit <n>): <alert text>`; for exit 4 the day's alerts tell the two causes apart (`run_headless.sh` exits 4 for the account usage limit, alert "account usage limit reached", and for the daily headless cap, alert "daily headless cap (<n>) reached"; neither line names the command, and each is written once a day); a signal name reads `Brief <date> failed (killed by SIG<name>)` | nothing more |
+| `order <id>` | `system/logs/nightshift/items/<id>/outcome.json` | `Work Order <id> <done/failed/blocked/cancelled>` | the item title, and the pull request or findings note link |
 
-The briefing link is `obsidian://open?path=<absolute path of briefings/<date>.md>`, which opens in any vault that holds the file. Counts are integers read from the prep files; a missing prep file counts as 0 and adds `(prep incomplete)` to the line. Text in headlines mode passes through `vaultlib.redact.redact` and is cut at 120 characters per item.
+The briefing link opens the note in Obsidian. **Open question:** the link's form. `obsidian://open?path=<absolute path>` works only on a machine whose vault is at the same absolute path, so a link built on the server fails on a client whose vault lives elsewhere; `obsidian://open?vault=<name>&file=<vault-relative path>` depends on the vault's name in Obsidian, which can also differ per machine and has no config key today. Counts are integers read from the prep files; a missing prep file counts as 0 and adds `(prep incomplete)` to the line. Text in headlines mode passes through `vaultlib.redact.redact` and is cut at 120 characters per item.
 
 **Triggers:**
 
-- `foundry-brief.service.in` and `foundry-debrief.service.in` gain `ExecStopPost=-"{{VAULT_ROOT}}/system/scripts/slack_bridge.py" notify brief --exit "${EXIT_STATUS}" "{{DATE}}"`, where the date is today in the unit's `TZ` (the script resolves it when the argument is empty, so the unit passes no date). systemd sets `$SERVICE_RESULT`, `$EXIT_CODE` and `$EXIT_STATUS` for `ExecStopPost`; on a server, the line runs after the post-run sync drop-in, so the briefing is already on `origin` when the owner opens the link on a client.
+- `foundry-brief.service.in` gains `ExecStopPost=-"{{VAULT_ROOT}}/system/scripts/slack_bridge.py" notify brief --exit "${EXIT_STATUS}"` and `foundry-debrief.service.in` the same line with `notify debrief`. The unit passes no date: `install_units.sh` has no `{{DATE}}` placeholder (an unreplaced `{{` is fatal at render), and the script resolves today in the vault's `timezone`. systemd sets `$SERVICE_RESULT`, `$EXIT_CODE` and `$EXIT_STATUS` for `ExecStopPost`; `$EXIT_STATUS` is a number when the process exited and a signal name (such as `TERM` or `KILL`) when it was killed, for example by `TimeoutStartSec`. `--exit` therefore takes text: `0` is success, any other number is a failed run, and a signal name is a killed run; on a server, the line runs after the post-run sync drop-in, so the briefing is already on `origin` when the owner opens the link on a client.
 - `vaultlib/nightshift_run.py` `_finish` calls `slack.notify_order(vault, item_id)` after it writes `outcome.json`, inside a `try` that logs and continues. A Work Order's outcome is never changed by a notice failure.
 - An interactive `/brief` or `/debrief` sends nothing. The owner is in the session.
 
@@ -78,7 +79,7 @@ The briefing link is `obsidian://open?path=<absolute path of briefings/<date>.md
 5. Adds the ✅ reaction to each captured message, then advances the cursor to the newest captured `ts`. A reaction failure is logged and does not move the cursor back; the message is in the file.
 6. The file passes through the intake like any inbox drop: `redact.py` on the staging copy, one headless `/ingest`, archive on success. The name matches `RAW_NAME`, and the intake's 60-second freshness wait covers the write.
 
-The ingest command needs no change: step 1 of `ingest.md` already reads the input's `partition` field, and the message sections are prose like any other drop. `system/templates/` gains `slack-capture.md` for the file layout, so the drift guard pins it.
+The ingest command needs no change: step 1 of `ingest.md` already reads the input's `partition` field, and the message sections are prose like any other drop. `system/templates/` gains `slack-capture.md` for the file layout, and a new `vault_integrity.bats` test pins it (no drift guard for templates exists today).
 
 ### 3.5 Units and `install_units.sh`
 
@@ -118,18 +119,18 @@ On a client, "not used on a client". Otherwise:
 pytest (`test_slack.py`, `test_slack_notify.py`, `test_slack_fetch.py`):
 
 - `token()`: missing file is an `auth` failure naming the path; mode other than 0600 is refused.
-- `notify brief`: the counts line from fixture prep files; a missing prep file gives 0 and `(prep incomplete)`; `--exit 1` gives the failed line with the ledger reason; `--exit 4` names the usage limit; headlines mode lists at most 5 `owed` statements, redacted, cut at 120 characters, and never a `waiting` or `draft` line; an empty `slack_notify_channel` posts nothing and exits 0; a `channel_not_found` response alerts once and exits 0.
-- `notify order`: done, failed and needs-you outcomes; the link only in headlines mode; a missing `outcome.json` logs and exits 0.
+- `notify brief`: the counts line from fixture prep files; a missing prep file gives 0 and `(prep incomplete)`; `--exit 1` gives the failed line with the alert text; `--exit 4` names the usage limit or the daily cap, whichever the day's alerts hold; `--exit TERM` gives the killed line; headlines mode lists at most 5 `owed` statements, redacted, cut at 120 characters, and never a `waiting` or `draft` line; an empty `slack_notify_channel` posts nothing and exits 0; a `channel_not_found` response alerts once and exits 0.
+- `notify order`: done, failed, blocked and cancelled outcomes; the link only in headlines mode; a missing `outcome.json` logs and exits 0.
 - `fetch`: no cursor captures nothing and writes the cursor; three new messages give one file with three sections in time order, the ✅ reaction on each, the cursor at the newest `ts`; a message with a `subtype`, the bot's own message and an already-reacted message are skipped; a shared message keeps its shared text as a quote; 201 messages capture 200 and alert `truncated` once; a 429 then 200 succeeds, two 429s fail the tick with one `rate` alert and leave the cursor; a reaction failure keeps the file and the cursor; the file name matches the intake's `RAW_NAME` and its frontmatter carries the configured partition; `shared` as `default_partition` falls back to `personal`.
 - `http.request` stub routes for the five Slack endpoints.
 - `_finish` in `nightshift_run`: a notice failure leaves `outcome.json` and the return code unchanged.
 
 bats:
 
-- `units.bats`: the brief and debrief services carry the `ExecStopPost` line; `foundry-slack.timer` renders only when `slack_capture_channel` is set, on server and standalone, never on a client, and goes away when the key is cleared.
+- `units.bats`: the brief service carries the `notify brief` `ExecStopPost` line and the debrief service the `notify debrief` one; `foundry-slack.timer` renders only when `slack_capture_channel` is set, on server and standalone, never on a client, and goes away when the key is cleared.
 - `slack.bats`: `slack_bridge.py fetch` end to end against `FOUNDRY_SLACK_STUB`: the file lands in `raw/inbox/`, and a following `intake_daemon.sh` run with the stub claude compiles and archives it; `--check` prints the three lines; `notify brief` after a stub brief posts the counts line (the stub records the request body).
 - `settings`: both settings files deny `Read(~/.config/foundry/**)`.
-- `vault_integrity.bats`: the new template is pinned by the drift guard; the config example validates against the schema with the new keys.
+- `vault_integrity.bats`: a new test pins the template. `commands.bats` (its config-example test validates `system/config.example.md` against the schema): the example validates with the new keys.
 
 Each test fails before the change. Bound tools: pytest, bats, the gate (`verify_setup.sh`), and the live step: one real notice and one real capture on the owner's server, recorded in `docs/superpowers/spikes/`.
 
@@ -145,5 +146,5 @@ Each test fails before the change. Bound tools: pytest, bats, the gate (`verify_
 
 ## 6. Relation to #28 and #99
 
-- **#28, 11a Delivery:** this spec is its Slack channel, with the counts default, the deterministic post, the secret outside the vault and the `ExecStopPost` trigger it proposed. It adds the Work Order event, which did not exist when #28 was written, and the inbound half. The `~/.config/jarvis/notify.env` of #28 becomes `~/.config/foundry/slack.token`, one secret per service as `sentry.token` set the pattern.
+- **#28, 11a Delivery:** this spec is its Slack channel, with the counts default, the deterministic post, the secret outside the vault and the `ExecStopPost` trigger it proposed. It adds the Work Order event, which did not exist when #28 was written, and the inbound half. The single notify settings file #28 proposed becomes `~/.config/foundry/slack.token`, one secret per service as `sentry.token` set the pattern.
 - **#99, inbound triage:** the triage sweeps mail (v1) for items that need the owner and writes `owed` lines; chat DMs and mentions are deferred "after a miss in chat". The capture channel here is the owner pushing content in on purpose, with no judgement call and no Now line. The two meet later: when #99 adds chat, it can read through the same token and app, and a triage hit in Slack can carry the message permalink as evidence the same way a capture file does.

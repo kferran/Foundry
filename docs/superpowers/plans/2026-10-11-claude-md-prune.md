@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `CLAUDE.md` keeps only rules a script or command enforces, in plain words, under 120 lines; `/impact` carries the two intent-proposal requirements itself.
+**Goal:** `CLAUDE.md` keeps only rules a script or command enforces, in plain words, at or under 120 lines; `/impact` carries the two intent-proposal requirements itself.
 
 **Architecture:** Text edits to `CLAUDE.md` and `.claude/commands/impact.md`, pinned by `commands.bats`.
 

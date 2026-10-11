@@ -4,7 +4,7 @@
 
 **Goal:** `system/scripts/smoke_check.sh` runs each configured fetch's check mode and the `claude` version check, alerts once a day per failure, and runs after every unattended template update and daily before the brief.
 
-**Architecture:** One bash script on the `lib_config.sh` and `alert_once` pattern; `--check` added to `calendar_fetch.sh`; one `after_merge` step in `update_template.sh`; a service and timer pair rendered by `install_units.sh`.
+**Architecture:** One bash script on the `lib_config.sh` and `alert_once` pattern; `--check` added to `calendar_fetch.sh`; one final step in `update_template.sh --unattended` (outside `after_merge`); a service and timer pair rendered by `install_units.sh`.
 
 **Tech Stack:** bash, systemd user units, bats.
 
@@ -22,8 +22,8 @@
 
 - A disabled source is never executed (the stub's call log proves it), so the smoke check costs no connector session the owner did not turn on.
 - `alert_once` keys are per source, so two failing sources give two lines and a repeat gives none.
-- The `after_merge` step runs after `install_units.sh --update`, never before, so re-rendered units are what gets checked.
-- The timer time is derived from `brief_time`; a `brief_time` change re-renders it (as `units.bats` checks for the brief timer).
+- The update's smoke step runs after `install_units.sh --update` and the "template updated" alert, never through `after_merge` (a failed `after_merge` step dies 1 and skips that alert), so re-rendered units are what gets checked and a failed source never reads as a failed update.
+- The timer time is derived from `brief_time`; a `brief_time` change re-renders it (as `units.bats` checks for the brief timer). The minute is an open question in spec §2 (it equals `{{DTCC_TIME}}`).
 
 ---
 
@@ -69,9 +69,9 @@ the acceptance steps to re-run.
 - Modify: `system/scripts/install_units.sh`, `system/scripts/update_template.sh`, `system/tests/system_health.bats`
 - Test: `system/tests/units.bats`, `system/tests/scripts.bats` (the update sequence)
 
-- [ ] **Step 1: Write the tests:** the smoke timer renders `OnCalendar=*-*-* 05:30:00 America/Denver` for `brief_time` 06:00 and follows a `brief_time` change; it renders for server and standalone and never for a client; the unattended update's recorded step list ends with the smoke step after the units step; `system_health.bats`'s version test reads `system/logs/claude.version`.
+- [ ] **Step 1: Write the tests:** the smoke timer renders `OnCalendar=*-*-* 05:30:00 America/Denver` for `brief_time` 06:00 and follows a `brief_time` change; it renders for server and standalone and never for a client; the unattended update's recorded step list ends with the smoke step after the units step and the "template updated" alert, and a failing smoke stub leaves that alert and exit 0; `system_health.bats`'s version test reads `system/logs/claude.version`.
 - [ ] **Step 2: Run them to verify they fail.**
-- [ ] **Step 3: Implement:** the two unit templates (a `{{SMOKE_TIME}}` placeholder computed in `install_units.sh` from `brief_time`), the `UNITS`/`ENABLE` additions for both roles, the `after_merge` line, and the health test change.
+- [ ] **Step 3: Implement:** the two unit templates (the timer uses the existing `{{DTCC_TIME}}` placeholder, `brief_time` minus 30, unless the spec's open question picks another minute), the `UNITS`/`ENABLE` additions for both roles, the final smoke step in `update_template.sh` (not `after_merge`), and the health test change. `install_units.sh --update` does not install the new unit on an existing vault; the update alert's "new unit available" notice covers it, and Task 4's `FOUNDRY.md` text tells the owner to run `system/scripts/install_units.sh`.
 - [ ] **Step 4: Run the suites and the gate.**
 - [ ] **Step 5: Commit.** `.scratch/msg-3.txt`:
 

@@ -61,11 +61,11 @@ kind. slack_bridge.py --check proves auth and both channels.
 - Test: `system/tests/python/test_slack_notify.py`, `system/tests/units.bats`
 
 **Interfaces:**
-- Produces: `slack.brief_notice(vault, date, exit_code, detail) -> str`, `slack.debrief_notice(...)`, `slack.notify(vault, text) -> bool`; CLI `notify brief|debrief [<date>] [--exit <n>]`; the two units gain `ExecStopPost=-"{{VAULT_ROOT}}/system/scripts/slack_bridge.py" notify brief --exit "${EXIT_STATUS}"` (debrief likewise).
+- Produces: `slack.brief_notice(vault, date, exit_code, detail) -> str`, `slack.debrief_notice(...)`, `slack.notify(vault, text) -> bool`; CLI `notify brief|debrief [<date>] [--exit <status>]` (`<status>` is a number or a signal name such as `TERM`); `foundry-brief.service.in` gains `ExecStopPost=-"{{VAULT_ROOT}}/system/scripts/slack_bridge.py" notify brief --exit "${EXIT_STATUS}"` and `foundry-debrief.service.in` the same with `notify debrief`. No date placeholder: `install_units.sh` renders none, and an unreplaced `{{` fails the render.
 
-- [ ] **Step 1: Write the tests** from spec §4 (counts line from fixture prep files; missing prep file → 0 and `(prep incomplete)`; `--exit 1` → the failed line with the ledger reason; `--exit 4` → usage limit; headlines mode: at most 5 `owed`, redacted, cut at 120, no `waiting` or `draft`; empty channel → nothing posted, exit 0; `channel_not_found` → one alert, exit 0); `units.bats`: both services carry the line.
+- [ ] **Step 1: Write the tests** from spec §4 (counts line from fixture prep files; missing prep file → 0 and `(prep incomplete)`; `--exit 1` → the failed line with the alert text; `--exit 4` → usage limit or daily cap, from the day's alerts; `--exit TERM` → the killed line; headlines mode: at most 5 `owed`, redacted, cut at 120, no `waiting` or `draft`; empty channel → nothing posted, exit 0; `channel_not_found` → one alert, exit 0); `units.bats`: the brief service carries the `notify brief` line and the debrief service the `notify debrief` line.
 - [ ] **Step 2: Run them to verify they fail.**
-- [ ] **Step 3: Implement.** Counts come from `system/logs/inputs/<date>/now.md` (open lines by kind), `unavailable.md`, `nightshift.md` (Needs-you lines), `system/logs/alerts_<date>.md`, `raw/telemetry/` (groups first seen that day); debrief counts from `git.md`, `orders.md`, `prs.md`, `digests.md`. The link is `obsidian://open?path=<absolute briefing path>`. The ledger reason comes from the latest `runs-<YYYY-MM>.jsonl` line for that command.
+- [ ] **Step 3: Implement.** Counts come from `system/logs/inputs/<date>/now.md` (open lines by kind), `unavailable.md`, `nightshift.md` (Needs-you lines), `system/logs/alerts_<date>.md`, `raw/telemetry/` (groups first seen that day); debrief counts from `git.md`, `orders.md`, `prs.md`, `digests.md`. The link takes the form spec Grill Q5 settles. The failure text comes from the latest `system/logs/alerts_<date>.md` line naming the command (the `runs-<YYYY-MM>.jsonl` ledger has `exit` but no reason field); for exit 4, from the day's usage-limit or daily-cap alert.
 - [ ] **Step 4: Run the suites and the gate.**
 - [ ] **Step 5: Commit.** `.scratch/msg-2.txt`:
 
@@ -73,7 +73,7 @@ kind. slack_bridge.py --check proves auth and both channels.
 feat(slack): brief and debrief notices after each run, counts by default (#28)
 
 ExecStopPost on the brief and debrief units posts a counts line and the
-briefing link, or the failure with its ledger reason. Headlines mode
+briefing link, or the failure with the alert that explains it. Headlines mode
 adds up to five redacted owed statements. An empty channel is silent.
 ```
 
@@ -86,7 +86,7 @@ adds up to five redacted owed statements. An empty channel is silent.
 **Interfaces:**
 - Produces: `slack.order_notice(vault, item_id, detail) -> str` from `outcome.json`; CLI `notify order <id>`; `_finish` calls `slack.notify_order(vault, item_id)` in a `try` after writing the outcome.
 
-- [ ] **Step 1: Write the tests:** done, failed and needs-you outcomes; the link only in headlines mode; missing `outcome.json` logs and exits 0; `_finish` keeps its return code and the outcome when the notice raises.
+- [ ] **Step 1: Write the tests:** done, failed, blocked and cancelled outcomes; the link only in headlines mode; missing `outcome.json` logs and exits 0; `_finish` keeps its return code and the outcome when the notice raises.
 - [ ] **Step 2: Run them to verify they fail.** **Step 3: Implement.** **Step 4: Run the suites and the gate.**
 - [ ] **Step 5: Commit.** `.scratch/msg-3.txt`: `feat(slack): a notice when a Work Order ends (#28)`.
 
@@ -118,9 +118,9 @@ nothing and only sets the cursor.
 **Files:**
 - Create: `system/systemd/foundry-slack.service.in`, `system/systemd/foundry-slack.timer.in`
 - Modify: `system/scripts/install_units.sh`, `system/schemas/config.md`, `system/config.example.md`, `.claude/settings.json`, `system/headless.settings.json`
-- Test: `system/tests/units.bats`, `system/tests/python/test_schema_notes.py`, `system/tests/commands.bats` (deny rule in both settings files; `--check` allow rule)
+- Test: `system/tests/units.bats`, `system/tests/python/test_schema_notes.py`, `system/tests/commands.bats` (deny rule in both settings files; `--check` allow rule; the existing config-example validation test)
 
-- [ ] **Step 1: Write the tests:** the timer renders only with `slack_capture_channel` set, for server and standalone, never client, and goes away when cleared; the config example validates with the four keys; both settings files deny `Read(~/.config/foundry/**)`; the allow list has `Bash(system/scripts/slack_bridge.py --check)`.
+- [ ] **Step 1: Write the tests:** the timer renders only with `slack_capture_channel` set, for server and standalone, never client, and goes away when cleared; the config example validates with the four keys (`commands.bats`' existing `vault_index.py validate system/config.example.md` test, plus a check that the four keys are present); both settings files deny `Read(~/.config/foundry/**)`; the allow list has `Bash(system/scripts/slack_bridge.py --check)`.
 - [ ] **Step 2: Run them to verify they fail.** **Step 3: Implement.** **Step 4: Run the suites and the gate.**
 - [ ] **Step 5: Commit.** `.scratch/msg-5.txt`: `feat(slack): units, config keys and the config-directory deny rule (#28)`.
 

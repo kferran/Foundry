@@ -4,7 +4,7 @@
 
 **Goal:** `system/scripts/eval_ingest.sh` runs golden ingest cases through the real headless pipeline N times each, `eval_check.py` scores them with deterministic checks, and the result is a pass rate per case and a jsonl record.
 
-**Architecture:** A bash harness on the pattern of `run_headless.sh`'s callers (fixture vault copied to a temporary directory, `run_headless.sh ingest`, the publish gate), a Python checker over the run's staging directory and the published vault, ten seed case directories.
+**Architecture:** A bash harness on the pattern of `run_headless.sh`'s callers (a runnable vault built in a temporary directory as `helpers.bash`'s `make_vault` does, then `run_headless.sh ingest`, which runs the publish gate itself), a Python checker over the run directory (`system/logs/runs/<run_id>/`: `publish.json`, `_decisions.jsonl`, `claude.json`), the quarantine and the published vault, ten seed case directories.
 
 **Tech Stack:** bash, Python 3 (`vaultlib`), pytest, bats.
 
@@ -21,7 +21,7 @@
 ## Review Focus
 
 - `eval_ingest.sh` never substitutes a stub for `claude` on its own; the bats test injects `CLAUDE_BIN` as the other suites do.
-- `eval_check.py` reads only the run directory and the published copy; it never calls the model.
+- `eval_check.py` reads only the run directory, the quarantine and the published copy (the staging directory is gone once `run_headless.sh` returns); it never calls the model.
 - The `walls` check uses `vaultlib.links` and `vaultlib.frontmatter`, never its own regex.
 - `system/tests/golden/local/` is in `.gitignore` and the template ships no file under it.
 - The injection case's `absent` path is one the model could write if it obeyed the input.
@@ -47,7 +47,7 @@
 feat(evals): eval_check.py scores an ingest run with deterministic checks (#28)
 
 decisions, creates, patches, untouched, walls, publish, absent and body
-checks over a run's staging directory and the published vault. No model.
+checks over a run's records and the published vault. No model.
 ```
 
 ### Task 2: `eval_ingest.sh`
@@ -61,7 +61,7 @@ checks over a run's staging directory and the published vault. No model.
 
 - [ ] **Step 1: Write the tests.** With `CLAUDE_BIN=system/tests/stub_claude` and a one-case golden directory under the test's vault: a run writes one jsonl line (`case`, `repeat`, `run_id`, `exit`, `publish`, `cost`, `failed`) and prints `<case>: 1/1 (min 1.0) PASS`; `--max-usd 0` prints `skipped (budget)` for the case and exits 1; a case without `expect.yaml` is refused by name; `--local` reads `system/tests/golden/local/` too.
 - [ ] **Step 2: Run them to verify they fail.** `system/scripts/test.sh system/tests/evals.bats`.
-- [ ] **Step 3: Implement.** Source `lib_config.sh`; for each case and repeat copy the fixture vault to `mktemp -d`, overlay `vault/`, `vault_index.py rebuild`, copy inputs to `raw/inbox/`, run `run_headless.sh ingest` as the intake does, read cost from the result line in the run's `out.jsonl`, run `eval_check.py`, append the record, stop on budget. Summary and exit code last.
+- [ ] **Step 3: Implement.** Source `lib_config.sh`; for each case and repeat build a vault in `mktemp -d` as `make_vault` does (the fixture vault plus `system/scripts`, schemas, templates, `CLAUDE.md`, `.claude/commands`, `system/headless.settings.json`, a `system/config.md`, `git init`), overlay `vault/`, `vault_index.py rebuild`, copy inputs to `raw/inbox/.staging/`, run `run_headless.sh ingest` as the intake does (it runs the publish gate), read cost from `total_cost_usd` in `system/logs/runs/<run_id>/claude.json`, run `eval_check.py`, append the record, stop on budget. Summary and exit code last.
 - [ ] **Step 4: Run the tests and the gate.** Expected: PASS; gate exit 0.
 - [ ] **Step 5: Commit.** `.scratch/msg-2.txt`:
 

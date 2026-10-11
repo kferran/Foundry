@@ -6,7 +6,7 @@
 
 ## Question
 
-Which way of adding meaning-based retrieval to the Foundry's index fits its constraints, and is the gain worth it? The constraints: notes are Markdown in git and the SQLite index is derived from them; headless runs have no network; `vault_index.py related` is the sanctioned entry point (CLAUDE.md "Index first"); partition walls apply to recall; Python 3 standard library plus `sqlite3` is the current dependency floor; the server is a Linux box without a GPU.
+Which way of adding meaning-based retrieval to the Foundry's index fits its constraints, and is the gain worth it? The constraints: notes are Markdown in git and the SQLite index is derived from them; headless runs have no network; `vault_index.py related` is the sanctioned entry point (CLAUDE.md "Index first"); partition walls apply to recall; the current dependency floor is the Python 3 standard library (with `sqlite3`) plus PyYAML, which `vaultlib` imports (`frontmatter.py`, `yamlload.py`, `dtcc_map.py`); the server is a Linux box without a GPU.
 
 ## Scope
 

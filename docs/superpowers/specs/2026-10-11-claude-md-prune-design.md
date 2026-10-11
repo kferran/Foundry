@@ -6,7 +6,7 @@
 
 ## 1. Problem
 
-`CLAUDE.md` is loaded into every session in the vault. Its Writing section bans jargon and names the words to avoid. Four sections below it are written in that jargon ("change vector", "back-feed to the ledger", "Immediate Architectural Friction", "Harness-Driven Extraction") and describe machinery that mostly does not exist:
+`CLAUDE.md` is loaded into every session in the vault. Its Writing section bans jargon and names the words to avoid. Three sections below it are written in that jargon ("change vector", "back-feed to the ledger", "Immediate Architectural Friction", "Harness-Driven Extraction") and describe machinery that mostly does not exist:
 
 | Section | What it governs | What exists |
 |---|---|---|
@@ -21,7 +21,7 @@ Every session pays for those lines in context, and a model reading them learns t
 - **Keep every rule that a script or a command file enforces, in one line each, in the section it belongs to.** The two routing lines stay (tests pin them). The friction keyword rule already lives in `ingest.md`; the fail-fast report lives in `debrief.md`; the focus warning lives in `brief.md` and `debrief.md`.
 - **Remove the rest.** The Strategic Intent Shaper section goes; `/impact` keeps the intent-shaper template and describes it itself. The Friction section goes; its one real routing line moves.
 - **Plain words.** The kept lines follow the Writing section.
-- **A size budget.** `CLAUDE.md` stays under 120 lines, pinned by a test, so the next imported block has to displace something.
+- **A size budget.** `CLAUDE.md` stays at or under 120 lines, pinned by a test, so the next imported block has to displace something. It is 87 lines on master today, so the budget already holds; the test guards against growth.
 
 ## 3. Changes
 
@@ -50,7 +50,7 @@ Where it offers the intent proposal, add the two requirements the removed sectio
 
 ## 4. Tests
 
-bats, `commands.bats`, as §3.3: the retired headings are absent, the line budget holds, the two routing phrases are present, `impact.md` carries the two requirements. Each fails before the change. Bound tools: bats and the gate.
+bats, `commands.bats`, as §3.3: the retired headings are absent, the line budget holds, the two routing phrases are present, `impact.md` carries the two requirements. Each fails before the change except the line budget, which master's 87-line `CLAUDE.md` already meets. Bound tools: bats and the gate.
 
 ## 5. Out of scope
 
