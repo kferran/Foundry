@@ -149,7 +149,7 @@ def test_mask_edges():
 def test_docs_state_the_identifier_policy():
     from helpers import REPO
     spec = (REPO / "docs/superpowers/specs/2026-10-05-error-monitoring-design.md").read_text()
-    readme = (REPO / "README.md").read_text()
+    readme = (REPO / "FOUNDRY.md").read_text()
     assert "**Aggregates only.**" not in spec and "Identifiers kept, credentials masked" in spec
     assert "aggregate-only" not in readme and "no message text, titles or attribute values" not in readme
 

@@ -126,7 +126,7 @@ setup() {
   [ "$(sha256sum < "$d/SKILL.md")" = 'e8269e236bed06ed0fe4824c274112e54950b0cb46b0bafe5e1576ef7c9f93d5  -' ]
   [ "$(head -n 1 "$d/LICENSE")" = 'MIT License' ]
   grep -qx 'Copyright (c) 2025 Siqi Chen' "$d/LICENSE"
-  grep -qF 'humanizer v3.0.0' README.md
+  grep -qF 'humanizer v3.0.0' FOUNDRY.md
 }
 
 @test "Workcells pass their schema and declare valid capabilities once each; the concept schema lists their union" {
@@ -148,9 +148,9 @@ setup() {
   [ "$(sort <<< "$caps")" = "$enum" ]
 }
 
-@test "every relative link in README.md names a tracked file or folder" {
+@test "every relative link in README.md and FOUNDRY.md names a tracked file or folder" {
   bad=""
-  for t in $(grep -oE '\]\([^) ]+\)' README.md | sed -E 's/^\]\(//; s/\)$//; s/#.*//'); do
+  for t in $(grep -ohE '\]\([^) ]+\)' README.md FOUNDRY.md | sed -E 's/^\]\(//; s/\)$//; s/#.*//'); do
     case $t in ''|http://*|https://*|mailto:*) continue ;; esac
     if [ -z "$(git ls-files -- "$t" | head -n 1)" ]; then bad="$bad $t"; fi
   done
@@ -160,7 +160,7 @@ setup() {
 
 # Files the template owns (Plan 9 spec §6), never the user's notes. ':!system/codebases' also drops
 # system/codebases/example.md, so each check lists it on its own.
-OWN=(CLAUDE.md README.md .gitignore .claude .githooks system wiki/Index.md ':!system/codebases')
+OWN=(CLAUDE.md README.md FOUNDRY.md .gitignore .claude .githooks system wiki/Index.md ':!system/codebases')
 # Split into pieces so this file, which lies inside system/, does not match itself.
 OLD="jar""vis|opt""imus|wheel""jack|ultra[ -]mag""nus|sound""wave|tele""traan|the a""rk|auto""bot|bumble""bee|coding""agent|system""maintenance|(^|[^a-z])cr""ew|fl""eet|task""_id|agent""_owner|assigned""_agent|agent""_name|chief of st""aff"
 

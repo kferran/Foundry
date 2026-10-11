@@ -48,7 +48,12 @@ g merge-base HEAD "$ref" >/dev/null 2>&1 \
   || die 1 "$ref shares no history with this vault (created from a GitHub template?); merge it by hand: git merge --allow-unrelated-histories $ref"
 (( ! unattended )) || ! g merge-base --is-ancestor "$ref" HEAD || exit 0
 
-if ! g merge --no-ff --no-edit "$ref"; then
+# The vault owns README.md (#90): for this merge only, an attributes file marks it merge=ours and the driver keeps
+# the vault's version, the first update included. Sync merges between machines define neither and merge it normally.
+attrs="$(mktemp)"
+trap 'rm -f -- "$attrs"' EXIT
+printf 'README.md merge=ours\n' > "$attrs"
+if ! g -c core.attributesFile="$attrs" -c merge.ours.driver=true merge --no-ff --no-edit "$ref"; then
   conflicted="$(g diff --name-only --diff-filter=U)"
   [[ -n "$conflicted" ]] || die 1 "git merge $ref failed"
   if (( unattended )); then

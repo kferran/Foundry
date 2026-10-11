@@ -39,7 +39,7 @@ hint() {
     claude) echo "install Claude Code: https://docs.claude.com/en/docs/claude-code/setup"; return ;;
     systemctl) echo "systemd is required (user services)"; return ;;
     systemd-analyze) echo "systemd is required (unit verification)"; return ;;
-    herdr) echo "optional session backend for sub-project 2; see README"; return ;;
+    herdr) echo "optional session backend for sub-project 2; see FOUNDRY.md"; return ;;
     fts5) pkg_pacman="sqlite python" pkg_apt="libsqlite3-0 python3"; printf "python's sqlite3 lacks FTS5: " ;;
     git|jq|tmux) pkg_pacman="$1" pkg_apt="$1" ;;
     bats) pkg_pacman=bash-bats pkg_apt=bats ;;

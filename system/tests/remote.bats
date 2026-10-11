@@ -399,3 +399,45 @@ upstream_pr() {
   [ "$status" -eq 0 ]
   alerts | grep -qF 'new unit available: foundry-nightshift.service, foundry-nightshift.timer (install with system/scripts/install_units.sh)'
 }
+
+# A vault with a README.md in its base commit and no .gitattributes, as on the first update after #90.
+readme_setup() {
+  printf 'landing\n' > README.md
+  template_setup
+}
+
+@test "update_template keeps a README the vault changed, the first update included, and leaves no merge config (#90)" {
+  readme_setup
+  upstream_commit README.md "new landing"
+  printf 'my vault\n' > README.md
+  git commit -qam "my README"
+  run "$UT"
+  [ "$status" -eq 0 ]
+  [ "$(cat README.md)" = "my vault" ]
+  [ "$(git log -1 --format=%P | wc -w)" -eq 2 ]
+  run git config --get merge.ours.driver
+  [ "$status" -eq 1 ]
+  run git config --get core.attributesFile
+  [ "$status" -eq 1 ]
+  [ ! -e .gitattributes ]
+}
+
+@test "update_template gives an unedited README the template's new one (#90)" {
+  readme_setup
+  upstream_commit README.md "new landing"
+  run "$UT"
+  [ "$status" -eq 0 ]
+  [ "$(cat README.md)" = "new landing" ]
+}
+
+@test "without the driver, a README changed on both sides still conflicts, as in a sync merge (#90)" {
+  readme_setup
+  upstream_commit README.md "theirs"
+  printf 'ours\n' > README.md
+  git commit -qam ours
+  git fetch -q template
+  run git merge --no-edit "template/$(git -C "$W" rev-parse --abbrev-ref HEAD)"
+  [ "$status" -ne 0 ]
+  grep -qx '<<<<<<< HEAD' README.md
+  git merge --abort
+}
