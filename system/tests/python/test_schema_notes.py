@@ -10,6 +10,7 @@ SAMPLE = {
     "source_stem": "SampleSource", "title": "Sample", "status": "active", "brief_time": "06:00",
     "debrief_time": "17:00", "branch_name": "fm/sample", "strategic_focus": "Stability",
     "short_feature_description": "Sample", "strategic_planning_note": "SamplePlan",
+    "source": "raw/telemetry/sample.md", "environment": "prod",
 }
 TEMPLATE_TARGETS = {
     "wiki-concept.md": "wiki/work/concepts/Sample.md",
@@ -17,11 +18,12 @@ TEMPLATE_TARGETS = {
     "daily-debrief.md": "briefings/2026-09-30.debrief.md",
     "intent-shaper.md": "wiki/work/plans/Sample.md",
     "now.md": "wiki/work/Now.md",
+    "rca.md": "wiki/work/rca/2026-09-30-sample.md",
 }
 NOT_NOTES = {"production-error.md"}  # body fragment filled by telemetry_store.render_body, no frontmatter
 EXPECTED = {"schema", "concept", "index", "briefing", "debrief", "plan_gate",
             "production_error", "config", "codebase", "session_digest", "preference", "workcell",
-            "meeting", "meeting_transcript", "meeting_input", "telemetry_source", "nightshift_item", "dtcc_change"}
+            "meeting", "meeting_transcript", "meeting_input", "telemetry_source", "nightshift_item", "dtcc_change", "rca"}
 
 
 def load():
