@@ -317,6 +317,20 @@ system/scripts/verify_setup.sh            # every system/tests/*.bats except sys
 system/scripts/verify_setup.sh --health   # also the advisory live-state suite
 ```
 
+One suite or one pytest target runs through `system/scripts/test.sh <suite.bats | pytest path> [args…]`, which sets the gate's environment (temp files under `.scratch/tmp`, a git ceiling) so no command needs a leading `TMPDIR=` assignment. Plans name it in their test steps.
+
+**Permissions while developing.** The template's `.claude/settings.json` allows only the read-only vault commands, because vaults merge it (fewer-prompts spec). Development commands go in `.claude/settings.local.json` (gitignored; "Yes, and don't ask again" writes there too), for example:
+
+```json
+{"permissions": {"defaultMode": "acceptEdits", "allow": [
+  "Bash(system/scripts/test.sh *)", "Bash(system/scripts/verify_setup.sh*)", "Bash(shellcheck *)",
+  "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)", "Bash(git show*)", "Bash(git fetch *)",
+  "Bash(git add *)", "Bash(git commit *)", "Bash(git checkout -b *)", "Bash(git switch *)",
+  "Bash(mkdir -p .scratch*)"]}}
+```
+
+A rule matches one plain command: a leading assignment other than a few known-safe variables, a `&&` chain, a loop or a redirect each draw a prompt again, which is why `CLAUDE.md`'s Bash line forbids them and why `test.sh` exists. The `auto` permission mode (a classifier approves routine calls) is honoured only in `~/.claude/settings.json` or on the command line (`claude --permission-mode auto`); a project or local file silently ignores it. An approved plan needs no prompts at all when it runs as a Work Order (`/order add`): the session runs with `--permission-mode dontAsk` and a fixed tool list.
+
 `system/tests/system_health.bats` checks live service state and is advisory only. To prove the suite on Debian, run `system/tests/verify_on_host.sh <ssh-host>`: it copies the committed tree to a temporary directory on that host, runs the gate there, and exits with its code. The host needs the `apt` packages `check_deps.sh` lists. After any change to `run_headless.sh` or the settings files, re-run the spike checklist (spec §7.4) by hand. After any change to `run_headless.sh`, `system/headless.settings.json` or the `ingest`, `brief` or `debrief` commands, re-run the live acceptance steps (Plan 4a, Task 9) in a throwaway clone.
 
 ## Acknowledgements
