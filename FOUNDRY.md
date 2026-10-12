@@ -72,7 +72,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 | `/lint` | Integrity report plus link, duplicate, contradiction and staleness suggestions |
 | `/impact <component> [--repo name]` | Read-only blast-radius table across registered codebases and the wiki; offers to draft an intent proposal |
 | `/rca <raw/telemetry/note.md>` | Root-cause analysis of one production error group: an `rca` note with a Ticket draft, filed to Jira only after you tick its Now line |
-| `/backup` | Runs the gating suites (lint only on a client), commits each headless run on its own, then commits and pushes the rest according to `remote_mode` (through `vault_sync.sh` in `private`) |
+| `/backup` | Runs the gate (lint, then the test suites when bats and pytest are installed), commits each headless run on its own, then commits and pushes the rest according to `remote_mode` (through `vault_sync.sh` in `private`) |
 | `/order add\|ask\|list\|cancel\|status` | Queues an approved plan (or a task range of one) or a research brief as a Work Order for an unattended run; lists, cancels and reports on queued Work Orders |
 | `/dtcc-watch [check\|status\|accept]` | Runs the DTCC change watcher by hand, checks its map, reports recent changes, or accepts held changes as the new baseline |
 | `/setup` | Onboarding; safe to re-run |
@@ -221,15 +221,17 @@ The next server sync clears the marker, deletes the pending branch and starts a 
 
 The Foundry runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh --role <role>` checks what that role needs and prints `pacman` or `apt` install hints:
 
-- `claude` (Claude Code), `git`, `jq`, `bats`, `flock`, `timeout`
-- `python3` with PyYAML and pytest (`sudo pacman -S python-yaml python-pytest`). Missing PyYAML blocks setup.
+- `claude` (Claude Code), `git`, `jq`, `flock`, `timeout`
+- `python3` with PyYAML (`sudo pacman -S python-yaml`). Missing PyYAML blocks setup.
 - `sqlite3` built with FTS5
 - systemd user units (`systemctl --user`, `systemd-analyze`). If you want timers to run while you are logged out, enable lingering.
+- `bwrap` (bubblewrap): headless runs turn Claude Code's sandbox on.
 - A Google Calendar connector on the Claude account the brief machine is logged in with, for calendar input to the brief. Without it the brief lists the calendar under Unavailable Sources. Each morning fetch costs about $0.20.
 - A client needs only `claude`, `git`, `jq`, `python3` with PyYAML, and SQLite with FTS5.
 - Optional: the Azure CLI (`az`, logged in) for ADX error sources, and a read-only Sentry token for Sentry sources. Without them those sources stay off.
 - Optional: `pdftotext` (`poppler` on Arch, `poppler-utils` on Debian) for the DTCC change watcher, which reads the header of each notice's PDF.
 - Optional: `herdr` or `tmux` as session backends for sub-project 2
+- Development tools, for changing the template (`check_deps.sh` lists them as `dev`): `bats`, `pytest` and `shellcheck`. Without them `verify_setup.sh` and `/backup` lint the vault and skip the test suites.
 - Obsidian, with the **Dataview** plugin recommended (`wiki/Index.md` dashboards are plain code blocks without it). **[Vault Curate](https://github.com/notoriouslab/vault-curate)** is an optional plugin for link suggestions. It is not a dependency.
 
 ## Getting started
@@ -316,10 +318,10 @@ Work follows the superpowers workflow: brainstorm → spec in [`docs/superpowers
 
 **Two lanes.** That workflow is the feature lane. A fix takes the fast lane and skips the grill, the spec and the plan. A fix is a change whose scope is clear from one sentence, with one failing test that passes after the change and the gate green, that touches none of the safety surfaces: permissions and settings files, the sandbox, the publish gate, redaction, and new note types. A fix that edits the `ingest`, `brief` or `debrief` command text also re-runs the live acceptance steps (below). It ships as a pull request whose body is the issue line or review finding it fixes and the name of its test. A fix may run as a Work Order: the readiness check reads the plan from a file committed at the Work Order's base, so it then needs a short plan file with its `### Task N:` list. A fix that grows past its sentence, or draws a design question in review, stops and becomes a feature; the default when in doubt is the feature lane.
 
-The gating suites must pass at the end of every task. One command runs them all and exits non-zero if any fails:
+The gating suites must pass at the end of every task. Install the development tools first (`bats`, `pytest`, `shellcheck`): without them the gate lints only and prints `SKIP suites` in its summary. One command runs them all and exits non-zero if any fails:
 
 ```sh
-system/scripts/verify_setup.sh            # every system/tests/*.bats except system_health.bats, then pytest
+system/scripts/verify_setup.sh            # lint, every system/tests/*.bats except system_health.bats, then pytest
 system/scripts/verify_setup.sh --health   # also the advisory live-state suite
 ```
 

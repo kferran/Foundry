@@ -14,7 +14,7 @@ setup() {
   for c in git jq bats systemctl python3 flock timeout systemd-analyze; do
     ln -s "$(command -v "$c")" "$BIN/$c"
   done
-  for c in claude pacman az; do
+  for c in claude pacman az bwrap; do
     printf '#!/bin/bash\n' > "$BIN/$c"
     chmod +x "$BIN/$c"
   done
@@ -23,9 +23,28 @@ setup() {
 @test "check_deps: every item present reports ok and --strict passes" {
   run env PATH="$BIN" "$CD" --strict
   [ "$status" -eq 0 ]
-  for item in claude git jq bats systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze az; do
+  for item in claude git jq bats systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze bwrap az; do
     grep -qx "ok $item" <<< "$output"
   done
+}
+
+@test "check_deps: test tools are development tools and never fail --strict" {
+  rm "$BIN/bats"
+  run env PATH="$BIN" "$CD" --strict
+  [ "$status" -eq 0 ]
+  grep -qx 'dev bats sudo pacman -S bash-bats' <<< "$output"
+  grep -q '^dev shellcheck ' <<< "$output"
+  run env PATH="$BIN" "$CD" --strict --role server
+  [ "$status" -eq 0 ]
+}
+
+@test "check_deps: bwrap is required on standalone and server, not on a client" {
+  rm "$BIN/bwrap"
+  run env PATH="$BIN" "$CD" --strict --role server
+  [ "$status" -eq 1 ]
+  grep -qx 'missing bwrap sudo pacman -S bubblewrap' <<< "$output"
+  run env PATH="$BIN" "$CD" --strict --role client
+  [ "$status" -eq 0 ]
 }
 
 @test "check_deps: a missing required tool gets an install hint and fails only --strict" {
@@ -69,9 +88,10 @@ setup() {
   rm "$BIN/python3"
   run env PATH="$BIN" "$CD"
   [ "$status" -eq 0 ]
-  for item in python3 pyyaml pytest fts5; do
+  for item in python3 pyyaml fts5; do
     grep -q "^missing $item " <<< "$output"
   done
+  grep -q '^dev pytest ' <<< "$output"
 }
 
 @test "check_deps: --role client requires only what a client runs" {
@@ -97,23 +117,23 @@ setup() {
 @test "check_deps: --role server needs what standalone needs" {
   run env PATH="$BIN" "$CD" --strict --role server
   [ "$status" -eq 0 ]
-  rm "$BIN/bats"
+  rm "$BIN/jq"
   run env PATH="$BIN" "$CD" --role server --strict
   [ "$status" -eq 1 ]
 }
 
 @test "check_deps: install hints follow the package manager on PATH" {
-  rm "$BIN/bats"
+  rm "$BIN/jq"
   run env PATH="$BIN" "$CD"
-  grep -qx 'missing bats sudo pacman -S bash-bats' <<< "$output"
+  grep -qx 'missing jq sudo pacman -S jq' <<< "$output"
   rm "$BIN/pacman"
   printf '#!/bin/bash\n' > "$BIN/apt-get"
   chmod +x "$BIN/apt-get"
   run env PATH="$BIN" "$CD"
-  grep -qx 'missing bats sudo apt install bats' <<< "$output"
+  grep -qx 'missing jq sudo apt install jq' <<< "$output"
   rm "$BIN/apt-get"
   run env PATH="$BIN" "$CD"
-  grep -qx 'missing bats install bats' <<< "$output"
+  grep -qx 'missing jq install jq' <<< "$output"
 }
 
 @test "check_deps: the role defaults to the config's machine_role, else standalone" {
@@ -156,7 +176,16 @@ mini_vault() {
   cp "$REPO/system/scripts/verify_setup.sh" "$M/system/scripts/"
   printf '#!/usr/bin/env bats\n@test "ok" { true; }\n' > "$M/system/tests/a.bats"
   printf 'def test_ok():\n    assert True\n' > "$M/system/tests/python/test_ok.py"
+  printf '#!/bin/bash\nexit "${FAKE_LINT_RC:-0}"\n' > "$M/system/scripts/lint_vault.sh"
+  chmod +x "$M/system/scripts/lint_vault.sh"
   VS="$M/system/scripts/verify_setup.sh"
+}
+
+# no_bats_path: a PATH with what verify_setup.sh itself needs and no bats.
+no_bats_path() {
+  NB="$BATS_TEST_TMPDIR/nobats"
+  mkdir -p "$NB"
+  for c in bash env mkdir dirname python3; do ln -s "$(command -v "$c")" "$NB/$c"; done
 }
 
 failing_bats() { printf '#!/usr/bin/env bats\n@test "no" { false; }\n' > "$M/system/tests/$1"; }
@@ -165,8 +194,33 @@ failing_bats() { printf '#!/usr/bin/env bats\n@test "no" { false; }\n' > "$M/sys
   mini_vault
   run "$VS"
   [ "$status" -eq 0 ]
+  grep -qx 'PASS lint' <<< "$output"
   grep -qx 'PASS system/tests/a.bats' <<< "$output"
   grep -qx 'PASS pytest system/tests/python' <<< "$output"
+}
+
+@test "verify_setup: without bats it lints and says, in the summary, that the suites were skipped" {
+  mini_vault
+  no_bats_path
+  run env PATH="$NB" "$VS"
+  [ "$status" -eq 0 ]
+  grep -qx 'PASS lint' <<< "$output"
+  grep -qx 'SKIP suites: bats or pytest is not installed (development tools)' <<< "$output"
+  run env PATH="$NB" "$VS" --health
+  [ "$status" -eq 0 ]
+  grep -qx 'HEALTH skipped: bats is not installed' <<< "$output"
+}
+
+@test "verify_setup: a lint failure fails the run, with or without the suites" {
+  mini_vault
+  FAKE_LINT_RC=3 run "$VS"
+  [ "$status" -eq 1 ]
+  grep -qx 'FAIL lint (exit 3)' <<< "$output"
+  grep -qx 'PASS system/tests/a.bats' <<< "$output"
+  no_bats_path
+  FAKE_LINT_RC=3 run env PATH="$NB" "$VS"
+  [ "$status" -eq 1 ]
+  grep -qx 'FAIL lint (exit 3)' <<< "$output"
 }
 
 @test "verify_setup: suites write temp files under .scratch/tmp, and git discovery stops at .scratch" {

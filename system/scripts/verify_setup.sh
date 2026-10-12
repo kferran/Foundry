@@ -1,6 +1,7 @@
 #!/bin/bash
-# Run the gating suites (spec §6.14): every system/tests/*.bats except system_health.bats, then pytest.
-# --health also runs system_health.bats; its result is reported but never changes the exit code.
+# Run the gate (spec §6.14): lint_vault.sh, then every system/tests/*.bats except system_health.bats and
+# pytest when bats and pytest are installed. --health also runs system_health.bats; its result is
+# reported but never changes the exit code.
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$VAULT_ROOT"
@@ -28,20 +29,32 @@ gate() {  # <label> <command…>
   if (( rc == 0 )); then results+=("PASS $label"); else results+=("FAIL $label (exit $rc)"); failed=1; fi
 }
 
-shopt -s nullglob
-suites=()
-for f in system/tests/*.bats; do
-  [[ "${f##*/}" == system_health.bats ]] || suites+=("$f")
-done
-if (( ${#suites[@]} == 0 )); then
-  results+=("FAIL no gating bats suites in system/tests/")
-  failed=1
+gate lint system/scripts/lint_vault.sh
+
+# bats and pytest are development tools (express install spec §2): without them a vault is linted only,
+# and the summary says so on every run.
+have_bats=0
+command -v bats >/dev/null 2>&1 && have_bats=1
+if (( have_bats )) && python3 -m pytest --version >/dev/null 2>&1; then
+  shopt -s nullglob
+  suites=()
+  for f in system/tests/*.bats; do
+    [[ "${f##*/}" == system_health.bats ]] || suites+=("$f")
+  done
+  if (( ${#suites[@]} == 0 )); then
+    results+=("FAIL no gating bats suites in system/tests/")
+    failed=1
+  fi
+  for f in "${suites[@]}"; do gate "$f" bats "$f"; done
+  gate "pytest system/tests/python" python3 -m pytest system/tests/python -q
+else
+  results+=("SKIP suites: bats or pytest is not installed (development tools)")
 fi
-for f in "${suites[@]}"; do gate "$f" bats "$f"; done
-gate "pytest system/tests/python" python3 -m pytest system/tests/python -q
 
 if (( health )); then
-  if [[ -f system/tests/system_health.bats ]]; then
+  if (( ! have_bats )); then
+    results+=("HEALTH skipped: bats is not installed")
+  elif [[ -f system/tests/system_health.bats ]]; then
     echo "===== system/tests/system_health.bats (advisory)"
     rc=0
     bats system/tests/system_health.bats || rc=$?

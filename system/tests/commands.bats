@@ -375,7 +375,8 @@ self_edit_contract() {
   grep -qF 'not used on a client' "$f"
   grep -qF 'On a client, ask only for the timezone and the default partition.' "$f"
   sec="$(setup_section '8. Verify')"
-  [[ "$sec" == *'On a client, run `system/scripts/lint_vault.sh` instead'* ]]
+  [[ "$sec" == *'`system/scripts/verify_setup.sh --health` on every role'* ]]
+  [[ "$sec" == *'"test tools not installed; lint passed"'* ]]
 }
 
 @test "/setup requires private remotes, working credentials and a published branch on a server or client" {
@@ -392,10 +393,10 @@ self_edit_contract() {
   [[ "$sec" != *'foundry-focus'* ]]
 }
 
-@test "/backup lints instead of running the suites on a client" {
+@test "/backup runs the gate on every role: lint, then the suites when the test tools are installed (#122)" {
   f=.claude/commands/backup.md
-  grep -qF 'On a client (`machine_role: client`), run `system/scripts/lint_vault.sh` instead' "$f"
-  grep -qF 'Skip this step on a client.' "$f"
+  grep -qF 'Run `system/scripts/verify_setup.sh` on every role' "$f"
+  grep -qF 'Skip this step on a client or when `bats` is not installed.' "$f"
 }
 
 @test "/backup commits each published headless run before its own commit, in every role" {
