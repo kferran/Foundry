@@ -363,6 +363,24 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   [ ! -e "$UD/foundry-triage.timer" ]
 }
 
+@test "Slack notices are installed only with a channel, on a server or standalone, every 5 minutes" {
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ ! -e "$UD/foundry-notify.timer" ]
+  system/scripts/vault_index.py set system/config.md slack_notify_channel C0EXAMPLE > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'new foundry-notify.service' <<< "$output"
+  grep -qx 'OnCalendar=\*:0/5' "$UD/foundry-notify.timer"
+  grep -qx 'Persistent=false' "$UD/foundry-notify.timer"
+  grep -qxF "ExecStart=\"$VP/system/scripts/notify.sh\"" "$UD/foundry-notify.service"
+  grep -q -- 'foundry-notify.timer' "$STUB_SYSTEMCTL_LOG"
+  set_role client
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ ! -e "$UD/foundry-notify.timer" ]
+}
+
 @test "a vault with an enabled telemetry source gets the telemetry timer; one without does not" {
   run "$IU"
   [ "$status" -eq 0 ]
