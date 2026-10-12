@@ -428,11 +428,22 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -q 'enable --now .*foundry-dtcc-watch.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
-@test "standalone and server get the template update every morning at 05:30, a server with its sync drop-in (#87)" {
+@test "the update time follows brief_time and wraps past midnight (#117)" {
+  system/scripts/vault_index.py set system/config.md brief_time 08:00 > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'OnCalendar=\*-\*-\* 07:15:00 America/Denver' "$UD/foundry-update.timer"
+  system/scripts/vault_index.py set system/config.md brief_time 00:30 > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'OnCalendar=\*-\*-\* 23:45:00 America/Denver' "$UD/foundry-update.timer"
+}
+
+@test "standalone and server get the template update 45 minutes before the brief, a server with its sync drop-in (#87, #117)" {
   run "$IU"
   [ "$status" -eq 0 ]
   grep -qxF "ExecStart=\"$VP/system/scripts/update_template.sh\" --unattended" "$UD/foundry-update.service"
-  grep -qx 'OnCalendar=\*-\*-\* 05:30:00 America/Denver' "$UD/foundry-update.timer"
+  grep -qx 'OnCalendar=\*-\*-\* 05:15:00 America/Denver' "$UD/foundry-update.timer"
   grep -qx 'Persistent=true' "$UD/foundry-update.timer"
   [ ! -e "$UD/foundry-update.service.d" ]
   system/scripts/vault_index.py set system/config.md machine_role server > /dev/null

@@ -180,6 +180,9 @@ tz="$(config_get timezone)" brief="$(config_get brief_time)" debrief="$(config_g
 IFS=: read -r bh bm <<< "$brief"
 t=$(( (10#$bh * 60 + 10#$bm + 1410) % 1440 ))
 dtcc_time="$(printf '%02d:%02d' $(( t / 60 )) $(( t % 60 )))"
+# The template update runs 45 minutes before the brief, ahead of the DTCC watcher (#117).
+t=$(( (10#$bh * 60 + 10#$bm + 1395) % 1440 ))
+update_time="$(printf '%02d:%02d' $(( t / 60 )) $(( t % 60 )))"
 sync_interval="$(config_get sync_interval_minutes 5)"
 unit_path="$(dirname "$claude_bin"):%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
@@ -199,7 +202,7 @@ render() {
   {
     printf '%s\n' "$HEADER"
     sed "$@" -e "s|{{VAULT_ROOT}}|$(esc "$VAULT_ROOT")|g" -e "s|{{TZ}}|$(esc "$tz")|g" \
-        -e "s|{{BRIEF_TIME}}|$(esc "$brief")|g" -e "s|{{DTCC_TIME}}|$(esc "$dtcc_time")|g" -e "s|{{DEBRIEF_TIME}}|$(esc "$debrief")|g" \
+        -e "s|{{BRIEF_TIME}}|$(esc "$brief")|g" -e "s|{{DTCC_TIME}}|$(esc "$dtcc_time")|g" -e "s|{{UPDATE_TIME}}|$(esc "$update_time")|g" -e "s|{{DEBRIEF_TIME}}|$(esc "$debrief")|g" \
         -e "s|{{SYNC_INTERVAL}}|$(esc "$sync_interval")|g" \
         -e "s|{{CLAUDE_BIN}}|$(esc "$claude_bin")|g" -e "s|{{UNIT_PATH}}|$(esc "$unit_path")|g" "$t"
   } > "$out"

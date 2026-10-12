@@ -798,9 +798,9 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
 }
 
 @test "/setup and the README describe the daily template update and how to turn it off (#87)" {
-  grep -qF '`foundry-update` (standalone and server), which merges template updates every morning at 05:30' .claude/commands/setup.md
+  grep -qF '`foundry-update` (standalone and server), which merges template updates every morning 45 minutes before the brief' .claude/commands/setup.md
   grep -qF '`systemctl --user disable --now foundry-update.timer`' .claude/commands/setup.md
-  grep -qF '`foundry-update.timer` runs it every morning at 05:30 (`update_template.sh --unattended`, #87)' FOUNDRY.md
+  grep -qF '`foundry-update.timer` runs it every morning 45 minutes before the brief (`update_template.sh --unattended`, #87)' FOUNDRY.md
   grep -qF 'aborts a conflicted merge (`git merge --abort`), leaving the vault unchanged' FOUNDRY.md
   grep -qF 'later updates keep it disabled' FOUNDRY.md
 }
