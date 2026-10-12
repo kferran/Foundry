@@ -66,7 +66,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 | Command | What it does |
 |---|---|
 | `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, Before today's meetings (each entity named in today's calendar with its open Now lines and open actions), the open lines of your Now pages (From Now), your open meeting actions, 🎯 Active Projects, a Blockers section (telemetry, friction, pipeline, communication debt), ⏳ Waiting on (one brief's worth of everyone else's meeting actions, computed from the import log where meetings are imported and from the notes' own start times elsewhere), and 🧾 Handoffs to chase when handoffs are set up. It adds 3–5 objectives tied to your superpowers and handed to a capability, and any new DTCC changes, to the Now pages. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Briefings and debriefs from before yesterday move to `briefings/archive/<YYYY-MM>/` |
-| `/debrief [date]` | The Foreman writes `briefings/<date>.debrief.md` (embedded in the briefing): commits per repo, digest outcomes, headless runs, alerts, focus, agent health and what you delivered today |
+| `/debrief [date]` | The Foreman writes `briefings/<date>.debrief.md` (embedded in the briefing): commits per repo, digest outcomes, headless runs, alerts, agent health and what you delivered today |
 | `/ingest <raw file>` | Compiles one raw input into `wiki/`; the intake timer runs it headless in batches |
 | `/query <question>` | Answers from compiled `wiki/` notes only, through the index |
 | `/lint` | Integrity report plus link, duplicate, contradiction and staleness suggestions |
@@ -80,7 +80,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 
 **Superpowers** are your strategic anchors, set in `system/config.md` (`superpowers:`). The brief ties each objective to one, and onboarding and intent notes name the ones they serve. They are unrelated to the superpowers Claude Code plugin used in [Development](#development).
 
-**Brief inputs.** The calendar (`calendar.tsv`, from the Google Calendar connector), `people.md` (the Before today's meetings blocks: each entity note whose title or alias appears in an event title, with its open Now lines and open meeting actions, at most five entities and five lines each), `actions.md` (your open meeting actions, any age, and everyone else's from the meeting notes imported since the previous weekday brief, printed once; none on a weekend), today's and yesterday's alerts, production-error groups in `raw/telemetry/` (new groups as a table, recurring as one line with a count and the three largest, resolved as a count, per environment), `friction.md` (the friction notes no earlier brief has listed, plus a count of all open ones), quarantined inputs, yesterday's focus on a standalone machine, and mail and chat when a Gmail or Slack connector is present in an interactive session. Missing sources are listed under Unavailable Sources; a source the machine role never has (focus on a server or client, agent metrics before a Workcell runs) is omitted, and the brief never fails for one.
+**Brief inputs.** The calendar (`calendar.tsv`, from the Google Calendar connector), `people.md` (the Before today's meetings blocks: each entity note whose title or alias appears in an event title, with its open Now lines and open meeting actions, at most five entities and five lines each), `actions.md` (your open meeting actions, any age, and everyone else's from the meeting notes imported since the previous weekday brief, printed once; none on a weekend), today's and yesterday's alerts, production-error groups in `raw/telemetry/` (new groups as a table, recurring as one line with a count and the three largest, resolved as a count, per environment), `friction.md` (the friction notes no earlier brief has listed, plus a count of all open ones), quarantined inputs, and mail and chat when a Gmail or Slack connector is present in an interactive session. Missing sources are listed under Unavailable Sources; a source that does not exist yet (agent metrics before a Workcell runs) is omitted, and the brief never fails for one.
 
 **Error telemetry.** `foundry-telemetry.timer` runs `telemetry_fetch.py` every hour, and `brief_prep.sh` runs it once more before the brief. Each source in `system/telemetry/<name>.md` (written by `/setup` phase 6a, gitignored) is a set of Sentry projects or one Azure Data Explorer database with a filter. An empty filter value (`adx_filter: {deployment.instance: ""}`) selects the rows that lack that attribute, so shared services that log without it get a source of their own. A filter on one value and an empty filter on the same key never select the same row; a source with no filter (`{}`) overlaps both and counts their groups twice. Each error group becomes one `production_error` note in `raw/telemetry/` holding group keys, counts, times, opaque IDs, links and the Sentry issue title or one sample log message, ticket identifiers included; credentials and emails are masked. Sentry needs a read-only token in `~/.config/foundry/sentry.token` (mode 0600); ADX uses your `az login`. `--check <name>` tests a source, `--dry-run` prints the groups without writing.
 
@@ -100,7 +100,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 
 **Meetings fetch: retrying a skipped Doc.** After three failed reads of one Gemini Doc (any non-zero exit, timeouts and usage limits included), the fetch alerts once ("`<id>` failed 3 reads; it is skipped from now on") and skips it, because it counts failures in this month's and last month's `system/logs/meetings_fetch-<YYYY-MM>.jsonl`. To fetch it again: delete that Doc's `"step": "read"` lines from those two log files, then set `system/logs/meetings_fetch.since` to a time before the Doc was created (ISO 8601, UTC), so the next run's search window includes it. The next fetch reads it once more; the `.since` file moves forward again on success. (#44)
 
-**Debrief inputs.** The prep files in `system/logs/inputs/<date>/` (git commits, session digests, focus, and `orders.md`, the open Work Orders report), alerts, the run ledger `system/logs/runs-<YYYY-MM>.jsonl`, the telemetry run log `system/logs/telemetry-<YYYY-MM>.jsonl`, and agent metrics in `system/logs/metrics/*.json`. An agent whose 3 most recent metric files all show `test_suite_passed: false` is reported under Agent Health; the debrief does not act on it.
+**Debrief inputs.** The prep files in `system/logs/inputs/<date>/` (git commits, session digests, and `orders.md`, the open Work Orders report), alerts, the run ledger `system/logs/runs-<YYYY-MM>.jsonl`, the telemetry run log `system/logs/telemetry-<YYYY-MM>.jsonl`, and agent metrics in `system/logs/metrics/*.json`. An agent whose 3 most recent metric files all show `test_suite_passed: false` is reported under Agent Health; the debrief does not act on it.
 
 **Handoffs and delivered work.** With `handoffs_site` and `handoffs_projects` set (`/setup` phase 6c), each brief runs `jira_fetch.sh`: a confined `claude -p` session that may call only the Atlassian connector's JQL search, with a query built from those settings. It lists under 🧾 Handoffs to chase the tickets you reported that someone else holds and that have had no status-category change for 7 days (the connector returns no change history, so a move inside one category, such as In Progress to In Review, does not reset the clock). The vault keeps no copy of the tickets. The debrief lists what you delivered under 6. Delivered Today: each digest's Delivered section, `delivered:` lines in the briefing's 📝 Notes (the Foreman adds one when you ask it to log something), and pull requests you opened, merged or reviewed in the registered GitHub repositories (`gh`, logged in; a codebase's `order_pr: github:<owner>/<repo>` and a GitHub `template_remote`).
 
@@ -111,7 +111,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 | `coding.md` | `code`, `tests`, `refactor`; writes a `compilation-metric.json` instance to `system/logs/metrics/` after each task |
 | `maintenance.md` | `vault-health`, `dependencies`, `telemetry`, `alerts`; owns `raw/telemetry/` notes, which it checks against local branches of the affected codebase |
 
-**Friction and focus.** Ingest sets `is_friction: "true"` when a fact's source text says "not sure", "waiting on", "stuck", "blocked", "tbd" or "double-check". The brief prints each flagged note's name once, the first morning after it is flagged, then counts it: "listed before" is read from the earlier briefings (the Friction part, or the old Friction notes bullet), so the two machines agree without a ledger. On a standalone machine with Hyprland, `track_obsidian.sh` samples the focused note every 30 seconds and `focus_stats.sh` flags each 15-minute window with more than 4 switches as a Focus Fragmentation Warning, which the brief and debrief carry.
+**Friction.** Ingest sets `is_friction: "true"` when a fact's source text says "not sure", "waiting on", "stuck", "blocked", "tbd" or "double-check". The brief prints each flagged note's name once, the first morning after it is flagged, then counts it: "listed before" is read from the earlier briefings (the Friction part, or the old Friction notes bullet), so the two machines agree without a ledger.
 
 **Intent proposals.** `system/templates/intent-shaper.md` creates a `plan_gate` note (`PENDING_REVIEW`, `APPROVED` or `REJECTED`) for a planned code change: its superpower, the upstream plan note it traces to, the files it touches, how it is verified and its blast radius.
 
@@ -177,7 +177,7 @@ system/
                               setup_remote.sh, update_template.sh, check_deps.sh,
                               vault_sync.sh, commit_runs.py, calendar_fetch.sh, meetings_fetch.sh, telemetry_fetch.py,
                               nightshift.py, dtcc_watch.py, active_projects.py, ...
-  systemd/                    foundry-{intake,brief,debrief,focus,sync,telemetry,meetings,nightshift,dtcc-watch} unit templates (*.in)
+  systemd/                    foundry-{intake,brief,debrief,sync,telemetry,meetings,triage,notify,nightshift,update,dtcc-watch} unit templates (*.in)
     dropins/                  foundry-sync.conf.in: sync before and after each run (server)
   tests/                      *.bats per area (system_health.bats is advisory), python/ for pytest
   jobs/                       reserved for Sub-project 2 (gitignored)
@@ -190,7 +190,7 @@ Each machine that holds the vault has a `machine_role` in its own `system/config
 
 | Role | Runs | Use it for |
 |---|---|---|
-| `standalone` (default) | intake, brief, debrief and focus units, and the meetings fetch when enabled; memory hooks; codebases | one machine that does everything |
+| `standalone` (default) | intake, brief and debrief units, and the meetings fetch when enabled; memory hooks; codebases | one machine that does everything |
 | `server` | intake, brief, debrief and sync units, and the meetings fetch when enabled; memory hooks; codebases | an always-on machine that runs the automation and your coding sessions |
 | `client` | nothing automated | reading and editing the vault in Obsidian on another machine |
 
@@ -226,7 +226,6 @@ The Foundry runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh 
 - `sqlite3` built with FTS5
 - systemd user units (`systemctl --user`, `systemd-analyze`). If you want timers to run while you are logged out, enable lingering.
 - A Google Calendar connector on the Claude account the brief machine is logged in with, for calendar input to the brief. Without it the brief lists the calendar under Unavailable Sources. Each morning fetch costs about $0.20.
-- Hyprland (`hyprctl`) for the Obsidian focus tracker, on a standalone machine only. Without it only focus stats are lost.
 - A client needs only `claude`, `git`, `jq`, `python3` with PyYAML, and SQLite with FTS5.
 - Optional: the Azure CLI (`az`, logged in) for ADX error sources, and a read-only Sentry token for Sentry sources. Without them those sources stay off.
 - Optional: `pdftotext` (`poppler` on Arch, `poppler-utils` on Debian) for the DTCC change watcher, which reads the header of each notice's PDF.

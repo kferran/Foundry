@@ -22,8 +22,7 @@ if [[ -z "$role" ]]; then
   role="${role:-standalone}"
 fi
 case "$role" in
-  standalone) REQUIRED=(claude git jq bats systemctl hyprctl python3 flock timeout pyyaml pytest fts5 systemd-analyze) ;;
-  server) REQUIRED=(claude git jq bats systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze) ;;
+  standalone|server) REQUIRED=(claude git jq bats systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze) ;;
   client) REQUIRED=(claude git jq python3 pyyaml fts5) ;;
   *) usage ;;
 esac
@@ -46,7 +45,6 @@ hint() {
     pdftotext) pkg_pacman=poppler pkg_apt=poppler-utils ;;
     bwrap) pkg_pacman=bubblewrap pkg_apt=bubblewrap ;;
     gh) pkg_pacman=github-cli pkg_apt=gh ;;
-    hyprctl) pkg_pacman=hyprland pkg_apt=hyprland ;;
     python3) pkg_pacman=python pkg_apt=python3 ;;
     flock) pkg_pacman=util-linux pkg_apt=util-linux ;;
     timeout) pkg_pacman=coreutils pkg_apt=coreutils ;;

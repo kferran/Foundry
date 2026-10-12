@@ -60,11 +60,6 @@ skip_unless_role() {
   fi
 }
 
-@test "the focus tracker is active" {
-  skip_unless_role standalone
-  systemctl --user is-active --quiet foundry-focus.service
-}
-
 @test "lingering is enabled, so timers run while logged out" {
   skip_unless_role standalone server
   [ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" = yes ]

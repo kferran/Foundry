@@ -79,8 +79,8 @@ role="$(config_get machine_role standalone)"
 case "$role" in
   standalone)
     UNITS=(foundry-intake.service foundry-intake.timer foundry-brief.service foundry-brief.timer
-           foundry-debrief.service foundry-debrief.timer foundry-focus.service)
-    ENABLE=(foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service) ;;
+           foundry-debrief.service foundry-debrief.timer)
+    ENABLE=(foundry-intake.timer foundry-brief.timer foundry-debrief.timer) ;;
   server)
     UNITS=(foundry-intake.service foundry-intake.timer foundry-brief.service foundry-brief.timer
            foundry-debrief.service foundry-debrief.timer foundry-sync.service foundry-sync.timer)

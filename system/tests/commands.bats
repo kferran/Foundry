@@ -389,7 +389,7 @@ self_edit_contract() {
 @test "/setup requires linger on a server and lists the units for the role" {
   sec="$(setup_section '5. Units')"
   [[ "$sec" == *'On a server, linger is required'* ]]
-  [[ "$sec" == *'`foundry-focus` (standalone only)'* ]]
+  [[ "$sec" != *'foundry-focus'* ]]
 }
 
 @test "/backup lints instead of running the suites on a client" {
@@ -414,7 +414,6 @@ self_edit_contract() {
 @test "system_health checks each item only on the roles that run it" {
   f=system/tests/system_health.bats
   grep -qF 'skip_unless_role standalone server' "$f"
-  grep -qF 'skip_unless_role standalone' <(grep -A3 'focus tracker is active' "$f")
 }
 
 @test "gcalcli is gone: only the two settings deny rules still name it" {
@@ -527,7 +526,8 @@ self_edit_contract() {
   grep -qF 'print `friction.md` verbatim' "$f"
   grep -qF 'Recurring: N groups' "$f"
   grep -qF 'one brief'"'"'s worth: the meetings imported since the previous weekday brief' "$f"
-  grep -qF 'Omit **Focus Drift** when `focus_yesterday.md` does not exist' "$f"
+  run grep -E 'Focus Drift|focus_yesterday|Focus Fragmentation' "$f"
+  [ "$status" -eq 1 ]
   grep -qF 'replace the old `## 🛑 Real-Time Workflow Friction Matrix` heading with `## 🛑 Blockers`' "$f"
   run grep -F 'SELECT path, title FROM v_concept WHERE is_friction = 1' "$f"
   [ "$status" -eq 1 ]
@@ -546,7 +546,8 @@ self_edit_contract() {
   run grep -c 'Focus Drift' "$t"
   [ "$status" -eq 1 ]
   d=.claude/commands/debrief.md
-  grep -qF 'Omit the Focus paragraph when `focus.md` does not exist' "$d"
+  run grep -ci 'focus' "$d"
+  [ "$status" -eq 1 ]
   grep -qF 'Omit **3. Agent Health** when `system/logs/metrics/` holds no file' "$d"
   grep -qF 'Before today'"'"'s meetings' FOUNDRY.md
   grep -qF 'imported since the previous weekday brief' FOUNDRY.md

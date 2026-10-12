@@ -49,13 +49,10 @@ codebase() {  # <name> <path>
   printf -- '---\ntype: codebase\nname: "%s"\npath: "%s"\npartition: "work"\nsearch_globs: ["*.md"]\n---\n' "$1" "$2" > "system/codebases/$1.md"
 }
 
-@test "brief_prep: calendar and yesterday's focus are written" {
-  printf '[09:00:00] Kafka\n' > system/logs/obsidian_focus_2026-09-30.log
+@test "brief_prep: the calendar is written" {
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
   [ "$(cat "$IN/calendar.tsv")" = "$(printf '2026-10-01\t09:00\t2026-10-01\t09:30\tStandup')" ]
-  grep -qx '# Focus: 2026-09-30' "$IN/focus_yesterday.md"
-  grep -qx '| Kafka | 1 | 0.5 |' "$IN/focus_yesterday.md"
   [ ! -e "$IN/unavailable.md" ]
 }
 
@@ -66,7 +63,6 @@ codebase() {  # <name> <path>
   [ ! -e "$IN/calendar.tsv" ]
   grep -q '^- brief_prep: calendar: calendar_fetch.sh failed (exit 1; see system/logs/inputs/2026-10-01/prep_errors.log)$' "$IN/unavailable.md"
   grep -q '^calendar_fetch: ' "$IN/prep_errors.log"
-  grep -qx -- '- brief_prep: focus_yesterday: no focus log for 2026-09-30' "$IN/unavailable.md"
 }
 
 @test "brief_prep: each calendar failure gets its own Unavailable Sources line" {
@@ -106,12 +102,14 @@ codebase() {  # <name> <path>
 }
 
 @test "prep scripts: re-running one keeps the other's unavailable lines and never duplicates its own" {
+  codebase gone /nonexistent
+  : > "$STUB_STREAM"
   run "$DP" 2026-10-01
-  run "$BP" 2026-10-01
-  run "$BP" 2026-10-01
+  STUB_RC=1 run "$BP" 2026-10-01
+  STUB_RC=1 run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
-  [ "$(grep -c -- '- debrief_prep: focus: no focus log for 2026-10-01' "$IN/unavailable.md")" -eq 1 ]
-  [ "$(grep -c -- '- brief_prep: focus_yesterday: no focus log for 2026-09-30' "$IN/unavailable.md")" -eq 1 ]
+  [ "$(grep -c -- '- debrief_prep: git: codebase gone has no git repository at /nonexistent' "$IN/unavailable.md")" -eq 1 ]
+  [ "$(grep -c -- '- brief_prep: calendar: calendar_fetch.sh failed' "$IN/unavailable.md")" -eq 1 ]
 }
 
 @test "debrief_prep: git.md lists the vault's commits of that day in the configured timezone" {
@@ -163,7 +161,6 @@ codebase() {  # <name> <path>
   grep -qx -- '- debrief_prep: git: codebase gone has no git repository at /nonexistent' "$IN/unavailable.md"
   grep -qx '## vault' "$IN/git.md"
   [ -f "$IN/digests.md" ]
-  [ -f "$IN/focus.md" ]
 }
 
 @test "debrief_prep: digests.md holds that day's digests from every partition, oldest first" {
@@ -180,12 +177,10 @@ codebase() {  # <name> <path>
   [ "$(grep -n 'p1.md' "$IN/digests.md" | cut -d: -f1)" -lt "$(grep -n 'w1.md' "$IN/digests.md" | cut -d: -f1)" ]
 }
 
-@test "debrief_prep: no digests and no focus data are stated, not left blank" {
+@test "debrief_prep: no digests are stated, not left blank" {
   run "$DP" 2026-10-01
   [ "$status" -eq 0 ]
   grep -qx 'No session digests.' "$IN/digests.md"
-  grep -qx 'no focus data' "$IN/focus.md"
-  grep -qx -- '- debrief_prep: focus: no focus log for 2026-10-01' "$IN/unavailable.md"
 }
 
 @test "debrief_prep: orders.md copies the open Work Orders report, empty when there is none" {
@@ -283,7 +278,7 @@ codebase() {  # <name> <path>
   [ ! -s "$IN/now.md" ]
   [ -f wiki/personal/Now.md ]
   run grep -c 'now' "$IN/unavailable.md"
-  [ "$output" = "0" ]
+  [ "$status" -ne 0 ]  # no now line, or no unavailable.md at all
 }
 
 @test "brief_prep: briefings and debriefs before yesterday move to briefings/archive/<YYYY-MM>/; a rerun changes nothing" {
@@ -397,7 +392,7 @@ codebase() {  # <name> <path>
   grep -qx '### \[\[Alpha\]\]: focus' "$IN/projects.md"
   grep -qx -- '- first step' "$IN/projects.md"
   run grep -c 'projects' "$IN/unavailable.md"
-  [ "$output" = "0" ]
+  [ "$status" -ne 0 ]  # no projects line, or no unavailable.md at all
 }
 
 @test "brief_prep: a failing active_projects.py is recorded and leaves no projects.md" {
@@ -433,7 +428,7 @@ handoffs_on() {
   [ "$status" -eq 0 ]
   [ "$(cat "$IN/handoffs.md")" = '- [ ] [EX-1](https://example.atlassian.net/browse/EX-1) Fix EX-1 (Blake Sample, In Review, unchanged since 2026-09-21)' ]
   run grep -c handoffs "$IN/unavailable.md"
-  [ "$output" = "0" ]
+  [ "$status" -ne 0 ]  # no handoffs line, or no unavailable.md at all
 }
 
 @test "brief_prep: a failed handoffs fetch is an unavailable source and leaves handoffs.md empty" {
@@ -470,7 +465,7 @@ gh_says() {
   grep -qF -- 'search prs --author @me --merged-at 2026-10-01 --repo acme/shop' "$STUBS/gh.args"
   grep -qF -- 'search prs --reviewed-by @me --updated 2026-10-01 --repo acme/shop' "$STUBS/gh.args"
   run grep -c prs "$IN/unavailable.md"
-  [ "$output" = "0" ]
+  [ "$status" -ne 0 ]  # no prs line, or no unavailable.md at all
 }
 
 @test "debrief_prep: no GitHub repository writes an empty prs.md; a failing gh is an unavailable source" {
@@ -510,8 +505,8 @@ gh_says() {
   grep -qx '### \[\[StandupTeam|Standup Team\]\] (09:00 Standup Team sync)' "$IN/people.md"
 }
 
-@test "prep scripts: a server or client writes no focus file and no focus line; standalone does as today" {
-  system/scripts/vault_index.py set system/config.md machine_role server > /dev/null
+@test "prep scripts: no role writes a focus file or a focus line (the tracker is gone, #122)" {
+  printf '[09:00:00] Kafka\n' > system/logs/obsidian_focus_2026-09-30.log
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
   [ ! -e "$IN/focus_yesterday.md" ]
@@ -520,8 +515,4 @@ gh_says() {
   [ ! -e "$IN/focus.md" ]
   run grep -c 'focus' "$IN/unavailable.md"
   [ "$status" -ne 0 ]  # no focus line, or no unavailable.md at all
-  system/scripts/vault_index.py set system/config.md machine_role standalone > /dev/null
-  run "$BP" 2026-10-01
-  [ "$status" -eq 0 ]
-  grep -qx -- '- brief_prep: focus_yesterday: no focus log for 2026-09-30' "$IN/unavailable.md"
 }

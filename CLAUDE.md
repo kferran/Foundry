@@ -81,7 +81,6 @@ Wording rules for chat and for every note, condensed from `.claude/skills/humani
 - **Production Telemetry Routing**: Notes in `raw/telemetry/` (`type: production_error`) are critical and route to the Workcell with `telemetry`, which inspects local branches of the affected codebase for correlating commits.
 
 ## ⚠️ Friction Identification & Remediation Rules
-- **Focus Fragmentation Threshold**: `system/scripts/focus_stats.sh` flags every 15-minute window with more than 4 note switches as a **Focus Fragmentation Warning**; carry each one into the debrief.
 - **Fail-Fast Loop Breaker**: `/debrief` reports agents whose recent metric files in `system/logs/metrics/` show repeated failures (3 consecutive `test_suite_passed: false`); the user decides what to do.
 - **Decision Clarity Ingestion**: Flag any incoming email or chat item containing uncertainty keywords (e.g., "not sure," "waiting on approval," "stuck") as **Immediate Architectural Friction**, moving it to the top of the action queue.
 - **Harness-Driven Extraction**: When processing external event text or raw chat-driven interface logs, do not swallow formatting blocks. Extract raw text components explicitly, mapping updates safely to markdown nodes without corrupting metadata headers.
