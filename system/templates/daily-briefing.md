@@ -18,10 +18,15 @@ status: "{{status}}"
 
 <!-- From projects.md. Tick items on each project's own page; this section is rewritten every brief. -->
 
-## 🛑 Real-Time Workflow Friction Matrix
-- **Systemic Blockers**:
-- **Focus Drift Analysis**:
+## 🛑 Blockers
+- **Telemetry**:
+- **Friction**:
+- **Pipeline**:
 - **Communication Debt**:
+
+## ⏳ Waiting on
+
+<!-- Everyone else's open meeting actions from the meetings imported since the previous weekday brief, by owner. Printed once; tick them on the meeting notes. -->
 
 ## 📝 Notes
 

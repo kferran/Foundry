@@ -10,13 +10,13 @@ import subprocess
 from datetime import date, timedelta
 from pathlib import Path
 
-from . import frontmatter, nightshift_item
+from . import briefings, frontmatter, nightshift_item
 
 PARTITIONS = ("work", "personal")
 KINDS = ("owed", "waiting", "draft")
 NEEDS, WAITING = "## Needs you", "## Waiting"
 KEEP_DAYS = 7
-LOOKBACK_DAYS = 30
+LOOKBACK_DAYS = briefings.LOOKBACK_DAYS
 FAILURE_ALERT = 3
 GH_TIMEOUT = 10
 WIKILINK = re.compile(r"\[\[(?:[^\]|]*\|)?([^\]|]*)\]\]")
@@ -196,14 +196,7 @@ def check(vault, today: str, alert, gh: str = "gh") -> int:
 
 def latest_open_objectives(vault, day: str) -> list:
     """(text, since) for each open objective of the latest briefing before day (the retired carry-forward)."""
-    root = Path(vault) / "briefings"
-    for back in range(1, LOOKBACK_DAYS + 1):
-        earlier = (date.fromisoformat(day) - timedelta(days=back)).isoformat()
-        path = root / f"{earlier}.md"
-        if not path.is_file():
-            path = root / "archive" / earlier[:7] / f"{earlier}.md"
-        if not path.is_file():
-            continue
+    for earlier, path in briefings.earlier_briefings(vault, day):
         section = re.search(r"(?ms)^### 1\..*?(?=^### 2\.|\Z)", path.read_text(encoding="utf-8"))
         out = []
         for line in (section.group(0) if section else "").splitlines():
