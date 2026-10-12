@@ -263,6 +263,13 @@ writing_section() { awk '$0 == "## ✍️ Writing" { on = 1; next } /^## / { on 
   grep -qF '**Scannable Layouts**' CLAUDE.md
 }
 
+@test "no approval bottleneck: CLAUDE.md and the Foreman do the work and ask only what is the owner's to decide" {
+  grep -qF '**Approvals:** Do the work you were asked to do without asking to proceed.' CLAUDE.md
+  grep -qF 'an outward action (send, post, file, merge, deploy, delete) not already authorized' CLAUDE.md
+  grep -qF 'Batch the questions into one ask' CLAUDE.md
+  grep -qF '**No approval bottleneck**' system/agents/foreman.md
+}
+
 # self_edit_contract <command file>: the headless self-edit pass (communication spec §4).
 self_edit_contract() {
   grep -qF 'Read `.claude/skills/humanizer/SKILL.md`' "$1"
