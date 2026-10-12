@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import frontmatter, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
+from . import frontmatter, meetings, now as nowmod, publish, rca as rcamod, redact as redactmod, schema as schemamod
 
 FRESH_SECONDS = 60
 MAX_ATTEMPTS = 3
@@ -293,6 +293,33 @@ class Intake:
                 nowmod.check(self.vault, self.today(), self.alert)
         except TimeoutError:
             pass
+
+    # -- RCA drafts (RCA spec §3.3) ---------------------------------------
+    def file_rcas(self) -> None:
+        """File the RCA drafts you approved on the Now page, at most PER_TICK a tick; a dropped line rejects its draft.
+        Off while rca_project is empty."""
+        if not self.config("rca_project", ""):
+            return
+        filed = 0
+        for action, partition, stem in rcamod.pending(self.vault):
+            if action == "reject":
+                try:
+                    with self.lock("run.lock", timeout=0):
+                        rcamod.rejected(self.vault, partition, stem)
+                except TimeoutError:
+                    return
+            elif filed < rcamod.PER_TICK:
+                filed += 1  # rca_file.sh logs and alerts its own failures; the next tick retries
+                try:
+                    with self.lock("run.lock", timeout=0):
+                        rcamod.approve(self.vault, partition, stem)
+                except TimeoutError:
+                    return
+                try:
+                    subprocess.run([str(self.vault / "system" / "scripts" / "rca_file.sh"), partition, stem],
+                                   cwd=self.vault, capture_output=True, timeout=600)
+                except (subprocess.TimeoutExpired, OSError) as exc:
+                    self.alert(f"RCA filing of {stem} did not finish ({exc.__class__.__name__}); will retry")
 
     # -- inbox -----------------------------------------------------------
     def process_inbox(self) -> bool:
@@ -720,6 +747,10 @@ class Intake:
                     self.check_now()
                 except Exception as exc:  # noqa: BLE001 - meetings, inbox and digests still run
                     self.alert(f"Now check failed ({exc.__class__.__name__}: {exc}); will retry")
+                try:
+                    self.file_rcas()
+                except Exception as exc:  # noqa: BLE001 - meetings, inbox and digests still run
+                    self.alert(f"RCA filing failed ({exc.__class__.__name__}: {exc}); will retry")
                 try:
                     self.import_meetings()
                 except Exception as exc:  # noqa: BLE001 - inbox and digests still run

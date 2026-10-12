@@ -830,3 +830,24 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'triage_partition: {kind: enum, values: [work, personal]}' system/schemas/config.md
   grep -qF 'triage_enabled: "false"' system/config.example.md
 }
+
+@test "/rca: read-only, nothing outward, the two scales, the humanizer and marker rules, the Now approval (#106)" {
+  f=.claude/commands/rca.md
+  grep -qF 'Read-only on code: never edit code, run tests, or write outside the vault.' "$f"
+  grep -qF 'Write nothing outward: never create or edit a Jira issue' "$f"
+  grep -qF 'Run no live log query.' "$f"
+  grep -qF '**Root-cause confidence (1–5):**' "$f"
+  grep -qF '**Fix confidence (1–5):**' "$f"
+  grep -qF '.claude/skills/humanizer/SKILL.md' "$f"
+  grep -qF 'Proposed code never carries a teammate'"'"'s initials marker' "$f"
+  grep -qF 'marked "meaning unconfirmed". Never guess a meaning.' "$f"
+  grep -qF -- '--kind owed --statement "Review RCA draft: <title>" --evidence rca:<note stem>' "$f"
+  grep -qF 'Never queue it yourself.' "$f"
+  grep -qF -- '- `/rca <raw/telemetry/note>`:' CLAUDE.md
+  grep -qF '| `/rca <raw/telemetry/note.md>` |' FOUNDRY.md
+  grep -qF '**RCA.**' FOUNDRY.md
+  sec="$(setup_section '6c. Handoffs')"
+  [[ "$sec" == *'approved `/rca` drafts should be filed to Jira'* ]]
+  grep -qF 'rca_project: {kind: string}' system/schemas/config.md
+  grep -qF 'rca_project: ""' system/config.example.md
+}

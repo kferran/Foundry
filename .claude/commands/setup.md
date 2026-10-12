@@ -93,6 +93,8 @@ On a client, skip this phase and report "not used on a client". On a server or a
 
 When `handoffs_projects` is set, check the Atlassian connector: run `system/scripts/jira_fetch.sh --check` with a Bash timeout of at least 400000 ms (one search session). On exit 0, report its `the search listed N stalled handoffs` line. Otherwise report the reason it printed and what to do: exit 1 with an allow rule named, replace a rule that allows every Atlassian tool with single tools (the fetch will not run while the whole server is allowed); exit 2, fix the setting it names; exit 3, connect Atlassian in the account's connector settings at claude.ai (same account as this machine); exit 6, reconnect it; exit 4, try again later; exit 7, show the handoffs alert in `system/logs/alerts_<date>.md`. A Jira failure never blocks setup: the brief then lists handoffs under Unavailable Sources.
 
+Then ask whether approved `/rca` drafts should be filed to Jira (RCA spec §3.4). On yes, with `handoffs_site` set as above, ask for the project key (`rca_project`), the issue type (`rca_issue_type`, default `Bug`), labels (`rca_labels`, one per line) and, optionally, the Atlassian account ID to assign tickets to (`rca_assignee`). Write the scalars with `system/scripts/vault_index.py set` and `rca_labels` by editing the file, then validate. Nothing is filed until you tick an RCA draft's line on the Now page; an empty `rca_project` keeps filing off.
+
 ## 7. Index
 Run `system/scripts/vault_index.py rebuild`, then `system/scripts/vault_index.py issues`, and report any error. Then run `system/scripts/commit_runs.py --init-cutover`: it records the time from which `/backup` commits each headless run on its own; runs from before it are committed with the rest of the vault.
 
