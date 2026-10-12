@@ -851,3 +851,12 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'rca_project: {kind: string}' system/schemas/config.md
   grep -qF 'rca_project: ""' system/config.example.md
 }
+
+@test "FOUNDRY.md defines the fix lane, its safety surfaces and the promotion rule (fast lane spec §2)" {
+  grep -qF '**Two lanes.**' FOUNDRY.md
+  grep -qF 'clear from one sentence' FOUNDRY.md
+  grep -qF 'one failing test that passes after the change' FOUNDRY.md
+  grep -qF 'permissions and settings files, the sandbox, the publish gate, redaction, and new note types' FOUNDRY.md
+  grep -qF 'also re-runs the live acceptance steps' FOUNDRY.md
+  grep -qF 'the default when in doubt is the feature lane' FOUNDRY.md
+}
