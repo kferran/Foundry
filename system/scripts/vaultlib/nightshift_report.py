@@ -30,6 +30,23 @@ def write_health(vault, date: str, health: dict) -> None:
     _atomic(Path(vault) / DIR / f"health-{date}.json", json.dumps(health, indent=1, sort_keys=True))
 
 
+def record_usage(vault, date: str, usage: dict, at: str) -> None:
+    """Merge one session's 5-hour and 7-day readings into the day's health file (usage ceiling spec);
+    a session without a reading leaves it alone."""
+    if not usage:
+        return
+    hp = Path(vault) / DIR / f"health-{date}.json"
+    try:
+        h = json.loads(hp.read_text(encoding="utf-8")) if hp.is_file() else {}
+    except (OSError, json.JSONDecodeError):
+        h = {}
+    five, seven = usage.get("five_hour"), usage.get("seven_day")
+    h = (h if isinstance(h, dict) else {}) | {
+        "usage5": five, "usage7": seven, "usage5_at": at,
+        "usage": f"5h {round((five or 0) * 100)}% / 7d {round((seven or 0) * 100)}%"}
+    write_health(vault, date, h)
+
+
 def _outcomes(vault, date: str) -> list:
     out = []
     for p in sorted((Path(vault) / DIR / "items").glob("*/outcome.json")):

@@ -165,18 +165,23 @@ vi="system/scripts/vault_index.py"
 allow=("Edit(/wiki/.staging/$run_id/**)")
 for sub in query related show backlinks orphans issues validate field stage; do allow+=("Bash($vi $sub:*)"); done
 
-out="system/logs/runs/$run_id/claude.json"
+out="system/logs/runs/$run_id/claude.json" stream="system/logs/runs/$run_id/stream.jsonl"
 printf '\n===== %s %s %s\n' "$(date -Iseconds)" "$run_id" "${inputs[*]:-}" >> "$LOG"
 set +e
-# 9>&-: claude's process tree must not inherit run.lock, or a leaked child holds it forever
+# 9>&-: claude's process tree must not inherit run.lock, or a leaked child holds it forever.
+# stream-json carries the 5-hour usage reading (a rate_limit_event line); claude.json keeps the final
+# result line, which every check below reads (usage ceiling spec).
 timeout -k 30s "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --append-system-prompt-file CLAUDE.md \
   --restricted --settings system/headless.settings.json --strict-mcp-config --no-session-persistence \
-  --permission-mode dontAsk --output-format json --tools "Read,Glob,Grep,Edit,Write,Bash" \
-  --allowedTools "${allow[@]}" < /dev/null > "$out" 2>> "$LOG" 9>&- &
+  --permission-mode dontAsk --output-format stream-json --verbose --tools "Read,Glob,Grep,Edit,Write,Bash" \
+  --allowedTools "${allow[@]}" < /dev/null > "$stream" 2>> "$LOG" 9>&- &
 cpid=$!
 wait "$cpid"
 rc=$?
 cpid=""
+jq -cR 'fromjson? | select(type == "object" and .type == "result")' "$stream" 2>/dev/null | tail -n 1 > "$out"
+# The reading the ceiling holds on, refreshed under run.lock; a failed record never fails the run.
+system/scripts/nightshift.py record-usage "$stream" >> "$LOG" 2>&1
 set -e
 # An account spend or usage limit is not the input's fault: report it as the cap (exit 4) so the
 # daemon stops and the inputs keep their attempts. Test for empty output first: jq 1.6 exits 0 for
