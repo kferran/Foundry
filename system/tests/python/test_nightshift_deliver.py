@@ -73,6 +73,15 @@ def test_verify_runs_sandboxed(tmp_path):
     assert not ok
 
 
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_verify_exit_127_names_the_sealed_sandbox_as_the_cause(tmp_path):
+    """#138: a toolchain under $HOME is not on the sandbox's PATH; the first line says so wherever it is shown."""
+    r = repo_with_commit(tmp_path / "r")
+    ok, out = nd.run_verify(r, ["no-such-tool-xyz install"], tmp_path / "verify.log")
+    assert not ok
+    assert out.splitlines()[0] == "no-such-tool-xyz install: exit 127 (command not found in the sealed verify sandbox)"
+
+
 def test_fetch_push_and_github_pr(tmp_path, monkeypatch):
     src = repo_with_commit(tmp_path / "src")
     git(src, "checkout", "-q", "-b", "nightshift/x")

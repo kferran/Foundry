@@ -47,7 +47,9 @@ def run_verify(clone, cmds, log_path, timeout=1800) -> tuple:
                 code, text = 124, f"timed out after {timeout}s"
             log.write(f"$ {cmd}\n{text}\n[exit {code}]\n")
             if code != 0:
-                return False, f"{cmd}: exit {code}\n" + "\n".join(text.splitlines()[-20:])
+                # 127: the sandbox's PATH is /usr/local/bin:/usr/bin:/bin and $HOME is empty (#138)
+                why = " (command not found in the sealed verify sandbox)" if code == 127 else ""
+                return False, f"{cmd}: exit {code}{why}\n" + "\n".join(text.splitlines()[-20:])
     return True, ""
 
 
