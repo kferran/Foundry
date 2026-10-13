@@ -160,6 +160,16 @@ def test_usage_ceiling_holds_inbox_and_digests_and_alerts_once_a_day(iv):
     assert alerts.count("[intake] held: 5-hour usage 70% at or above 60%") == 1
 
 
+def test_usage_ceiling_holds_only_sessions_so_telemetry_notes_still_route(iv):
+    write(iv, "raw/inbox/err.md", "---\ntype: production_error\n---\nboom\n")
+    write(iv, "raw/inbox/a.md", "a")
+    usage_reading(iv, 0.7)
+    Intake(iv, now=later()).run()
+    assert calls(iv) == []
+    assert (iv / "raw/telemetry/err.md").exists()
+    assert (iv / "raw/inbox/a.md").exists()
+
+
 def test_usage_ceiling_runs_below_the_ceiling_and_on_a_stale_reading(iv):
     write(iv, "raw/inbox/a.md", "a")
     usage_reading(iv, 0.5)

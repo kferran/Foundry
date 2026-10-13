@@ -616,15 +616,20 @@ def tick(ctx: Ctx) -> int:
             rep.write_health(ctx.vault, ctx.date, h)
             rep.write(ctx.vault, ctx.date)
         return 0
-    if not hfile.is_file():
-        h = health(ctx.vault, ctx.now, entries)
+    try:
+        h = json.loads(hfile.read_text()) if hfile.is_file() else {}
+    except (OSError, ValueError):
+        h = {}
+    # The day's checks run on its first tick. A usage reading run_headless.sh recorded can create the file
+    # first (usage ceiling spec), so the test is the sandbox key, not the file; that newer reading is kept.
+    if "sandbox" not in h:
         prev = ctx.vault / rep.DIR / f"health-{(date.fromisoformat(ctx.date) - timedelta(days=1)).isoformat()}.json"
         try:   # the last 5-hour reading outlives the report day, so the ceiling holds right after the brief too
             old = json.loads(prev.read_text()) if prev.is_file() else {}
         except (OSError, ValueError):
             old = {}
-        h |= {k: old[k] for k in ("usage5", "usage5_at") if k in old}
-        rep.write_health(ctx.vault, ctx.date, h)
+        carry = {k: old[k] for k in ("usage5", "usage5_at") if k in old}
+        rep.write_health(ctx.vault, ctx.date, health(ctx.vault, ctx.now, entries) | carry | h)
     h = json.loads(hfile.read_text())
     h["last_tick"] = ctx.local.strftime("%H:%M")
     was_held = h.pop("held", None)   # the report's Held line shows only the latest tick's hold

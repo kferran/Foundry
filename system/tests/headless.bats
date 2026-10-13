@@ -166,6 +166,10 @@ teardown() {
   grep -qx 'stream-json' "$STUB_ARGS"
   grep -qx -- '--verbose' "$STUB_ARGS"
   [ ! -d system/logs/nightshift ]
+  # The full stream is kept only for a run that failed; a good run keeps its result line in claude.json.
+  run ls system/logs/runs/*/stream.jsonl
+  [ "$status" -ne 0 ]
+  ls system/logs/runs/*/claude.json
   STUB_MODE=brief STUB_USAGE=0.7 run "$RH" brief
   [ "$status" -eq 0 ]
   [ "$(jq -r .usage5 system/logs/nightshift/health-*.json)" = "0.7" ]
@@ -173,6 +177,7 @@ teardown() {
   STUB_MODE=usage_limit STUB_USAGE=1 run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 4 ]
   [ "$(jq -r .usage5 system/logs/nightshift/health-*.json)" = "1" ]
+  ls system/logs/runs/*/stream.jsonl
 }
 
 @test "an error result that is not a usage limit stays exit 1" {

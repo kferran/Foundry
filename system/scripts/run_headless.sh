@@ -210,5 +210,7 @@ else
     alert "$cmd $run_id failed (exit $rc)"
   fi
 fi
+# The full stream (every message, note text included) is kept only for a run that failed, to debug it.
+(( rc != 0 )) || rm -f -- "$stream"
 
 exit "$rc"

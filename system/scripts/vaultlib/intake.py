@@ -361,6 +361,8 @@ class Intake:
                 telemetry.mkdir(parents=True, exist_ok=True)
                 path.rename(unique(telemetry / path.name))
                 return True
+        if self.held():
+            return True  # this file waits for a tick under the ceiling; later duplicates and telemetry notes still route
         if (archive / path.name).exists():
             renamed = path.with_name(f"{path.stem}-{int(time.time())}{path.suffix}")
             path.rename(renamed)
@@ -435,6 +437,8 @@ class Intake:
                 pending = list(shas)
                 first = pending[0]
                 batch = [first] if shas[first] in solo else [p for p in pending if shas[p] not in solo][:DIGEST_BATCH]
+                if self.held():
+                    return False
                 attempted.update(batch)
                 progress = True
                 rc = self.headless([p.relative_to(self.vault).as_posix() for p in batch], [shas[p] for p in batch])
@@ -756,19 +760,17 @@ class Intake:
                     self.import_meetings()
                 except Exception as exc:  # noqa: BLE001 - inbox and digests still run
                     self.alert(f"meeting import failed ({exc.__class__.__name__}: {exc}); will retry")
-                # The usage ceiling (usage ceiling spec): no ingest session starts while the 5-hour reading is at
-                # or above order_max_five_hour; inputs stay where they are and the next tick re-reads.
-                held = triage.hold(self.vault, datetime.now(timezone.utc))
-                if held:
-                    self.alert_held(held)
-                elif self.process_inbox():
+                if self.process_inbox():
                     self.process_digests()
         except TimeoutError:
             pass  # another daemon is running
 
-    def alert_held(self, reason: str) -> None:
-        """One alert a day while the intake is held at the usage ceiling."""
+    def held(self) -> bool:
+        """The usage ceiling (usage ceiling spec), checked before every ingest session: while the 5-hour reading
+        is at or above order_max_five_hour, no session starts, inputs stay where they are, and one alert a day."""
+        reason = triage.hold(self.vault, datetime.now(timezone.utc))
         marker = self.logs / f".intake-held-{self.today()}"
-        if not marker.exists():
+        if reason and not marker.exists():
             self.alert(f"held: {reason}; inbox and digests wait for the next tick")
             marker.touch()
+        return bool(reason)

@@ -757,6 +757,7 @@ self_edit_contract() {
   grep -qF '**The usage ceiling.**' FOUNDRY.md
   grep -qF 'intake ingests, the meetings fetch, inbox triage and new Work Orders wait' FOUNDRY.md
   grep -qF 'The brief, the debrief and Slack notices never wait' FOUNDRY.md
+  grep -qF 'nor does filing an RCA ticket you approved' FOUNDRY.md
   grep -qF 'every headless run, brief and debrief included, records the reading' FOUNDRY.md
 }
 
