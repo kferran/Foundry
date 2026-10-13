@@ -22,7 +22,7 @@ GH_TIMEOUT = 10
 WIKILINK = re.compile(r"\[\[(?:[^\]|]*\|)?([^\]|]*)\]\]")
 LINE = re.compile(r"^- \[(?P<mark>.)\] (?P<kind>owed|waiting|draft): (?P<statement>.+) "
                   r"\((?:(?P<who>[^(),]+), )?since (?P<since>\d{4}-\d{2}-\d{2})(?:, (?P<evidence>[^\s(),]+))?\)"
-                  r"(?: _\(closed: .*\)_)?$")
+                  r"(?: _\(closed: .*\)_)?\s*$")  # an editor's trailing space or CRLF must not hide a line (audit C12)
 CLOSED = re.compile(r"^- \[[xX-]\] ")
 STAMP = re.compile(r"_\(closed: .*?(\d{4}-\d{2}-\d{2})\)_\s*$")
 PR_URL = re.compile(r"^https://github\.com/[^/\s]+/[^/\s]+/pull/\d+$")
@@ -182,13 +182,14 @@ def check(vault, today: str, alert, gh: str = "gh") -> int:
                 gh_down = True
                 continue
             if how:
-                found[line] = how
+                found[line.rstrip()] = how
         if not found:
             continue
         lines = read(vault, partition).split("\n")
         for i, line in enumerate(lines):
-            if line in found:
-                lines[i] = f"- [x]{line[5:]} _(closed: {found[line]} {today})_"
+            key = line.rstrip()
+            if key in found:
+                lines[i] = f"- [x]{key[5:]} _(closed: {found[key]} {today})_"
                 closed += 1
         write(vault, partition, stamp_and_prune("\n".join(lines), today))
     return closed
