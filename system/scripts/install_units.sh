@@ -79,12 +79,13 @@ role="$(config_get machine_role standalone)"
 case "$role" in
   standalone)
     UNITS=(foundry-intake.service foundry-intake.timer foundry-brief.service foundry-brief.timer
-           foundry-debrief.service foundry-debrief.timer)
-    ENABLE=(foundry-intake.timer foundry-brief.timer foundry-debrief.timer) ;;
+           foundry-debrief.service foundry-debrief.timer foundry-smoke.service foundry-smoke.timer)
+    ENABLE=(foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-smoke.timer) ;;
   server)
     UNITS=(foundry-intake.service foundry-intake.timer foundry-brief.service foundry-brief.timer
-           foundry-debrief.service foundry-debrief.timer foundry-sync.service foundry-sync.timer)
-    ENABLE=(foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-sync.timer) ;;
+           foundry-debrief.service foundry-debrief.timer foundry-smoke.service foundry-smoke.timer
+           foundry-sync.service foundry-sync.timer)
+    ENABLE=(foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-smoke.timer foundry-sync.timer) ;;
   client) UNITS=() ENABLE=() ;;
   *) die 1 "unknown machine_role in system/config.md: $role" ;;
 esac
@@ -189,6 +190,9 @@ dtcc_time="$(printf '%02d:%02d' $(( t / 60 )) $(( t % 60 )))"
 # The template update runs 45 minutes before the brief, ahead of the DTCC watcher (#117).
 t=$(( (10#$bh * 60 + 10#$bm + 1395) % 1440 ))
 update_time="$(printf '%02d:%02d' $(( t / 60 )) $(( t % 60 )))"
+# The smoke check runs 15 minutes before the brief, after both (smoke check spec §2).
+t=$(( (10#$bh * 60 + 10#$bm + 1425) % 1440 ))
+smoke_time="$(printf '%02d:%02d' $(( t / 60 )) $(( t % 60 )))"
 sync_interval="$(config_get sync_interval_minutes 5)"
 unit_path="$(dirname "$claude_bin"):%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
@@ -208,7 +212,8 @@ render() {
   {
     printf '%s\n' "$HEADER"
     sed "$@" -e "s|{{VAULT_ROOT}}|$(esc "$VAULT_ROOT")|g" -e "s|{{TZ}}|$(esc "$tz")|g" \
-        -e "s|{{BRIEF_TIME}}|$(esc "$brief")|g" -e "s|{{DTCC_TIME}}|$(esc "$dtcc_time")|g" -e "s|{{UPDATE_TIME}}|$(esc "$update_time")|g" -e "s|{{DEBRIEF_TIME}}|$(esc "$debrief")|g" \
+        -e "s|{{BRIEF_TIME}}|$(esc "$brief")|g" -e "s|{{DTCC_TIME}}|$(esc "$dtcc_time")|g" -e "s|{{UPDATE_TIME}}|$(esc "$update_time")|g" \
+        -e "s|{{SMOKE_TIME}}|$(esc "$smoke_time")|g" -e "s|{{DEBRIEF_TIME}}|$(esc "$debrief")|g" \
         -e "s|{{SYNC_INTERVAL}}|$(esc "$sync_interval")|g" \
         -e "s|{{CLAUDE_BIN}}|$(esc "$claude_bin")|g" -e "s|{{UNIT_PATH}}|$(esc "$unit_path")|g" "$t"
   } > "$out"

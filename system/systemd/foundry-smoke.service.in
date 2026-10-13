@@ -1,0 +1,14 @@
+[Unit]
+Description=The Foundry: smoke check of every configured fetch and the claude version
+
+[Service]
+Type=oneshot
+WorkingDirectory={{VAULT_ROOT}}
+Environment="TZ={{TZ}}"
+Environment="PATH={{UNIT_PATH}}"
+Environment="CLAUDE_BIN={{CLAUDE_BIN}}"
+# The connector checks run one after another: 150 + 150 + 300 + 300 s at their own timeouts, then telemetry and the map.
+TimeoutStartSec=25min
+# A failed source is reported by its [smoke] alert, not as a failed unit.
+SuccessExitStatus=1
+ExecStart="{{VAULT_ROOT}}/system/scripts/smoke_check.sh"

@@ -1,0 +1,9 @@
+[Unit]
+Description=The Foundry: smoke check at {{SMOKE_TIME}}, 15 minutes before the brief
+
+[Timer]
+OnCalendar=*-*-* {{SMOKE_TIME}}:00 {{TZ}}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

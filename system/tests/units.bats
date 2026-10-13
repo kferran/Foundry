@@ -3,7 +3,7 @@
 load helpers
 
 UNITS=(foundry-intake.service foundry-intake.timer foundry-brief.service foundry-brief.timer
-       foundry-debrief.service foundry-debrief.timer)
+       foundry-debrief.service foundry-debrief.timer foundry-smoke.service foundry-smoke.timer)
 
 setup() {
   make_vault
@@ -70,11 +70,11 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   grep -qx 'Persistent=true' "$UD/foundry-debrief.timer"
 }
 
-@test "installing reloads systemd and enables the three timers" {
+@test "installing reloads systemd and enables the timers" {
   run "$IU"
   [ "$status" -eq 0 ]
   grep -qx -- '--user daemon-reload' "$STUB_SYSTEMCTL_LOG"
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-smoke.timer foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "a second run reports every unit unchanged and rewrites nothing" {
@@ -209,7 +209,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   for n in "${UNITS[@]}"; do
     [ -f "$UD/$n" ]
   done
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-sync.timer foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-smoke.timer foundry-sync.timer foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "machine_role client installs nothing and says so" {
@@ -322,7 +322,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qxF "ExecStart=\"$VP/system/scripts/meetings_fetch.sh\"" "$UD/foundry-meetings.service"
   grep -qx 'TimeoutStartSec=35min' "$UD/foundry-meetings.service"
   grep -qxF "Environment=\"CLAUDE_BIN=$STUBS/claude\"" "$UD/foundry-meetings.service"
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-meetings.timer foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-smoke.timer foundry-meetings.timer foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
   set_role server
   run "$IU"
   [ "$status" -eq 0 ]
@@ -506,13 +506,37 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   [ ! -e "$UD/foundry-update.timer" ]
 }
 
+@test "standalone and server get the smoke check 15 minutes before the brief, never a client (smoke check spec §3.2)" {
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qxF "ExecStart=\"$VP/system/scripts/smoke_check.sh\"" "$UD/foundry-smoke.service"
+  grep -qxF "Environment=\"CLAUDE_BIN=$STUBS/claude\"" "$UD/foundry-smoke.service"
+  grep -qx 'SuccessExitStatus=1' "$UD/foundry-smoke.service"
+  grep -qx 'TimeoutStartSec=25min' "$UD/foundry-smoke.service"
+  grep -qxF 'OnCalendar=*-*-* 05:45:00 America/Denver' "$UD/foundry-smoke.timer"
+  grep -qx 'Persistent=true' "$UD/foundry-smoke.timer"
+  system/scripts/vault_index.py set system/config.md brief_time 00:10 > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qxF 'OnCalendar=*-*-* 23:55:00 America/Denver' "$UD/foundry-smoke.timer"
+  set_role server
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ -f "$UD/foundry-smoke.timer" ]
+  [ ! -e "$UD/foundry-smoke.service.d" ]
+  set_role client
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ ! -e "$UD/foundry-smoke.timer" ]
+}
+
 @test "--update keeps a timer the owner disabled disabled, and re-enables only enabled ones (#87)" {
   "$IU" > /dev/null
   printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$STUB_SYSTEMCTL_LOG"\n[[ "$*" != *"is-enabled --quiet foundry-nightshift.timer"* ]]\n' > "$STUBS/systemctl"
   : > "$STUB_SYSTEMCTL_LOG"
   run "$IU" --update
   [ "$status" -eq 0 ]
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-smoke.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "--update removes a focus tracker an older template installed" {
