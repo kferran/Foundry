@@ -131,7 +131,7 @@ fi
 DROPINS=()
 [[ "$role" != server ]] || DROPINS=(foundry-intake.service.d/foundry-sync.conf foundry-brief.service.d/foundry-sync.conf
                                     foundry-debrief.service.d/foundry-sync.conf foundry-update.service.d/foundry-sync.conf)
-declare -A DROPIN_TIMEOUT=([foundry-intake]=105min [foundry-brief]=60min [foundry-debrief]=60min [foundry-update]=35min)
+declare -A DROPIN_TIMEOUT=([foundry-intake]=105min [foundry-brief]=75min [foundry-debrief]=60min [foundry-update]=35min)
 declare -A DROPIN_PREP=([foundry-intake]="" [foundry-brief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/brief_prep.sh"'
                         [foundry-debrief]='ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/debrief_prep.sh"' [foundry-update]="")
 # --update (update_template.sh) re-renders only what this vault installed: a unit a new template adds is

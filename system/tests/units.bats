@@ -52,7 +52,8 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   run grep -l stub_claude "$UD"/*
   [ "$status" -eq 1 ]
   grep -qx 'TimeoutStartSec=90min' "$UD/foundry-intake.service"
-  grep -qx 'TimeoutStartSec=45min' "$UD/foundry-brief.service"
+  # The brief's worst case (prep fetches, the lock wait, a 15-minute session, publish) is about 47 minutes (audit C6).
+  grep -qx 'TimeoutStartSec=60min' "$UD/foundry-brief.service"
   grep -qx 'TimeoutStartSec=45min' "$UD/foundry-debrief.service"
   grep -qxF "ExecStartPre=-\"$VP/system/scripts/brief_prep.sh\"" "$UD/foundry-brief.service"
   grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/foundry-brief.service"
@@ -269,7 +270,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qxF "ExecStartPre=-\"$VP/system/scripts/debrief_prep.sh\"" "$UD/foundry-debrief.service.d/foundry-sync.conf"
   [ "$(grep -c '^ExecStartPre=' "$UD/foundry-intake.service.d/foundry-sync.conf")" -eq 2 ]
   grep -qx 'TimeoutStartSec=105min' "$UD/foundry-intake.service.d/foundry-sync.conf"
-  grep -qx 'TimeoutStartSec=60min' "$UD/foundry-brief.service.d/foundry-sync.conf"
+  grep -qx 'TimeoutStartSec=75min' "$UD/foundry-brief.service.d/foundry-sync.conf"
   grep -qx 'TimeoutStartSec=60min' "$UD/foundry-debrief.service.d/foundry-sync.conf"
   run "$IU"
   grep -qx 'unchanged foundry-brief.service.d/foundry-sync.conf' <<< "$output"
