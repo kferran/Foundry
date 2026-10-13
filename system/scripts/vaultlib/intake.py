@@ -601,10 +601,13 @@ class Intake:
             name = self._free_name(meetings.note_name(m))
             retire = None
             if twin is not None:  # first source wins, unless it is empty and this one is not (#142)
-                if not (self._empty_note(twin) and not self._empty(meetings.render_meeting(m, name, partition),
-                                                                     meetings.render_transcript(m, name, partition))):
+                if not (twin.parent.parent.name == partition and self._empty_note(twin)
+                        and not self._empty(meetings.render_meeting(m, name, partition),
+                                            meetings.render_transcript(m, name, partition))):
                     self._archive_duplicate(path, rel, m, twin)
                     return
+                if time.time() - twin.stat().st_mtime < publish.RECENT_SECONDS:
+                    return  # the gate refuses a target modified in the last 60 s: the next tick retires it
                 retire = twin
             report = self._publish_meeting(m, name, partition, rel, retire)
             if report["status"] == "conflict":  # held back at apply time (#37): the next tick finishes or retries
@@ -629,11 +632,12 @@ class Intake:
         path.unlink()
 
     def _empty(self, note_text: str, transcript_text: str) -> bool:
-        """No summary, decisions or action items, and under EMPTY_TRANSCRIPT_LINES spoken lines: nothing to keep."""
-        body = frontmatter.parse(note_text).body
+        """Every section reads only "None." and the transcript has under EMPTY_TRANSCRIPT_LINES spoken lines.
+        Any text written into the note (under Details, after a None., or under a section added by hand) keeps it."""
+        sections = re.split(r"^## .*$", frontmatter.parse(note_text).body, flags=re.M)[1:]
         spoken = [line for line in frontmatter.parse(transcript_text).body.splitlines()
                   if line.strip() and not line.startswith("#")]
-        return (all(f"## {heading}\nNone." in body for heading in ("Summary", "Decisions", "Action items"))
+        return (bool(sections) and all(s.strip() == "None." for s in sections)
                 and len(spoken) < EMPTY_TRANSCRIPT_LINES)
 
     def _empty_note(self, note: Path) -> bool:

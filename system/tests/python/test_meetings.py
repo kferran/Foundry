@@ -534,6 +534,44 @@ def test_an_empty_later_source_still_loses_to_an_empty_first_source(iv):
     assert frontmatter.parse((iv / f"wiki/work/meetings/{NAME}.md").read_text()).data.get("status", "canonical") == "canonical"
 
 
+def test_a_hand_edited_empty_note_is_kept_and_the_later_source_archived(iv):
+    config(iv, meetings_partition="work")
+    fetched(iv, body=NOT_PRODUCED + TRANSCRIPT + END)
+    tick(iv)
+    note = iv / f"wiki/work/meetings/{NAME}.md"
+    note.write_text(note.read_text().replace("## Details\nNone.", "## Details\nNone.\n\nI typed this after the call."))
+    aged(iv, "work", NAME)
+    dup = dropped(iv, "work/2026-10-05 1500 Weekly sync - Planning.srt", long_cues(30, ".srt"))
+    tick(iv)
+    assert len(meeting_runs(iv)) == 1 and (iv / "raw/archive" / dup.name).is_file()
+    assert frontmatter.parse(note.read_text()).data.get("status", "canonical") == "canonical"
+
+
+def test_a_recent_empty_note_is_left_for_the_next_tick_without_a_rejected_run(iv):
+    config(iv, meetings_partition="work")
+    fetched(iv, body=NOT_PRODUCED + TRANSCRIPT + END)
+    tick(iv)
+    recording = dropped(iv, "work/2026-10-05 1500 Weekly sync - Planning.srt", long_cues(30, ".srt"))
+    tick(iv)  # the note was published seconds ago: the gate would reject the run as modified in the last 60 s
+    assert len(meeting_runs(iv)) == 1 and recording.exists()
+    assert not (iv / "system/quarantine").exists()
+    aged(iv, "work", NAME)
+    tick(iv)
+    assert len(meeting_runs(iv)) == 2 and not recording.exists()
+    assert frontmatter.parse((iv / f"wiki/work/meetings/{NAME}.md").read_text()).data["status"] == "deprecated"
+
+
+def test_an_empty_note_in_another_partition_is_never_retired(iv):
+    config(iv, meetings_partition="work")
+    fetched(iv, body=NOT_PRODUCED + TRANSCRIPT + END)
+    tick(iv)
+    aged(iv, "work", NAME)
+    dup = dropped(iv, "personal/2026-10-05 1500 Weekly sync - Planning.srt", long_cues(30, ".srt"))
+    tick(iv)
+    assert len(meeting_runs(iv)) == 1 and (iv / "raw/archive" / dup.name).is_file()
+    assert frontmatter.parse((iv / f"wiki/work/meetings/{NAME}.md").read_text()).data.get("status", "canonical") == "canonical"
+
+
 def test_first_source_wins_a_doc_after_a_drop_is_archived_and_skipped_by_the_fetch(iv):
     dropped(iv, "work/2026-10-05 1505 Weekly sync - Planning.vtt", long_cues(30, ".vtt"))
     tick(iv)
