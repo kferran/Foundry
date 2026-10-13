@@ -138,6 +138,22 @@ def test_angle_brackets_cannot_reach_the_now_page():
     assert tr.one_line("<!-- hide --> <b>x</b>") == "‹!-- hide --› ‹b›x‹/b›"
 
 
+def test_watched_senders_add_their_unread_mail_outside_the_inbox_for_two_days(vault):
+    # #135 comment: watched senders' mail archived unread still needs the owner.
+    write(vault, "system/config.md", '---\ntype: config\ntriage_watch_senders: ["@example.com", "ceo@example.org"]\n---\n')
+    assert tr.query(vault, 10_000, TODAY) == (
+        f"((in:inbox after:{10_000 - 7200}) OR (is:unread -in:inbox from:(@example.com OR ceo@example.org) newer_than:2d)) "
+        + tr.EXCLUDE)
+
+
+@pytest.mark.parametrize("bad", ["@example.com) OR (in:anywhere", "example com", "", "@"])
+def test_a_watched_sender_that_could_change_the_query_is_a_settings_error(vault, bad):
+    write(vault, "system/config.md", f'---\ntype: config\ntriage_watch_senders: ["{bad}"]\n---\n')
+    with pytest.raises(tr.Fail) as e:
+        tr.query(vault, 10_000, TODAY)
+    assert e.value.code == 2 and "triage_watch_senders" in e.value.reason
+
+
 def test_a_bad_triage_partition_is_a_settings_error_before_any_session(vault):
     write(vault, "system/config.md", '---\ntype: config\ntriage_partition: "shared"\n---\n')
     with pytest.raises(tr.Fail) as e:

@@ -33,6 +33,7 @@ fields:
   rca_assignee: {kind: string}
   triage_enabled: {kind: bool, default: "false"}
   triage_partition: {kind: enum, values: [work, personal]}
+  triage_watch_senders: {kind: list, of: string}
   slack_notify_channel: {kind: string}
   slack_connector: {kind: string, default: "claude.ai Slack"}
   orders_enabled: {kind: bool, default: "true"}
@@ -47,7 +48,7 @@ The per-user global configuration written by `/setup` (gitignored). `system/conf
 
 `rca_project` (a Jira project key) turns on filing approved `/rca` drafts to `handoffs_site`, as `rca_issue_type` (default `Bug`) with `rca_labels` and, when set, the Atlassian account ID `rca_assignee` (RCA spec §3.4); filing stays off while `rca_project` is empty.
 
-`triage_enabled` turns on inbox triage on a standalone machine or a server (inbox triage spec): every 30 minutes on workdays, mail that needs the owner becomes an `owed` line on the Now page of `triage_partition` (default `work`).
+`triage_enabled` turns on inbox triage on a standalone machine or a server (inbox triage spec): every 30 minutes on workdays, mail that needs the owner becomes an `owed` line on the Now page of `triage_partition` (default `work`). `triage_watch_senders` lists domains (`@example.com`) or addresses whose unread mail outside the inbox from the last two days also becomes an `owed` line: mail from them archived unread is not missed.
 
 `slack_notify_channel` turns on Slack notices on a standalone machine or a server (Slack notices spec): a Slack channel ID, or the owner's user ID for a direct message; empty is off. `slack_connector` is the connector a headless session loads: `claude.ai Slack` (the default) for Slack connected at claude.ai; `plugin:slack:slack` only when headless sessions load the Slack plugin. `claude mcp list` can show the plugin while a headless session loads only the claude.ai connector (#133); `notify.sh --check` names the server the session loaded.
 

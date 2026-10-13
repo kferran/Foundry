@@ -21,6 +21,8 @@ OVERLAP_SECONDS = 300
 FIRST_LOOKBACK_SECONDS = 2 * 3600
 TEXT_MAX = 160
 HEALTH_DIR = "system/logs/nightshift"
+SENDER = re.compile(r"[A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
+WATCH_WINDOW = "newer_than:2d"
 
 
 class Fail(Exception):
@@ -68,12 +70,28 @@ def partition(vault) -> str:
     return value
 
 
+def watch_senders(vault) -> list:
+    """triage_watch_senders: domains (@example.com) or addresses whose unread mail counts even when archived. Each
+    entry is checked before it reaches the query, so a config value cannot change the search."""
+    value = config(vault).get("triage_watch_senders") or []
+    senders = value if isinstance(value, list) else [value]
+    for s in senders:
+        if not isinstance(s, str) or not SENDER.fullmatch(s):
+            raise Fail(2, f"triage_watch_senders: {s!r} is not a domain (@example.com) or an address")
+    return senders
+
+
 def query(vault, now_epoch: int, today: str) -> str:
-    """Mail since the last successful tick (with an overlap), or the last two hours on the first run."""
+    """Mail since the last successful tick (with an overlap), or the last two hours on the first run; with watched
+    senders, also their unread mail outside the inbox from the last two days (deduped by record())."""
     partition(vault)
+    senders = watch_senders(vault)
     ticks = [r.get("epoch") for r in records(vault, today) if r.get("kind") == "tick" and isinstance(r.get("epoch"), int)]
     after = max(ticks) - OVERLAP_SECONDS if ticks else now_epoch - FIRST_LOOKBACK_SECONDS
-    return f"in:inbox after:{after} {EXCLUDE}"
+    if not senders:
+        return f"in:inbox after:{after} {EXCLUDE}"
+    return (f"((in:inbox after:{after}) OR (is:unread -in:inbox from:({' OR '.join(senders)}) {WATCH_WINDOW})) "
+            + EXCLUDE)
 
 
 def hold(vault, now) -> str:

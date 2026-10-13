@@ -888,6 +888,12 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'triage_enabled: {kind: bool, default: "false"}' system/schemas/config.md
   grep -qF 'triage_partition: {kind: enum, values: [work, personal]}' system/schemas/config.md
   grep -qF 'triage_enabled: "false"' system/config.example.md
+  # Watched senders (#135): their unread mail outside the inbox always needs the owner.
+  grep -qF 'triage_watch_senders: {kind: list, of: string}' system/schemas/config.md
+  grep -qF 'triage_watch_senders: []' system/config.example.md
+  grep -qF 'is not in the inbox: the owner archived it unread' system/scripts/triage_fetch.sh
+  grep -qF '`triage_watch_senders`' FOUNDRY.md
+  [[ "$(setup_section '6b. Meetings')" == *'`triage_watch_senders`'* ]]
 }
 
 @test "/rca: read-only, nothing outward, the two scales, the humanizer and marker rules, the Now approval (#106)" {
