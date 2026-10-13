@@ -33,7 +33,8 @@ TZ="$(config_get timezone UTC)"
 export TZ
 mkdir -p system/logs
 exec 8> system/meetings.lock
-flock -n 8 || exit 0
+# A --check never passes silently (smoke check spec §3.1): a busy lock is a reason and exit 4.
+flock -n 8 || { (( check )) || exit 0; echo "meetings_fetch: another fetch holds system/meetings.lock" >&2; exit 4; }
 
 started="$(date -Iseconds)"
 log="system/logs/meetings_fetch-$(date +%Y-%m).jsonl"

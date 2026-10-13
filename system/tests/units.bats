@@ -512,7 +512,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qxF "ExecStart=\"$VP/system/scripts/smoke_check.sh\"" "$UD/foundry-smoke.service"
   grep -qxF "Environment=\"CLAUDE_BIN=$STUBS/claude\"" "$UD/foundry-smoke.service"
   grep -qx 'SuccessExitStatus=1' "$UD/foundry-smoke.service"
-  grep -qx 'TimeoutStartSec=25min' "$UD/foundry-smoke.service"
+  grep -qx 'TimeoutStartSec=35min' "$UD/foundry-smoke.service"
   grep -qxF 'OnCalendar=*-*-* 05:45:00 America/Denver' "$UD/foundry-smoke.timer"
   grep -qx 'Persistent=true' "$UD/foundry-smoke.timer"
   system/scripts/vault_index.py set system/config.md brief_time 00:10 > /dev/null

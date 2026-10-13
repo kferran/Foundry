@@ -12,8 +12,13 @@ setup() {
   unset CLAUDE_BIN
   SC="system/scripts/smoke_check.sh"
   LOG="system/logs/smoke-$(TZ=America/Denver date +%Y-%m).jsonl"
-  for s in calendar_fetch.sh meetings_fetch.sh jira_fetch.sh triage_fetch.sh dtcc_watch.py; do stub "$s" 0 ""; done
-  stub telemetry_fetch.py 0 ""
+  # Every real check prints a line on success; a stub that says nothing stands for a check that did not run.
+  stub calendar_fetch.sh 0 "calendar_fetch: the connector listed 1 events" 1
+  stub meetings_fetch.sh 0 "meetings_fetch: the search listed 0 Docs" 1
+  stub jira_fetch.sh 0 "jira_fetch: the search listed 0 stalled handoffs" 1
+  stub triage_fetch.sh 0 "triage_fetch: 0 threads need you" 1
+  stub dtcc_watch.py 0 "map ok" 1
+  stub telemetry_fetch.py 0 "telemetry_fetch: prod-sentry: ok" 1
 }
 
 # stub <script> <exit> <message> [stream]: the vault's copy of a fetch records its call, prints the message to stderr
@@ -67,6 +72,41 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   [ "$(alerts | grep -c '\[smoke\]')" -eq 1 ]
 }
 
+@test "a check that exits 0 without a word is a failure: no check passes silently" {
+  stub calendar_fetch.sh 0 ""
+  run "$SC"
+  [ "$status" -eq 1 ]
+  grep -qx 'calendar: failed: no output' <<< "$output"
+}
+
+@test "a reason keeps the Python checks' own first word and drops only the script's prefix" {
+  mkdir -p system/dtcc
+  printf 'partition: work\n' > system/dtcc/map.yaml
+  stub dtcc_watch.py 1 "stale: shop: src/x is missing at main" 1
+  stub calendar_fetch.sh 6 $'claude: some noise\nmore noise\ncalendar_fetch: no Google Calendar connector'
+  run "$SC"
+  [ "$status" -eq 1 ]
+  grep -qx 'dtcc: failed: stale: shop: src/x is missing at main' <<< "$output"
+  grep -qx 'calendar: failed: no Google Calendar connector' <<< "$output"
+}
+
+@test "at the usage ceiling the connector checks are held, not failed, with one alert a day; the local checks still run" {
+  printf '#!/bin/bash\n[[ "$1" == hold ]] || exit 2\necho "five-hour usage 0.7 is at or above 0.6"\n' > system/scripts/triage.py
+  chmod +x system/scripts/triage.py
+  set_key meetings_enabled '"true"'
+  run "$SC"
+  [ "$status" -eq 0 ]
+  grep -qx 'version: ok' <<< "$output"
+  grep -qx 'calendar: held: five-hour usage 0.7 is at or above 0.6' <<< "$output"
+  grep -qx 'meetings: held: five-hour usage 0.7 is at or above 0.6' <<< "$output"
+  grep -qx 'telemetry: off' <<< "$output"
+  run grep -c -e calendar_fetch -e meetings_fetch "$CALLS"
+  [ "$output" = 0 ]
+  alerts | grep -qF '[smoke] held: five-hour usage 0.7 is at or above 0.6; the connector checks did not run'
+  run "$SC"
+  [ "$(alerts | grep -c '\[smoke\]')" -eq 1 ]
+}
+
 @test "two failing sources give two alert lines" {
   set_key meetings_enabled '"true"'
   stub calendar_fetch.sh 6 "calendar_fetch: no Google Calendar connector"
@@ -103,11 +143,11 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   [ "$output" = 0 ]
 }
 
-@test "a failing telemetry source names it; the Python scripts' reasons come from stdout" {
-  printf '#!/bin/bash\necho "telemetry_fetch.py $*" >> "$CALLS"\n[[ "$1" == --list ]] && { echo prod-sentry; exit 0; }\necho "telemetry_fetch: prod-sentry: HTTP 401"\nexit 1\n' > system/scripts/telemetry_fetch.py
+@test "failing telemetry sources are each named; the Python scripts' reasons come from stdout" {
+  printf '#!/bin/bash\necho "telemetry_fetch.py $*" >> "$CALLS"\n[[ "$1" == --list ]] && { printf "prod-sentry\\nprod-adx\\n"; exit 0; }\necho "telemetry_fetch: $2: HTTP 401"\nexit 1\n' > system/scripts/telemetry_fetch.py
   run "$SC"
   [ "$status" -eq 1 ]
-  grep -qx 'telemetry: failed: prod-sentry: HTTP 401' <<< "$output"
+  grep -qx 'telemetry: failed: prod-sentry: HTTP 401; prod-adx: HTTP 401' <<< "$output"
 }
 
 @test "a check that hits its timeout reads timed out, and the run goes on to the next source" {
@@ -131,6 +171,16 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   [ "$status" -eq 0 ]
   grep -qx 'version: ok' <<< "$output"
   [ "$(alerts | grep -c '\[smoke\]')" -eq 1 ]
+}
+
+@test "an older vault's claude_version file is taken over, so a change since its last health check is reported" {
+  mkdir -p system/logs
+  printf '0.9.0 (Claude Code)\n' > system/logs/claude_version
+  run "$SC"
+  [ "$status" -eq 1 ]
+  grep -qx 'version: failed: claude 0.9.0 (Claude Code) -> 1.0.0 (Claude Code)' <<< "$output"
+  [ "$(cat system/logs/claude.version)" = "1.0.0 (Claude Code)" ]
+  [ ! -e system/logs/claude_version ]
 }
 
 @test "a missing claude is a failed version check and the other sources still run" {

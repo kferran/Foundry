@@ -22,8 +22,10 @@ skip_unless_role() {
 
 @test "claude version is unchanged since the last health or smoke check (else re-run spike item 12)" {
   mkdir -p system/logs
-  current="$(claude --version 2>/dev/null || echo unknown)"
-  recorded="$(cat system/logs/claude.version 2>/dev/null || true)"  # the file smoke_check.sh keeps
+  # The same reading smoke_check.sh records: the first line only, and nothing written when claude is missing.
+  current="$(claude --version 2>/dev/null | head -n 1 || true)"
+  [[ -n "$current" ]] || skip "claude is not on PATH"
+  recorded="$(cat system/logs/claude.version 2>/dev/null || true)"
   printf '%s\n' "$current" > system/logs/claude.version
   if [[ -n "$recorded" && "$recorded" != "$current" ]]; then
     echo "claude changed from '$recorded' to '$current': re-run spike item 12 (session eligibility env vars)"
