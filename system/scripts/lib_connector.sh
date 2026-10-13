@@ -31,8 +31,11 @@ connector_run() {
   # A fresh working directory per session, under the caller's work directory so its trap removes the directory of a
   # session a stopped unit leaves behind (#40). The prompt comes first: --allowedTools and --disallowedTools take
   # variable-length lists and stay last.
-  sdir="$(mktemp -d -p "$work" session.XXXXXX)"
-  (cd "$sdir" && FOUNDRY_HEADLESS=1 timeout -k 10 "$CONNECTOR_TIMEOUT" "$claude_bin" -p "$prompt" \
+  if ! sdir="$(mktemp -d -p "$work" session.XXXXXX 2>/dev/null)"; then
+    CONNECTOR_REASON="cannot create a session directory under $work (claude was not run)"
+    return 1
+  fi
+  (cd "$sdir" &&FOUNDRY_HEADLESS=1 timeout -k 10 "$CONNECTOR_TIMEOUT" "$claude_bin" -p "$prompt" \
     --settings "$CONFINE_SETTINGS" --disable-slash-commands --no-session-persistence --permission-mode dontAsk \
     --output-format stream-json --verbose "${schema[@]}" --max-turns "$CONNECTOR_TURNS" --max-budget-usd 1 \
     --allowedTools "$CONNECTOR_TOOL" --disallowedTools "${CONFINE_DENY[@]}" \
@@ -48,7 +51,9 @@ connector_run() {
 # does not read as a missing connector. The checker's stderr is <work dir>/check.err, its first line prefixed "<name>: ".
 connector_outcome() {
   local prc="$1" work="$2"
-  CONNECTOR_EXIT="$prc" CONNECTOR_REASON="$(sed -E 's/^[a-z_]+: //' "$work/check.err" 2>/dev/null | head -n 1)"
+  # sed quits after the first line itself: a `| head -n 1` would take SIGPIPE on a long traceback and, under the
+  # callers' pipefail, kill the script with no log line or alert.
+  CONNECTOR_EXIT="$prc" CONNECTOR_REASON="$(sed -En '1{s/^[a-z_]+: //;p;q}' "$work/check.err" 2>/dev/null)"
   (( prc != 0 && prc != 7 )) || return 0
   if (( CONNECTOR_RC == 124 || CONNECTOR_RC == 137 )); then
     CONNECTOR_EXIT=4 CONNECTOR_REASON="timed out after ${CONNECTOR_TIMEOUT}s"

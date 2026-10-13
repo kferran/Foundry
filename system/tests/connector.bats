@@ -85,6 +85,17 @@ deny_list() { awk '$0 == "--disallowedTools" { p = 1; next } p' "$STUB_ARGS"; }
   [ ! -e "$STUB_ARGS" ]
 }
 
+@test "connector_run runs nothing when no session directory can be made" {
+  prepare
+  chmod a-w "$work"
+  run_rc=0
+  connector_run p "$work" || run_rc=$?
+  chmod u+w "$work"
+  [ "$run_rc" -eq 1 ]
+  [[ "$CONNECTOR_REASON" == *"session directory"* ]]
+  [ ! -e "$STUB_ARGS" ]
+}
+
 @test "two sessions in one process list the servers once and get two directories" {
   prepare
   STUB_MCP_LIST=$'claude.ai Google Calendar: x - ok\nclaude.ai Gmail: y - ok' connector_run p "$work"
@@ -117,4 +128,15 @@ outcome() {
   outcome 3 2 3 "no Gmail connector; claude exited 2: unknown option --foo"
   : > "$work/check.err"
   outcome 1 0 1 ""
+}
+
+@test "connector_outcome reads the first line of a long checker stderr (a traceback) without dying" {
+  prepare
+  printf 'triage: boom\n' > "$work/check.err"
+  head -c 70000 /dev/zero | tr '\0' x >> "$work/check.err"
+  # Under the connector scripts' set -euo pipefail, a SIGPIPE inside the library would kill the script silently.
+  run bash -euo pipefail -c 'source system/scripts/lib_confine.sh; source system/scripts/lib_connector.sh
+    CONNECTOR_RC=0 CONNECTOR_TIMEOUT=30 connector_outcome 3 "$1"; printf "%s %s" "$CONNECTOR_EXIT" "$CONNECTOR_REASON"' _ "$work"
+  [ "$status" -eq 0 ]
+  [ "$output" = "3 boom" ]
 }
