@@ -95,3 +95,26 @@ deny_list() { awk '$0 == "--disallowedTools" { p = 1; next } p' "$STUB_ARGS"; }
   [ "$CONFINE_SETTINGS" = "$first" ]
   [ "$(cat "$STUB_CWD")" != "$cwd1" ]
 }
+
+# outcome <checker exit> <session exit> <expected exit> <expected reason>
+outcome() {
+  CONNECTOR_RC="$2" connector_outcome "$1" "$work"
+  [ "$CONNECTOR_EXIT" -eq "$3" ]
+  [ "$CONNECTOR_REASON" = "$4" ]
+}
+
+@test "connector_outcome: the checker's verdict wins, a timeout is 4, claude's stderr is appended" {
+  prepare
+  printf 'triage: no Gmail connector\n' > "$work/check.err"
+  printf 'unknown option --foo\n' > "$work/claude.err"
+  outcome 0 0 0 "no Gmail connector"
+  outcome 0 2 0 "no Gmail connector"
+  outcome 0 124 0 "no Gmail connector"
+  outcome 7 124 7 "no Gmail connector"
+  outcome 6 124 4 "timed out after 30s"
+  outcome 6 137 4 "timed out after 30s"
+  outcome 3 0 3 "no Gmail connector"
+  outcome 3 2 3 "no Gmail connector; claude exited 2: unknown option --foo"
+  : > "$work/check.err"
+  outcome 1 0 1 ""
+}

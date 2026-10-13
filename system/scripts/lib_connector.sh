@@ -40,3 +40,19 @@ connector_run() {
   rm -rf -- "$sdir"
   return 0
 }
+
+# connector_outcome <checker exit> <work dir>: set CONNECTOR_EXIT and CONNECTOR_REASON from the checker's verdict and
+# the session's exit. The checker's verdict wins: 0 is success whatever claude's exit (the checker saw the whole result,
+# or the post or ticket it confirms exists), and 7 (an unexpected tool) stands. Another failure after a timed-out session
+# is 4; after any other failed session it keeps the checker's code and names claude's exit and stderr, so a refused flag
+# does not read as a missing connector. The checker's stderr is <work dir>/check.err, its first line prefixed "<name>: ".
+connector_outcome() {
+  local prc="$1" work="$2"
+  CONNECTOR_EXIT="$prc" CONNECTOR_REASON="$(sed -E 's/^[a-z_]+: //' "$work/check.err" 2>/dev/null | head -n 1)"
+  (( prc != 0 && prc != 7 )) || return 0
+  if (( CONNECTOR_RC == 124 || CONNECTOR_RC == 137 )); then
+    CONNECTOR_EXIT=4 CONNECTOR_REASON="timed out after ${CONNECTOR_TIMEOUT}s"
+  elif (( CONNECTOR_RC != 0 )); then
+    CONNECTOR_REASON="$CONNECTOR_REASON; claude exited $CONNECTOR_RC: $(head -c 200 "$work/claude.err" 2>/dev/null)"
+  fi
+}
