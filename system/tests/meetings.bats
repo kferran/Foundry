@@ -332,6 +332,11 @@ session_deny() { awk -v n="$1" '$0 == "--end--" { s++; p = 0; next } s == n - 1 
   search_says
   flock system/meetings.lock -c "\"$MF\""
   [ ! -e "$STUB_ARGS" ]
+  # --check must never pass silently (smoke check spec §3.1): a busy lock is a reason and exit 4.
+  run flock system/meetings.lock -c "\"$MF\" --check"
+  [ "$status" -eq 4 ]
+  [ "$output" = "meetings_fetch: another fetch holds system/meetings.lock" ]
+  [ ! -e "$STUB_ARGS" ]
   system/scripts/vault_index.py set system/config.md meetings_enabled false > /dev/null
   run "$MF"
   [ "$status" -eq 0 ]

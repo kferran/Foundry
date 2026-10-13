@@ -210,3 +210,17 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   [ "$status" -eq 0 ]
   grep -qF "startTime \"$(TZ=America/Denver date +%F)T00:00:00\"" "$STUB_ARGS"
 }
+
+@test "--check reports the event count for today and logs the session; a date with it is a usage error (smoke check spec §3.3)" {
+  today="$(TZ=America/Denver date +%F)"
+  stream_ok "[{\"start_date\":\"$today\",\"start_time\":\"09:00\",\"end_date\":\"$today\",\"end_time\":\"09:30\",\"title\":\"Standup\"}]"
+  run "$CF" --check
+  [ "$status" -eq 0 ]
+  [ "$output" = "calendar_fetch: the connector listed 1 events" ]
+  grep -qF "startTime \"${today}T00:00:00\"" "$STUB_ARGS"
+  log="system/logs/calendar_fetch-$(TZ=America/Denver date +%Y-%m).jsonl"
+  [ "$(wc -l < "$log")" -eq 1 ]
+  [ "$(jq .exit "$log")" = 0 ]
+  run "$CF" --check "$DAY"
+  [ "$status" -eq 2 ]
+}

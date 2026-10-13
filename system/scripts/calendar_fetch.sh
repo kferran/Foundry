@@ -1,5 +1,6 @@
 #!/bin/bash
 # Fetch one day's events from the Google Calendar connector as TSV on stdout (calendar spec §4).
+# --check runs today's session and prints how many events it listed instead of the TSV (smoke check spec §3.3).
 # The session is run and confined by lib_connector.sh, with skills off, and afterwards checked by
 # calendar_tsv.py's tool-use check. Exit codes: calendar spec §4.5.
 set -euo pipefail
@@ -21,7 +22,10 @@ CALENDAR_OTHERS=(create_event update_event delete_event respond_to_event get_eve
 
 TZ="$(config_get timezone UTC)"
 export TZ
-(( $# <= 1 )) || { echo "usage: calendar_fetch.sh [YYYY-MM-DD]" >&2; exit 2; }
+usage() { echo "usage: calendar_fetch.sh [YYYY-MM-DD | --check]" >&2; exit 2; }
+check=0
+if [[ "${1:-}" == --check ]]; then check=1; shift; (( $# == 0 )) || usage; fi
+(( $# <= 1 )) || usage
 day="${1:-$(date +%F)}"
 args_date "$day" || { echo "calendar_fetch: invalid date: $day" >&2; exit 2; }
 next="$(date -d "$day +1 day" +%F)"
@@ -60,5 +64,9 @@ if (( prc == 7 )); then
   printf -- '- %s [calendar] calendar fetch for %s: %s\n' "$(date +%H:%M:%S)" "$day" "$CONNECTOR_REASON" >> "system/logs/alerts_$(date +%F).md"
 fi
 (( CONNECTOR_EXIT == 0 )) || finish "$CONNECTOR_EXIT" "$CONNECTOR_REASON"
-cat "$work/events.tsv"
+if (( check )); then
+  echo "calendar_fetch: the connector listed $(wc -l < "$work/events.tsv") events"
+else
+  cat "$work/events.tsv"
+fi
 finish 0 ""

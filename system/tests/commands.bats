@@ -693,6 +693,15 @@ self_edit_contract() {
   grep -qF 'one `system/scripts/calendar_fetch.sh` run from a throwaway clone proves the connector flags' FOUNDRY.md
 }
 
+@test "the manual describes the smoke check: its timer, its version file and the alert that triggers the acceptance steps (smoke check spec §3.5)" {
+  grep -qF '`foundry-smoke.timer` runs `smoke_check.sh` 15 minutes before the brief' FOUNDRY.md
+  grep -qF '`system/logs/claude.version`' FOUNDRY.md
+  grep -qF 'a `[smoke] version` alert is the trigger' FOUNDRY.md
+  grep -qF 'the smoke check 15 minutes before it' FOUNDRY.md
+  run grep -F 'after each unattended template update' docs/superpowers/roadmap.md
+  [ "$status" -eq 1 ]
+}
+
 @test "/setup phase 4 offers setup_remote.sh's SSH hint before asking for credentials (#16)" {
   sec="$(setup_section '4. Remote')"
   [[ "$sec" == *'printed a `hint:` line with an SSH URL, offer that URL first'* ]]
