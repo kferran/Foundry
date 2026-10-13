@@ -753,6 +753,13 @@ self_edit_contract() {
   grep -qF 'By default `run_window` is empty and the window is always open' FOUNDRY.md
 }
 
+@test "the usage ceiling: what holds, what never holds, and where the reading comes from (usage ceiling spec)" {
+  grep -qF '**The usage ceiling.**' FOUNDRY.md
+  grep -qF 'intake ingests, the meetings fetch, inbox triage and new Work Orders wait' FOUNDRY.md
+  grep -qF 'The brief, the debrief and Slack notices never wait' FOUNDRY.md
+  grep -qF 'every headless run, brief and debrief included, records the reading' FOUNDRY.md
+}
+
 @test "the brief and the debrief report Work Orders (Foreman v1 §3.4)" {
   b=.claude/commands/brief.md
   grep -qF -- '- **🛠 Work Orders:** the `## Items` table from `nightshift.md` verbatim' "$b"
