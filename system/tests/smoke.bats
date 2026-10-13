@@ -192,6 +192,13 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   [ ! -e system/logs/claude.version ]
 }
 
+@test "the version is the first stdout line only, so a stderr notice never changes the recorded reading" {
+  printf '#!/bin/bash\necho "update available" >&2\necho "1.0.0 (Claude Code)"\necho "more"\n' > "$BATS_TEST_TMPDIR/bin/claude"
+  run "$SC"
+  [ "$status" -eq 0 ]
+  [ "$(cat system/logs/claude.version)" = "1.0.0 (Claude Code)" ]
+}
+
 @test "a client runs no checks" {
   set_key machine_role '"client"'
   run "$SC"

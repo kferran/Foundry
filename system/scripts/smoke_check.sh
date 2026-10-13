@@ -66,10 +66,12 @@ vfile=system/logs/claude.version
 [[ -e "$vfile" || ! -e system/logs/claude_version ]] || mv -- system/logs/claude_version "$vfile"
 claude_bin="${CLAUDE_BIN:-claude}"
 vrc=0
-vout="$(timeout "${SMOKE_VERSION_TIMEOUT:-30}" "$claude_bin" --version 2>&1 < /dev/null)" || vrc=$?
+# stdout only, first line: the reading system_health.bats records, so the two writers never flip the file.
+vout="$(timeout "${SMOKE_VERSION_TIMEOUT:-30}" "$claude_bin" --version 2> "$out" < /dev/null)" || vrc=$?
 current="${vout%%$'\n'*}"
 if (( vrc != 0 )) || [[ -z "$current" ]]; then
-  report version 1 "claude --version failed (exit $vrc): ${current:-no output}"
+  r="$(reason "$claude_bin")"
+  report version 1 "claude --version failed (exit $vrc): ${r:-no output}"
 else
   recorded="$(cat "$vfile" 2>/dev/null || true)"
   if [[ -n "$recorded" && "$recorded" != "$current" ]]; then
