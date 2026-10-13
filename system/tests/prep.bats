@@ -468,6 +468,14 @@ gh_says() {
   [ "$status" -ne 0 ]  # no prs line, or no unavailable.md at all
 }
 
+@test "debrief_prep: a gh search that hangs is cut off and listed as unavailable (audit C11)" {
+  gh_says
+  printf '%s\n' '#!/bin/bash' 'sleep 30' > "$STUBS/gh"
+  GH_TIMEOUT=1 run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qxF -- '- debrief_prep: prs: gh search failed (see system/logs/inputs/2026-10-01/prep_errors.log)' "$IN/unavailable.md"
+}
+
 @test "debrief_prep: no GitHub repository writes an empty prs.md; a failing gh is an unavailable source" {
   run "$DP" 2026-10-01
   [ "$status" -eq 0 ]
