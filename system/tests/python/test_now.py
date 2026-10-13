@@ -175,6 +175,16 @@ def test_a_failed_pr_check_skips_the_other_prs_this_tick(vault, tmp_path):
     assert len((vault / "system/logs/now-2026-10.jsonl").read_text().splitlines()) == 1
 
 
+def test_a_line_with_trailing_space_or_a_crlf_end_still_parses(vault, tmp_path):
+    # Audit C12: an editor's trailing space or CRLF must not hide a line from dedupe and evidence checks.
+    prepare(vault)
+    now.add(vault, "work", "owed", "Spaced", TODAY, evidence="https://github.com/acme/shop/pull/7")
+    path = vault / "wiki/work/Now.md"
+    path.write_text(path.read_text().replace("pull/7)", "pull/7)  \r"))
+    assert now.add(vault, "work", "owed", "Spaced", TODAY)[0] == "exists"
+    assert now.check(vault, TODAY, [].append, gh_stub(tmp_path, "MERGED")) == 1
+
+
 def test_a_reopened_line_loses_its_stamp():
     text = "- [ ] owed: Again (since 2026-10-01) _(closed: ticked 2026-10-02)_\n"
     assert now.stamp_and_prune(text, TODAY) == "- [ ] owed: Again (since 2026-10-01)\n"

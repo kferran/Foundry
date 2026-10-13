@@ -89,9 +89,11 @@ prs_md() {
   command -v gh > /dev/null 2>&1 || return 3
   for r in "${repos[@]}"; do args+=(--repo "$r"); done
   args+=(--json url,title --limit 100)
-  gh search prs --author @me --created "$PREP_DATE" "${args[@]}" --jq '.[] | "- code — opened: \(.title) — \(.url)"' || return 1
-  gh search prs --author @me --merged-at "$PREP_DATE" "${args[@]}" --jq '.[] | "- code — merged: \(.title) — \(.url)"' || return 1
-  gh search prs --reviewed-by @me --updated "$PREP_DATE" "${args[@]}" --jq '.[] | "- review — reviewed: \(.title) — \(.url)"' || return 1
+  # Each search is cut off after GH_TIMEOUT seconds, so a hung proxy cannot eat the debrief's budget (audit C11).
+  local t="${GH_TIMEOUT:-60}"
+  timeout "$t" gh search prs --author @me --created "$PREP_DATE" "${args[@]}" --jq '.[] | "- code — opened: \(.title) — \(.url)"' || return 1
+  timeout "$t" gh search prs --author @me --merged-at "$PREP_DATE" "${args[@]}" --jq '.[] | "- code — merged: \(.title) — \(.url)"' || return 1
+  timeout "$t" gh search prs --reviewed-by @me --updated "$PREP_DATE" "${args[@]}" --jq '.[] | "- review — reviewed: \(.title) — \(.url)"' || return 1
 }
 rc=0
 prep_write prs.md prs_md || rc=$?

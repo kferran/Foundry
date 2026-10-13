@@ -52,7 +52,8 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   run grep -l stub_claude "$UD"/*
   [ "$status" -eq 1 ]
   grep -qx 'TimeoutStartSec=90min' "$UD/foundry-intake.service"
-  grep -qx 'TimeoutStartSec=45min' "$UD/foundry-brief.service"
+  # The brief's worst case (prep fetches, the lock wait, a 15-minute session, publish) is about 47 minutes (audit C6).
+  grep -qx 'TimeoutStartSec=60min' "$UD/foundry-brief.service"
   grep -qx 'TimeoutStartSec=45min' "$UD/foundry-debrief.service"
   grep -qxF "ExecStartPre=-\"$VP/system/scripts/brief_prep.sh\"" "$UD/foundry-brief.service"
   grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/foundry-brief.service"
@@ -269,7 +270,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qxF "ExecStartPre=-\"$VP/system/scripts/debrief_prep.sh\"" "$UD/foundry-debrief.service.d/foundry-sync.conf"
   [ "$(grep -c '^ExecStartPre=' "$UD/foundry-intake.service.d/foundry-sync.conf")" -eq 2 ]
   grep -qx 'TimeoutStartSec=105min' "$UD/foundry-intake.service.d/foundry-sync.conf"
-  grep -qx 'TimeoutStartSec=60min' "$UD/foundry-brief.service.d/foundry-sync.conf"
+  grep -qx 'TimeoutStartSec=75min' "$UD/foundry-brief.service.d/foundry-sync.conf"
   grep -qx 'TimeoutStartSec=60min' "$UD/foundry-debrief.service.d/foundry-sync.conf"
   run "$IU"
   grep -qx 'unchanged foundry-brief.service.d/foundry-sync.conf' <<< "$output"
@@ -392,6 +393,19 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -q '^OnUnitActiveSec=1h$' "$UD/foundry-telemetry.timer"
   grep -q 'telemetry_fetch.py' "$UD/foundry-telemetry.service"
   grep -q 'enable --now .*foundry-telemetry.timer' "$STUB_SYSTEMCTL_LOG"
+}
+
+@test "a telemetry source list that fails stops the install and keeps the telemetry units (audit C5)" {
+  mkdir -p "$V/system/telemetry" "$V/system/codebases"
+  printf -- '---\ntype: codebase\nname: "x"\npath: "~"\npartition: "work"\nsearch_globs: ["*"]\n---\n' > "$V/system/codebases/x.md"
+  printf -- '---\ntype: telemetry_source\nname: "p"\ncodebase: "x"\nenvironment: "prod"\nkind: "adx"\nadx_cluster: "https://e"\nadx_database: "d"\n---\n' > "$V/system/telemetry/p.md"
+  run "$IU"
+  [ -e "$UD/foundry-telemetry.timer" ]
+  printf '#!/bin/bash\necho "telemetry_fetch: index locked" >&2\nexit 1\n' > "$V/system/scripts/telemetry_fetch.py"
+  run "$IU" --update
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"telemetry_fetch.py --list failed"* ]]
+  [ -e "$UD/foundry-telemetry.timer" ]
 }
 
 @test "a server gets no sync drop-in for the telemetry service" {
