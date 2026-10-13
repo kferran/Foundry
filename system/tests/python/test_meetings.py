@@ -357,6 +357,7 @@ import json  # noqa: E402
 import os  # noqa: E402
 import subprocess  # noqa: E402
 import sys  # noqa: E402
+import time  # noqa: E402
 
 from helpers import meeting, write  # noqa: E402
 from test_intake import calls, iv, later  # noqa: E402,F401  (iv is a fixture)
@@ -491,8 +492,50 @@ def test_first_source_wins_a_drop_after_a_doc_is_archived(iv):
     assert f"wiki/work/meetings/{NAME}.md" in alerts(iv)
 
 
+def long_cues(count, suffix):
+    """A .vtt or .srt of <count> cues, one line each, so the transcript clears the empty threshold."""
+    arrow = "00:%02d:%02d.000 --> 00:%02d:%02d.900" if suffix == ".vtt" else "00:%02d:%02d,000 --> 00:%02d:%02d,900"
+    cues = "".join(f"{i}\n{arrow % (i // 60, i % 60, i // 60, i % 60)}\n"
+                   f"{'Avery' if i % 2 else 'Blake'} Sample: Line {i} of the conversation.\n\n" for i in range(1, count + 1))
+    return ("WEBVTT\n\n" if suffix == ".vtt" else "") + cues
+
+
+def aged(vault, partition, name):
+    """Date a published meeting note and its transcript an hour back, past the gate's 60 s freshness guard."""
+    for suffix in (".md", ".transcript.md"):
+        os.utime(vault / f"wiki/{partition}/meetings/{name}{suffix}", (time.time() - HOURS, time.time() - HOURS))
+
+
+def test_an_empty_first_source_is_deprecated_by_a_fuller_later_source(iv):
+    config(iv, meetings_partition="work")
+    fetched(iv, body=NOT_PRODUCED + TRANSCRIPT + END)  # no notes, a 3-line transcript: the people left the call
+    tick(iv)
+    aged(iv, "work", NAME)
+    recording = dropped(iv, "work/2026-10-05 1500 Weekly sync - Planning.srt", long_cues(30, ".srt"))
+    tick(iv)
+    assert len(meeting_runs(iv)) == 2 and not recording.exists()
+    assert not (iv / "raw/archive" / recording.name).exists()
+    old = frontmatter.parse((iv / f"wiki/work/meetings/{NAME}.md").read_text()).data
+    assert old["status"] == "deprecated" and old["source"] == f"gdoc:{DOC_ID}"
+    new = frontmatter.parse((iv / f"wiki/work/meetings/{NAME}-2.md").read_text()).data
+    assert new["source"].startswith("drop:") and new.get("status", "canonical") == "canonical"
+    assert (iv / f"raw/work/notes/{NAME}-2.meeting-input.md").is_file()
+    assert "replaced an empty first source" in alerts(iv) and f"wiki/work/meetings/{NAME}.md" in alerts(iv)
+
+
+def test_an_empty_later_source_still_loses_to_an_empty_first_source(iv):
+    config(iv, meetings_partition="work")
+    fetched(iv, body=NOT_PRODUCED + TRANSCRIPT + END)
+    tick(iv)
+    aged(iv, "work", NAME)
+    dup = dropped(iv, "work/2026-10-05 1510 Weekly sync - Planning.srt", SRT)
+    tick(iv)
+    assert len(meeting_runs(iv)) == 1 and (iv / "raw/archive" / dup.name).is_file()
+    assert frontmatter.parse((iv / f"wiki/work/meetings/{NAME}.md").read_text()).data.get("status", "canonical") == "canonical"
+
+
 def test_first_source_wins_a_doc_after_a_drop_is_archived_and_skipped_by_the_fetch(iv):
-    dropped(iv, "work/2026-10-05 1505 Weekly sync - Planning.vtt", VTT)
+    dropped(iv, "work/2026-10-05 1505 Weekly sync - Planning.vtt", long_cues(30, ".vtt"))
     tick(iv)
     config(iv, meetings_partition="work")
     fetched(iv)

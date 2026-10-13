@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import frontmatter, meetings, now as nowmod, publish, rca as rcamod, redact as redactmod, schema as schemamod
+from . import cli, frontmatter, meetings, now as nowmod, publish, rca as rcamod, redact as redactmod, schema as schemamod
 from . import triage
 
 FRESH_SECONDS = 60
@@ -33,6 +33,9 @@ NOT_INPUT_FAULT = (0, SETTINGS_EXIT, CAP_EXIT, 6, *SIGNAL_EXITS)  # 6 = busy loc
 MEETING_PARTITIONS = ("work", "personal")
 DROP_SUFFIXES = (".vtt", ".srt", ".txt", ".md")
 DUPLICATE_SECONDS = 15 * 60
+# A meeting note with no summary, decisions or action items and a transcript under this many spoken lines is empty:
+# the reported case (#142) had 9 lines from a minute of talk before everyone left; a meeting that was held has dozens.
+EMPTY_TRANSCRIPT_LINES = 20
 
 
 def _append_jsonl(path, record) -> None:
@@ -594,12 +597,16 @@ class Intake:
                 # that tick stopped before its log line (#43): the brief's Notices read complete from it
                 self._meeting_log({"kind": "imported", "source": rel, "note": note, "complete": m.complete})
         else:
-            twin = next((p for p, d in known if self._same_meeting(m, d)), None)
-            if twin is not None:
-                self._archive_duplicate(path, rel, m, twin)
-                return
+            twin = next((p for p, d in known if d.get("status") != "deprecated" and self._same_meeting(m, d)), None)
             name = self._free_name(meetings.note_name(m))
-            report = self._publish_meeting(m, name, partition, rel)
+            retire = None
+            if twin is not None:  # first source wins, unless it is empty and this one is not (#142)
+                if not (self._empty_note(twin) and not self._empty(meetings.render_meeting(m, name, partition),
+                                                                     meetings.render_transcript(m, name, partition))):
+                    self._archive_duplicate(path, rel, m, twin)
+                    return
+                retire = twin
+            report = self._publish_meeting(m, name, partition, rel, retire)
             if report["status"] == "conflict":  # held back at apply time (#37): the next tick finishes or retries
                 self.alert(f"meeting import of {rel} held back {', '.join(report['conflicts'])} "
                            "(changed during the publish); will retry")
@@ -610,10 +617,31 @@ class Intake:
                     return  # a target appeared meanwhile: the next tick's duplicate check finds it
                 self._quarantine_meeting(path, rel, "the publish gate rejected it: " + "; ".join(problems))
                 return
-            self._meeting_log({"kind": "imported", "source": rel, "note": f"wiki/{partition}/meetings/{name}.md",
-                               "complete": m.complete})
+            note = f"wiki/{partition}/meetings/{name}.md"
+            record = {"kind": "imported", "source": rel, "note": note, "complete": m.complete}
+            if retire is not None:
+                old = retire.relative_to(self.vault).as_posix()
+                record["replaced"] = old
+                self.alert(f"meeting source {rel} replaced an empty first source: {old} is deprecated, "
+                           f"the meeting is now {note}")
+            self._meeting_log(record)
         self._hand_to_compile(m, name, partition)
         path.unlink()
+
+    def _empty(self, note_text: str, transcript_text: str) -> bool:
+        """No summary, decisions or action items, and under EMPTY_TRANSCRIPT_LINES spoken lines: nothing to keep."""
+        body = frontmatter.parse(note_text).body
+        spoken = [line for line in frontmatter.parse(transcript_text).body.splitlines()
+                  if line.strip() and not line.startswith("#")]
+        return (all(f"## {heading}\nNone." in body for heading in ("Summary", "Decisions", "Action items"))
+                and len(spoken) < EMPTY_TRANSCRIPT_LINES)
+
+    def _empty_note(self, note: Path) -> bool:
+        try:
+            return self._empty(note.read_text(encoding="utf-8"),
+                               note.with_name(note.name[:-3] + ".transcript.md").read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError):
+            return False  # a note that cannot be read is kept
 
     def _same_meeting(self, m, data) -> bool:
         if m.source.startswith("gdoc:") and str(data.get("source", "")).startswith("gdoc:"):
@@ -647,15 +675,21 @@ class Intake:
             candidate = f"{name}-{n}"
         return candidate
 
-    def _publish_meeting(self, m, name: str, partition: str, rel: str) -> dict:
+    def _publish_meeting(self, m, name: str, partition: str, rel: str, retire=None) -> dict:
+        """Publish the note and transcript as one run; with retire, that empty twin note is deprecated in the same run."""
         run_id = f"{self.dt():%Y%m%dT%H%M%S}-meeting-{os.urandom(2).hex()}"
         base = f"wiki/{partition}/meetings/{name}"
         targets = [f"{base}.md", f"{base}.transcript.md"]
+        texts = [meetings.render_meeting(m, name, partition), meetings.render_transcript(m, name, partition)]
+        if retire is not None:
+            targets.append(retire.relative_to(self.vault).as_posix())
+            texts.append(cli.set_scalar_text(retire.read_text(encoding="utf-8"), "status", "deprecated"))
         started = self.dt().isoformat(timespec="seconds")
         publish.snapshot(self.vault, run_id, targets)
         staging = publish.staging_dir(self.vault, run_id)
-        for target, text in zip(targets, (meetings.render_meeting(m, name, partition),
-                                          meetings.render_transcript(m, name, partition))):
+        if retire is not None:
+            publish.record_stage(self.vault, run_id, targets[-1])
+        for target, text in zip(targets, texts):
             (staging / target).parent.mkdir(parents=True, exist_ok=True)
             (staging / target).write_text(text, encoding="utf-8")
         report = publish.commit_run(self.vault, run_id)
