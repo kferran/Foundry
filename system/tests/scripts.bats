@@ -155,3 +155,9 @@ bad_note() {
   [ "$status" -eq 2 ]
   [[ "$output" == *"neither a .bats suite nor a pytest path"* ]]
 }
+
+@test "every claude flag for a connector session lives in lib_connector.sh (connector runner spec §4)" {
+  run grep -l -e '--permission-mode' -e '--disallowedTools' "$REPO"/system/scripts/*.sh
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf '%s/system/scripts/lib_connector.sh\n%s/system/scripts/run_headless.sh' "$REPO" "$REPO")" ]
+}
