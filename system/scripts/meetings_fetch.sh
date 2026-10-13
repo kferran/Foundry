@@ -1,6 +1,6 @@
 #!/bin/bash
 # Fetch new Gemini notes from Google Drive into raw/meetings/ (meetings spec §2.1): one search session, then
-# one read session per Doc, each confined by lib_confine.sh and checked by meetings_extract.py. Runs on a server
+# one read session per Doc, each run and confined by lib_connector.sh and checked by meetings_extract.py. Runs on a server
 # or standalone vault with meetings_enabled true. --check runs the search only and prints how many Docs it listed.
 # Exit: 0 ok (failed reads are logged and retried later), 2 usage, or the search's 1 claude error (or a failed
 # filter), 3 no connector, 4 timeout, 6 connector error, 7 unexpected tool, 127 no claude.
@@ -11,6 +11,8 @@ cd "$VAULT_ROOT"
 source system/scripts/lib_config.sh
 # shellcheck source=lib_confine.sh
 source system/scripts/lib_confine.sh
+# shellcheck source=lib_connector.sh
+source system/scripts/lib_connector.sh
 
 PREFIX=mcp__claude_ai_Google_Drive
 SERVER_NAME="claude.ai Google Drive"
@@ -37,8 +39,8 @@ started="$(date -Iseconds)"
 log="system/logs/meetings_fetch-$(date +%Y-%m).jsonl"
 since_file=system/logs/meetings_fetch.since
 work="$(mktemp -d -p /tmp)"
-sdir=""  # the running session's directory: a unit stopped mid-session (TimeoutStartSec) must not leave it (#40)
-trap 'rm -rf -- "$work" ${sdir:+"$sdir"}' EXIT
+trap 'rm -rf -- "$work"' EXIT  # the sessions' directories are under it: a unit stopped mid-session leaves none (#40)
+CONNECTOR_SERVER="$SERVER_NAME" CONNECTOR_PREFIX="$PREFIX" CONNECTOR_TIMEOUT="${MEETINGS_TIMEOUT:-150}" CONNECTOR_TURNS=10
 
 logline() {  # <step> <doc ID or "search"> <exit> <reason>
   jq -cn --arg time "$(date -Iseconds)" --arg step "$1" --arg doc "$2" --argjson exit "$3" --arg reason "$4" \
@@ -59,46 +61,29 @@ if (( ! check )); then
   fi
 fi
 
-claude_bin="${CLAUDE_BIN:-claude}"
-if ! command -v "$claude_bin" > /dev/null 2>&1; then
-  logline search search 127 "claude not found ($claude_bin)"
-  echo "meetings_fetch: claude not found ($claude_bin)" >&2
-  exit 127
-fi
-confine_settings "$SERVER_NAME" "$work"
-
 # session <step> <prompt> [Doc ID]: one confined session for search or read, checked and extracted into
 # $work/<step>.out; logs and returns its exit.
 session() {
-  local step="$1" prompt="$2" id="${3:-}" tool rc=0 prc=0 reason t
-  local -a others=() args=("$step")
-  [[ "$step" == search ]] && tool="${PREFIX}__search_files" || tool="${PREFIX}__read_file_content"
-  for t in "${DRIVE_TOOLS[@]}"; do [[ "${PREFIX}__$t" == "$tool" ]] || others+=("${PREFIX}__$t"); done
-  if ! confine_deny --strict "$PREFIX" "$tool" "${others[@]}"; then
-    logline "$step" "${id:-search}" 1 "$CONFINE_ERROR"
-    echo "meetings_fetch: $CONFINE_ERROR" >&2
-    return 1
-  fi
+  local step="$1" prompt="$2" id="${3:-}" rrc=0 prc=0 t
+  local -a args=("$step")
+  [[ "$step" == search ]] && CONNECTOR_TOOL="${PREFIX}__search_files" || CONNECTOR_TOOL="${PREFIX}__read_file_content"
+  CONNECTOR_OTHERS=()
+  for t in "${DRIVE_TOOLS[@]}"; do [[ "${PREFIX}__$t" == "$CONNECTOR_TOOL" ]] || CONNECTOR_OTHERS+=("$t"); done
   [[ -z "$id" ]] || args+=("$id" "$work/listing.json")
-  # A fresh working directory per session. The prompt comes first: --allowedTools and --disallowedTools take
-  # variable-length lists and stay last.
-  sdir="$(mktemp -d -p /tmp)"
-  (cd "$sdir" && FOUNDRY_HEADLESS=1 timeout -k 10 "${MEETINGS_TIMEOUT:-150}" "$claude_bin" -p "$prompt" \
-    --settings "$CONFINE_SETTINGS" --disable-slash-commands --no-session-persistence --permission-mode dontAsk \
-    --output-format stream-json --verbose --max-turns 10 --max-budget-usd 1 \
-    --allowedTools "$tool" --disallowedTools "${CONFINE_DENY[@]}" \
-    < /dev/null > "$work/out.jsonl" 2> "$work/claude.err") || rc=$?
-  rm -rf -- "$sdir"
-  sdir=""
+  connector_run "$prompt" "$work" || rrc=$?
+  if (( rrc != 0 )); then
+    logline "$step" "${id:-search}" "$rrc" "$CONNECTOR_REASON"
+    echo "meetings_fetch: $CONNECTOR_REASON" >&2
+    return "$rrc"
+  fi
   # The tool-use check runs on every session, a timed-out one included.
-  system/scripts/meetings_extract.py "${args[@]}" < "$work/out.jsonl" > "$work/$step.out" 2> "$work/extract.err" || prc=$?
-  reason="$(sed 's/^meetings_extract: //' "$work/extract.err" | head -n 1)"
-  if (( prc != 7 && (rc == 124 || rc == 137) )); then prc=4 reason="timed out after ${MEETINGS_TIMEOUT:-150}s"; fi
-  if (( prc == 0 && rc != 0 )); then prc=1 reason="claude exited $rc: $(head -c 200 "$work/claude.err")"; fi
-  logline "$step" "${id:-search}" "$prc" "$reason"
+  system/scripts/meetings_extract.py "${args[@]}" < "$work/out.jsonl" > "$work/$step.out" 2> "$work/check.err" || prc=$?
+  connector_outcome "$prc" "$work"
+  prc="$CONNECTOR_EXIT"
+  logline "$step" "${id:-search}" "$prc" "$CONNECTOR_REASON"
   case "$prc" in
     0) ;;
-    3|6|7) alert_once "Drive fetch failed (exit $prc):" "${id:+Doc $id: }$reason" ;;
+    3|6|7) alert_once "Drive fetch failed (exit $prc):" "${id:+Doc $id: }$CONNECTOR_REASON" ;;
   esac
   return "$prc"
 }
