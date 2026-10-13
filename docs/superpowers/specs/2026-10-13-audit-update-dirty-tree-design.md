@@ -17,7 +17,7 @@
 
 ## 3. Changes
 
-- `system/scripts/lib_git.sh`: `git_sync_commit <role>` (moved from `vault_sync.sh`; sets `GIT_SYNC_ERROR` and returns 1 on a refusal).
+- `system/scripts/lib_git.sh`: `git_sync_commit <role>` (moved from `vault_sync.sh`; sets `GIT_SYNC_ERROR` and returns 1 on a refusal). Its own `git` calls close fd 9 (`9>&-`), as `vault_sync.sh`'s `git()` wrapper and `update_template.sh`'s `g()` do, so neither `git add`, `git commit` nor the hook they spawn inherits `run.lock`.
 - `system/scripts/vault_sync.sh`: calls it; exits and alerts unchanged.
 - `system/scripts/update_template.sh`: in `--unattended`, the clean-tree `die` becomes the commit call, under `run.lock` and before the fetch.
 - `FOUNDRY.md` Updating: "refuses uncommitted changes" becomes "commits them first, as the sync does", and the sentence "the clean-tree check matters only on a standalone machine" goes.
@@ -27,7 +27,7 @@
 
 ## 4. Tests
 
-bats `remote.bats`: the case "--unattended fails with an alert on uncommitted changes and never commits them (#87)" flips: a new note and a pending published run give a `commit_runs` commit, a `sync(standalone): 1 file(s)` commit and the merge, exit 0 and the update alert; a note the hook refuses gives exit 1, an alert with the hook's line, no fetch (no `refs/remotes/template`) and the note still uncommitted; interactive mode still refuses a dirty tree before fetching (the existing case). `sync.bats`: the commit cases pass unchanged after the move. Each fails before the change. Bound tools: bats and the gate.
+bats `remote.bats`: the case "--unattended fails with an alert on uncommitted changes and never commits them (#87)" flips: a new note and a pending published run give a `commit_runs` commit, a `sync(standalone): 1 file(s)` commit and the merge, exit 0 and the update alert; a note the hook refuses gives exit 1, an alert with the hook's line, no fetch (no `refs/remotes/template`) and the note still uncommitted; interactive mode still refuses a dirty tree before fetching (the existing case); no git child of the unattended commit inherits `run.lock`'s fd 9 (the `sync.bats` case, mirrored). `sync.bats`: the commit cases pass unchanged after the move. Each fails before the change. Bound tools: bats and the gate.
 
 ## 5. Out of scope
 

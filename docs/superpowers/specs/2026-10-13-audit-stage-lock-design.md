@@ -24,7 +24,7 @@ C2: `_apply` holds back a target that changed between validation and the rename,
 - `FOUNDRY.md`, Publish step: after "your edit is kept", one sentence: a note you edited while the gate was renaming is held back, the rest publishes, and the alert names the staged copy under `system/quarantine/`.
 - `nightshift_deliver.publish_research` still treats `conflict` as a failure: a findings note is one target, so a conflict there is the whole result, and the item is better queued again. Unchanged.
 
-**Existing vault:** no config or unit change. A poisoned input whose only failures were partial publishes is restored with `intake.py --retry` by hand.
+**Existing vault:** no config or unit change. A poisoned input whose only failures were partial publishes is restored with `intake.py --retry <run_id>` (or `--retry-all`) by hand.
 
 ## 4. Tests
 

@@ -26,7 +26,7 @@ A transcript dropped into `meetings/drop/<partition>/` on a client reaches the s
 
 ## 4. Tests
 
-bats `meetings.bats`: the named-secret case flips: `call.txt` with an AWS key and `token = hunter2` commits with exit 0, the committed blob and the working file both read `[REDACTED:aws_key]` and `[REDACTED:assignment]`, and the output names the count; the Teams-style VTT commits with its cue ID redacted and intake then imports it as one turn; a UTF-16 drop with a byte-order mark commits as UTF-8 text with its secret redacted; `slides.pdf` is still refused; `.gitkeep` still commits. pytest `test_redact.py`: `--drop` on UTF-8 input, UTF-8 with a mark and UTF-16, and the two `named_kinds` cases go. Each fails before the change. Bound tools: bats, pytest and the gate.
+bats `meetings.bats`: the named-secret case flips: `call.txt` with an AWS key and `token = hunter2` commits with exit 0, the committed blob and the working file both read `[REDACTED:aws_key]` and `[REDACTED:assignment]`, and the output names the count; the Teams-style VTT commits with its cue ID redacted and intake then imports it as one turn; a UTF-16 drop with a byte-order mark commits as UTF-8 text with its secret redacted; `slides.pdf` is still refused; `.gitkeep` still commits; the spoken-password case flips too: `api_key = …` commits redacted, and `password: it expired` commits as `password: [REDACTED:assignment] expired`, the text the published transcript carries today. pytest `test_redact.py`: `--drop` on UTF-8 input, UTF-8 with a mark and UTF-16; the four `named_kinds` and `--kinds` cases go. Each fails before the change. Bound tools: bats, pytest and the gate.
 
 ## 5. Out of scope
 
