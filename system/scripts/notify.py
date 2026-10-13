@@ -21,7 +21,7 @@ from vaultlib import notify  # noqa: E402
 from vaultlib.intake import Intake  # noqa: E402
 from vaultlib.stream import messages  # noqa: E402
 
-DEFAULT_CONNECTOR = "plugin:slack:slack"
+DEFAULT_CONNECTOR = "claude.ai Slack"  # the connector a headless session loads (#133)
 
 
 def tool() -> str:

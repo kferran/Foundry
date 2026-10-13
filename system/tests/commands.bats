@@ -920,7 +920,8 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
 
 @test "Slack notices: /setup phase 6d asks, checks the connector and tests only on yes; the manual and the schema describe them (#28)" {
   grep -qF '## 6d. Slack notices' .claude/commands/setup.md
-  grep -qF 'Check that `claude mcp list` shows the Slack connector' .claude/commands/setup.md
+  grep -qF '`slack_connector` defaults to `claude.ai Slack`' .claude/commands/setup.md
+  grep -qF 'slack_connector: {kind: string, default: "claude.ai Slack"}' system/schemas/config.md
   grep -qF 'only on yes, run `system/scripts/notify.sh --check`' .claude/commands/setup.md
   grep -qF '**Slack notices.** With `slack_notify_channel` set' FOUNDRY.md
   grep -qF 'No note text from `wiki/` is sent.' FOUNDRY.md

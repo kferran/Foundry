@@ -16,7 +16,8 @@ source system/scripts/lib_config.sh
 # shellcheck source=lib_confine.sh
 source system/scripts/lib_confine.sh
 
-# The Slack plugin's other tools, the draft tool first: its description steers a model to drafts.
+# The Slack connector's other tools, the draft tool first: its description steers a model to drafts. The plugin and
+# the claude.ai connector share these names under their own prefix.
 OTHER_TOOLS=(slack_send_message_draft slack_schedule_message slack_add_reaction slack_add_list_record
   slack_complete_file_upload slack_create_canvas slack_create_conversation slack_create_list slack_get_file_upload_url
   slack_get_reactions slack_list_channel_members slack_list_user_channels slack_read_canvas slack_read_channel
@@ -76,7 +77,7 @@ fi
 n="$(jq '.lines | length' "$work/collected.json")"
 claude_bin="${CLAUDE_BIN:-claude}"
 command -v "$claude_bin" > /dev/null 2>&1 || fail 127 "claude not found ($claude_bin)"
-connector="$(config_get slack_connector "plugin:slack:slack")"
+connector="$(config_get slack_connector "claude.ai Slack")"
 TOOL="$(system/scripts/notify.py tool)"
 PREFIX="${TOOL%__slack_send_message}"
 confine_settings "$connector" "$work"
