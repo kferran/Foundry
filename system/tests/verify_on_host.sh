@@ -18,7 +18,7 @@ git archive --format=tar HEAD \
   || die 1 "could not copy HEAD to $host:$dir"
 
 set +e
-ssh "${ssh_opts[@]}" "$host" "cd '$dir' && system/scripts/verify_setup.sh > '$dir.log' 2>&1; rc=\$?; sed -n '/===== summary/,\$p' '$dir.log'; if [ \$rc -eq 0 ]; then rm -rf -- '$dir' '$dir.log'; else echo 'kept: $host:$dir and $dir.log'; fi; exit \$rc"
+ssh "${ssh_opts[@]}" "$host" "cd '$dir' && system/scripts/verify_setup.sh --require-suites > '$dir.log' 2>&1; rc=\$?; sed -n '/===== summary/,\$p' '$dir.log'; if [ \$rc -eq 0 ]; then rm -rf -- '$dir' '$dir.log'; else echo 'kept: $host:$dir and $dir.log'; fi; exit \$rc"
 rc=$?
 set -e
 exit "$rc"

@@ -211,6 +211,18 @@ failing_bats() { printf '#!/usr/bin/env bats\n@test "no" { false; }\n' > "$M/sys
   grep -qx 'HEALTH skipped: bats is not installed' <<< "$output"
 }
 
+@test "verify_setup: --require-suites fails instead of skipping, and verify_on_host uses it" {
+  mini_vault
+  no_bats_path
+  run env PATH="$NB" "$VS" --require-suites
+  [ "$status" -eq 1 ]
+  grep -qx 'FAIL suites: bats or pytest is not installed (development tools)' <<< "$output"
+  run "$VS" --require-suites --health
+  [ "$status" -eq 0 ]
+  grep -qx 'PASS system/tests/a.bats' <<< "$output"
+  grep -qF 'system/scripts/verify_setup.sh --require-suites' "$REPO/system/tests/verify_on_host.sh"
+}
+
 @test "verify_setup: a lint failure fails the run, with or without the suites" {
   mini_vault
   FAKE_LINT_RC=3 run "$VS"

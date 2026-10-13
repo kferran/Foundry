@@ -27,8 +27,7 @@ slack_notify_channel: ""        # server and standalone: a Slack channel ID, or 
 slack_connector: "plugin:slack:slack"  # the Slack connector as `claude mcp list` names it
 orders_enabled: "false"         # server and standalone: the Work Orders tick every 15 minutes (/setup asks)
 update_enabled: "false"         # server and standalone: merge template updates every morning (/setup asks)
-superpowers:
-  - "<strategic anchor>"
+superpowers: []
 ---
 # Config (example)
 

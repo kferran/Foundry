@@ -382,6 +382,14 @@ self_edit_contract() {
   [[ "$sec" == *'Show the whole draft once'* ]]
   sec="$(setup_section '11. First brief')"
   [[ "$sec" == *'run `/brief` now'* ]]
+  # Final review fixes: a fresh clone always gets its template remote and hooks; 2a reads absent keys as on;
+  # a new vault's first brief sees no placeholder superpower; Work Orders off means approved plans run native.
+  sec="$(setup_section '4. Remote')"
+  [[ "$sec" == *'`git remote get-url template` fails'* ]]
+  [[ "$sec" != *'`remote_mode` is empty'* ]]
+  [[ "$(setup_section '2a. Features')" == *'An absent `orders_enabled` or `update_enabled` is on'* ]]
+  grep -qx 'superpowers: \[\]' system/config.example.md
+  grep -qF 'When `orders_enabled` is `false`, it runs native in the session instead.' CLAUDE.md
   run grep -c 'Use this template' README.md FOUNDRY.md
   [[ "$output" == *'README.md:0'* ]]
   [[ "$output" == *'FOUNDRY.md:0'* ]]
@@ -401,7 +409,7 @@ self_edit_contract() {
   grep -qF 'not used on a client' "$f"
   grep -qF 'On a client, write only the timezone and the default partition.' "$f"
   sec="$(setup_section '8. Verify')"
-  [[ "$sec" == *'`system/scripts/verify_setup.sh --health` on every role'* ]]
+  [[ "$sec" == *'Run `system/scripts/verify_setup.sh --health`'* ]]
   [[ "$sec" == *'"test tools not installed; lint passed"'* ]]
 }
 
@@ -419,10 +427,13 @@ self_edit_contract() {
   [[ "$sec" != *'foundry-focus'* ]]
 }
 
-@test "/backup runs the gate on every role: lint, then the suites when the test tools are installed (#122)" {
+@test "/backup runs the gate (lint, then the suites when the test tools are installed), and only lint on a client (#122)" {
   f=.claude/commands/backup.md
-  grep -qF 'Run `system/scripts/verify_setup.sh` on every role' "$f"
+  grep -qF 'Run `system/scripts/verify_setup.sh`: it lints the vault, then runs the test suites' "$f"
+  grep -qF 'On a client (`machine_role: client`), run `system/scripts/lint_vault.sh` instead' "$f"
   grep -qF 'Skip this step on a client or when `bats` is not installed.' "$f"
+  sec="$(setup_section '8. Verify')"
+  [[ "$sec" == *'On a client, run `system/scripts/lint_vault.sh` instead'* ]]
 }
 
 @test "/backup commits each published headless run before its own commit, in every role" {

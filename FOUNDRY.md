@@ -72,7 +72,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 | `/lint` | Integrity report plus link, duplicate, contradiction and staleness suggestions |
 | `/impact <component> [--repo name]` | Read-only blast-radius table across registered codebases and the wiki; offers to draft an intent proposal |
 | `/rca <raw/telemetry/note.md>` | Root-cause analysis of one production error group: an `rca` note with a Ticket draft, filed to Jira only after you tick its Now line |
-| `/backup` | Runs the gate (lint, then the test suites when bats and pytest are installed), commits each headless run on its own, then commits and pushes the rest according to `remote_mode` (through `vault_sync.sh` in `private`) |
+| `/backup` | Runs the gate (lint, then the test suites when bats and pytest are installed; lint only on a client), commits each headless run on its own, then commits and pushes the rest according to `remote_mode` (through `vault_sync.sh` in `private`) |
 | `/order add\|ask\|list\|cancel\|status` | Queues an approved plan (or a task range of one) or a research brief as a Work Order for an unattended run; lists, cancels and reports on queued Work Orders |
 | `/dtcc-watch [check\|status\|accept]` | Runs the DTCC change watcher by hand, checks its map, reports recent changes, or accepts held changes as the new baseline |
 | `/setup` | Onboarding; safe to re-run |
@@ -346,7 +346,7 @@ One suite or one pytest target runs through `system/scripts/test.sh <suite.bats 
 
 A rule matches one plain command: a leading assignment other than a few known-safe variables, a `&&` chain, a loop or a redirect each draw a prompt again, which is why `CLAUDE.md`'s Bash line forbids them and why `test.sh` exists. The `auto` permission mode (a classifier approves routine calls) is honoured only in `~/.claude/settings.json` or on the command line (`claude --permission-mode auto`); a project or local file silently ignores it. An approved plan needs no prompts at all when it runs as a Work Order (`/order add`): the session runs with `--permission-mode dontAsk` and a fixed tool list.
 
-`system/tests/system_health.bats` checks live service state and is advisory only. To prove the suite on Debian, run `system/tests/verify_on_host.sh <ssh-host>`: it copies the committed tree to a temporary directory on that host, runs the gate there, and exits with its code. The host needs the `apt` packages `check_deps.sh` lists. After any change to `run_headless.sh` or the settings files, re-run the spike checklist (spec §7.4) by hand. After any change to `run_headless.sh`, `system/headless.settings.json` or the `ingest`, `brief` or `debrief` commands, re-run the live acceptance steps (Plan 4a, Task 9) in a throwaway clone.
+`system/tests/system_health.bats` checks live service state and is advisory only. To prove the suite on Debian, run `system/tests/verify_on_host.sh <ssh-host>`: it copies the committed tree to a temporary directory on that host, runs the gate there, and exits with its code. The host needs the `apt` packages `check_deps.sh` lists, its `dev` tools included: the script runs `verify_setup.sh --require-suites`, which fails rather than skip the suites. After any change to `run_headless.sh` or the settings files, re-run the spike checklist (spec §7.4) by hand. After any change to `run_headless.sh`, `system/headless.settings.json` or the `ingest`, `brief` or `debrief` commands, re-run the live acceptance steps (Plan 4a, Task 9) in a throwaway clone.
 
 ## Acknowledgements
 

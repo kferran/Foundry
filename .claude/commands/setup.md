@@ -38,7 +38,7 @@ A client gets no list: phase 4 runs there as required, and the other optional bl
 10. Work Orders, which run approved plans unattended (`orders_enabled`)
 11. The daily template update (`update_enabled`)
 
-Ask once which numbers to set up or change; an empty answer changes nothing. Write `orders_enabled`, `update_enabled`, `meetings_enabled` and `triage_enabled` now with `system/scripts/vault_index.py set system/config.md <key> true` for a chosen 10, 11, 6 or 7 (and `false` when the user asks to turn one off), so phase 5's dry run already shows their units. A block not chosen is skipped and reported as unchanged.
+An absent `orders_enabled` or `update_enabled` is on: a vault made before these keys runs both. Ask once which numbers to set up or change; an empty answer changes nothing. Write `orders_enabled`, `update_enabled`, `meetings_enabled` and `triage_enabled` now with `system/scripts/vault_index.py set system/config.md <key> true` for a chosen 10, 11, 6 or 7 (and `false` when the user asks to turn one off), so phase 5's dry run already shows their units. A block not chosen is skipped and reported as unchanged.
 
 ## 3. Codebases
 Only when chosen in 2a.
@@ -52,7 +52,7 @@ Only when chosen in 2a.
 5. Add every registered codebase path (expanded, absolute) to `permissions.additionalDirectories` in `.claude/settings.local.json`, keeping everything else in that file and the existing order. Run exactly this, with the paths in place of `<paths…>`: `[ -f .claude/settings.local.json ] || echo '{}' > .claude/settings.local.json; jq '.permissions.additionalDirectories = ((.permissions.additionalDirectories // []) + ($ARGS.positional - (.permissions.additionalDirectories // [])))' .claude/settings.local.json --args <paths…> > .claude/settings.local.json.tmp && jq -e 'type == "object"' .claude/settings.local.json.tmp > /dev/null && mv .claude/settings.local.json.tmp .claude/settings.local.json`
 
 ## 4. Remote
-On a server or a client this phase always runs. On a standalone machine, only when chosen in 2a; when it is not chosen and `remote_mode` is empty, run `system/scripts/setup_remote.sh --none` and go on.
+On a server or a client this phase always runs. On a standalone machine, only when chosen in 2a. When it is not chosen, `remote_mode` is not `keep` and `git remote get-url template` fails (a fresh clone, whose `origin` is still the template), run `system/scripts/setup_remote.sh --none`: it renames that `origin` to `template` for updates and turns on the vault's git hooks. Report its output and go on.
 
 Run `system/scripts/setup_remote.sh --detect` and report what it found. Read the current mode with `system/scripts/vault_index.py field system/config.md remote_mode`. Then ask, showing the current mode as the default: a private URL for your vault (`private`), no remote (`none`), or keep the remotes as they are (`keep`, for template maintainers; choose this when `origin` is the template and you maintain it). If the current mode is `private`, show the current `origin` URL (`git remote get-url origin`) as the default URL. Run `system/scripts/setup_remote.sh <url>`, `--none` or `--keep` and report its output.
 
@@ -124,7 +124,7 @@ Only when chosen in 2a. On a client, skip this phase and report "not used on a c
 Run `system/scripts/vault_index.py rebuild`, then `system/scripts/vault_index.py issues`, and report any error. Then run `system/scripts/commit_runs.py --init-cutover`: it records the time from which `/backup` commits each headless run on its own; runs from before it are committed with the rest of the vault.
 
 ## 8. Verify
-Run `system/scripts/verify_setup.sh --health` on every role, and `systemctl --user list-timers 'foundry-*'` except on a client (a client has no timers). Report each PASS/FAIL line and the next run time of each timer; report a `SKIP suites` line as "test tools not installed; lint passed". Health failures are advisory.
+Run `system/scripts/verify_setup.sh --health` and `systemctl --user list-timers 'foundry-*'`. Report each PASS/FAIL line and the next run time of each timer; when the summary has `PASS lint` and `SKIP suites`, report "test tools not installed; lint passed". Health failures are advisory. On a client, run `system/scripts/lint_vault.sh` instead (a client runs no automation and has no timers) and report its last line.
 
 ## 9. Hand-off
 For each registered codebase without one, create `wiki/<partition>/concepts/<Name>OnboardingAssignment.md`, where `<partition>` is the codebase's partition and `<Name>` its name in PascalCase. Frontmatter: `type: concept`, `tags: ["onboarding"]`, `compiled_at` today, `partition`, `codebase`, `capability: code`, `status: draft`. Body: ask the Workcell with `code` to map the codebase's layers and its logging and telemetry definitions (start from the `logging_hints` the inspection found) into `wiki/<partition>/entities/<Name>LogEventMap.md`; link `[[Index]]` and name each superpower the work serves. Then add the line `Onboarding: [[<Name>OnboardingAssignment]]` to the body of `system/codebases/<name>.md`, so the note is not an orphan (`wiki/Index.md` belongs to the template; never edit it here). Run `system/scripts/lint_vault.sh` afterwards.
