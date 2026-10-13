@@ -105,10 +105,15 @@ if [[ "$role" != client && -n "$(config_get slack_notify_channel "")" ]]; then
   UNITS+=(foundry-notify.service foundry-notify.timer)
   ENABLE+=(foundry-notify.timer)
 fi
-# Error telemetry (Plan 11): standalone and server, only when a source is enabled.
-if [[ "$role" != client ]] && [[ -n "$(system/scripts/telemetry_fetch.py --list 2>/dev/null)" ]]; then
-  UNITS+=(foundry-telemetry.service foundry-telemetry.timer)
-  ENABLE+=(foundry-telemetry.timer)
+# Error telemetry (Plan 11): standalone and server, only when a source is enabled. A list that fails decides
+# nothing: read as "no sources", it would make --update delete the owned telemetry units (audit C5).
+if [[ "$role" != client ]]; then
+  sources="$(system/scripts/telemetry_fetch.py --list 2>/dev/null)" \
+    || die 1 "telemetry_fetch.py --list failed, so the telemetry units cannot be decided; nothing was changed"
+  if [[ -n "$sources" ]]; then
+    UNITS+=(foundry-telemetry.service foundry-telemetry.timer)
+    ENABLE+=(foundry-telemetry.timer)
+  fi
 fi
 # Work Orders and the template update: standalone and server, while their keys are true (Nightshift spec §2,
 # #87). An absent key is true, so a vault made before they were opt-in keeps both (express install spec §2).
