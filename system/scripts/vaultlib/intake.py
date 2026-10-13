@@ -13,6 +13,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import frontmatter, meetings, now as nowmod, publish, rca as rcamod, redact as redactmod, schema as schemamod
+from . import triage
 
 FRESH_SECONDS = 60
 MAX_ATTEMPTS = 3
@@ -755,7 +756,19 @@ class Intake:
                     self.import_meetings()
                 except Exception as exc:  # noqa: BLE001 - inbox and digests still run
                     self.alert(f"meeting import failed ({exc.__class__.__name__}: {exc}); will retry")
-                if self.process_inbox():
+                # The usage ceiling (usage ceiling spec): no ingest session starts while the 5-hour reading is at
+                # or above order_max_five_hour; inputs stay where they are and the next tick re-reads.
+                held = triage.hold(self.vault, datetime.now(timezone.utc))
+                if held:
+                    self.alert_held(held)
+                elif self.process_inbox():
                     self.process_digests()
         except TimeoutError:
             pass  # another daemon is running
+
+    def alert_held(self, reason: str) -> None:
+        """One alert a day while the intake is held at the usage ceiling."""
+        marker = self.logs / f".intake-held-{self.today()}"
+        if not marker.exists():
+            self.alert(f"held: {reason}; inbox and digests wait for the next tick")
+            marker.touch()

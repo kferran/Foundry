@@ -143,6 +143,34 @@ def test_daily_cap_leaves_inputs_and_stops(iv, monkeypatch):
     assert (iv / "raw/inbox/a.md").exists() and (iv / "raw/inbox/b.md").exists()
 
 
+def usage_reading(vault, five_hour, hours_ago=0.0):
+    from datetime import timedelta, timezone
+    at = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
+    write(vault, "system/logs/nightshift/health-2099-01-01.json", json.dumps({"usage5": five_hour, "usage5_at": at}))
+
+
+def test_usage_ceiling_holds_inbox_and_digests_and_alerts_once_a_day(iv):
+    write(iv, "raw/inbox/a.md", "a")
+    usage_reading(iv, 0.7)
+    Intake(iv, now=later()).run()
+    Intake(iv, now=later()).run()
+    assert calls(iv) == []
+    assert (iv / "raw/inbox/a.md").exists()
+    alerts = (iv / "system/logs" / f"alerts_{today()}.md").read_text()
+    assert alerts.count("[intake] held: 5-hour usage 70% at or above 60%") == 1
+
+
+def test_usage_ceiling_runs_below_the_ceiling_and_on_a_stale_reading(iv):
+    write(iv, "raw/inbox/a.md", "a")
+    usage_reading(iv, 0.5)
+    Intake(iv, now=later()).run()
+    assert len(calls(iv)) == 1
+    write(iv, "raw/inbox/b.md", "b")
+    usage_reading(iv, 0.9, hours_ago=6)
+    Intake(iv, now=later()).run()
+    assert len(calls(iv)) == 2
+
+
 def test_failures_poison_after_three_attempts(iv, monkeypatch):
     write(iv, "raw/inbox/bad.md", "bad")
     monkeypatch.setenv("STUB_RC", "5")

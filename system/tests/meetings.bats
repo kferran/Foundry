@@ -75,6 +75,23 @@ session_deny() { awk -v n="$1" '$0 == "--end--" { s++; p = 0; next } s == n - 1 
   [ -s system/logs/meetings_fetch.since ]
 }
 
+@test "fetch: at the usage ceiling no session starts, the hold is logged and alerted once a day (usage ceiling)" {
+  search_says "$(doc FAKE-doc-0001)"
+  read_says FAKE-doc-0001
+  mkdir -p system/logs/nightshift
+  jq -cn --arg at "$(date -u -Iseconds)" '{usage5: 0.7, usage5_at: $at}' > system/logs/nightshift/health-2099-01-01.json
+  run "$MF"
+  [ "$status" -eq 0 ]
+  run "$MF"
+  [ "$status" -eq 0 ]
+  [ ! -e "$STUB_ARGS" ]
+  [ "$(jq -r .step "$LOG" | sort -u)" = "hold" ]
+  [ "$(grep -c '\[meetings\] held:' system/logs/alerts_*.md)" -eq 1 ]
+  run "$MF" --check
+  [ "$status" -eq 0 ]
+  [ "$(sessions)" -eq 1 ]
+}
+
 @test "fetch: a Doc listed twice (two search calls or pages) is read once" {
   search_says "$(doc FAKE-doc-0001)" "$(doc FAKE-doc-0001)" "$(doc FAKE-doc-0002)"
   read_says FAKE-doc-0001
