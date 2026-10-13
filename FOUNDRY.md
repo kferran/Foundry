@@ -6,7 +6,7 @@ An Obsidian + Claude Code "second brain" vault template. This file is its manual
 
 ## What The Foundry is
 
-The Foundry is a template repository that becomes your vault. You clone it (or create a repo from it), run `claude` inside it, and run `/setup`. Setup configures the vault for your machine, your schedule and your codebases. Nothing specific to a machine or a user is committed. Per-user state is generated at setup time and gitignored.
+The Foundry is a template repository that becomes your vault. You clone it, run `claude` inside it, and run `/setup`. Setup configures the vault for your machine, your schedule and your codebases. Nothing specific to a machine or a user is committed. Per-user state is generated at setup time and gitignored.
 
 The vault compiles itself. Raw inputs (files you drop in, plus short digests of your Claude Code sessions) are compiled in batches into a wiki of concepts, entities, summaries and preferences. The wiki is split into `work`, `personal` and `shared` partitions, and links are not allowed to cross between `work` and `personal`. A derived SQLite FTS5 index lets agents ask the index for the notes they need before reading anything, so a lookup reads only the notes that answer it rather than the whole wiki.
 
@@ -238,10 +238,10 @@ The Foundry runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh 
 
 Before you start, install what [Requirements](#requirements) lists and sign in to Claude Code (`claude`, then `/login`). For a server or a client, also create an **empty private repository** for your vault on your git host (no README, license or `.gitignore`, so it has no commit of its own to reconcile): that is your private `origin`, and every machine syncs through it.
 
-**First machine (standalone or server).** Clone the template, start Claude Code in it, and paste the prompt below with your answers filled in:
+**First machine (standalone or server).** Clone the template (a repository created from a hosting site's template button shares no history with it, so template updates cannot merge), start Claude Code in it, and paste the prompt below with your answers filled in:
 
 ```sh
-git clone <template-url> my-vault    # or "Use this template" on the hosting site
+git clone <template-url> my-vault
 cd my-vault
 claude
 ```
@@ -259,11 +259,11 @@ The prompt (replace every `<…>` first; `/setup` asks for any answer still writ
 ```text
 Set up this clone as a new Foundry vault. Run /setup and use these answers; ask me only for what is missing:
 - Machine role: <standalone | server | client>
-- Timezone: <Area/City>; brief at <HH:MM>; debrief at <HH:MM>
-- Default partition: <work | personal>
+- Brief at <HH:MM>; debrief at <HH:MM>
 - Remote: private, origin <private origin URL>   (or: none, standalone only)
-- Codebases to register: <paths, or none>          (not used on a client)
-- Memory hooks: <yes | no>                         (not used on a client)
+- Features: <any of codebases (paths), memory hooks, calendar, telemetry, meetings,
+  inbox triage, Jira handoffs, Slack notices, Work Orders, template update; or none>
+                                                  (not used on a client)
 Never push to the template repository. Before installing units or memory hooks,
 show me what will change and wait for my yes. Run any command that needs sudo
 (linger) only by giving it to me. When you finish, show the /setup report table
@@ -274,18 +274,25 @@ You can also type `/setup` and answer its questions one at a time; the prompt on
 
 `/setup` is idempotent and can be re-run at any time. Its phases (spec §11):
 
-- **0. Role and preflight:** you choose the machine role, then `check_deps.sh --role <role>` lists missing items with install hints. A client skips phases 3, 6 and 9; on a client, phases 5 and 5a only remove units and hooks left from an earlier role.
+- **0. Role and preflight:** you choose the machine role, then `check_deps.sh --role <role>` lists missing items with install hints. A vault path with a space stops setup (the memory hooks cannot run from it). A client gets no features list and skips phases 3, 6, 6a to 6d, 9, 9a and 11; on a client, phases 5 and 5a only remove units and hooks left from an earlier role.
 - **1. Existing config:** if `system/config.md` already exists, it is shown and edited, not overwritten.
-- **2. Interview:** timezone, brief and debrief times, superpowers, default partition, digest thresholds and recall budget.
-- **3. Codebases:** you choose repos from a directory scan. Each one is inspected, written to `system/codebases/<name>.md` with a partition, and confirmed with you field by field.
+- **2. Interview:** the brief and debrief times. The timezone is read from the machine; superpowers, the default partition, digest thresholds and the recall budget keep their defaults, and the report says how to change them.
+- **2a. Features:** one numbered list of the optional blocks below, with their current state; you pick the ones to set up or change, once. Blocks you do not pick are left as they are.
+- **3. Codebases:** you choose repos from a directory scan. Each one is inspected, drafted as `system/codebases/<name>.md` with a partition, and shown to you once to accept or correct.
 - **4. Remote:** the template `origin` of a plain clone is renamed `template` for updates, and you choose a private `origin`, no remote, or keep (maintainer mode). A server or client must use a private `origin`; setup checks that git can reach it without a prompt and publishes the branch.
-- **5. Units:** the role's systemd units are rendered and enabled, and you are offered linger (required on a server).
-- **5a. Memory hooks** (optional): you are shown the diff to `~/.claude/settings.json` and what each hook does, and it is applied only after an explicit yes. Declining leaves memory off (see [Memory](#memory)).
+- **5. Units:** the role's systemd units, plus those the features you picked turn on (Work Orders, the template update, meetings, inbox triage), are rendered and enabled on your yes, and you are offered linger (required on a server).
+- **5a. Memory hooks:** you are shown the diff to `~/.claude/settings.json` and what each hook does, and it is applied only after an explicit yes. Declining leaves memory off (see [Memory](#memory)).
 - **6. Calendar:** one fetch from the Google Calendar connector checks that the brief can read today's events.
+- **6a. Telemetry:** Sentry and Azure Data Explorer error sources, each checked.
+- **6b. Meetings and inbox triage:** the meetings partition and your names in action items; the Now page triage writes to; each connector checked.
+- **6c. Handoffs:** the Jira site and projects the brief reads, and whether approved `/rca` drafts are filed.
+- **6d. Slack notices:** the channel, and a test message only on your yes.
 - **7. Index:** the index is rebuilt and the run-commit cutover is recorded (`commit_runs.py --init-cutover`).
-- **8. Verify:** `verify_setup.sh --health` runs.
+- **8. Verify:** `verify_setup.sh --health` runs (lint, then the test suites when the development tools are installed).
 - **9. Hand-off:** an onboarding assignment note is created for each codebase.
-- **10. Report:** a status table of everything that was set up.
+- **9a. README:** the template's landing page is replaced with your vault's own README.
+- **10. Report:** the Obsidian plugins, then a status table of everything that was set up.
+- **11. First brief:** `/brief` runs, so you read a brief before setup ends.
 
 Once the units are installed, the timers run real headless `claude -p` jobs. They use your Claude subscription and are capped at 60 runs a day (`HEADLESS_MAX_RUNS_PER_DAY`).
 

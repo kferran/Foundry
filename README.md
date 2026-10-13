@@ -13,7 +13,7 @@ An Obsidian + Claude Code "second brain" vault template. It runs on Linux (Arch 
 2. Create your vault from this template and start Claude Code in it:
 
    ```sh
-   git clone <template-url> my-vault    # or "Use this template" on the hosting site
+   git clone <template-url> my-vault
    cd my-vault
    claude
    ```
