@@ -310,6 +310,25 @@ def test_a_meeting_run_publishes_its_two_exact_targets(vault):
     assert 'provenance: ["headless"]' in (vault / targets[0]).read_text()
 
 
+def test_an_ingest_never_publishes_a_now_page(run):
+    # Audit S5: "never stage Now.md" was prompt text only; the brief and now.py own the page.
+    target = "wiki/work/Now.md"
+    stage_new(run, target, "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n---\n"
+              "# Now\n\n## Needs you\n- [ ] owed: Wire the money (since 2026-10-01)\n")
+    decide(run, rec(target))
+    assert "the Now page is written only by now.py and the brief" in reasons(publish.validate_run(run, RID, now=LATER)[2])
+
+
+def test_an_index_note_outside_wiki_index_gets_no_wall_exemption(run):
+    # Audit S2: type: index skipped the partition wall anywhere under wiki/.
+    target = "wiki/work/concepts/Hub.md"
+    stage_new(run, target, "---\ntype: index\ntags: []\n---\n# Hub\n[[Gardening]]\n")
+    decide(run, rec(target))
+    rs = reasons(publish.validate_run(run, RID, now=LATER)[2])
+    assert any("partition wall" in r for r in rs)
+    assert any(r.startswith("schema:") for r in rs)
+
+
 @pytest.mark.parametrize("text", [meeting("work", NAME), concept("work", "Sneaky", "[[Index]]")], ids=["meeting", "concept"])
 def test_an_ingest_never_stages_a_note_under_meetings(run, text):
     target = f"wiki/work/meetings/{NAME}.md"
