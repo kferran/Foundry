@@ -229,7 +229,13 @@ def check(stream, tool: str, channel: str, message_text: str, lines: list) -> st
             raise Fail(4, "the account usage limit stopped the session")
         if result is None or named:
             raise Fail(1, f"the session never called {tool}")
-        raise Fail(3, "no Slack connector reachable")
+        # A plugin connector and the claude.ai one name their tools differently, and a headless session may load
+        # only one of them (#133): name the Slack server it did load, so the fix is one config line.
+        loaded = [s.get("name") for m in stream if m.get("type") == "system" and m.get("subtype") == "init"
+                  for s in m.get("mcp_servers") or [] if isinstance(s, dict) and "slack" in str(s.get("name")).lower()
+                  and prefix(str(s.get("name"))) != tool.rsplit("__", 1)[0]]
+        hint = f'; this session loaded "{loaded[0]}": set slack_connector to "{loaded[0]}"' if loaded else ""
+        raise Fail(3, f"no Slack connector reachable as {tool}{hint}")
     drift = [f"posted {len(posted)} times"] if len(posted) > 1 else []
     text = _norm(str(posted[0].get("input", {}).get("message") or ""))
     missing = [x for x in lines if _norm(x) not in text]

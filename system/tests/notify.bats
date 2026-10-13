@@ -2,7 +2,8 @@
 # Slack notices (Slack notices spec §3.2): notify.sh with a stubbed claude.
 load helpers
 
-T=mcp__plugin_slack_slack__slack_send_message
+# The default connector is Slack connected at claude.ai, the one a headless session loads (#133).
+T=mcp__claude_ai_Slack__slack_send_message
 
 setup() {
   make_vault
@@ -46,7 +47,7 @@ slack_posts() {
   run "$N"
   [ "$status" -eq 0 ]
   grep -qxF -- "$T" "$STUB_ARGS"
-  grep -qxF -- mcp__plugin_slack_slack__slack_send_message_draft "$STUB_ARGS"
+  grep -qxF -- mcp__claude_ai_Slack__slack_send_message_draft "$STUB_ARGS"
   rm -f "$STUB_ARGS"
   run "$N"
   [ "$status" -eq 0 ]
@@ -55,7 +56,7 @@ slack_posts() {
 
 @test "a session that breaks its rules holds notices until the hold file goes, without feeding the same lines again" {
   printf -- '- 06:10:00 [intake] one\n' >> "$ALERTS"
-  slack_posts "$(system/scripts/notify.py collect | jq -r .message)" mcp__plugin_slack_slack__slack_send_message_draft
+  slack_posts "$(system/scripts/notify.py collect | jq -r .message)" mcp__claude_ai_Slack__slack_send_message_draft
   run "$N"
   [ "$status" -eq 7 ]
   [ -s system/logs/notify/hold ]

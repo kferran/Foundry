@@ -88,17 +88,40 @@ setup() {
   [ "$output" = "$want" ]
 }
 
-@test "interactive settings keep the boundaries as prompts: config changes, installs, other remotes, force pushes, connector writes" {
-  f=.claude/settings.json
-  run jq -r '.permissions.allow[]' "$f"
-  [ "$status" -eq 0 ]
-  while IFS= read -r rule; do
+# boundary_rules <settings file>: print every allow rule that pre-approves a boundary: a config change, an
+# install, an update, an accept, a force push or a push to another remote, a Work Order tick, or a connector
+# rule that is not a single read tool (a whole server, a wildcard, or a tool that writes). A vault keeps its
+# connector reads above the template block (FOUNDRY.md, Trust dialog), so a read is allowed (#132).
+boundary_rules() {
+  local rule tool
+  jq -r '.permissions.allow[]' "$1" | while IFS= read -r rule; do
     case "$rule" in
-      *"vault_index.py set"*|*"vault_index.py stage"*|*"install_units.sh)"*|*"install_units.sh:*"*|*"install_hooks.sh)"*|*"install_hooks.sh:*"*|*"update_template.sh"*|*"--accept"*|*"--force"*|*"git push:*"*|*"mcp__"*|*"nightshift.py tick"*)
-        echo "boundary rule allowed: $rule"
-        return 1 ;;
+      *"vault_index.py set"*|*"vault_index.py stage"*|*"install_units.sh)"*|*"install_units.sh:*"*|*"install_hooks.sh)"*|*"install_hooks.sh:*"*|*"update_template.sh"*|*"--accept"*|*"--force"*|*"git push:*"*|*"nightshift.py tick"*)
+        echo "$rule" ;;
+      mcp__*)
+        tool="${rule#mcp__}"
+        tool="${tool#*__}"
+        [[ "$rule" =~ ^mcp__[^_].*__[A-Za-z_]+$ && "$tool" =~ ^(slack_)?(get|list|search|read|query|fetch|lookup) ]] || echo "$rule" ;;
     esac
-  done <<< "$output"
+  done
+}
+
+@test "interactive settings keep the boundaries as prompts: config changes, installs, other remotes, force pushes, connector writes" {
+  run boundary_rules .claude/settings.json
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "a vault's connector read rules pass the boundary check, and connector writes, servers and wildcards do not (#132)" {
+  jq -n '{permissions: {allow: ["mcp__claude_ai_Gmail__get_message", "mcp__claude_ai_Gmail__search_threads",
+    "mcp__claude_ai_Google_Calendar__list_events", "mcp__claude_ai_Atlassian__getJiraIssue",
+    "mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql", "mcp__plugin_slack_slack__slack_read_channel",
+    "mcp__claude_ai_Gmail__send_message", "mcp__claude_ai_Atlassian__createJiraIssue",
+    "mcp__plugin_slack_slack__slack_send_message", "mcp__claude_ai_Gmail", "mcp__claude_ai_Gmail__*"]}}' > "$BATS_TEST_TMPDIR/s.json"
+  run boundary_rules "$BATS_TEST_TMPDIR/s.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf '%s\n' mcp__claude_ai_Gmail__send_message mcp__claude_ai_Atlassian__createJiraIssue \
+    mcp__plugin_slack_slack__slack_send_message mcp__claude_ai_Gmail 'mcp__claude_ai_Gmail__*')" ]
 }
 
 @test "unit templates: only *.in files, services carry {{VAULT_ROOT}}, no machine paths" {

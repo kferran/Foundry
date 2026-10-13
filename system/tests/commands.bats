@@ -855,10 +855,12 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
 }
 
 @test "the vault owns its README: a landing page, the manual in FOUNDRY.md, merge=ours and the /setup stub (#90)" {
-  [ "$(head -n 1 README.md)" = '<!-- foundry:landing -->' ]
-  grep -qF '[FOUNDRY.md](FOUNDRY.md)' README.md
-  grep -qF '[the manual'"'"'s Getting started](FOUNDRY.md#getting-started)' README.md
-  [ "$(wc -l < README.md)" -le 40 ]
+  # The landing page is the template's README; a vault that wrote its own (/setup 9a) keeps it, unchecked (#131).
+  if [ "$(head -n 1 README.md)" = '<!-- foundry:landing -->' ]; then
+    grep -qF '[FOUNDRY.md](FOUNDRY.md)' README.md
+    grep -qF '[the manual'"'"'s Getting started](FOUNDRY.md#getting-started)' README.md
+    [ "$(wc -l < README.md)" -le 40 ]
+  fi
   grep -qF 'g -c core.attributesFile="$attrs" -c merge.ours.driver=true merge --no-ff --no-edit "$ref"' system/scripts/update_template.sh
   grep -qF 'README.md merge=ours' system/scripts/update_template.sh
   grep -qF 'This file is its manual.' FOUNDRY.md
@@ -920,7 +922,8 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
 
 @test "Slack notices: /setup phase 6d asks, checks the connector and tests only on yes; the manual and the schema describe them (#28)" {
   grep -qF '## 6d. Slack notices' .claude/commands/setup.md
-  grep -qF 'Check that `claude mcp list` shows the Slack connector' .claude/commands/setup.md
+  grep -qF '`slack_connector` defaults to `claude.ai Slack`' .claude/commands/setup.md
+  grep -qF 'slack_connector: {kind: string, default: "claude.ai Slack"}' system/schemas/config.md
   grep -qF 'only on yes, run `system/scripts/notify.sh --check`' .claude/commands/setup.md
   grep -qF '**Slack notices.** With `slack_notify_channel` set' FOUNDRY.md
   grep -qF 'No note text from `wiki/` is sent.' FOUNDRY.md
