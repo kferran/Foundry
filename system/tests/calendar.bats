@@ -76,6 +76,14 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   [ ! -e "$(cat "$STUB_CWD")" ]
 }
 
+@test "a rule allowing the whole Calendar server is refused (strict, connector runner spec §2)" {
+  printf '{"permissions":{"allow":["mcp__claude_ai_Google_Calendar"]}}' > "$HOME/.claude/settings.json"
+  run "$CF" "$DAY"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"allows every tool on mcp__claude_ai_Google_Calendar"* ]]
+  [ ! -e "$STUB_ARGS" ]
+}
+
 @test "the prompt names the day, the next day and the configured timezone" {
   run "$CF" "$DAY"
   [ "$status" -eq 0 ]
@@ -83,7 +91,7 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
 }
 
 @test "every tool the user's settings allow is denied, except list_events and rules that would match it" {
-  printf '%s\n' '{"permissions":{"allow":["mcp__claude_ai_Gmail__send_message","Bash(ls:*)","mcp__claude_ai_Google_Calendar","mcp__claude_ai_Google_Calendar__*","mcp__claude_ai_Google_Calendar__list_events"]}}' > "$HOME/.claude/settings.json"
+  printf '%s\n' '{"permissions":{"allow":["mcp__claude_ai_Gmail__send_message","Bash(ls:*)","mcp__claude_ai_Google_Calendar__list_events"]}}' > "$HOME/.claude/settings.json"
   printf '%s\n' '{"permissions":{"allow":["mcp__claude_ai_Slack__slack_send_message"]}}' > "$HOME/.claude/settings.local.json"
   printf '%s\n' '{"permissions":{"allow":["WebFetch(domain:x)"]}}' > "$FOUNDRY_MANAGED_SETTINGS"
   mkdir -p "$FOUNDRY_MANAGED_SETTINGS_DIR"
@@ -94,10 +102,8 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   for t in mcp__claude_ai_Gmail__send_message Bash mcp__claude_ai_Slack__slack_send_message WebFetch mcp__claude_ai_Asana__create_task; do
     grep -qx -- "$t" <<< "$deny"
   done
-  for t in mcp__claude_ai_Google_Calendar__list_events mcp__claude_ai_Google_Calendar 'mcp__claude_ai_Google_Calendar__*'; do
-    run grep -qxF -- "$t" <<< "$deny"
-    [ "$status" -eq 1 ]
-  done
+  run grep -qxF -- mcp__claude_ai_Google_Calendar__list_events <<< "$deny"
+  [ "$status" -eq 1 ]
 }
 
 @test "an allow rule broader than the calendar server stops the fetch before claude runs" {
@@ -188,9 +194,14 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   printf '{"type":"assi' >> "$STUB_STREAM"
   STUB_RC=137 run "$CF" "$DAY"
   [ "$status" -eq 7 ]
+  # A complete result from a session that then timed out is a result (connector runner spec §2); one cut short is 4.
   stream_ok '[]'
   STUB_RC=124 run "$CF" "$DAY"
+  [ "$status" -eq 0 ]
+  sed -i '$d' "$STUB_STREAM"
+  STUB_RC=124 run "$CF" "$DAY"
   [ "$status" -eq 4 ]
+  [[ "$output" == *"timed out after"* ]]
 }
 
 @test "the date defaults to today in the configured timezone" {

@@ -686,6 +686,13 @@ self_edit_contract() {
   grep -qF 'A unit the update adds is listed as `new unit available: <unit>` and left out' FOUNDRY.md
 }
 
+@test "the manual names lib_connector.sh as the second way automation calls claude (connector runner spec §3)" {
+  grep -qF '`system/scripts/lib_connector.sh` runs every connector session' FOUNDRY.md
+  run grep -F 'is the only way automation calls `claude`' FOUNDRY.md
+  [ "$status" -eq 1 ]
+  grep -qF 'one `system/scripts/calendar_fetch.sh` run from a throwaway clone proves the connector flags' FOUNDRY.md
+}
+
 @test "/setup phase 4 offers setup_remote.sh's SSH hint before asking for credentials (#16)" {
   sec="$(setup_section '4. Remote')"
   [[ "$sec" == *'printed a `hint:` line with an SSH URL, offer that URL first'* ]]
