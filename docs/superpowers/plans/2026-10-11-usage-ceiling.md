@@ -4,15 +4,15 @@
 
 **Goal:** Every unattended session except the brief and the debrief is held while the 5-hour usage reading is at or above `order_max_five_hour`, and the reading is refreshed by every headless run.
 
-**Architecture:** `run_headless.sh` records usage into the Nightshift health file through a shared `vaultlib` function; `Intake.run` and `meetings_fetch.sh` call the existing `triage.hold` (`system/scripts/triage.py hold` from bash), which reads `five_hour_hold`, before starting sessions; a reserve window before `brief_time` halves the ceiling.
+**Architecture:** `run_headless.sh` records usage into the Nightshift health file through a shared `vaultlib` function; `Intake.run` and `meetings_fetch.sh` call the existing `triage.hold` (`system/scripts/triage.py hold` from bash), which reads `five_hour_hold`, before starting sessions. No reserve window (owner, 2026-10-13).
 
 **Tech Stack:** bash, Python 3 (`vaultlib`), pytest, bats.
 
-**Spec:** `docs/superpowers/specs/2026-10-11-usage-ceiling-design.md` (assumes the grill keeps the reserve window and one ceiling; drop Task 3's reserve step if it does not)
+**Spec:** `docs/superpowers/specs/2026-10-11-usage-ceiling-design.md` (grilled 2026-10-13: one ceiling, no reserve, the reading from `stream-json`)
 
 ## Global Constraints
 
-- Work on branch `feat/usage-ceiling`. Commit there; do not push or open a pull request.
+- Work on branch `feat/usage-ceiling`. The pull request says "Part of #122".
 - Run the suites from the repository root through `system/scripts/test.sh <suite.bats | pytest path> [args…]`, which sets the gate's environment, outside a sandbox (the headless tests need `bwrap`). The gate is `system/scripts/verify_setup.sh`. Never run two gates at once.
 - Bound tools: pytest (`test_intake.py`, `test_nightshift_report.py`, `test_nightshift_sched.py`), bats (`headless.bats`, `meetings.bats`, `nightshift.bats`), the gate.
 - Commits use `git commit -F .scratch/<file>`.
@@ -36,8 +36,8 @@
 **Interfaces:**
 - Produces: `rep.record_usage(vault, date, usage: dict, at: str) -> None` writes `usage5`, `usage7`, `usage5_at`, `usage` into `health-<date>.json`, merging with existing keys; `nightshift_run` calls it; `run_headless.sh` calls `system/scripts/nightshift.py record-usage <date> <json>` (a thin subcommand) when the session's output carries a usage reading.
 
-- [ ] **Step 0: Settle spec Grill Q3 first.** `run_headless.sh` runs `--output-format json`, whose single result object carries no `rate_limit_event` (the source `nightshift_session.parse_stream` reads). Confirm what the CLI emits and which source the grill chose before writing tests; if it is `stream-json`, this task also moves the reads of `.is_error`, `.result` and `.permission_denials` in `run_headless.sh` to the stream's `result` line.
-- [ ] **Step 1: Write the tests:** pytest for `record_usage` (create, merge, no-op without usage); bats: `stub_claude` output with a usage reading leaves `health-<date>.json` with `usage5` after `run_headless.sh ingest`; output without one leaves no file.
+- [x] **Step 0: Grill Q3 settled (2026-10-13):** `stream-json --verbose` emits a `rate_limit_event` per session; `json` carries no utilization. `run_headless.sh` writes `stream.jsonl` and keeps its last `result` line as `claude.json`, so the `.is_error`, `.result` and `.permission_denials` reads stay as they are.
+- [ ] **Step 1: Write the tests:** pytest for `record_usage` (create, merge, no-op without usage); bats: `stub_claude` (with `STUB_USAGE=<five_hour>` printing a `rate_limit_event` line) leaves `health-<date>.json` with `usage5` after `run_headless.sh ingest`, its argv carries `stream-json` and `--verbose`, and the usage-limit mode still exits 4; output without a reading leaves no file.
 - [ ] **Step 2: Run them to verify they fail.**
 - [ ] **Step 3: Implement** the function, replace the inline block in `nightshift_run.run_item` with a call, add the `record-usage` subcommand, and the `run_headless.sh` step after the result is read (inside the existing lock, before the ledger line).
 - [ ] **Step 4: Run the suites.** Expected: PASS.
@@ -75,14 +75,14 @@ now.py check and briefing extraction still run. Both reuse triage.hold,
 the rule inbox triage already applies.
 ```
 
-### Task 3: The reserve window and the documents
+### Task 3: The ceiling in the manual
 
 **Files:**
-- Modify: `system/scripts/vaultlib/intake.py`, `system/scripts/vaultlib/triage.py` (an optional ceiling argument on `hold`), `FOUNDRY.md`, `.claude/skills/order/SKILL.md` (status names intake holds), `docs/superpowers/roadmap.md`
-- Test: `system/tests/python/test_intake.py`, `system/tests/python/test_triage.py`, `system/tests/commands.bats`
+- Modify: `FOUNDRY.md`, `docs/superpowers/roadmap.md`
+- Test: `system/tests/commands.bats` (beside the Work Orders ceiling test)
 
-- [ ] **Step 1: Write the tests:** in the 60 minutes before `brief_time`, 0.35 holds and 0.25 runs; `FOUNDRY.md` has "The usage ceiling" paragraph naming what is held and what is not.
-- [ ] **Step 2: Run them to verify they fail.**
-- [ ] **Step 3: Implement** the window in `intake.py`, passing half the ceiling to `triage.hold` (skip this step if the grill drops the reserve) and write the paragraph.
+- [ ] **Step 1: Write the test:** `FOUNDRY.md` has a "**The usage ceiling.**" paragraph naming what is held (intake ingests, the meetings fetch, inbox triage, Work Orders) and what is not (the brief, the debrief, Slack notices).
+- [ ] **Step 2: Run it to verify it fails.**
+- [ ] **Step 3: Write the paragraph** and mark the roadmap row complete.
 - [ ] **Step 4: Run the suites and the gate.**
-- [ ] **Step 5: Commit.** `.scratch/msg-3.txt`: `feat(usage): a reserve before the brief, and the ceiling in the manual`.
+- [ ] **Step 5: Commit.** `docs(usage): the ceiling in the manual`.

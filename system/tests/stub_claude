@@ -2,6 +2,10 @@
 # Test double for claude -p. Behaviour via STUB_MODE; records argv to $STUB_ARGS and stdin target to $STUB_STDIN.
 printf '%s\n' "$@" > "${STUB_ARGS:-/dev/null}"
 readlink /proc/self/fd/0 > "${STUB_STDIN:-/dev/null}"
+# STUB_USAGE=<five-hour utilization>: the rate_limit_event line stream-json prints at the start of a session.
+if [ -n "${STUB_USAGE:-}" ]; then
+  printf '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","unifiedWindows":{"five_hour":{"utilization":%s},"seven_day":{"utilization":0.2}}}}\n' "$STUB_USAGE"
+fi
 run_id="$(ls wiki/.staging | head -1)"
 sleep "${STUB_SLEEP:-0}"  # a slow run, for lock-order tests
 s="wiki/.staging/$run_id"

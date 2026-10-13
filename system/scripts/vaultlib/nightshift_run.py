@@ -38,6 +38,7 @@ def _parser():
     p = argparse.ArgumentParser(prog="nightshift.py")
     sub = p.add_subparsers(dest="cmd")
     sub.add_parser("tick")
+    sub.add_parser("record-usage").add_argument("stream")
     a = sub.add_parser("add")
     a.add_argument("--kind", choices=["plan", "research"], required=True)
     a.add_argument("--title", required=True)
@@ -533,15 +534,8 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
                 f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then queue {fm['id']} again ({exc})"]})
     t0 = clock.monotonic()
     run = _run_session(ctx, path, fm, body, cwd, idir, resume)
-    if run.get("usage"):
-        hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
-        h = json.loads(hfile.read_text()) if hfile.is_file() else {}
-        u = run["usage"]
-        h["usage7"] = u.get("seven_day")
-        h["usage5"] = u.get("five_hour")
-        h["usage5_at"] = (ctx.now + timedelta(seconds=clock.monotonic() - t0)).isoformat()
-        h["usage"] = f"5h {round((u.get('five_hour') or 0) * 100)}% / 7d {round((u.get('seven_day') or 0) * 100)}%"
-        rep.write_health(ctx.vault, ctx.date, h)
+    rep.record_usage(ctx.vault, ctx.date, run.get("usage") or {},
+                     (ctx.now + timedelta(seconds=clock.monotonic() - t0)).isoformat())
     if run["outcome"] == "waiting_reset":
         reset = datetime.fromtimestamp(run["reset_at"], tz=timezone.utc).astimezone(ctx.tz)
         ni.update(path, state="waiting_reset", reset_at=reset.isoformat())
@@ -622,15 +616,20 @@ def tick(ctx: Ctx) -> int:
             rep.write_health(ctx.vault, ctx.date, h)
             rep.write(ctx.vault, ctx.date)
         return 0
-    if not hfile.is_file():
-        h = health(ctx.vault, ctx.now, entries)
+    try:
+        h = json.loads(hfile.read_text()) if hfile.is_file() else {}
+    except (OSError, ValueError):
+        h = {}
+    # The day's checks run on its first tick. A usage reading run_headless.sh recorded can create the file
+    # first (usage ceiling spec), so the test is the sandbox key, not the file; that newer reading is kept.
+    if "sandbox" not in h:
         prev = ctx.vault / rep.DIR / f"health-{(date.fromisoformat(ctx.date) - timedelta(days=1)).isoformat()}.json"
         try:   # the last 5-hour reading outlives the report day, so the ceiling holds right after the brief too
             old = json.loads(prev.read_text()) if prev.is_file() else {}
         except (OSError, ValueError):
             old = {}
-        h |= {k: old[k] for k in ("usage5", "usage5_at") if k in old}
-        rep.write_health(ctx.vault, ctx.date, h)
+        carry = {k: old[k] for k in ("usage5", "usage5_at") if k in old}
+        rep.write_health(ctx.vault, ctx.date, health(ctx.vault, ctx.now, entries) | carry | h)
     h = json.loads(hfile.read_text())
     h["last_tick"] = ctx.local.strftime("%H:%M")
     was_held = h.pop("held", None)   # the report's Held line shows only the latest tick's hold
@@ -717,6 +716,10 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
         return 0
     if cmd == "report":
         print(rep.write(vault, a.date or ctx.date).read_text())
+        return 0
+    if cmd == "record-usage":
+        # Every run_headless.sh session refreshes the reading the ceiling holds on (usage ceiling spec).
+        rep.record_usage(vault, ctx.date, ss.parse_stream(a.stream)["usage"], now.isoformat())
         return 0
     if cmd == "selftest":
         ok, why = selftest(vault)

@@ -78,7 +78,7 @@ teardown() {
   grep -qx -- '--strict-mcp-config' "$STUB_ARGS"
   grep -qx -- '--no-session-persistence' "$STUB_ARGS"
   grep -qx -- 'dontAsk' "$STUB_ARGS"
-  grep -qx -- 'json' "$STUB_ARGS"
+  grep -qx -- 'stream-json' "$STUB_ARGS"
   grep -qx -- 'CLAUDE.md' "$STUB_ARGS"
   grep -qx -- 'Read,Glob,Grep,Edit,Write,Bash' "$STUB_ARGS"
   grep -qE -- '^Edit\(/wiki/\.staging/[0-9]{8}T[0-9]{6}-ingest-[0-9a-f]{4}/\*\*\)$' "$STUB_ARGS"
@@ -158,6 +158,26 @@ teardown() {
   [ "$(jq -s 'map(select(.exit == 4)) | length' "$LEDGER")" -eq 2 ]
   run grep -c 'failed (exit' system/logs/alerts_*.md
   [ "$output" = "0" ]
+}
+
+@test "every run records its 5-hour usage reading for the ceiling; a stream without one writes nothing (usage ceiling)" {
+  STUB_MODE=noop run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+  grep -qx 'stream-json' "$STUB_ARGS"
+  grep -qx -- '--verbose' "$STUB_ARGS"
+  [ ! -d system/logs/nightshift ]
+  # The full stream is kept only for a run that failed; a good run keeps its result line in claude.json.
+  run ls system/logs/runs/*/stream.jsonl
+  [ "$status" -ne 0 ]
+  ls system/logs/runs/*/claude.json
+  STUB_MODE=brief STUB_USAGE=0.7 run "$RH" brief
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .usage5 system/logs/nightshift/health-*.json)" = "0.7" ]
+  [ "$(jq -r .usage7 system/logs/nightshift/health-*.json)" = "0.2" ]
+  STUB_MODE=usage_limit STUB_USAGE=1 run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 4 ]
+  [ "$(jq -r .usage5 system/logs/nightshift/health-*.json)" = "1" ]
+  ls system/logs/runs/*/stream.jsonl
 }
 
 @test "an error result that is not a usage limit stays exit 1" {

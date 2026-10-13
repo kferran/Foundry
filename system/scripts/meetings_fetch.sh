@@ -48,6 +48,16 @@ alert_once() {  # <key> <text>: at most one alert a day per key
   local f="system/logs/alerts_$(date +%F).md"
   grep -qF -- "[meetings] $1" "$f" 2>/dev/null || printf -- '- %s [meetings] %s %s\n' "$(date +%H:%M:%S)" "$1" "$2" >> "$f"
 }
+# The usage ceiling (usage ceiling spec), the rule inbox triage applies: no session starts while the 5-hour
+# reading is at or above order_max_five_hour; .since stays, so the next hourly fetch covers the gap.
+if (( ! check )); then
+  held="$(system/scripts/triage.py hold 2>/dev/null || true)"
+  if [[ -n "$held" ]]; then
+    logline hold search 0 "$held"
+    alert_once "held:" "$held; the next hourly fetch retries"
+    exit 0
+  fi
+fi
 
 claude_bin="${CLAUDE_BIN:-claude}"
 if ! command -v "$claude_bin" > /dev/null 2>&1; then

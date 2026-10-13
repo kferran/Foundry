@@ -10,6 +10,7 @@ import pytest
 from helpers import REPO, write
 from test_nightshift_check import PLAN
 from vaultlib import nightshift_item as ni
+from vaultlib import nightshift_report as rep
 from vaultlib import nightshift_run as nr
 
 FX = REPO / "system" / "tests" / "fixtures" / "nightshift"
@@ -83,6 +84,20 @@ def test_now_item_runs_verifies_pushes_and_reports(env):
     assert not list((tmp / "ws").glob("nightshift-2026*"))  # clone removed after delivery
     body = (vault / "system/logs/nightshift/items" / fm["id"] / "pr_body.md").read_text()
     assert body.endswith(f"Queued as Work Order `{fm['id']}`.\n")
+
+
+def test_first_tick_checks_health_even_when_a_usage_reading_made_the_file(env, monkeypatch):
+    # run_headless.sh records usage into the day's health file before any tick (usage ceiling spec): the
+    # first tick must still run the claude, gh and sandbox checks, and keep the newer reading.
+    vault, _ = env
+    monkeypatch.setattr(nr, "health", lambda vault, now, entries: {"claude": "ok", "sandbox": "FAILED: canary read"})
+    day = nr.Ctx(vault, NOW).date
+    rep.record_usage(vault, day, {"five_hour": 0.3, "seven_day": 0.2}, NOW.isoformat())
+    assert add(vault, "--now") == 0
+    assert nr.main(["tick"], vault, NOW) == 1
+    h = json.loads((vault / rep.DIR / f"health-{day}.json").read_text())
+    assert h["sandbox"] == "FAILED: canary read" and h["usage5"] == 0.3
+    assert only_item(vault)[1]["state"] == "queued"
 
 
 def test_window_item_waits_in_daytime(env):

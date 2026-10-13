@@ -26,6 +26,21 @@ def test_report_from_files_only(vault: Path):
     assert "2026-10-05-c" not in text
 
 
+def test_record_usage_creates_merges_and_skips_without_a_reading(vault: Path):
+    import json
+    hp = vault / nr.DIR / "health-2026-10-07.json"
+    nr.record_usage(vault, "2026-10-07", {}, "2026-10-07T05:00:00+00:00")
+    assert not hp.exists()
+    nr.write_health(vault, "2026-10-07", {"claude": "ok"})
+    nr.record_usage(vault, "2026-10-07", {"five_hour": 0.42, "seven_day": 0.1}, "2026-10-07T05:00:00+00:00")
+    h = json.loads(hp.read_text())
+    assert h == {"claude": "ok", "usage5": 0.42, "usage7": 0.1, "usage5_at": "2026-10-07T05:00:00+00:00",
+                 "usage": "5h 42% / 7d 10%"}
+    hp.write_text("not json")
+    nr.record_usage(vault, "2026-10-07", {"five_hour": 0.5}, "2026-10-07T06:00:00+00:00")
+    assert json.loads(hp.read_text())["usage5"] == 0.5
+
+
 def test_quiet_night_and_health_failure(vault: Path):
     assert nr.build(vault, "2026-10-08") == "# Work Orders: 2026-10-08\n> Health: not checked\n\nNothing ran.\n"
     nr.write_health(vault, "2026-10-09", {"claude": "ok", "sandbox": "FAILED: curl reached example.com"})
