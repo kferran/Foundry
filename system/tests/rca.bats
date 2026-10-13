@@ -83,6 +83,15 @@ jira_says() {
   [ ! -e "system/logs/rca/work-$STEM.attempt" ]
 }
 
+@test "a refused allow rule runs no session and leaves no marker (connector runner spec §2)" {
+  printf '{"permissions":{"allow":["mcp__claude_ai_Atlassian"]}}' > "$HOME/.claude/settings.json"
+  run "$RF" work "$STEM"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"allows every tool on mcp__claude_ai_Atlassian"* ]]
+  [ ! -e "$STUB_ARGS" ]
+  [ ! -e "system/logs/rca/work-$STEM.attempt" ]
+}
+
 @test "a ticket already created is only written back, never filed twice" {
   mkdir -p system/logs/rca
   printf 'EX-5\n' > "system/logs/rca/work-$STEM.key"
