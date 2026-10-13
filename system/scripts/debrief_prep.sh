@@ -1,5 +1,5 @@
 #!/bin/bash
-# Git activity, session digests and focus stats into system/logs/inputs/<date>/ (spec §6.5).
+# Git activity and session digests into system/logs/inputs/<date>/ (spec §6.5).
 # Exits 0 whenever the date is valid; every source that could not be read gets a line in unavailable.md.
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
@@ -102,9 +102,4 @@ case "$rc" in
 esac
 
 prep_meetings
-# The focus tracker runs on a standalone machine only (one-screen brief spec §3.5).
-if [[ "$(config_get machine_role standalone)" == standalone ]]; then
-  prep_write focus.md system/scripts/focus_stats.sh "$PREP_DATE" || prep_unavailable "focus: focus_stats.sh failed"
-  [[ -s "system/logs/obsidian_focus_$PREP_DATE.log" ]] || prep_unavailable "focus: no focus log for $PREP_DATE"
-fi
 exit 0

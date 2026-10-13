@@ -362,9 +362,43 @@ self_edit_contract() {
   grep -qF 'system/scripts/vault_index.py set system/config.md machine_role <role>' .claude/commands/setup.md
 }
 
+@test "express install: three questions, one features list, the first brief (#122 step 1)" {
+  sec="$(setup_section '0. Role and preflight')"
+  [[ "$sec" == *'contains a space'* ]]
+  sec="$(setup_section '2. Interview')"
+  [[ "$sec" == *'timedatectl show -p Timezone --value'* ]]
+  [[ "$sec" == *'set system/config.md default_partition personal'* ]]
+  [[ "$sec" != *'superpowers (strategic anchors'* ]]
+  [[ "$sec" != *'digest thresholds (default'* ]]
+  sec="$(setup_section '2a. Features')"
+  for k in orders_enabled update_enabled meetings_enabled triage_enabled; do
+    [[ "$sec" == *"$k"* ]]
+  done
+  [[ "$sec" == *'Ask once'* ]]
+  for p in '3. Codebases' '5a. Memory hooks' '6. Calendar' '6a. Telemetry' '6c. Handoffs' '6d. Slack notices'; do
+    [[ "$(setup_section "$p")" == *'Only when chosen in 2a.'* ]]
+  done
+  sec="$(setup_section '3. Codebases')"
+  [[ "$sec" == *'Show the whole draft once'* ]]
+  sec="$(setup_section '11. First brief')"
+  [[ "$sec" == *'run `/brief` now'* ]]
+  # Final review fixes: a fresh clone always gets its template remote and hooks; 2a reads absent keys as on;
+  # a new vault's first brief sees no placeholder superpower; Work Orders off means approved plans run native.
+  sec="$(setup_section '4. Remote')"
+  [[ "$sec" == *'`git remote get-url template` fails'* ]]
+  [[ "$sec" != *'`remote_mode` is empty'* ]]
+  [[ "$(setup_section '2a. Features')" == *'An absent `orders_enabled` or `update_enabled` is on'* ]]
+  grep -qx 'superpowers: \[\]' system/config.example.md
+  grep -qF 'When `orders_enabled` is `false`, it runs native in the session instead.' CLAUDE.md
+  run grep -c 'Use this template' README.md FOUNDRY.md
+  [[ "$output" == *'README.md:0'* ]]
+  [[ "$output" == *'FOUNDRY.md:0'* ]]
+}
+
 @test "/setup on a client skips the phases a client does not use, and says so" {
   f=.claude/commands/setup.md
-  grep -qF 'On a client, skip phases 3, 6, 6a and 9' "$f"
+  grep -qF 'On a client, skip phases 3, 6, 6a to 6d, 9, 9a and 11' "$f"
+  grep -qF 'skips phases 3, 6, 6a to 6d, 9, 9a and 11' FOUNDRY.md
   # A machine re-run as a client must stop running automation and memory hooks.
   units="$(setup_section '5. Units')"
   [[ "$units" == *'On a client, run `system/scripts/install_units.sh` without asking'* ]]
@@ -373,9 +407,10 @@ self_edit_contract() {
   [[ "$hooks" == *'On a client, never install the hooks.'* ]]
   [[ "$hooks" == *'offer `system/scripts/install_hooks.sh --uninstall`'* ]]
   grep -qF 'not used on a client' "$f"
-  grep -qF 'On a client, ask only for the timezone and the default partition.' "$f"
+  grep -qF 'On a client, write only the timezone and the default partition.' "$f"
   sec="$(setup_section '8. Verify')"
-  [[ "$sec" == *'On a client, run `system/scripts/lint_vault.sh` instead'* ]]
+  [[ "$sec" == *'Run `system/scripts/verify_setup.sh --health`'* ]]
+  [[ "$sec" == *'"test tools not installed; lint passed"'* ]]
 }
 
 @test "/setup requires private remotes, working credentials and a published branch on a server or client" {
@@ -389,13 +424,16 @@ self_edit_contract() {
 @test "/setup requires linger on a server and lists the units for the role" {
   sec="$(setup_section '5. Units')"
   [[ "$sec" == *'On a server, linger is required'* ]]
-  [[ "$sec" == *'`foundry-focus` (standalone only)'* ]]
+  [[ "$sec" != *'foundry-focus'* ]]
 }
 
-@test "/backup lints instead of running the suites on a client" {
+@test "/backup runs the gate (lint, then the suites when the test tools are installed), and only lint on a client (#122)" {
   f=.claude/commands/backup.md
+  grep -qF 'Run `system/scripts/verify_setup.sh`: it lints the vault, then runs the test suites' "$f"
   grep -qF 'On a client (`machine_role: client`), run `system/scripts/lint_vault.sh` instead' "$f"
-  grep -qF 'Skip this step on a client.' "$f"
+  grep -qF 'Skip this step on a client or when `bats` is not installed.' "$f"
+  sec="$(setup_section '8. Verify')"
+  [[ "$sec" == *'On a client, run `system/scripts/lint_vault.sh` instead'* ]]
 }
 
 @test "/backup commits each published headless run before its own commit, in every role" {
@@ -414,7 +452,6 @@ self_edit_contract() {
 @test "system_health checks each item only on the roles that run it" {
   f=system/tests/system_health.bats
   grep -qF 'skip_unless_role standalone server' "$f"
-  grep -qF 'skip_unless_role standalone' <(grep -A3 'focus tracker is active' "$f")
 }
 
 @test "gcalcli is gone: only the two settings deny rules still name it" {
@@ -527,7 +564,8 @@ self_edit_contract() {
   grep -qF 'print `friction.md` verbatim' "$f"
   grep -qF 'Recurring: N groups' "$f"
   grep -qF 'one brief'"'"'s worth: the meetings imported since the previous weekday brief' "$f"
-  grep -qF 'Omit **Focus Drift** when `focus_yesterday.md` does not exist' "$f"
+  run grep -E 'Focus Drift|focus_yesterday|Focus Fragmentation' "$f"
+  [ "$status" -eq 1 ]
   grep -qF 'replace the old `## 🛑 Real-Time Workflow Friction Matrix` heading with `## 🛑 Blockers`' "$f"
   run grep -F 'SELECT path, title FROM v_concept WHERE is_friction = 1' "$f"
   [ "$status" -eq 1 ]
@@ -546,7 +584,8 @@ self_edit_contract() {
   run grep -c 'Focus Drift' "$t"
   [ "$status" -eq 1 ]
   d=.claude/commands/debrief.md
-  grep -qF 'Omit the Focus paragraph when `focus.md` does not exist' "$d"
+  run grep -ci 'focus' "$d"
+  [ "$status" -eq 1 ]
   grep -qF 'Omit **3. Agent Health** when `system/logs/metrics/` holds no file' "$d"
   grep -qF 'Before today'"'"'s meetings' FOUNDRY.md
   grep -qF 'imported since the previous weekday brief' FOUNDRY.md
@@ -561,10 +600,13 @@ self_edit_contract() {
   grep -qF 'only when the summary and details leave a fact unclear' "$f"
 }
 
-@test "setup phase 6b dry-runs the unit installer and installs only on an explicit yes (#59)" {
+@test "units are installed only on an explicit yes: phase 5 after 2a wrote the feature keys, 6a and 6d after their own keys (#59, #122)" {
+  sec="$(setup_section '5. Units')"
+  [[ "$sec" == *'Ask before installing'* ]]
   sec="$(setup_section '6b. Meetings')"
-  [[ "$sec" == *'system/scripts/install_units.sh --dry-run'* ]]
-  [[ "$sec" == *'install on an explicit yes'* ]]
+  [[ "$sec" == *'which already wrote `meetings_enabled` and `triage_enabled`, so phase 5'"'"'s units follow them'* ]]
+  [[ "$sec" != *'install_units.sh'* ]]
+  [[ "$(setup_section '6a. Telemetry')" == *'install on an explicit yes'* ]]
   run grep -cF 'run `system/scripts/install_units.sh` again' .claude/commands/setup.md
   [ "$output" = "0" ]
 }
@@ -606,7 +648,7 @@ self_edit_contract() {
   sec="$(sed -n '/^## 6a\. Telemetry/,/^## 7\./p' ".claude/commands/setup.md")"
   [[ "$sec" == *'telemetry_fetch.py --check'* ]]
   [[ "$sec" == *'0600'* ]]
-  grep -qF 'skip phases 3, 6, 6a and 9' ".claude/commands/setup.md"
+  grep -qF 'skip phases 3, 6, 6a to 6d, 9, 9a and 11' ".claude/commands/setup.md"
 }
 
 @test "an empty ADX filter value for shared services is documented (#94 A)" {
@@ -797,9 +839,9 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
 }
 
 @test "/setup and the README describe the daily template update and how to turn it off (#87)" {
-  grep -qF '`foundry-update` (standalone and server), which merges template updates every morning at 05:30' .claude/commands/setup.md
+  grep -qF '`foundry-update` (when `update_enabled` is `true`), which merges template updates every morning 45 minutes before the brief' .claude/commands/setup.md
   grep -qF '`systemctl --user disable --now foundry-update.timer`' .claude/commands/setup.md
-  grep -qF '`foundry-update.timer` runs it every morning at 05:30 (`update_template.sh --unattended`, #87)' FOUNDRY.md
+  grep -qF '`foundry-update.timer` runs it every morning 45 minutes before the brief (`update_template.sh --unattended`, #87)' FOUNDRY.md
   grep -qF 'aborts a conflicted merge (`git merge --abort`), leaving the vault unchanged' FOUNDRY.md
   grep -qF 'later updates keep it disabled' FOUNDRY.md
 }
@@ -828,7 +870,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
 
 @test "inbox triage: /setup asks for it and checks the connector; the manual and the config schema describe it (#99)" {
   sec="$(setup_section '6b. Meetings')"
-  [[ "$sec" == *'watch the inbox during the day for mail that needs you (`triage_enabled`, default `false`)'* ]]
+  [[ "$sec" == *'**Inbox triage** (7, `triage_enabled`)'* ]]
   [[ "$sec" == *'system/scripts/triage_fetch.sh --check'* ]]
   [[ "$sec" == *'`triage_partition`'* ]]
   grep -qF '**Inbox triage.**' FOUNDRY.md

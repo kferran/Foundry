@@ -79,8 +79,8 @@ role="$(config_get machine_role standalone)"
 case "$role" in
   standalone)
     UNITS=(foundry-intake.service foundry-intake.timer foundry-brief.service foundry-brief.timer
-           foundry-debrief.service foundry-debrief.timer foundry-focus.service)
-    ENABLE=(foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service) ;;
+           foundry-debrief.service foundry-debrief.timer)
+    ENABLE=(foundry-intake.timer foundry-brief.timer foundry-debrief.timer) ;;
   server)
     UNITS=(foundry-intake.service foundry-intake.timer foundry-brief.service foundry-brief.timer
            foundry-debrief.service foundry-debrief.timer foundry-sync.service foundry-sync.timer)
@@ -110,13 +110,14 @@ if [[ "$role" != client ]] && [[ -n "$(system/scripts/telemetry_fetch.py --list 
   UNITS+=(foundry-telemetry.service foundry-telemetry.timer)
   ENABLE+=(foundry-telemetry.timer)
 fi
-# Nightshift: standalone and server (Nightshift spec §2).
-if [[ "$role" != client ]]; then
+# Work Orders and the template update: standalone and server, while their keys are true (Nightshift spec §2,
+# #87). An absent key is true, so a vault made before they were opt-in keeps both (express install spec §2).
+if [[ "$role" != client && "$(config_get orders_enabled true)" == true ]]; then
   UNITS+=(foundry-nightshift.service foundry-nightshift.timer)
   ENABLE+=(foundry-nightshift.timer)
 fi
-# Template update: standalone and server, every morning (#87); a client gets updates through sync.
-if [[ "$role" != client ]]; then
+# A client gets template updates through sync.
+if [[ "$role" != client && "$(config_get update_enabled true)" == true ]]; then
   UNITS+=(foundry-update.service foundry-update.timer)
   ENABLE+=(foundry-update.timer)
 fi
@@ -180,6 +181,9 @@ tz="$(config_get timezone)" brief="$(config_get brief_time)" debrief="$(config_g
 IFS=: read -r bh bm <<< "$brief"
 t=$(( (10#$bh * 60 + 10#$bm + 1410) % 1440 ))
 dtcc_time="$(printf '%02d:%02d' $(( t / 60 )) $(( t % 60 )))"
+# The template update runs 45 minutes before the brief, ahead of the DTCC watcher (#117).
+t=$(( (10#$bh * 60 + 10#$bm + 1395) % 1440 ))
+update_time="$(printf '%02d:%02d' $(( t / 60 )) $(( t % 60 )))"
 sync_interval="$(config_get sync_interval_minutes 5)"
 unit_path="$(dirname "$claude_bin"):%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
@@ -199,7 +203,7 @@ render() {
   {
     printf '%s\n' "$HEADER"
     sed "$@" -e "s|{{VAULT_ROOT}}|$(esc "$VAULT_ROOT")|g" -e "s|{{TZ}}|$(esc "$tz")|g" \
-        -e "s|{{BRIEF_TIME}}|$(esc "$brief")|g" -e "s|{{DTCC_TIME}}|$(esc "$dtcc_time")|g" -e "s|{{DEBRIEF_TIME}}|$(esc "$debrief")|g" \
+        -e "s|{{BRIEF_TIME}}|$(esc "$brief")|g" -e "s|{{DTCC_TIME}}|$(esc "$dtcc_time")|g" -e "s|{{UPDATE_TIME}}|$(esc "$update_time")|g" -e "s|{{DEBRIEF_TIME}}|$(esc "$debrief")|g" \
         -e "s|{{SYNC_INTERVAL}}|$(esc "$sync_interval")|g" \
         -e "s|{{CLAUDE_BIN}}|$(esc "$claude_bin")|g" -e "s|{{UNIT_PATH}}|$(esc "$unit_path")|g" "$t"
   } > "$out"

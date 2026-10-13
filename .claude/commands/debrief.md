@@ -1,5 +1,5 @@
 ---
-description: The Foreman writes the evening debrief from git activity, session digests, headless runs, focus stats and agent metrics.
+description: The Foreman writes the evening debrief from git activity, session digests, headless runs and agent metrics.
 argument-hint: [YYYY-MM-DD]
 ---
 
@@ -21,7 +21,6 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 
 - `system/logs/inputs/<date>/git.md`: the day's commits per repo.
 - `system/logs/inputs/<date>/digests.md`: the day's session digests from every partition.
-- `system/logs/inputs/<date>/focus.md`: top notes and Focus Fragmentation Warnings.
 - `system/logs/inputs/<date>/orders.md`: the open Work Orders report, which collects everything since this morning's brief (empty when nothing ran).
 - `system/logs/inputs/<date>/prs.md`: pull requests you opened, merged or reviewed today in the registered GitHub repositories, one `- <type> — <what> — <link>` line each (empty when none or no GitHub repository is registered).
 - `briefings/<date>.md`: the lines in its 📝 Notes section that start with `delivered:`.
@@ -37,7 +36,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - If `briefings/<date>.debrief.md` exists: headless, run `system/scripts/vault_index.py stage briefings/<date>.debrief.md <run_id>` and Edit `wiki/.staging/<run_id>/briefings/<date>.debrief.md`; interactive, edit the file. Keep everything already there.
 - Otherwise create it from `system/templates/daily-debrief.md`, replacing `{{date}}`.
 - **1. Execution Logs & Results:** what got done, per repo from `git.md`, and the Outcome and Follow-ups of each digest, summarized across partitions (the debrief may cite any partition). List today's meetings, each as a link to its meeting note.
-- **2. System State Deltas:** headless runs (published, rejected, conflicts), telemetry runs per source (groups new, updated, resolved; failures), alerts, quarantined inputs, and focus: top notes plus every Focus Fragmentation Warning. Omit the Focus paragraph when `focus.md` does not exist (a server or client has no tracker, so it is not an unavailable source).
+- **2. System State Deltas:** headless runs (published, rejected, conflicts), telemetry runs per source (groups new, updated, resolved; failures), alerts and quarantined inputs.
 - **3. Agent Health:** every agent whose 3 most recent metric files all show `test_suite_passed: false`, with the files. Report only; the user decides what to do. Otherwise "No repeated failures." Omit **3. Agent Health** when `system/logs/metrics/` holds no file (no Workcell has run); the other sections keep their numbers.
 - **4. Unavailable Sources:** one bullet per missing source, or "None."
 - **5. Work Orders:** the `## Items` table and every `- [ ] ` line under "## Needs you" from `orders.md`, verbatim. Write "No Work Orders ran today." when the file is empty or says "Nothing ran." In both cases, copy its `> Held:` line verbatim when there is one. When an existing debrief has no 5. Work Orders section, add it at the end.

@@ -29,7 +29,7 @@
 - `/backup`: verify, commit and push according to `remote_mode`.
 - `/order add|ask|list|cancel|status`: queue refined work as Work Orders for unattended runs (a plan's task range to a pull request, or a research brief to a findings note).
 - `/setup`: interactive onboarding; safe to re-run.
-- **Approved plans:** When the user approves a plan and names no execution method, the plan runs as a Work Order that starts now. "native" or "subagent" runs it in the session; "tonight" queues it for 22:00; "hold" leaves it unqueued. The vault is the repository that has `system/config.md`. In the vault, run `/order add` (the skill shows the readiness result). In any other repository, push the plan's branch and send the exact `system/scripts/nightshift.py add` command to the Foreman session by cross-session message.
+- **Approved plans:** When the user approves a plan and names no execution method, the plan runs as a Work Order that starts now. When `orders_enabled` is `false`, it runs native in the session instead. "native" or "subagent" runs it in the session; "tonight" queues it for 22:00; "hold" leaves it unqueued. The vault is the repository that has `system/config.md`. In the vault, run `/order add` (the skill shows the readiness result). In any other repository, push the plan's branch and send the exact `system/scripts/nightshift.py add` command to the Foreman session by cross-session message.
 
 ## Codebases
 Codebases are defined in `system/codebases/`. Read the relevant file before touching code.
@@ -81,7 +81,6 @@ Wording rules for chat and for every note, condensed from `.claude/skills/humani
 - **Production Telemetry Routing**: Notes in `raw/telemetry/` (`type: production_error`) are critical and route to the Workcell with `telemetry`, which inspects local branches of the affected codebase for correlating commits.
 
 ## ⚠️ Friction Identification & Remediation Rules
-- **Focus Fragmentation Threshold**: `system/scripts/focus_stats.sh` flags every 15-minute window with more than 4 note switches as a **Focus Fragmentation Warning**; carry each one into the debrief.
 - **Fail-Fast Loop Breaker**: `/debrief` reports agents whose recent metric files in `system/logs/metrics/` show repeated failures (3 consecutive `test_suite_passed: false`); the user decides what to do.
 - **Decision Clarity Ingestion**: Flag any incoming email or chat item containing uncertainty keywords (e.g., "not sure," "waiting on approval," "stuck") as **Immediate Architectural Friction**, moving it to the top of the action queue.
 - **Harness-Driven Extraction**: When processing external event text or raw chat-driven interface logs, do not swallow formatting blocks. Extract raw text components explicitly, mapping updates safely to markdown nodes without corrupting metadata headers.

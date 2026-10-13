@@ -1,5 +1,5 @@
 ---
-description: The Foreman builds today's briefing from the calendar, alerts, telemetry, friction notes and yesterday's focus.
+description: The Foreman builds today's briefing from the calendar, alerts, telemetry and friction notes.
 argument-hint: [YYYY-MM-DD]
 ---
 
@@ -21,7 +21,6 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 
 - Config: `system/scripts/vault_index.py field system/config.md <key>` for `brief_time`, `debrief_time` and `superpowers`.
 - `system/logs/inputs/<date>/calendar.tsv`: today's events, one per line (start date, start time, end date, end time, title).
-- `system/logs/inputs/<date>/focus_yesterday.md`: yesterday's top notes and Focus Fragmentation Warnings. Written on a standalone machine only; its absence on a server or client is not an unavailable source.
 - `system/logs/inputs/<date>/actions.md`: open action items from meeting notes, in three sections: **Yours** (every open item of yours, any age), **Waiting on** (everyone else's, by owner, one brief's worth: the meetings imported since the previous weekday brief, so each item prints once; empty on a weekend) and **Notices** (meetings cut short, quarantined meeting sources, archived duplicates).
 - `system/logs/inputs/<date>/people.md`: the **Before today's meetings** blocks, one `### [[Entity]] (time event)` heading per entity named in today's calendar with its open Now lines and open meeting actions, at most five entities and five lines each (empty when no event names an entity).
 - `system/logs/inputs/<date>/friction.md`: one `- [[Name]]` line per friction note no earlier brief has listed, newest first, then `N open friction notes`.
@@ -65,7 +64,6 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
   - **Friction**: print `friction.md` verbatim, the count line last. Note names only: the user opens a note to queue from it.
   - **Pipeline**: pipeline alerts, quarantined inputs, a Health line in `nightshift.md` with FAILED; when `actions.md` has Notices, its Notices go under **Pipeline** too, and so do the lines under "## Notices" in `projects.md`.
   - **Communication Debt**: mail and chat, or the skipped line.
-  - **Focus Drift**, a fifth part only when there is focus data: yesterday's Focus Fragmentation Warnings. Omit **Focus Drift** when `focus_yesterday.md` does not exist (a server or client has no tracker).
   - When an existing briefing still has the old heading, replace the old `## 🛑 Real-Time Workflow Friction Matrix` heading with `## 🛑 Blockers` and rewrite its bullets as the four parts, once.
 - **🛠 Work Orders:** the `## Items` table from `nightshift.md` verbatim, or omit the section when the file is empty or says "Nothing ran." Copy its `> Held:` line verbatim when there is one, keeping the section for it.
   - Telemetry, per environment. **New**: active groups with `detected_at` in the last 24 hours, `substatus` regressed or escalating, or `regressed` true, as a table.

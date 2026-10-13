@@ -3,7 +3,7 @@
 load helpers
 
 UNITS=(foundry-intake.service foundry-intake.timer foundry-brief.service foundry-brief.timer
-       foundry-debrief.service foundry-debrief.timer foundry-focus.service)
+       foundry-debrief.service foundry-debrief.timer)
 
 setup() {
   make_vault
@@ -42,7 +42,7 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
 @test "services carry TZ, PATH, an unresolved CLAUDE_BIN and their timeouts" {
   run "$IU"
   [ "$status" -eq 0 ]
-  for s in intake brief debrief focus; do
+  for s in intake brief debrief; do
     f="$UD/foundry-$s.service"
     grep -qxF 'Environment="TZ=America/Denver"' "$f"
     grep -qxF "Environment=\"PATH=$STUBS:%h/.local/bin:/usr/local/bin:/usr/bin:/bin\"" "$f"
@@ -69,11 +69,11 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   grep -qx 'Persistent=true' "$UD/foundry-debrief.timer"
 }
 
-@test "installing reloads systemd and enables the three timers and the focus tracker" {
+@test "installing reloads systemd and enables the three timers" {
   run "$IU"
   [ "$status" -eq 0 ]
   grep -qx -- '--user daemon-reload' "$STUB_SYSTEMCTL_LOG"
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "a second run reports every unit unchanged and rewrites nothing" {
@@ -201,15 +201,13 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
 
 set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1" > /dev/null; }
 
-@test "machine_role server installs the run units without the focus tracker" {
+@test "machine_role server installs the run units and the sync timer" {
   set_role server
   run "$IU"
   [ "$status" -eq 0 ]
   for n in "${UNITS[@]}"; do
-    [ "$n" = foundry-focus.service ] && continue
     [ -f "$UD/$n" ]
   done
-  [ ! -e "$UD/foundry-focus.service" ]
   grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-sync.timer foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
@@ -226,14 +224,15 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
 }
 
 @test "a role change removes the owned units the new role does not use" {
-  run "$IU"
-  [ -f "$UD/foundry-focus.service" ]
   set_role server
   run "$IU"
+  [ -f "$UD/foundry-sync.timer" ]
+  set_role standalone
+  run "$IU"
   [ "$status" -eq 0 ]
-  grep -qx 'removed foundry-focus.service' <<< "$output"
-  [ ! -e "$UD/foundry-focus.service" ]
-  grep -qx -- '--user disable --now foundry-focus.service' "$STUB_SYSTEMCTL_LOG"
+  grep -qx 'removed foundry-sync.timer' <<< "$output"
+  [ ! -e "$UD/foundry-sync.timer" ]
+  grep -q -- '^--user disable --now .*foundry-sync.timer' "$STUB_SYSTEMCTL_LOG"
   set_role client
   run "$IU"
   [ "$status" -eq 0 ]
@@ -322,7 +321,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qxF "ExecStart=\"$VP/system/scripts/meetings_fetch.sh\"" "$UD/foundry-meetings.service"
   grep -qx 'TimeoutStartSec=35min' "$UD/foundry-meetings.service"
   grep -qxF "Environment=\"CLAUDE_BIN=$STUBS/claude\"" "$UD/foundry-meetings.service"
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-meetings.timer foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-meetings.timer foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
   set_role server
   run "$IU"
   [ "$status" -eq 0 ]
@@ -416,6 +415,41 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -q 'enable --now .*foundry-nightshift.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
+@test "Work Orders and the update are installed when their keys are absent, so existing vaults keep them (#122)" {
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ -e "$UD/foundry-nightshift.timer" ]
+  [ -e "$UD/foundry-update.timer" ]
+  : > "$STUB_SYSTEMCTL_LOG"
+  run "$IU" --update
+  [ "$status" -eq 0 ]
+  [ -e "$UD/foundry-nightshift.timer" ]
+  [ -e "$UD/foundry-update.timer" ]
+  grep -q 'enable --now .*foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
+}
+
+@test "orders_enabled and update_enabled false install neither, and remove them when they were installed (#122)" {
+  run "$IU"
+  system/scripts/vault_index.py set system/config.md orders_enabled false > /dev/null
+  system/scripts/vault_index.py set system/config.md update_enabled false > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'removed foundry-nightshift.timer' <<< "$output"
+  grep -qx 'removed foundry-update.timer' <<< "$output"
+  [ ! -e "$UD/foundry-nightshift.timer" ]
+  [ ! -e "$UD/foundry-update.timer" ]
+  system/scripts/vault_index.py set system/config.md orders_enabled true > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ -e "$UD/foundry-nightshift.timer" ]
+  [ ! -e "$UD/foundry-update.timer" ]
+}
+
+@test "the committed example starts a new vault with Work Orders and the update off (#122)" {
+  grep -q '^orders_enabled: "false" ' "$REPO/system/config.example.md"
+  grep -q '^update_enabled: "false" ' "$REPO/system/config.example.md"
+}
+
 @test "a vault with a DTCC map gets the watch timer 30 minutes before the brief; one without does not" {
   run "$IU"
   [ "$status" -eq 0 ]
@@ -429,11 +463,22 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -q 'enable --now .*foundry-dtcc-watch.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
-@test "standalone and server get the template update every morning at 05:30, a server with its sync drop-in (#87)" {
+@test "the update time follows brief_time and wraps past midnight (#117)" {
+  system/scripts/vault_index.py set system/config.md brief_time 08:00 > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'OnCalendar=\*-\*-\* 07:15:00 America/Denver' "$UD/foundry-update.timer"
+  system/scripts/vault_index.py set system/config.md brief_time 00:30 > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'OnCalendar=\*-\*-\* 23:45:00 America/Denver' "$UD/foundry-update.timer"
+}
+
+@test "standalone and server get the template update 45 minutes before the brief, a server with its sync drop-in (#87, #117)" {
   run "$IU"
   [ "$status" -eq 0 ]
   grep -qxF "ExecStart=\"$VP/system/scripts/update_template.sh\" --unattended" "$UD/foundry-update.service"
-  grep -qx 'OnCalendar=\*-\*-\* 05:30:00 America/Denver' "$UD/foundry-update.timer"
+  grep -qx 'OnCalendar=\*-\*-\* 05:15:00 America/Denver' "$UD/foundry-update.timer"
   grep -qx 'Persistent=true' "$UD/foundry-update.timer"
   [ ! -e "$UD/foundry-update.service.d" ]
   system/scripts/vault_index.py set system/config.md machine_role server > /dev/null
@@ -453,5 +498,16 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   : > "$STUB_SYSTEMCTL_LOG"
   run "$IU" --update
   [ "$status" -eq 0 ]
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
+}
+
+@test "--update removes a focus tracker an older template installed" {
+  "$IU" > /dev/null
+  printf '# Managed by vault: %s\n[Service]\nExecStart=/bin/true\n' "$VP" > "$UD/foundry-focus.service"
+  : > "$STUB_SYSTEMCTL_LOG"
+  run "$IU" --update
+  [ "$status" -eq 0 ]
+  grep -qx 'removed foundry-focus.service' <<< "$output"
+  [ ! -e "$UD/foundry-focus.service" ]
+  grep -qx -- '--user disable --now foundry-focus.service' "$STUB_SYSTEMCTL_LOG"
 }

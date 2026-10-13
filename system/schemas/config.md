@@ -35,6 +35,8 @@ fields:
   triage_partition: {kind: enum, values: [work, personal]}
   slack_notify_channel: {kind: string}
   slack_connector: {kind: string, default: "plugin:slack:slack"}
+  orders_enabled: {kind: bool, default: "true"}
+  update_enabled: {kind: bool, default: "true"}
 ---
 # Config
 The per-user global configuration written by `/setup` (gitignored). `system/config.example.md` is the committed example.
@@ -48,5 +50,7 @@ The per-user global configuration written by `/setup` (gitignored). `system/conf
 `triage_enabled` turns on inbox triage on a standalone machine or a server (inbox triage spec): every 30 minutes on workdays, mail that needs the owner becomes an `owed` line on the Now page of `triage_partition` (default `work`).
 
 `slack_notify_channel` turns on Slack notices on a standalone machine or a server (Slack notices spec): a Slack channel ID, or the owner's user ID for a direct message; empty is off. `slack_connector` is the connector as `claude mcp list` names it (default `plugin:slack:slack`).
+
+`orders_enabled` and `update_enabled` turn on the Work Orders tick and the daily template update on a standalone machine or a server. Absent means on, so vaults made before 2026-10-12 keep both; the example config sets both to `false`, and `/setup` asks.
 
 `nightshift_workspace` and `nightshift_window` are the old names of `order_workspace` and `run_window`. They are still read when the new key is absent; the new key wins when both are set.

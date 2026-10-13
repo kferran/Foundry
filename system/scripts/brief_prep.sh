@@ -1,5 +1,5 @@
 #!/bin/bash
-# Calendar, meeting actions, active projects, handoffs and yesterday's focus stats into system/logs/inputs/<date>/ (spec §6.5;
+# Calendar, meeting actions, active projects and handoffs into system/logs/inputs/<date>/ (spec §6.5;
 # calendar spec §5; meetings spec §2.5; delivered work spec §3.3).
 # Exits 0 whenever the date is valid; every source that could not be read gets a line in unavailable.md.
 set -euo pipefail
@@ -44,15 +44,6 @@ case "$rc" in
   4) prep_unavailable "telemetry: a fetch was already running" ;;
   *) prep_unavailable "telemetry: telemetry_fetch.py failed (exit $rc; see $PREP_DIR/prep_errors.log)" ;;
 esac
-
-# The focus tracker runs on a standalone machine only (one-screen brief spec §3.5): a server or client has no
-# focus log, and a source the role never has is not unavailable.
-if [[ "$(config_get machine_role standalone)" == standalone ]]; then
-  yesterday="$(date -d "$PREP_DATE -1 day" +%F)"
-  prep_write focus_yesterday.md system/scripts/focus_stats.sh "$yesterday" \
-    || prep_unavailable "focus_yesterday: focus_stats.sh failed"
-  [[ -s "system/logs/obsidian_focus_$yesterday.log" ]] || prep_unavailable "focus_yesterday: no focus log for $yesterday"
-fi
 
 # The Now page (Now page spec §3.3): once, a missing default-partition page takes the latest earlier briefing's
 # open objectives; then now.md lists the open lines of both pages, so the brief adds no repeat.

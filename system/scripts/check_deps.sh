@@ -1,7 +1,8 @@
 #!/bin/bash
-# The single dependency list (spec §6.2): one "ok|missing|optional <item> [hint]" line per item.
+# The single dependency list (spec §6.2): one "ok|missing|optional|dev <item> [hint]" line per item.
 # Which items are required depends on the machine role (two-machine spec §3.4). Exit 0 always;
-# --strict exits 1 if a required item is missing. Optional items never fail --strict.
+# --strict exits 1 if a required item is missing. Optional items and the development tools (dev:
+# bats, pytest, shellcheck; express install spec §2) never fail --strict.
 set -euo pipefail
 # No dirname: this script must run with a PATH that lacks coreutils.
 src="${BASH_SOURCE[0]}"
@@ -22,8 +23,7 @@ if [[ -z "$role" ]]; then
   role="${role:-standalone}"
 fi
 case "$role" in
-  standalone) REQUIRED=(claude git jq bats systemctl hyprctl python3 flock timeout pyyaml pytest fts5 systemd-analyze) ;;
-  server) REQUIRED=(claude git jq bats systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze) ;;
+  standalone|server) REQUIRED=(claude git jq systemctl python3 flock timeout pyyaml fts5 systemd-analyze bwrap) ;;
   client) REQUIRED=(claude git jq python3 pyyaml fts5) ;;
   *) usage ;;
 esac
@@ -46,12 +46,12 @@ hint() {
     pdftotext) pkg_pacman=poppler pkg_apt=poppler-utils ;;
     bwrap) pkg_pacman=bubblewrap pkg_apt=bubblewrap ;;
     gh) pkg_pacman=github-cli pkg_apt=gh ;;
-    hyprctl) pkg_pacman=hyprland pkg_apt=hyprland ;;
     python3) pkg_pacman=python pkg_apt=python3 ;;
     flock) pkg_pacman=util-linux pkg_apt=util-linux ;;
     timeout) pkg_pacman=coreutils pkg_apt=coreutils ;;
     pyyaml) pkg_pacman=python-yaml pkg_apt=python3-yaml ;;
     pytest) pkg_pacman=python-pytest pkg_apt=python3-pytest ;;
+    shellcheck) pkg_pacman=shellcheck pkg_apt=shellcheck ;;
     az) pkg_pacman=azure-cli pkg_apt=azure-cli ;;
   esac
   case "$pm" in
@@ -62,11 +62,11 @@ hint() {
 }
 
 missing=0
-report() {  # <item> <present 0|1> [optional]
+report() {  # <item> <present 0|1> [optional|dev]
   if (( $2 )); then
     echo "ok $1"
-  elif [[ "${3:-}" == optional ]]; then
-    echo "optional $1 $(hint "$1")"
+  elif [[ -n "${3:-}" ]]; then
+    echo "$3 $1 $(hint "$1")"
   else
     echo "missing $1 $(hint "$1")"
     missing=1
@@ -82,10 +82,13 @@ present() {  # <item>: 1 when the item is available
 }
 
 for item in "${REQUIRED[@]}"; do report "$item" "$(present "$item")"; done
+if [[ "$role" != client ]]; then
+  for item in bats pytest shellcheck; do report "$item" "$(present "$item")" dev; done
+fi
 for c in herdr tmux; do report "$c" "$(has "$c")" optional; done
 if [[ "$role" != client ]]; then report az "$(has az)" optional; fi
 if [[ "$role" != client ]]; then report pdftotext "$(has pdftotext)" optional; fi
-if [[ "$role" != client ]]; then report bwrap "$(has bwrap)" optional; report gh "$(has gh)" optional; fi
+if [[ "$role" != client ]]; then report gh "$(has gh)" optional; fi
 
 (( strict && missing )) && exit 1
 exit 0

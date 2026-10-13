@@ -228,7 +228,7 @@ upstream_commit() {  # <file> <text>
   grep -qx 'unchanged foundry-brief.service' <<< "$output"
   [ ! -e "$SYSTEMD_USER_DIR/foundry-nightshift.timer" ]
   [ ! -e "$SYSTEMD_USER_DIR/foundry-nightshift.service" ]
-  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-focus.service foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "update_template on a server re-renders the sync drop-ins of the services it installed" {

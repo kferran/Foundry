@@ -6,7 +6,7 @@ An Obsidian + Claude Code "second brain" vault template. This file is its manual
 
 ## What The Foundry is
 
-The Foundry is a template repository that becomes your vault. You clone it (or create a repo from it), run `claude` inside it, and run `/setup`. Setup configures the vault for your machine, your schedule and your codebases. Nothing specific to a machine or a user is committed. Per-user state is generated at setup time and gitignored.
+The Foundry is a template repository that becomes your vault. You clone it, run `claude` inside it, and run `/setup`. Setup configures the vault for your machine, your schedule and your codebases. Nothing specific to a machine or a user is committed. Per-user state is generated at setup time and gitignored.
 
 The vault compiles itself. Raw inputs (files you drop in, plus short digests of your Claude Code sessions) are compiled in batches into a wiki of concepts, entities, summaries and preferences. The wiki is split into `work`, `personal` and `shared` partitions, and links are not allowed to cross between `work` and `personal`. A derived SQLite FTS5 index lets agents ask the index for the notes they need before reading anything, so a lookup reads only the notes that answer it rather than the whole wiki.
 
@@ -66,13 +66,13 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 | Command | What it does |
 |---|---|
 | `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, Before today's meetings (each entity named in today's calendar with its open Now lines and open actions), the open lines of your Now pages (From Now), your open meeting actions, 🎯 Active Projects, a Blockers section (telemetry, friction, pipeline, communication debt), ⏳ Waiting on (one brief's worth of everyone else's meeting actions, computed from the import log where meetings are imported and from the notes' own start times elsewhere), and 🧾 Handoffs to chase when handoffs are set up. It adds 3–5 objectives tied to your superpowers and handed to a capability, and any new DTCC changes, to the Now pages. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Briefings and debriefs from before yesterday move to `briefings/archive/<YYYY-MM>/` |
-| `/debrief [date]` | The Foreman writes `briefings/<date>.debrief.md` (embedded in the briefing): commits per repo, digest outcomes, headless runs, alerts, focus, agent health and what you delivered today |
+| `/debrief [date]` | The Foreman writes `briefings/<date>.debrief.md` (embedded in the briefing): commits per repo, digest outcomes, headless runs, alerts, agent health and what you delivered today |
 | `/ingest <raw file>` | Compiles one raw input into `wiki/`; the intake timer runs it headless in batches |
 | `/query <question>` | Answers from compiled `wiki/` notes only, through the index |
 | `/lint` | Integrity report plus link, duplicate, contradiction and staleness suggestions |
 | `/impact <component> [--repo name]` | Read-only blast-radius table across registered codebases and the wiki; offers to draft an intent proposal |
 | `/rca <raw/telemetry/note.md>` | Root-cause analysis of one production error group: an `rca` note with a Ticket draft, filed to Jira only after you tick its Now line |
-| `/backup` | Runs the gating suites (lint only on a client), commits each headless run on its own, then commits and pushes the rest according to `remote_mode` (through `vault_sync.sh` in `private`) |
+| `/backup` | Runs the gate (lint, then the test suites when bats and pytest are installed; lint only on a client), commits each headless run on its own, then commits and pushes the rest according to `remote_mode` (through `vault_sync.sh` in `private`) |
 | `/order add\|ask\|list\|cancel\|status` | Queues an approved plan (or a task range of one) or a research brief as a Work Order for an unattended run; lists, cancels and reports on queued Work Orders |
 | `/dtcc-watch [check\|status\|accept]` | Runs the DTCC change watcher by hand, checks its map, reports recent changes, or accepts held changes as the new baseline |
 | `/setup` | Onboarding; safe to re-run |
@@ -80,7 +80,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 
 **Superpowers** are your strategic anchors, set in `system/config.md` (`superpowers:`). The brief ties each objective to one, and onboarding and intent notes name the ones they serve. They are unrelated to the superpowers Claude Code plugin used in [Development](#development).
 
-**Brief inputs.** The calendar (`calendar.tsv`, from the Google Calendar connector), `people.md` (the Before today's meetings blocks: each entity note whose title or alias appears in an event title, with its open Now lines and open meeting actions, at most five entities and five lines each), `actions.md` (your open meeting actions, any age, and everyone else's from the meeting notes imported since the previous weekday brief, printed once; none on a weekend), today's and yesterday's alerts, production-error groups in `raw/telemetry/` (new groups as a table, recurring as one line with a count and the three largest, resolved as a count, per environment), `friction.md` (the friction notes no earlier brief has listed, plus a count of all open ones), quarantined inputs, yesterday's focus on a standalone machine, and mail and chat when a Gmail or Slack connector is present in an interactive session. Missing sources are listed under Unavailable Sources; a source the machine role never has (focus on a server or client, agent metrics before a Workcell runs) is omitted, and the brief never fails for one.
+**Brief inputs.** The calendar (`calendar.tsv`, from the Google Calendar connector), `people.md` (the Before today's meetings blocks: each entity note whose title or alias appears in an event title, with its open Now lines and open meeting actions, at most five entities and five lines each), `actions.md` (your open meeting actions, any age, and everyone else's from the meeting notes imported since the previous weekday brief, printed once; none on a weekend), today's and yesterday's alerts, production-error groups in `raw/telemetry/` (new groups as a table, recurring as one line with a count and the three largest, resolved as a count, per environment), `friction.md` (the friction notes no earlier brief has listed, plus a count of all open ones), quarantined inputs, and mail and chat when a Gmail or Slack connector is present in an interactive session. Missing sources are listed under Unavailable Sources; a source that does not exist yet (agent metrics before a Workcell runs) is omitted, and the brief never fails for one.
 
 **Error telemetry.** `foundry-telemetry.timer` runs `telemetry_fetch.py` every hour, and `brief_prep.sh` runs it once more before the brief. Each source in `system/telemetry/<name>.md` (written by `/setup` phase 6a, gitignored) is a set of Sentry projects or one Azure Data Explorer database with a filter. An empty filter value (`adx_filter: {deployment.instance: ""}`) selects the rows that lack that attribute, so shared services that log without it get a source of their own. A filter on one value and an empty filter on the same key never select the same row; a source with no filter (`{}`) overlaps both and counts their groups twice. Each error group becomes one `production_error` note in `raw/telemetry/` holding group keys, counts, times, opaque IDs, links and the Sentry issue title or one sample log message, ticket identifiers included; credentials and emails are masked. Sentry needs a read-only token in `~/.config/foundry/sentry.token` (mode 0600); ADX uses your `az login`. `--check <name>` tests a source, `--dry-run` prints the groups without writing.
 
@@ -100,7 +100,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 
 **Meetings fetch: retrying a skipped Doc.** After three failed reads of one Gemini Doc (any non-zero exit, timeouts and usage limits included), the fetch alerts once ("`<id>` failed 3 reads; it is skipped from now on") and skips it, because it counts failures in this month's and last month's `system/logs/meetings_fetch-<YYYY-MM>.jsonl`. To fetch it again: delete that Doc's `"step": "read"` lines from those two log files, then set `system/logs/meetings_fetch.since` to a time before the Doc was created (ISO 8601, UTC), so the next run's search window includes it. The next fetch reads it once more; the `.since` file moves forward again on success. (#44)
 
-**Debrief inputs.** The prep files in `system/logs/inputs/<date>/` (git commits, session digests, focus, and `orders.md`, the open Work Orders report), alerts, the run ledger `system/logs/runs-<YYYY-MM>.jsonl`, the telemetry run log `system/logs/telemetry-<YYYY-MM>.jsonl`, and agent metrics in `system/logs/metrics/*.json`. An agent whose 3 most recent metric files all show `test_suite_passed: false` is reported under Agent Health; the debrief does not act on it.
+**Debrief inputs.** The prep files in `system/logs/inputs/<date>/` (git commits, session digests, and `orders.md`, the open Work Orders report), alerts, the run ledger `system/logs/runs-<YYYY-MM>.jsonl`, the telemetry run log `system/logs/telemetry-<YYYY-MM>.jsonl`, and agent metrics in `system/logs/metrics/*.json`. An agent whose 3 most recent metric files all show `test_suite_passed: false` is reported under Agent Health; the debrief does not act on it.
 
 **Handoffs and delivered work.** With `handoffs_site` and `handoffs_projects` set (`/setup` phase 6c), each brief runs `jira_fetch.sh`: a confined `claude -p` session that may call only the Atlassian connector's JQL search, with a query built from those settings. It lists under 🧾 Handoffs to chase the tickets you reported that someone else holds and that have had no status-category change for 7 days (the connector returns no change history, so a move inside one category, such as In Progress to In Review, does not reset the clock). The vault keeps no copy of the tickets. The debrief lists what you delivered under 6. Delivered Today: each digest's Delivered section, `delivered:` lines in the briefing's 📝 Notes (the Foreman adds one when you ask it to log something), and pull requests you opened, merged or reviewed in the registered GitHub repositories (`gh`, logged in; a codebase's `order_pr: github:<owner>/<repo>` and a GitHub `template_remote`).
 
@@ -111,7 +111,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 | `coding.md` | `code`, `tests`, `refactor`; writes a `compilation-metric.json` instance to `system/logs/metrics/` after each task |
 | `maintenance.md` | `vault-health`, `dependencies`, `telemetry`, `alerts`; owns `raw/telemetry/` notes, which it checks against local branches of the affected codebase |
 
-**Friction and focus.** Ingest sets `is_friction: "true"` when a fact's source text says "not sure", "waiting on", "stuck", "blocked", "tbd" or "double-check". The brief prints each flagged note's name once, the first morning after it is flagged, then counts it: "listed before" is read from the earlier briefings (the Friction part, or the old Friction notes bullet), so the two machines agree without a ledger. On a standalone machine with Hyprland, `track_obsidian.sh` samples the focused note every 30 seconds and `focus_stats.sh` flags each 15-minute window with more than 4 switches as a Focus Fragmentation Warning, which the brief and debrief carry.
+**Friction.** Ingest sets `is_friction: "true"` when a fact's source text says "not sure", "waiting on", "stuck", "blocked", "tbd" or "double-check". The brief prints each flagged note's name once, the first morning after it is flagged, then counts it: "listed before" is read from the earlier briefings (the Friction part, or the old Friction notes bullet), so the two machines agree without a ledger.
 
 **Intent proposals.** `system/templates/intent-shaper.md` creates a `plan_gate` note (`PENDING_REVIEW`, `APPROVED` or `REJECTED`) for a planned code change: its superpower, the upstream plan note it traces to, the files it touches, how it is verified and its blast radius.
 
@@ -177,7 +177,7 @@ system/
                               setup_remote.sh, update_template.sh, check_deps.sh,
                               vault_sync.sh, commit_runs.py, calendar_fetch.sh, meetings_fetch.sh, telemetry_fetch.py,
                               nightshift.py, dtcc_watch.py, active_projects.py, ...
-  systemd/                    foundry-{intake,brief,debrief,focus,sync,telemetry,meetings,nightshift,dtcc-watch} unit templates (*.in)
+  systemd/                    foundry-{intake,brief,debrief,sync,telemetry,meetings,triage,notify,nightshift,update,dtcc-watch} unit templates (*.in)
     dropins/                  foundry-sync.conf.in: sync before and after each run (server)
   tests/                      *.bats per area (system_health.bats is advisory), python/ for pytest
   jobs/                       reserved for Sub-project 2 (gitignored)
@@ -190,7 +190,7 @@ Each machine that holds the vault has a `machine_role` in its own `system/config
 
 | Role | Runs | Use it for |
 |---|---|---|
-| `standalone` (default) | intake, brief, debrief and focus units, and the meetings fetch when enabled; memory hooks; codebases | one machine that does everything |
+| `standalone` (default) | intake, brief and debrief units, and the meetings fetch when enabled; memory hooks; codebases | one machine that does everything |
 | `server` | intake, brief, debrief and sync units, and the meetings fetch when enabled; memory hooks; codebases | an always-on machine that runs the automation and your coding sessions |
 | `client` | nothing automated | reading and editing the vault in Obsidian on another machine |
 
@@ -221,26 +221,27 @@ The next server sync clears the marker, deletes the pending branch and starts a 
 
 The Foundry runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh --role <role>` checks what that role needs and prints `pacman` or `apt` install hints:
 
-- `claude` (Claude Code), `git`, `jq`, `bats`, `flock`, `timeout`
-- `python3` with PyYAML and pytest (`sudo pacman -S python-yaml python-pytest`). Missing PyYAML blocks setup.
+- `claude` (Claude Code), `git`, `jq`, `flock`, `timeout`
+- `python3` with PyYAML (`sudo pacman -S python-yaml`). Missing PyYAML blocks setup.
 - `sqlite3` built with FTS5
 - systemd user units (`systemctl --user`, `systemd-analyze`). If you want timers to run while you are logged out, enable lingering.
+- `bwrap` (bubblewrap): headless runs turn Claude Code's sandbox on.
 - A Google Calendar connector on the Claude account the brief machine is logged in with, for calendar input to the brief. Without it the brief lists the calendar under Unavailable Sources. Each morning fetch costs about $0.20.
-- Hyprland (`hyprctl`) for the Obsidian focus tracker, on a standalone machine only. Without it only focus stats are lost.
 - A client needs only `claude`, `git`, `jq`, `python3` with PyYAML, and SQLite with FTS5.
 - Optional: the Azure CLI (`az`, logged in) for ADX error sources, and a read-only Sentry token for Sentry sources. Without them those sources stay off.
 - Optional: `pdftotext` (`poppler` on Arch, `poppler-utils` on Debian) for the DTCC change watcher, which reads the header of each notice's PDF.
 - Optional: `herdr` or `tmux` as session backends for sub-project 2
+- Development tools, for changing the template (`check_deps.sh` lists them as `dev`): `bats`, `pytest` and `shellcheck`. Without them `verify_setup.sh` and `/backup` lint the vault and skip the test suites.
 - Obsidian, with the **Dataview** plugin recommended (`wiki/Index.md` dashboards are plain code blocks without it). **[Vault Curate](https://github.com/notoriouslab/vault-curate)** is an optional plugin for link suggestions. It is not a dependency.
 
 ## Getting started
 
 Before you start, install what [Requirements](#requirements) lists and sign in to Claude Code (`claude`, then `/login`). For a server or a client, also create an **empty private repository** for your vault on your git host (no README, license or `.gitignore`, so it has no commit of its own to reconcile): that is your private `origin`, and every machine syncs through it.
 
-**First machine (standalone or server).** Clone the template, start Claude Code in it, and paste the prompt below with your answers filled in:
+**First machine (standalone or server).** Clone the template (a repository created from a hosting site's template button shares no history with it, so template updates cannot merge), start Claude Code in it, and paste the prompt below with your answers filled in:
 
 ```sh
-git clone <template-url> my-vault    # or "Use this template" on the hosting site
+git clone <template-url> my-vault
 cd my-vault
 claude
 ```
@@ -258,11 +259,11 @@ The prompt (replace every `<…>` first; `/setup` asks for any answer still writ
 ```text
 Set up this clone as a new Foundry vault. Run /setup and use these answers; ask me only for what is missing:
 - Machine role: <standalone | server | client>
-- Timezone: <Area/City>; brief at <HH:MM>; debrief at <HH:MM>
-- Default partition: <work | personal>
+- Brief at <HH:MM>; debrief at <HH:MM>
 - Remote: private, origin <private origin URL>   (or: none, standalone only)
-- Codebases to register: <paths, or none>          (not used on a client)
-- Memory hooks: <yes | no>                         (not used on a client)
+- Features: <any of codebases (paths), memory hooks, calendar, telemetry, meetings,
+  inbox triage, Jira handoffs, Slack notices, Work Orders, template update; or none>
+                                                  (not used on a client)
 Never push to the template repository. Before installing units or memory hooks,
 show me what will change and wait for my yes. Run any command that needs sudo
 (linger) only by giving it to me. When you finish, show the /setup report table
@@ -273,18 +274,25 @@ You can also type `/setup` and answer its questions one at a time; the prompt on
 
 `/setup` is idempotent and can be re-run at any time. Its phases (spec §11):
 
-- **0. Role and preflight:** you choose the machine role, then `check_deps.sh --role <role>` lists missing items with install hints. A client skips phases 3, 6 and 9; on a client, phases 5 and 5a only remove units and hooks left from an earlier role.
+- **0. Role and preflight:** you choose the machine role, then `check_deps.sh --role <role>` lists missing items with install hints. A vault path with a space stops setup (the memory hooks cannot run from it). A client gets no features list and skips phases 3, 6, 6a to 6d, 9, 9a and 11; on a client, phases 5 and 5a only remove units and hooks left from an earlier role.
 - **1. Existing config:** if `system/config.md` already exists, it is shown and edited, not overwritten.
-- **2. Interview:** timezone, brief and debrief times, superpowers, default partition, digest thresholds and recall budget.
-- **3. Codebases:** you choose repos from a directory scan. Each one is inspected, written to `system/codebases/<name>.md` with a partition, and confirmed with you field by field.
+- **2. Interview:** the brief and debrief times. The timezone is read from the machine; superpowers, the default partition, digest thresholds and the recall budget keep their defaults, and the report says how to change them.
+- **2a. Features:** one numbered list of the optional blocks below, with their current state; you pick the ones to set up or change, once. Blocks you do not pick are left as they are.
+- **3. Codebases:** you choose repos from a directory scan. Each one is inspected, drafted as `system/codebases/<name>.md` with a partition, and shown to you once to accept or correct.
 - **4. Remote:** the template `origin` of a plain clone is renamed `template` for updates, and you choose a private `origin`, no remote, or keep (maintainer mode). A server or client must use a private `origin`; setup checks that git can reach it without a prompt and publishes the branch.
-- **5. Units:** the role's systemd units are rendered and enabled, and you are offered linger (required on a server).
-- **5a. Memory hooks** (optional): you are shown the diff to `~/.claude/settings.json` and what each hook does, and it is applied only after an explicit yes. Declining leaves memory off (see [Memory](#memory)).
+- **5. Units:** the role's systemd units, plus those the features you picked turn on (Work Orders, the template update, meetings, inbox triage), are rendered and enabled on your yes, and you are offered linger (required on a server).
+- **5a. Memory hooks:** you are shown the diff to `~/.claude/settings.json` and what each hook does, and it is applied only after an explicit yes. Declining leaves memory off (see [Memory](#memory)).
 - **6. Calendar:** one fetch from the Google Calendar connector checks that the brief can read today's events.
+- **6a. Telemetry:** Sentry and Azure Data Explorer error sources, each checked.
+- **6b. Meetings and inbox triage:** the meetings partition and your names in action items; the Now page triage writes to; each connector checked.
+- **6c. Handoffs:** the Jira site and projects the brief reads, and whether approved `/rca` drafts are filed.
+- **6d. Slack notices:** the channel, and a test message only on your yes.
 - **7. Index:** the index is rebuilt and the run-commit cutover is recorded (`commit_runs.py --init-cutover`).
-- **8. Verify:** `verify_setup.sh --health` runs.
+- **8. Verify:** `verify_setup.sh --health` runs (lint, then the test suites when the development tools are installed).
 - **9. Hand-off:** an onboarding assignment note is created for each codebase.
-- **10. Report:** a status table of everything that was set up.
+- **9a. README:** the template's landing page is replaced with your vault's own README.
+- **10. Report:** the Obsidian plugins, then a status table of everything that was set up.
+- **11. First brief:** `/brief` runs, so you read a brief before setup ends.
 
 Once the units are installed, the timers run real headless `claude -p` jobs. They use your Claude subscription and are capped at 60 runs a day (`HEADLESS_MAX_RUNS_PER_DAY`).
 
@@ -302,7 +310,7 @@ Once the units are installed, the timers run real headless `claude -p` jobs. The
 
 ## Updating and uninstalling
 
-- **Pull template updates:** `system/scripts/update_template.sh`. It refuses to run on a dirty tree, fetches the `template` remote, merges with `--no-ff`, and stops on conflicts without resolving them. Afterwards it rebuilds the index and re-renders only the units this vault installed. A unit the update adds is listed as `new unit available: <unit>` and left out; read `system/scripts/install_units.sh --dry-run`, then run `system/scripts/install_units.sh` to add it. On a standalone machine or a server, `foundry-update.timer` runs it every morning at 05:30 (`update_template.sh --unattended`, #87). It waits for `run.lock` and skips the day if another run holds it, refuses uncommitted changes, and aborts a conflicted merge (`git merge --abort`), leaving the vault unchanged. It reports each of those, and a successful update with the template pull requests it merged, as an `[update]` line in the alerts the brief reads; a day with nothing new is silent. On a server the sync runs before and after it, and the sync commits uncommitted changes first, so the clean-tree check matters only on a standalone machine. A client gets updates through sync. To stop the daily update, run `systemctl --user disable --now foundry-update.timer`; later updates keep it disabled.
+- **Pull template updates:** `system/scripts/update_template.sh`. It refuses to run on a dirty tree, fetches the `template` remote, merges with `--no-ff`, and stops on conflicts without resolving them. Afterwards it rebuilds the index and re-renders only the units this vault installed. A unit the update adds is listed as `new unit available: <unit>` and left out; read `system/scripts/install_units.sh --dry-run`, then run `system/scripts/install_units.sh` to add it. On a standalone machine or a server, `foundry-update.timer` runs it every morning 45 minutes before the brief (`update_template.sh --unattended`, #87), ahead of the DTCC watcher 30 minutes before it (#117). It waits for `run.lock` and skips the day if another run holds it, refuses uncommitted changes, and aborts a conflicted merge (`git merge --abort`), leaving the vault unchanged. It reports each of those, and a successful update with the template pull requests it merged, as an `[update]` line in the alerts the brief reads; a day with nothing new is silent. On a server the sync runs before and after it, and the sync commits uncommitted changes first, so the clean-tree check matters only on a standalone machine. A client gets updates through sync. To stop the daily update, run `systemctl --user disable --now foundry-update.timer`; later updates keep it disabled.
 - **Your README survives updates:** for its own merge only, `update_template.sh` marks `README.md` `merge=ours` and defines that driver (`git -c core.attributesFile=… -c merge.ours.driver=true merge`). A README your vault has changed keeps your version, on the first update too; one you never edited takes the template's landing page. Sync merges between your machines define no driver, so a README edited on two machines conflicts as usual and nothing is lost. `/setup` writes a starting README while yours is still the landing page.
 - **The first update with the briefing archive:** the first brief after it moves every briefing older than yesterday into `briefings/archive/`, and the next sync lints them all, so run `system/scripts/lint_vault.sh` before updating and fix what it reports.
 - **Update the humanizer skill:** `.claude/skills/humanizer/` is humanizer v3.0.0, copied unchanged with its MIT license. To move to a newer version, copy the new `SKILL.md` and `LICENSE` over it by hand in the template repo, then update the version and checksum in `system/tests/vault_integrity.bats` and the version in this manual. Vaults receive it through `update_template.sh`.
@@ -317,10 +325,10 @@ Work follows the superpowers workflow: brainstorm → spec in [`docs/superpowers
 
 **Two lanes.** That workflow is the feature lane. A fix takes the fast lane and skips the grill, the spec and the plan. A fix is a change whose scope is clear from one sentence, with one failing test that passes after the change and the gate green, that touches none of the safety surfaces: permissions and settings files, the sandbox, the publish gate, redaction, and new note types. A fix that edits the `ingest`, `brief` or `debrief` command text also re-runs the live acceptance steps (below). It ships as a pull request whose body is the issue line or review finding it fixes and the name of its test. A fix may run as a Work Order: the readiness check reads the plan from a file committed at the Work Order's base, so it then needs a short plan file with its `### Task N:` list. A fix that grows past its sentence, or draws a design question in review, stops and becomes a feature; the default when in doubt is the feature lane.
 
-The gating suites must pass at the end of every task. One command runs them all and exits non-zero if any fails:
+The gating suites must pass at the end of every task. Install the development tools first (`bats`, `pytest`, `shellcheck`): without them the gate lints only and prints `SKIP suites` in its summary. One command runs them all and exits non-zero if any fails:
 
 ```sh
-system/scripts/verify_setup.sh            # every system/tests/*.bats except system_health.bats, then pytest
+system/scripts/verify_setup.sh            # lint, every system/tests/*.bats except system_health.bats, then pytest
 system/scripts/verify_setup.sh --health   # also the advisory live-state suite
 ```
 
@@ -338,7 +346,7 @@ One suite or one pytest target runs through `system/scripts/test.sh <suite.bats 
 
 A rule matches one plain command: a leading assignment other than a few known-safe variables, a `&&` chain, a loop or a redirect each draw a prompt again, which is why `CLAUDE.md`'s Bash line forbids them and why `test.sh` exists. The `auto` permission mode (a classifier approves routine calls) is honoured only in `~/.claude/settings.json` or on the command line (`claude --permission-mode auto`); a project or local file silently ignores it. An approved plan needs no prompts at all when it runs as a Work Order (`/order add`): the session runs with `--permission-mode dontAsk` and a fixed tool list.
 
-`system/tests/system_health.bats` checks live service state and is advisory only. To prove the suite on Debian, run `system/tests/verify_on_host.sh <ssh-host>`: it copies the committed tree to a temporary directory on that host, runs the gate there, and exits with its code. The host needs the `apt` packages `check_deps.sh` lists. After any change to `run_headless.sh` or the settings files, re-run the spike checklist (spec §7.4) by hand. After any change to `run_headless.sh`, `system/headless.settings.json` or the `ingest`, `brief` or `debrief` commands, re-run the live acceptance steps (Plan 4a, Task 9) in a throwaway clone.
+`system/tests/system_health.bats` checks live service state and is advisory only. To prove the suite on Debian, run `system/tests/verify_on_host.sh <ssh-host>`: it copies the committed tree to a temporary directory on that host, runs the gate there, and exits with its code. The host needs the `apt` packages `check_deps.sh` lists, its `dev` tools included: the script runs `verify_setup.sh --require-suites`, which fails rather than skip the suites. After any change to `run_headless.sh` or the settings files, re-run the spike checklist (spec §7.4) by hand. After any change to `run_headless.sh`, `system/headless.settings.json` or the `ingest`, `brief` or `debrief` commands, re-run the live acceptance steps (Plan 4a, Task 9) in a throwaway clone.
 
 ## Acknowledgements
 
