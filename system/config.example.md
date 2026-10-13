@@ -25,6 +25,8 @@ triage_enabled: "false"         # server and standalone: every 30 minutes on wor
 triage_partition: "work"        # work | personal: the Now page triage writes to
 slack_notify_channel: ""        # server and standalone: a Slack channel ID, or your user ID for a DM; empty is off
 slack_connector: "plugin:slack:slack"  # the Slack connector as `claude mcp list` names it
+orders_enabled: "false"         # server and standalone: the Work Orders tick every 15 minutes (/setup asks)
+update_enabled: "false"         # server and standalone: merge template updates every morning (/setup asks)
 superpowers:
   - "<strategic anchor>"
 ---

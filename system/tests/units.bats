@@ -415,6 +415,41 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -q 'enable --now .*foundry-nightshift.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
+@test "Work Orders and the update are installed when their keys are absent, so existing vaults keep them (#122)" {
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ -e "$UD/foundry-nightshift.timer" ]
+  [ -e "$UD/foundry-update.timer" ]
+  : > "$STUB_SYSTEMCTL_LOG"
+  run "$IU" --update
+  [ "$status" -eq 0 ]
+  [ -e "$UD/foundry-nightshift.timer" ]
+  [ -e "$UD/foundry-update.timer" ]
+  grep -q 'enable --now .*foundry-nightshift.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
+}
+
+@test "orders_enabled and update_enabled false install neither, and remove them when they were installed (#122)" {
+  run "$IU"
+  system/scripts/vault_index.py set system/config.md orders_enabled false > /dev/null
+  system/scripts/vault_index.py set system/config.md update_enabled false > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'removed foundry-nightshift.timer' <<< "$output"
+  grep -qx 'removed foundry-update.timer' <<< "$output"
+  [ ! -e "$UD/foundry-nightshift.timer" ]
+  [ ! -e "$UD/foundry-update.timer" ]
+  system/scripts/vault_index.py set system/config.md orders_enabled true > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ -e "$UD/foundry-nightshift.timer" ]
+  [ ! -e "$UD/foundry-update.timer" ]
+}
+
+@test "the committed example starts a new vault with Work Orders and the update off (#122)" {
+  grep -q '^orders_enabled: "false" ' "$REPO/system/config.example.md"
+  grep -q '^update_enabled: "false" ' "$REPO/system/config.example.md"
+}
+
 @test "a vault with a DTCC map gets the watch timer 30 minutes before the brief; one without does not" {
   run "$IU"
   [ "$status" -eq 0 ]

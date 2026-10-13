@@ -110,13 +110,14 @@ if [[ "$role" != client ]] && [[ -n "$(system/scripts/telemetry_fetch.py --list 
   UNITS+=(foundry-telemetry.service foundry-telemetry.timer)
   ENABLE+=(foundry-telemetry.timer)
 fi
-# Nightshift: standalone and server (Nightshift spec §2).
-if [[ "$role" != client ]]; then
+# Work Orders and the template update: standalone and server, while their keys are true (Nightshift spec §2,
+# #87). An absent key is true, so a vault made before they were opt-in keeps both (express install spec §2).
+if [[ "$role" != client && "$(config_get orders_enabled true)" == true ]]; then
   UNITS+=(foundry-nightshift.service foundry-nightshift.timer)
   ENABLE+=(foundry-nightshift.timer)
 fi
-# Template update: standalone and server, every morning (#87); a client gets updates through sync.
-if [[ "$role" != client ]]; then
+# A client gets template updates through sync.
+if [[ "$role" != client && "$(config_get update_enabled true)" == true ]]; then
   UNITS+=(foundry-update.service foundry-update.timer)
   ENABLE+=(foundry-update.timer)
 fi
