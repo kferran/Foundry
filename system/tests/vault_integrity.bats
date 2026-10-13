@@ -74,6 +74,17 @@ setup() {
   [ "$(jq '.sandbox.autoAllowBashIfSandboxed' "$f")" = "false" ]
 }
 
+@test "headless runs cannot read the credentials and transcripts the Work Order profile fences off (audit S4)" {
+  f=system/headless.settings.json
+  for p in '~/.config/foundry/**' '~/.config/gh/**' '~/.git-credentials' '~/.netrc' '~/.azure/**' '~/.aws/**' '~/.claude/projects/**'; do
+    jq -e --arg r "Read($p)" '.permissions.deny | index($r)' "$f" > /dev/null
+  done
+  for p in '~/.ssh' '~/.gnupg' '~/.config/foundry' '~/.config/gh' '~/.git-credentials' '~/.netrc' '~/.azure' '~/.aws' \
+      '~/.claude/projects' '~/.claude/.credentials.json' '~/.claude.json' '**/.env*'; do
+    jq -e --arg p "$p" '.sandbox.filesystem.denyRead | index($p)' "$f" > /dev/null
+  done
+}
+
 @test "interactive settings allow only staging-free vault edits and read-only index commands" {
   f=.claude/settings.json
   jq -e '.permissions.allow | index("Edit(/wiki/**)")' "$f" >/dev/null

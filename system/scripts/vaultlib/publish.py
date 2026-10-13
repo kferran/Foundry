@@ -13,6 +13,8 @@ from .index import NAME_EXCLUDED, Index, wall_blocked
 
 RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
 MEETINGS = re.compile(r"^wiki/[^/]+/meetings/")
+NOW_PAGE = re.compile(r"^wiki/[^/]+/Now\.md$")
+INDEX_NOTE = "wiki/Index.md"
 DECISION_KINDS = {"noop", "patch", "create", "deprecate", "supersede"}
 SHRINK_EXEMPT = {"deprecate", "supersede"}
 PROTECTED = ("accepted_at", "rejected_at")
@@ -254,7 +256,8 @@ def _conflict(vault: Path, target, snap, now) -> list:
 
 
 def _walls(vault, target, note, schemas, resolver) -> list:
-    if not target.startswith("wiki/") or (note.data or {}).get("type") == "index":
+    # Only the cross-partition index itself is exempt; a note anywhere else is walled whatever its type (audit S2).
+    if not target.startswith("wiki/") or target == INDEX_NOTE:
         return []
     src_part = schemamod.path_partition(target)
     body_links, _ = linkmod.extract(note.body, note.body_line)
@@ -287,6 +290,8 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
         return [Problem(target, "not a publishable target")]
     if command == "ingest" and MEETINGS.match(target):
         return [Problem(target, "meeting notes are written only by the meeting import")]
+    if command == "ingest" and NOW_PAGE.match(target):
+        return [Problem(target, "the Now page is written only by now.py and the brief")]  # audit S5
     if Path(target).suffix != ".md":
         return [Problem(target, "not a markdown note")]
     if not _is_file_path(vault, target):
