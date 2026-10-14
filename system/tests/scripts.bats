@@ -191,6 +191,28 @@ TOKEN="AKIA""IOSFODNN7EXAMPLE"
   [[ "$output" != *"raw/inbox/ holds"* ]]
 }
 
+@test "lint reports a secret shape in tracked and untracked files without failing, and never with --staged (#166)" {
+  printf 'key %s\n' "$TOKEN" > "$V/untracked.txt"
+  mkdir -p "$V/.scratch" "$V/system/tests"
+  printf 'key %s\n' "$TOKEN" > "$V/.scratch/clone.txt"
+  printf 'key %s\n' "$TOKEN" > "$V/system/tests/fixture.txt"
+  printf '\0key %s\n' "$TOKEN" > "$V/blob.bin"
+  run "$V/system/scripts/lint_vault.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"secret shape: untracked.txt:1: aws_key"* ]]
+  [[ "$output" != *"$TOKEN"* ]]
+  [[ "$output" != *"clone.txt"* ]]
+  [[ "$output" != *"fixture.txt"* ]]
+  [[ "$output" != *"blob.bin"* ]]
+  run "$V/system/scripts/lint_vault.sh" --staged
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"secret shape"* ]]
+  printf 'PATTERNS = []\nPEM_BEGIN = None\n' > "$V/system/scripts/vaultlib/redact.py"
+  run "$V/system/scripts/lint_vault.sh"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"secret shape: unscanned (empty shape list)"* ]]
+}
+
 @test "hook blocks a Workcell file with invalid frontmatter" {
   mkdir -p "$V/system/agents/workcells"
   printf -- '---\ntype: workcell\n---\n# Bad Workcell\n' > "$V/system/agents/workcells/bad.md"
