@@ -15,6 +15,10 @@ Write it.
 Write them.
 ### Task 3: Rollout (vault `master`, after the PR is merged)
 Runs in the vault on `master`.
+### Task 4: Release
+```bash
+npm  publish --access public
+```
 """
 BRIEF = "## Question\nWhat?\n## Scope\nDocs.\n## Done when\nAnswered.\n## Output\nA note.\n"
 
@@ -45,7 +49,7 @@ def test_parse_tasks():
 
 
 def test_task_blocks():
-    assert sorted(nc.task_blocks(PLAN)) == [1, 2, 3]
+    assert sorted(nc.task_blocks(PLAN)) == [1, 2, 3, 4]
 
 
 def test_plan_ready_with_range(vault_repo):
@@ -208,6 +212,26 @@ def test_protected_phrasings_are_caught(text):
                                   "deployment notes", "git push -u template feat/x"])
 def test_ordinary_phrasings_pass(text):
     assert not nc.PROTECTED.search(text)
+
+
+@pytest.mark.parametrize("text", [*nc.CREDENTIALED, "npm  publish", "Docker PUSH img", "aws s3 cp x s3://b",
+                                  "```\ncargo publish\n```", "helm\tupgrade app ./chart"])
+def test_credentialed_actions_are_caught(text):
+    # (#166) the sealed session holds no credential, so a task that needs one cannot finish
+    assert nc.CREDENTIAL.search(f"{text}x" if text.endswith(" ") else text)   # "aws " stands for "aws <command>"
+
+
+@pytest.mark.parametrize("text", ["the publisher field", "pushed the branch", "apply the patch", "terraform plan",
+                                  "npm publisher", "docker pushes", "az", "gh release list"])
+def test_lookalike_words_pass_the_credential_check(text):
+    # (#166)
+    assert not nc.CREDENTIAL.search(text)
+
+
+def test_a_credentialed_task_is_refused_naming_the_phrase_and_line(vault_repo):
+    # (#166) a mention inside a fenced code block counts: plans put commands there
+    errs = nc.check(vault_repo, plan_fm(tasks="4"), "")
+    assert any("task 4" in e and "npm publish" in e and "npm  publish --access public" in e for e in errs), errs
 
 
 

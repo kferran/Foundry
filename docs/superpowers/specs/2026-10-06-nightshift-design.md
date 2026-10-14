@@ -53,7 +53,7 @@ Readiness, plan:
 - `repo` is a registered codebase, or `template` (resolved through the config key `template_remote`; the base and plan are read from that remote);
 - `--tasks` names tasks that exist in the plan (`### Task N:` headings); without it, every task is in scope;
 - `verify` holds at least one command (the skill proposes the plan's test commands; the user confirms them);
-- the plan's in-scope tasks name no step on a protected branch (`master`, `main`) of the vault, and no deploy. A task range is how a plan's own rollout task is left with the user.
+- the plan's in-scope tasks name no step on a protected branch (`master`, `main`) of the vault, no deploy, and no action that needs a credential the session does not hold (`CREDENTIALED` in `nightshift_check.py`: package publish, image push, release, infrastructure apply, cloud CLI calls). A task range is how a plan's own rollout task is left with the user.
 
 Readiness, research: the brief (the note body) has the headings `## Question`, `## Scope` (sources, and hosts if any), `## Done when` and `## Output`; `output` is a note path inside the item's partition; every listed host is allowed by the research profile rules (https only).
 

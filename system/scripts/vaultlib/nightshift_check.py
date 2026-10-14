@@ -13,6 +13,12 @@ TASK = re.compile(r"^### Task (\d+):", re.M)
 _BRANCH = r"(?:`(?:master|main)`|\bmaster\b|\bmain\s+branch\b|\borigin\s+main\b)"
 PROTECTED = re.compile(rf"\b(?:on|vault|to|into|onto)\s+(?:the\s+)?{_BRANCH}|'s\s+{_BRANCH}"
                        rf"|\b(?:push|merge|checkout|switch)\b[^\n]*?\s{_BRANCH}|\bdeploy\b", re.I)
+# Actions that need a credential the sealed session does not hold (#166). A trailing space means "followed by a command".
+CREDENTIALED = ("npm publish", "pnpm publish", "yarn publish", "cargo publish", "twine upload", "docker push",
+                "gh release create", "terraform apply", "kubectl apply", "helm install", "helm upgrade",
+                "aws ", "gcloud ", "az ", "deploy to prod", "deploy to production")
+CREDENTIAL = re.compile("|".join(r"\b" + r"\s+".join(map(re.escape, p.split()))
+                                 + (r"\s+(?=\S)" if p.endswith(" ") else r"\b") for p in CREDENTIALED), re.I)
 SECTIONS = ("## Question", "## Scope", "## Done when", "## Output")
 HOST = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$")
 ID = re.compile(r"\d{4}-\d{2}-\d{2}-[a-z0-9-]+")
@@ -225,7 +231,12 @@ def _plan_at(src, fm: dict) -> list:
     if missing:
         errs.append(f"tasks not in the plan: {', '.join(map(str, missing))}")
     for n in sorted(wanted & set(blocks)):
-        if PROTECTED.search(blocks[n]):
+        m = CREDENTIAL.search(blocks[n])
+        if m:
+            line = blocks[n][blocks[n].rfind("\n", 0, m.start()) + 1:].split("\n", 1)[0].strip()
+            errs.append(f"task {n} runs '{' '.join(m.group(0).split())}', which needs a credential the session "
+                        f"does not hold ({line!r}); leave it out with --tasks")
+        elif PROTECTED.search(blocks[n]):
             errs.append(f"task {n} works on a protected branch or deploys; leave it out with --tasks")
     return errs
 
