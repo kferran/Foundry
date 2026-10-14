@@ -78,11 +78,7 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null; }
 }
 
 @test "commit_runs.py runs first: a published run gets its own commit before the sync commit" {
-  rid="20261004T060000-brief-cd34"
-  echo 20200101T000000 > system/logs/commit_runs.since
-  mkdir -p "system/logs/runs/$rid" briefings
-  printf '{"run_id": "%s", "status": "published", "published": ["briefings/2026-10-04.md"], "conflicts": [], "problems": []}\n' "$rid" > "system/logs/runs/$rid/publish.json"
-  printf -- '---\ntype: briefing\ndate: "2026-10-04"\n---\n# Briefing\n' > briefings/2026-10-04.md
+  pending_run 20261004T060000-brief-cd34
   printf 'more\n' >> wiki/work/concepts/Kafka.md
   run "$VS"
   [ "$status" -eq 0 ]
@@ -133,9 +129,17 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null; }
   [ "$(git -C "$O" rev-parse "$B")" = "$(git rev-parse HEAD)" ]
 }
 
-@test "no git child inherits run.lock's fd 9" {
+pending_run() {  # <name>: a published brief run whose briefing is pending commit
+  echo 20200101T000000 > system/logs/commit_runs.since
+  mkdir -p "system/logs/runs/$1" briefings
+  printf '{"run_id": "%s", "status": "published", "published": ["briefings/2026-10-04.md"], "conflicts": [], "problems": []}\n' "$1" > "system/logs/runs/$1/publish.json"
+  printf -- '---\ntype: briefing\ndate: "2026-10-04"\n---\n# Briefing\n' > briefings/2026-10-04.md
+}
+
+@test "no git child inherits run.lock's fd 9, commit_runs.py's included (audit C4 spec §3)" {
   wrap_git
   export WRAP_EACH='[[ ! -e /proc/self/fd/9 ]] || echo "$1" >> "$BATS_TEST_TMPDIR/fd9"'
+  pending_run 20261004T060000-brief-cd34
   printf 'more\n' >> wiki/work/concepts/Kafka.md
   run "$VS"
   [ "$status" -eq 0 ]
