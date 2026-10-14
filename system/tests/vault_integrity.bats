@@ -268,3 +268,62 @@ leak_hits() {
   [ "$output" = "notes.md:2 list:3" ]
   [[ "$output" != *orblatt* ]]
 }
+
+# The allow-list lint has two halves (#166). Unsandboxed profiles (every tracked settings file outside
+# system/nightshift/) allow no bare Bash, no Agent or Task tool and no Bash prefix that starts another agent.
+# Work Order profiles (system/nightshift/*.settings.json) allow bare Bash and Agent by design: a plan session
+# builds, tests and runs subagents, and the sealed sandbox confines it. Their lint asserts that sandbox instead,
+# and still forbids an agent-starting prefix.
+SPAWN='^Bash\((claude|npx|bash -c|sh -c|env )'
+
+# open_rules <settings file>: print every allow rule an unsandboxed profile must not hold.
+open_rules() {
+  jq -r '.permissions.allow // [] | .[]' "$1" | grep -E "^Bash\$|^(Agent|Task)(\(.*\))?\$|$SPAWN" || true
+}
+
+# sealed_problems <settings file>: print each way a Work Order profile's sandbox is open, then each
+# agent-starting allow rule.
+sealed_problems() {
+  jq -r '.sandbox as $s
+    | (if $s.enabled == true then empty else "sandbox.enabled is not true" end),
+      (if $s.allowUnsandboxedCommands == false then empty else "sandbox.allowUnsandboxedCommands is not false" end),
+      (if ($s.excludedCommands // []) == [] then empty else "sandbox.excludedCommands is not empty" end),
+      (if $s.network.strictAllowlist == true then empty else "sandbox.network.strictAllowlist is not true" end),
+      (if any(($s.network.allowedDomains // [])[]; test("^\\*(\\.\\*)?$")) then "sandbox.network.allowedDomains holds a wildcard" else empty end)' "$1"
+  jq -r '.permissions.allow // [] | .[]' "$1" | grep -E "$SPAWN" || true
+}
+
+@test "unsandboxed settings allow no bare Bash, no agent tool and no command that starts another agent (#166)" {
+  bad=""
+  for f in $(git ls-files -- '*settings*.json' ':!system/nightshift'); do
+    hits="$(open_rules "$f")"
+    [ -z "$hits" ] || bad="$bad $f: $hits"
+  done
+  printf 'offending:%s\n' "$bad"
+  [ -z "$bad" ]
+}
+
+@test "Work Order profiles keep the sealed sandbox that confines their Bash and Agent, and start no other agent (#166)" {
+  files=(system/nightshift/*.settings.json)
+  [ -f "${files[0]}" ]
+  bad=""
+  for f in "${files[@]}"; do
+    hits="$(sealed_problems "$f")"
+    [ -z "$hits" ] || bad="$bad $f: $hits"
+  done
+  printf 'offending:%s\n' "$bad"
+  [ -z "$bad" ]
+}
+
+@test "the Work Order profile check reports a sandbox that is off, an escape hatch, a wildcard host and a claude prefix (#166)" {
+  f="$BATS_TEST_TMPDIR/p.json"
+  jq '.sandbox.enabled = false' system/nightshift/plan.settings.json > "$f"
+  run sealed_problems "$f"
+  [ "$output" = "sandbox.enabled is not true" ]
+  jq '.sandbox.allowUnsandboxedCommands = true | .sandbox.excludedCommands = ["git"]
+    | .sandbox.network.allowedDomains = ["*"] | .permissions.allow += ["Bash(claude -p:*)"]' \
+    system/nightshift/plan.settings.json > "$f"
+  run sealed_problems "$f"
+  [ "$output" = "$(printf '%s\n' 'sandbox.allowUnsandboxedCommands is not false' 'sandbox.excludedCommands is not empty' \
+    'sandbox.network.allowedDomains holds a wildcard' 'Bash(claude -p:*)')" ]
+}
