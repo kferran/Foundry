@@ -1,7 +1,7 @@
 # Transcript drops: the committed drop is the redacted drop
 
 **Date:** 2026-10-13
-**Status:** Draft for the owner's review.
+**Status:** Accepted 2026-10-14 (owner: the hook may rewrite a dropped file).
 **Issue:** #136 (S6). From the 2026-10-13 audit (`docs/superpowers/2026-10-13-audit.md` on the audit branch).
 
 ## 1. Problem
@@ -12,7 +12,7 @@ A transcript dropped into `meetings/drop/<partition>/` on a client reaches the s
 
 - **The hook rewrites the drop instead of refusing it.** For each staged transcript it runs the staged blob through `redact.py --drop`, writes the result to the working file, re-adds it, and prints `pre-commit: redacted N in <file>` when N is above zero. What is committed is the text the import would redact anyway, so the blob in history holds nothing the published transcript does not. The extension refusal stays. Why a rewrite: gitignoring the drops removes a client's only channel to the server (meetings spec §1), and refusing on the full detector set would refuse every Teams transcript on its cue IDs.
 - **`redact.py --drop`** decodes stdin as the import does (`meetings.decode`, today `_decode`: UTF-8 with or without a byte-order mark, UTF-16 with one) and writes UTF-8 through the full `redact()`. A drop the decoder rejects (NULs after decoding) is refused by the hook with the import's own reason, since the import would quarantine it. `--kinds` and `named_kinds()` go, with their tests: nothing else calls them.
-- **The working file is rewritten along with the index blob.** A blob-only rewrite leaves the working tree differing from the index, and Obsidian Git re-stages the raw file every cycle. The owner loses the raw copy on the client; the import deletes the drop anyway.
+- **The working file is rewritten along with the index blob.** A blob-only rewrite leaves the working tree differing from the index, and Obsidian Git re-stages the raw file every cycle. The owner loses the raw copy on the client; the import deletes the drop anyway. **Revised 2026-10-14 (review):** the rewrite requires the working copy to equal the index blob (`git diff --quiet -- <file>`); a partly staged drop is refused with "stage the whole file", so an empty staged blob never overwrites text pasted in later. A symlink is refused too ("not a regular file"), so the rewrite never follows a link out of the repository.
 - A high-entropy cue ID becomes `[REDACTED:high_entropy]` in the committed VTT. A cue identifier is any line without `-->`, so the import still parses it, and `drop:<sha256>` is computed from the committed bytes on every machine alike.
 - **Owner decision:** the hook may rewrite a file the owner just dropped. Recommendation: yes; the other two fixes keep the finding open or break the client channel.
 
@@ -32,4 +32,4 @@ bats `meetings.bats`: the named-secret case flips: `call.txt` with an AWS key an
 
 - Mobile drops (Obsidian mobile runs no hooks): guarded by the server's redaction only, as before.
 - Rewriting `origin`'s history for drops already pushed.
-- Drive-link stripping in the hook: `_strip_drive` runs at import, and a Drive ID in the drop is redacted as high-entropy instead.
+- ~~Drive-link stripping in the hook~~ **Revised 2026-10-14 (review):** `--drop` runs the import's `meetings.strip_drive` before `redact()`. Redacting the raw text ate part of a Drive URL, so `DRIVE_URL` no longer matched at import and the published transcript carried a broken link.

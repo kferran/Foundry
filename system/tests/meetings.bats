@@ -381,7 +381,7 @@ hook_commit() {
   run git commit -qm "drop"
 }
 
-@test "pre-commit: a drop with another file type or a named secret is refused" {
+@test "pre-commit: another file type is refused; a drop with a secret commits redacted in the file and the blob (audit S6 spec §2)" {
   cp -r "$REPO/.githooks" .githooks
   git config core.hooksPath .githooks
   hook_commit meetings/drop/work/slides.pdf 'x'
@@ -389,27 +389,101 @@ hook_commit() {
   [[ "$output" == *"meetings/drop/work/slides.pdf is not a transcript"* ]]
   git rm -q --cached meetings/drop/work/slides.pdf
   hook_commit meetings/drop/personal/call.txt 'Avery Sample: the key is AKIAIOSFODNN7EXAMPLE\ntoken = hunter2\n'
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"meetings/drop/personal/call.txt holds a secret (assignment,aws_key)"* ]]
-  [ -z "$(git log --oneline 2>/dev/null)" ]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pre-commit: redacted 2 in meetings/drop/personal/call.txt"* ]]
+  want='Avery Sample: the key is [REDACTED:aws_key]
+token = [REDACTED:assignment]'
+  [ "$(cat meetings/drop/personal/call.txt)" = "$want" ]
+  [ "$(git cat-file blob HEAD:meetings/drop/personal/call.txt)" = "$want" ]
+  run git show HEAD
+  [[ "$output" != *"AKIAIOSFODNN7EXAMPLE"* ]]
+  [[ "$output" != *"hunter2"* ]]
 }
 
-@test "pre-commit: a Teams-style VTT whose cue IDs look high-entropy is accepted, and so is .gitkeep" {
+@test "pre-commit: a Teams-style VTT commits with its cue ID redacted and intake imports it; .gitkeep commits untouched (audit S6 spec §2)" {
   cp -r "$REPO/.githooks" .githooks
   git config core.hooksPath .githooks
   hook_commit meetings/drop/work/.gitkeep ''
   [ "$status" -eq 0 ]
-  hook_commit meetings/drop/work/Standup.vtt 'WEBVTT\n\n9f8Qz2LmX4vB7nR1tY6wK3pJ5sD0hG8cE2aZ/17-1\n00:00:01.000 --> 00:00:04.000\n<v Avery Sample>Hello.</v>\n'
+  [[ "$output" != *"redacted"* ]]
+  f="meetings/drop/work/2026-10-05 1500 Standup.vtt"
+  hook_commit "$f" 'WEBVTT\n\n9f8Qz2LmX4vB7nR1tY6wK3pJ5sD0hG8cE2aZ/17-1\n00:00:01.000 --> 00:00:04.000\n<v Avery Sample>Hello.</v>\n'
   [ "$status" -eq 0 ]
+  [[ "$output" == *"pre-commit: redacted 1 in $f"* ]]
   [ "$(git log --format=%s | wc -l)" -eq 2 ]
+  run git cat-file blob "HEAD:$f"
+  [[ "$output" == *$'\n[REDACTED:high_entropy]\n00:00:01.000 --> 00:00:04.000\n<v Avery Sample>Hello.</v>'* ]]
+  touch -d '10 minutes ago' "$f"
+  CLAUDE_BIN="$REPO/system/tests/stub_claude" run system/scripts/intake_daemon.sh
+  [ "$status" -eq 0 ]
+  [ "$(system/scripts/vault_index.py field wiki/work/meetings/2026-10-05-1500-standup.md attendees)" = 'Avery Sample' ]
+  run grep -c 'Avery Sample' wiki/work/meetings/2026-10-05-1500-standup.transcript.md
+  [ "$output" = "1" ]
 }
 
-@test "pre-commit: a spoken 'password: …' is accepted, an api_key = … assignment is refused" {
+@test "pre-commit: a spoken 'password: …' and an api_key = … assignment both commit redacted (audit S6 spec §2)" {
   cp -r "$REPO/.githooks" .githooks
   git config core.hooksPath .githooks
   hook_commit meetings/drop/work/call.txt 'Avery: reset your password: it expired\n'
   [ "$status" -eq 0 ]
+  [ "$(git cat-file blob HEAD:meetings/drop/work/call.txt)" = 'Avery: reset your password: [REDACTED:assignment] expired' ]
   hook_commit meetings/drop/work/env.txt 'api_key = example-value-1234\n'
+  [ "$status" -eq 0 ]
+  [ "$(git cat-file blob HEAD:meetings/drop/work/env.txt)" = 'api_key = [REDACTED:assignment]' ]
+}
+
+@test "pre-commit: a UTF-16 drop commits as redacted UTF-8; one the import would quarantine is refused, not emptied (audit S6 spec §2)" {
+  cp -r "$REPO/.githooks" .githooks
+  git config core.hooksPath .githooks
+  mkdir -p meetings/drop/work
+  printf 'Avery: token = hunter2\n' | iconv -f UTF-8 -t UTF-16 > meetings/drop/work/notes.txt
+  run grep -c 'hunter2' meetings/drop/work/notes.txt
+  [ "$output" = "0" ]
+  git add -- meetings/drop/work/notes.txt
+  run git commit -qm "drop"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pre-commit: redacted 1 in meetings/drop/work/notes.txt"* ]]
+  [ "$(cat meetings/drop/work/notes.txt)" = 'Avery: token = [REDACTED:assignment]' ]
+  [ "$(git cat-file blob HEAD:meetings/drop/work/notes.txt)" = 'Avery: token = [REDACTED:assignment]' ]
+  hook_commit meetings/drop/work/bin.txt '\0\0\0\0\0\0\0\0'
   [ "$status" -eq 1 ]
-  [[ "$output" == *"meetings/drop/work/env.txt holds a secret (assignment)"* ]]
+  [[ "$output" == *"pre-commit: meetings/drop/work/bin.txt: not UTF-8 text"* ]]
+  [ "$(stat -c %s meetings/drop/work/bin.txt)" -eq 8 ]
+  [ "$(git log --format=%s | wc -l)" -eq 1 ]
+}
+
+@test "pre-commit: a symlinked drop is refused and its target is never written (audit S6 review)" {
+  cp -r "$REPO/.githooks" .githooks
+  git config core.hooksPath .githooks
+  mkdir -p meetings/drop/work
+  printf 'token = hunter2\n' > "$BATS_TEST_TMPDIR/target.txt"
+  ln -s "$BATS_TEST_TMPDIR/target.txt" meetings/drop/work/link.txt
+  git add -- meetings/drop/work/link.txt
+  run git commit -qm "drop"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"pre-commit: meetings/drop/work/link.txt is not a regular file; remove it from meetings/drop/"* ]]
+  [ "$(cat "$BATS_TEST_TMPDIR/target.txt")" = 'token = hunter2' ]
+  [ -L meetings/drop/work/link.txt ]
+}
+
+@test "pre-commit: a partly staged drop is refused, its unstaged text kept (audit S6 review)" {
+  cp -r "$REPO/.githooks" .githooks
+  git config core.hooksPath .githooks
+  mkdir -p meetings/drop/work
+  : > meetings/drop/work/call.txt
+  git add -- meetings/drop/work/call.txt
+  printf 'Avery: token = hunter2\n' >> meetings/drop/work/call.txt
+  run git commit -qm "drop"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"pre-commit: meetings/drop/work/call.txt has unstaged changes; stage the whole file (git add meetings/drop/work/call.txt)"* ]]
+  [ "$(cat meetings/drop/work/call.txt)" = 'Avery: token = hunter2' ]
+  [ -z "$(git log --oneline 2>/dev/null)" ]
+}
+
+@test "pre-commit: a Drive link in a drop is stripped as the import strips it (audit S6 review)" {
+  cp -r "$REPO/.githooks" .githooks
+  git config core.hooksPath .githooks
+  hook_commit meetings/drop/work/notes.txt 'Avery: see [Doc](https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit) now\n'
+  [ "$status" -eq 0 ]
+  [ "$(git cat-file blob HEAD:meetings/drop/work/notes.txt)" = 'Avery: see Doc now' ]
 }

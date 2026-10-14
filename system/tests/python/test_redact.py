@@ -5,7 +5,7 @@ import time
 import pytest
 
 from helpers import REPO
-from vaultlib.redact import named_kinds, redact, redact_credentials
+from vaultlib.redact import redact, redact_credentials
 
 
 @pytest.mark.parametrize("secret, kind", [
@@ -69,6 +69,41 @@ def test_cli_non_utf8_round_trip():
     assert res.stdout == b"\xff\xfe bad \x80 password=[REDACTED:assignment]\n" and res.stderr.strip() == b"redactions: 1"
 
 
+def drop(data: bytes) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(REPO / "system/scripts/redact.py"), "--drop"], input=data, capture_output=True)
+
+
+def test_cli_drop_decodes_as_the_import_does():
+    """audit S6 spec §2: UTF-8 with or without a byte-order mark, or UTF-16 with one, all land as one redacted UTF-8 text."""
+    text = "Avery: the key is AKIAIOSFODNN7EXAMPLE\ntoken = hunter2\n"
+    want = b"Avery: the key is [REDACTED:aws_key]\ntoken = [REDACTED:assignment]\n"
+    for data in (text.encode(), "﻿".encode() + text.encode(), text.encode("utf-16"), b"\xfe\xff" + text.encode("utf-16-be")):
+        res = drop(data)
+        assert res.returncode == 0
+        assert res.stdout == want and res.stderr.strip() == b"redactions: 2"
+
+
+def test_cli_drop_strips_drive_links_before_redacting_so_the_import_publishes_the_same_text():
+    """audit S6 review: redact() alone eats part of a Drive URL, leaving a broken link the import can no longer strip."""
+    from datetime import datetime, timezone
+
+    from vaultlib import meetings
+    raw = b"Avery: see [Doc](https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit) now\n"
+    res = drop(raw)
+    assert res.returncode == 0 and res.stdout == b"Avery: see Doc now\n"
+    start = datetime(2026, 10, 5, 15, 0, tzinfo=timezone.utc)
+    published = meetings.scrub(meetings.parse_drop("notes.txt", res.stdout, timezone.utc, start)).turns
+    assert published == meetings.scrub(meetings.parse_drop("notes.txt", raw, timezone.utc, start)).turns
+    assert "google" not in str(published)
+
+
+def test_cli_drop_refuses_what_the_import_quarantines():
+    """audit S6 spec §2: a drop the decoder rejects exits 1 with the import's reason and writes nothing to stdout."""
+    res = drop(b"\x00" * 8)
+    assert res.returncode == 1
+    assert res.stdout == b"" and b"not UTF-8 text" in res.stderr
+
+
 def test_pem_many_unterminated_headers_is_linear():
     text = "-----BEGIN RSA PRIVATE KEY-----\n" * 20000
     start = time.perf_counter()
@@ -98,30 +133,6 @@ def test_private_scan_is_linear():
 
 def test_unterminated_private_redacts_to_end():
     assert redact("a <private>secret") == ("a [PRIVATE]", 1)
-
-
-def test_named_kinds_lists_the_named_detectors_that_fire():
-    text = "<private>x</private> AKIAIOSFODNN7EXAMPLE Authorization: Bearer abc\ntoken = hunter2\n"
-    assert named_kinds(text) == ["assignment", "aws_key", "bearer", "private"]
-    assert named_kinds("-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END RSA PRIVATE KEY-----\n") == ["pem"]
-
-
-def test_named_kinds_ignores_high_entropy_cue_ids():
-    cue = "9f8Qz2LmX4vB7nR1tY6wK3pJ5sD0hG8cE2aZ/17-1"
-    assert redact(cue)[1] == 1
-    assert named_kinds(f"WEBVTT\n\n{cue}\n00:00:01.000 --> 00:00:02.000\n<v Avery Sample>Hello.</v>\n") == []
-
-
-def test_cli_kinds():
-    res = subprocess.run([sys.executable, str(REPO / "system/scripts/redact.py"), "--kinds"],
-                         input="AKIAIOSFODNN7EXAMPLE\npassword=abc\n", capture_output=True, text=True)
-    assert res.returncode == 0 and res.stdout == "assignment\naws_key\n"
-
-
-def test_named_kinds_takes_only_the_key_equals_value_form():
-    assert named_kinds("Avery: reset your password: it expired\n") == []
-    assert redact("reset your password: it expired")[1] == 1
-    assert named_kinds("api_key = sk_live_example\n") == ["assignment"]
 
 
 LONG_NAME = "Shop.Plugins.VendorAccountSuitabilitySubmissionFetchXML"
