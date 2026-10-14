@@ -228,9 +228,10 @@ def drop_start(name: str, commit_iso, mtime: float, tz) -> datetime:
     return datetime.fromtimestamp(mtime, tz)
 
 
-def _decode(data: bytes) -> str:
+def decode(data: bytes) -> str:
     """UTF-8 (a byte-order mark is dropped), or UTF-16 with its byte-order mark, as Windows tools save it (#41).
-    Any other text holds NULs once decoded and is a ParseError, so it is quarantined with a reason."""
+    Any other text holds NULs once decoded and is a ParseError, so it is quarantined with a reason. The pre-commit
+    hook decodes a staged drop the same way through `redact.py --drop` (audit S6 spec §2)."""
     if data.startswith((b"\xff\xfe", b"\xfe\xff")):
         return data.decode("utf-16", errors="replace")
     text = data.decode("utf-8", errors="replace").lstrip("\ufeff")
@@ -241,7 +242,7 @@ def _decode(data: bytes) -> str:
 
 def parse_drop(name: str, data: bytes, tz, start: datetime) -> Meeting:
     """A dropped transcript (.vtt, .srt, .txt or .md); a .md with the Gemini structure is a Gemini Doc."""
-    text = _decode(data)
+    text = decode(data)
     suffix = Path(name).suffix.lower()
     meeting = Meeting(drop_title(name), start, "", name)
     if suffix == ".md" and _is_gemini(text):
