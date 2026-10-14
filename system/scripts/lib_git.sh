@@ -23,3 +23,58 @@ git_url_normalize() {
 }
 
 git_url_same() { [[ -n "${1-}" && -n "${2-}" && "$(git_url_normalize "$1")" == "$(git_url_normalize "$2")" ]]; }
+
+# The sync's commit step (two-machines spec §4.1, §5.1), shared by vault_sync.sh and the unattended update.
+# Every git child runs with run.lock's fd 9 closed: a daemon or a detached gc it starts must not keep the lock.
+
+# git_sync_message <role>: the scripted message for the staged changes (§4.1).
+git_sync_message() {
+  local role="$1" a r p st n=0 body=""
+  local -A num=()
+  while IFS=$'\t' read -r -d '' a r p; do
+    if [[ "$a" == - ]]; then num[$p]="(binary)"; else num[$p]="+$a/-$r"; fi
+  done < <(command git diff --cached --numstat -z --no-renames 9>&-)
+  while IFS= read -r -d '' st && IFS= read -r -d '' p; do
+    n=$(( n + 1 ))
+    case "$st" in
+      A) body+="${p//[$'\n\r\t']/ } (new)"$'\n' ;;
+      D) body+="${p//[$'\n\r\t']/ } (deleted)"$'\n' ;;
+      *) body+="${p//[$'\n\r\t']/ } ${num[$p]:-}"$'\n' ;;
+    esac
+  done < <(command git diff --cached --name-status -z --no-renames 9>&-)
+  printf 'sync(%s): %d file(s)\n\n%s\nFoundry-Command: sync\nFoundry-Role: %s\n' "$role" "$n" "$body" "$role"
+}
+
+# git_sync_commit <role>: commit_runs.py, then every remaining change as one sync(<role>) commit through the
+# pre-commit hook. Returns 0 (nothing staged included); on a refusal unstages, sets GIT_SYNC_ERROR, returns 1.
+# A run commit_runs.py reports as refused (exit 3 with "refused <run_id> <path>" lines, audit C7) is left out of
+# the sync commit, its paths listed one per line in GIT_SYNC_REFUSED, and the return is still 0. Runs from the
+# vault root.
+git_sync_commit() {
+  local role="$1" err out rc=0 tag rid p
+  local -a exclude=()
+  GIT_SYNC_ERROR="" GIT_SYNC_REFUSED=""
+  out="$(system/scripts/commit_runs.py 9>&-)" || rc=$?
+  while read -r tag rid p; do
+    [[ "$tag" == refused && -n "$p" ]] || continue
+    exclude+=(":(exclude,literal)$p")
+    GIT_SYNC_REFUSED+="$p"$'\n'
+  done <<< "$out"
+  # 3 with refused lines is the refused-run case; any other non-zero exit (1 a crash, 2 usage) is a failure.
+  if (( rc != 0 )) && (( rc != 3 || ${#exclude[@]} == 0 )); then
+    GIT_SYNC_ERROR="commit_runs.py could not commit a run (see its alert)"
+    return 1
+  fi
+  if ! command git add -A -- . "${exclude[@]}" 9>&-; then
+    GIT_SYNC_ERROR="git add -A failed"
+    return 1
+  fi
+  if ! command git diff --cached --quiet 9>&-; then
+    if ! err="$(git_sync_message "$role" | command git commit -q -F - 2>&1 9>&-)"; then
+      command git reset -q 9>&-
+      GIT_SYNC_ERROR="the sync commit was refused: $(head -n 1 <<< "$err")"
+      return 1
+    fi
+  fi
+  return 0
+}

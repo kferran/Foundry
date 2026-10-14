@@ -2,7 +2,8 @@
 """Commit each published headless run with a message built from its records (two-machines spec §4).
 
 Usage: commit_runs.py [--init-cutover]. Exit 0 when every pending run is committed or recorded as
-already committed; 1 when a commit fails (alert written, that run and later ones stay pending); 2 usage.
+already committed; 3 when a commit was refused (one "refused <run_id> <path>" line per path on stdout, an
+alert once a day per run, that run stays pending and the later runs are still committed); 2 usage; 1 a crash.
 """
 import json
 import re
@@ -196,6 +197,7 @@ def main(argv):
     # A note two pending runs published holds the later run's content: it is committed with that run.
     owner = {p: run_id for run_id, _, published, _ in runs for p in published}
     earlier = {}
+    refused = False
     for run_id, command, published, conflicts in runs:
         own = [p for p in published if owner[p] == run_id]
         carried = [(p, earlier[p]) for p in own if p in earlier]
@@ -204,18 +206,29 @@ def main(argv):
             later = owner[published[0]]
             (RUNS / run_id / "committed").write_text(
                 json.dumps({"sha": None, "reason": f"superseded by {later}"}) + "\n", encoding="utf-8")
+            (RUNS / run_id / "refused").unlink(missing_ok=True)
             print(f"{run_id} superseded by {later}")
             continue
         sha, error = commit(own, message(run_id, command, own, conflicts, role, carried))
         if error:
+            # The run stays pending and the later runs are still committed (audit C7). The alert is written once
+            # a day per run: the marker holds the day and the hook's first line.
             first = error.splitlines()[0] if error else ""
-            alert(f"run {run_id} not committed: {first} (it stays pending; fix it, then run /backup again)")
+            held = json_lines(RUNS / run_id / "refused")
+            today = f"{now():%Y-%m-%d}"
+            if not held or held[0].get("day") != today:
+                alert(f"run {run_id} not committed: {first} (it stays pending; fix it, then run /backup again)")
+                (RUNS / run_id / "refused").write_text(json.dumps({"day": today, "error": first}) + "\n", encoding="utf-8")
             print(f"commit_runs: {run_id}: {error}", file=sys.stderr)
-            return 1
+            for path in own:
+                print(f"refused {run_id} {path}")
+            refused = True
+            continue
         record = {"sha": sha} if sha else {"sha": None, "reason": "already committed"}
         (RUNS / run_id / "committed").write_text(json.dumps(record) + "\n", encoding="utf-8")
+        (RUNS / run_id / "refused").unlink(missing_ok=True)
         print(f"{run_id} {sha or 'already committed'}")
-    return 0
+    return 3 if refused else 0
 
 
 if __name__ == "__main__":

@@ -78,11 +78,7 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null; }
 }
 
 @test "commit_runs.py runs first: a published run gets its own commit before the sync commit" {
-  rid="20261004T060000-brief-cd34"
-  echo 20200101T000000 > system/logs/commit_runs.since
-  mkdir -p "system/logs/runs/$rid" briefings
-  printf '{"run_id": "%s", "status": "published", "published": ["briefings/2026-10-04.md"], "conflicts": [], "problems": []}\n' "$rid" > "system/logs/runs/$rid/publish.json"
-  printf -- '---\ntype: briefing\ndate: "2026-10-04"\n---\n# Briefing\n' > briefings/2026-10-04.md
+  pending_run 20261004T060000-brief-cd34
   printf 'more\n' >> wiki/work/concepts/Kafka.md
   run "$VS"
   [ "$status" -eq 0 ]
@@ -96,6 +92,51 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null; }
   [ "$status" -eq 1 ]
   [ -z "$(git diff --cached --name-only)" ]
   alerts | grep -q '\[sync\] sync failed (commit)'
+}
+
+refused_run() {  # a published run whose note the hook refuses
+  echo 20200101T000000 > system/logs/commit_runs.since
+  mkdir -p system/logs/runs/20261004T060000-brief-cd34 wiki/work/concepts
+  printf '{"run_id": "20261004T060000-brief-cd34", "status": "published", "published": ["wiki/work/concepts/Bad.md"], "conflicts": [], "problems": []}\n' > system/logs/runs/20261004T060000-brief-cd34/publish.json
+  printf -- '---\ntype: concept\n---\n# Bad\n' > wiki/work/concepts/Bad.md
+}
+
+@test "a run the hook refuses is left out of the sync commit and the cycle goes on (audit C7 spec §4)" {
+  refused_run
+  printf 'more\n' >> wiki/work/concepts/Kafka.md
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ "$(git log -1 --format=%s)" = "sync(server): 1 file(s)" ]
+  [ "$(git -C "$O" rev-parse "$B")" = "$(git rev-parse HEAD)" ]
+  [ "$(git status --porcelain)" = '?? wiki/work/concepts/Bad.md' ]
+  [ ! -e system/logs/runs/20261004T060000-brief-cd34/committed ]
+  [ "$(alerts | grep -c '\[commit_runs\]')" -eq 1 ]
+  [ -z "$(alerts | grep '\[sync\]')" ]
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ "$(alerts | grep -c '\[commit_runs\]')" -eq 1 ]
+}
+
+@test "origin changing a refused note ends the next cycle in fail merge (audit C7 spec §4)" {
+  refused_run
+  run "$VS"
+  [ "$status" -eq 0 ]
+  client_push Bad "typed on the laptop"
+  run "$VS"
+  [ "$status" -eq 1 ]
+  [ ! -e .git/MERGE_HEAD ]
+  alerts | grep -q '\[sync\] sync failed (merge): .*wiki/work/concepts/Bad.md'
+  grep -qx '# Bad' wiki/work/concepts/Bad.md
+}
+
+@test "commit_runs.py exiting 1 (a crash) without a refused line is still fail commit (audit C7 spec §4)" {
+  printf '#!/bin/bash\nexit 1\n' > system/scripts/commit_runs.py
+  printf 'more\n' >> wiki/work/concepts/Kafka.md
+  run "$VS"
+  [ "$status" -eq 1 ]
+  alerts | grep -q '\[sync\] sync failed (commit): commit_runs.py could not commit a run'
+  [ "$(git -C "$O" rev-parse "$B")" = "$(git rev-parse HEAD)" ]
+  [ -n "$(git status --porcelain)" ]
 }
 
 @test "an unreachable origin is alerted once a day and its recovery once" {
@@ -119,7 +160,7 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null; }
   run "$VS"
   [ "$status" -eq 1 ]
   [ ! -e .git/MERGE_HEAD ]
-  alerts | grep -q 'sync failed (merge)'
+  alerts | grep -q 'sync failed (merge): .*wiki/work/concepts/Clash.md'
 }
 
 @test "a push rejected because origin moved is retried once" {
@@ -133,9 +174,17 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null; }
   [ "$(git -C "$O" rev-parse "$B")" = "$(git rev-parse HEAD)" ]
 }
 
-@test "no git child inherits run.lock's fd 9" {
+pending_run() {  # <name>: a published brief run whose briefing is pending commit
+  echo 20200101T000000 > system/logs/commit_runs.since
+  mkdir -p "system/logs/runs/$1" briefings
+  printf '{"run_id": "%s", "status": "published", "published": ["briefings/2026-10-04.md"], "conflicts": [], "problems": []}\n' "$1" > "system/logs/runs/$1/publish.json"
+  printf -- '---\ntype: briefing\ndate: "2026-10-04"\n---\n# Briefing\n' > briefings/2026-10-04.md
+}
+
+@test "no git child inherits run.lock's fd 9, with a pending run in the cycle" {
   wrap_git
   export WRAP_EACH='[[ ! -e /proc/self/fd/9 ]] || echo "$1" >> "$BATS_TEST_TMPDIR/fd9"'
+  pending_run 20261004T060000-brief-cd34
   printf 'more\n' >> wiki/work/concepts/Kafka.md
   run "$VS"
   [ "$status" -eq 0 ]

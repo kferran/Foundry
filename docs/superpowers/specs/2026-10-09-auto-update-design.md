@@ -11,7 +11,7 @@ Template updates reach a vault only when the owner runs `system/scripts/update_t
 ## 2. Decisions (owner, 2026-10-09)
 
 - A daily systemd timer runs the update unattended, at 05:30 local, on standalone and server machines only. A client gets updates through sync, so two machines never merge the same update.
-- It takes `run.lock` like every other writer, waiting briefly. If the lock is busy, or the vault has uncommitted changes, it skips the day and raises an alert. It never commits someone's edits.
+- It takes `run.lock` like every other writer, waiting briefly. If the lock is busy, it skips the day and raises an alert. Uncommitted changes made it skip the day too, and it never committed them; since 2026-10-14 (audit C4, `2026-10-13-audit-update-dirty-tree-design.md`) it commits them first, as the sync does.
 - On a merge conflict it runs `git merge --abort`, leaving the vault as it was, and raises an alert. It never resolves a conflict.
 - On a server, the existing sync drop-in syncs before and after it, so the update starts from the latest vault and its merge is pushed at once.
 - **Reporting:** one line in the alerts file, which the brief already reads. The line covers what merged (the template's pull requests), a conflict, a failure, or a busy skip. A day with nothing new is silent, and each kind alerts at most once a day.
@@ -25,7 +25,7 @@ Template updates reach a vault only when the owner runs `system/scripts/update_t
 
 The manual run is unchanged. With `--unattended` the script:
 - takes `system/run.lock` (`flock -w 300`). When the lock is busy it raises an alert ("skipped: another run held run.lock") and exits 0;
-- treats an unclean tree, a missing template remote, a failed fetch, a template branch that cannot be found and unrelated history as failures: an alert and exit 1;
+- commits an unclean tree the way the sync does (audit C4; a refused commit, a missing template remote, a failed fetch, a template branch that cannot be found and unrelated history are failures: an alert and exit 1);
 - exits 0 silently when the template branch holds nothing the vault lacks;
 - on a merge conflict runs `git merge --abort`, raises an alert naming the conflicted files and the command to run by hand, and exits 1;
 - after a merge does what the manual run does (the cutover, the index rebuild, re-rendering installed units). It then raises one alert listing the merged pull requests: the first-parent commits between the old and new template head, each by its PR number and title when it is a pull-request merge, otherwise by its subject, at most 10, then "and N more".
@@ -49,7 +49,7 @@ Alerts are written as `- HH:MM:SS [update] <text>` to `system/logs/alerts_<date>
   - it is silent with nothing new;
   - it aborts a conflict (no merge in progress afterwards, vault HEAD unchanged) and alerts;
   - it skips with an alert while `run.lock` is held;
-  - it fails with an alert on an unclean tree.
+  - it fails with an alert on an unclean tree (replaced by the audit C4 cases: it commits the tree, and fails with the hook's line when that commit is refused).
 - **bats (`units.bats`):**
   - standalone and server get the update service and timer, a client none, and a server the drop-in;
   - `--update` leaves a disabled timer disabled and still enables an enabled one.

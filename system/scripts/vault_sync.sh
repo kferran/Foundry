@@ -122,33 +122,8 @@ fi
 flock -n 9 || finish 4
 reason="$(in_progress)" && block "$reason"
 
-# sync_message: the scripted message for the staged changes (§4.1).
-sync_message() {
-  local a r p st n=0 body=""
-  declare -A num=()
-  while IFS=$'\t' read -r -d '' a r p; do
-    if [[ "$a" == - ]]; then num[$p]="(binary)"; else num[$p]="+$a/-$r"; fi
-  done < <(git diff --cached --numstat -z --no-renames)
-  while IFS= read -r -d '' st && IFS= read -r -d '' p; do
-    n=$(( n + 1 ))
-    case "$st" in
-      A) body+="${p//[$'\n\r\t']/ } (new)"$'\n' ;;
-      D) body+="${p//[$'\n\r\t']/ } (deleted)"$'\n' ;;
-      *) body+="${p//[$'\n\r\t']/ } ${num[$p]:-}"$'\n' ;;
-    esac
-  done < <(git diff --cached --name-status -z --no-renames)
-  printf 'sync(%s): %d file(s)\n\n%s\nFoundry-Command: sync\nFoundry-Role: %s\n' "$role" "$n" "$body" "$role"
-}
-
-# Cycle (§5.1).
-system/scripts/commit_runs.py > /dev/null || fail commit "commit_runs.py could not commit a run (see its alert)"
-git add -A || fail commit "git add -A failed"
-if ! git diff --cached --quiet; then
-  if ! err="$(sync_message | git commit -q -F - 2>&1)"; then
-    git reset -q
-    fail commit "the sync commit was refused: $(head -n 1 <<< "$err")"
-  fi
-fi
+# Cycle (§5.1). The commit step is git_sync_commit (lib_git.sh), shared with the unattended update.
+git_sync_commit "$role" || fail commit "$GIT_SYNC_ERROR"
 for attempt in 1 2; do
   net fetch -q --prune origin || fail fetch "git fetch origin failed"
   if ! git merge-base --is-ancestor "origin/$branch" HEAD; then
@@ -164,7 +139,8 @@ for attempt in 1 2; do
           "pending branch: $pending"$'\n'"$paths"$'\n'
       fi
       [[ ! -e "$git_dir/MERGE_HEAD" ]] || git merge --abort
-      fail merge "git merge origin/$branch was refused: $(head -n 1 <<< "$err")"
+      # git names the files it would overwrite on tab-indented lines after its first line (C7 §2).
+      fail merge "git merge origin/$branch was refused: $(head -n 1 <<< "$err") $(grep -P '^\t' <<< "$err" | sed 's/^\t//' | paste -sd ' ')"
     fi
   fi
   net push -q origin "HEAD:refs/heads/$branch" && break

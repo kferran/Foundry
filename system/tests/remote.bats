@@ -368,15 +368,112 @@ upstream_pr() {
   alerts | grep -qF '[update] template update skipped: another run held run.lock'
 }
 
-@test "--unattended fails with an alert on uncommitted changes and never commits them (#87)" {
+# The unattended update commits a dirty tree the way the sync does (audit C4 spec §2), so these cases run the
+# pre-commit hook and may hold a pending published run.
+hooks_on() {
+  cp -r "$REPO/.githooks" .githooks
+  git config core.hooksPath .githooks
+  git add -A
+  git commit -qm hooks
+}
+
+pending_run() {  # <run_id>: a published brief run whose briefing is pending commit
+  mkdir -p "system/logs/runs/$1" briefings
+  echo 20200101T000000 > system/logs/commit_runs.since
+  printf '{"run_id": "%s", "status": "published", "published": ["briefings/2026-10-04.md"], "conflicts": [], "problems": []}\n' "$1" > "system/logs/runs/$1/publish.json"
+  printf -- '---\ntype: briefing\ndate: "2026-10-04"\n---\n# Briefing\n' > briefings/2026-10-04.md
+}
+
+note() {  # <name> <frontmatter>: a work concept with the given frontmatter lines
+  mkdir -p wiki/work/concepts
+  printf -- '---\n%s\n---\n# %s\n[[Index]]\n' "$2" "$1" > "wiki/work/concepts/$1.md"
+}
+
+@test "--unattended commits uncommitted changes as the sync does, then merges (audit C4 spec §4)" {
   template_setup
+  hooks_on
   upstream_commit new.txt hello
-  echo x > dirty.txt
+  pending_run 20261004T060000-brief-cd34
+  note Fresh $'type: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work'
+  run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  [ "$(cat new.txt)" = hello ]
+  [ -z "$(git status --porcelain)" ]
+  [ "$(git log --first-parent --format=%s -3 | tr '\n' '|')" = "Merge remote-tracking branch 'template/$(git -C "$W" rev-parse --abbrev-ref HEAD)'|sync(standalone): 1 file(s)|brief 2026-10-04: briefings/2026-10-04.md|" ]
+  [ "$(alerts | grep -c '\[update\]')" -eq 1 ]
+  alerts | grep -qF '[update] template updated: committed first: brief 2026-10-04: briefings/2026-10-04.md; sync(standalone): 1 file(s); merged 1 change(s): upstream: new.txt'
+}
+
+@test "--unattended stops on a note the hook refuses, before fetching (audit C4 spec §4)" {
+  template_setup
+  hooks_on
+  upstream_commit new.txt hello
+  note Bad 'type: concept'
   run "$UT" --unattended
   [ "$status" -eq 1 ]
+  [ -z "$(git for-each-ref refs/remotes/template)" ]
   [ ! -e new.txt ]
-  [ "$(git status --porcelain)" = '?? dirty.txt' ]
-  alerts | grep -qF '[update] template update failed: working tree is not clean'
+  [ "$(git status --porcelain)" = '?? wiki/work/concepts/Bad.md' ]
+  alerts | grep -qF '[update] template update failed: the sync commit was refused: '
+  alerts | grep -q 'Bad.md'
+}
+
+@test "--unattended stops on a published run the hook refused, before fetching (audit C7 spec §3)" {
+  template_setup
+  hooks_on
+  upstream_commit new.txt hello
+  pending_run 20261004T060000-brief-cd34
+  printf '{"run_id": "20261004T060000-brief-cd34", "status": "published", "published": ["wiki/work/concepts/Bad.md"], "conflicts": [], "problems": []}\n' > system/logs/runs/20261004T060000-brief-cd34/publish.json
+  rm briefings/2026-10-04.md
+  note Bad 'type: concept'
+  note Fresh $'type: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work'
+  run "$UT" --unattended
+  [ "$status" -eq 1 ]
+  [ -z "$(git for-each-ref refs/remotes/template)" ]
+  [ ! -e new.txt ]
+  [ "$(git status --porcelain)" = '?? wiki/work/concepts/Bad.md' ]
+  [ "$(git log -1 --format=%s)" = "sync(standalone): 1 file(s)" ]
+  alerts | grep -qF '[update] template update failed: committed first: sync(standalone): 1 file(s); a published run was refused by the pre-commit hook: wiki/work/concepts/Bad.md (the hook'"'"'s line is in today'"'"'s [commit_runs] alert)'
+  [ "$(alerts | grep -c ' \[commit_runs\] run ')" -eq 1 ]
+}
+
+@test "--unattended with nothing new to merge still reports the commits it made (audit C4 review)" {
+  template_setup
+  hooks_on
+  pending_run 20261004T060000-brief-cd34
+  note Fresh $'type: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work'
+  run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  [ -z "$(git status --porcelain)" ]
+  [ "$(alerts | grep -c '\[update\]')" -eq 1 ]
+  alerts | grep -qF '[update] template update: committed first: brief 2026-10-04: briefings/2026-10-04.md; sync(standalone): 1 file(s); nothing new to merge'
+}
+
+@test "--unattended names the run commits that landed when the sync commit is refused (audit C4 review)" {
+  template_setup
+  hooks_on
+  upstream_commit new.txt hello
+  pending_run 20261004T060000-brief-cd34
+  note Bad 'type: concept'
+  run "$UT" --unattended
+  [ "$status" -eq 1 ]
+  [ -z "$(git for-each-ref refs/remotes/template)" ]
+  [ "$(git log -1 --format=%s)" = "brief 2026-10-04: briefings/2026-10-04.md" ]
+  alerts | grep -qF '[update] template update failed: committed first: brief 2026-10-04: briefings/2026-10-04.md; the sync commit was refused: '
+}
+
+@test "--unattended: no git child of the update inherits run.lock's fd 9, with a pending run and a dirty tree (audit C4 spec §4)" {
+  export REAL_GIT="$(command -v git)"
+  template_setup
+  hooks_on
+  upstream_commit new.txt hello
+  pending_run 20261004T060000-brief-cd34
+  echo x > dirty.txt
+  ln -s "$REPO/system/tests/stub_git" "$STUBS/git"
+  export WRAP_EACH='[[ ! -e /proc/self/fd/9 ]] || echo "$1" >> "$BATS_TEST_TMPDIR/fd9"'
+  run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  [ ! -e "$BATS_TEST_TMPDIR/fd9" ]
 }
 
 @test "--unattended alerts when a step after the merge fails, and names the merged changes (#87)" {

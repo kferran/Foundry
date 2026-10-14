@@ -901,6 +901,9 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF '`foundry-update.timer` runs it every morning 45 minutes before the brief (`update_template.sh --unattended`, #87)' FOUNDRY.md
   grep -qF 'aborts a conflicted merge (`git merge --abort`), leaving the vault unchanged' FOUNDRY.md
   grep -qF 'later updates keep it disabled' FOUNDRY.md
+  grep -qF 'commits uncommitted changes first, as the sync does (`commit_runs.py`, then one `sync(<role>)` commit of everything else' FOUNDRY.md
+  run grep -F 'the clean-tree check matters only on a standalone machine' FOUNDRY.md
+  [ "$status" -ne 0 ]
 }
 
 @test "the vault owns its README: a landing page, the manual in FOUNDRY.md, merge=ours and the /setup stub (#90)" {
