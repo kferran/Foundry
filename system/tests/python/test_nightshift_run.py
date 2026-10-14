@@ -307,7 +307,7 @@ def test_lock_held_exits_4(env):
         assert nr.main(["tick"], vault, NOW) == 4
 
 
-GOOD = ["CURL_EXIT=6", "CAT_EXIT=1", "ENV_DONE"]   # the three self-test commands, each its own tool result
+GOOD = ["CURL_EXIT=6", "CAT_EXIT=1", "ENV_DONE=1"]   # the three self-test commands, each its own tool result
 
 
 def selftest_stream(tmp_path, name, results):
@@ -324,7 +324,7 @@ def test_selftest_parses_tool_results(env, monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))  # the self-test plants its canary under $HOME
     stub(tmp, STREAM=str(selftest_stream(tmp_path, "good.jsonl", GOOD)))
     assert nr.selftest(vault)[0] is True
-    stub(tmp, STREAM=str(selftest_stream(tmp_path, "bad.jsonl", ["CURL_EXIT=0", "CAT_EXIT=1", "ENV_DONE"])))
+    stub(tmp, STREAM=str(selftest_stream(tmp_path, "bad.jsonl", ["CURL_EXIT=0", "CAT_EXIT=1", "ENV_DONE=1"])))
     ok, why = nr.selftest(vault)
     assert ok is False and "curl" in why
 
@@ -333,14 +333,38 @@ def test_selftest_fails_when_the_session_environment_carries_a_token(env, monkey
     # audit S3/S7 spec §2: the third command prints the names of the token variables that are set, then ENV_DONE
     vault, tmp = env
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    stub(tmp, STREAM=str(selftest_stream(tmp_path, "leak.jsonl", ["CURL_EXIT=6", "CAT_EXIT=1", "GH_TOKEN=\nENV_DONE"])))
+    stub(tmp, STREAM=str(selftest_stream(tmp_path, "leak.jsonl", ["CURL_EXIT=6", "CAT_EXIT=1", "GH_TOKEN=\nENV_DONE=0"])))
     assert nr.selftest(vault) == (False, "the session environment carries GH_TOKEN")
-    stub(tmp, STREAM=str(selftest_stream(tmp_path, "clean.jsonl", ["CURL_EXIT=6", "CAT_EXIT=1", "ENV_DONE"])))
+    stub(tmp, STREAM=str(selftest_stream(tmp_path, "clean.jsonl", ["CURL_EXIT=6", "CAT_EXIT=1", "ENV_DONE=1"])))
     assert nr.selftest(vault) == (True, "")
     stub(tmp, STREAM=str(selftest_stream(tmp_path, "short.jsonl", ["CURL_EXIT=6", "CAT_EXIT=1"])))
     ok, why = nr.selftest(vault)
     assert ok is False and "did not run" in why
-    assert "GH_TOKEN" in nr.SELFTEST_PROMPT and "ENV_DONE" in nr.SELFTEST_PROMPT
+    stub(tmp, STREAM=str(selftest_stream(tmp_path, "broken.jsonl", ["CURL_EXIT=6", "CAT_EXIT=1", "ENV_DONE=2"])))
+    ok, why = nr.selftest(vault)   # grep exit 2 is a failed probe, which proves nothing either way
+    assert ok is False and "probe" in why and "exit 2" in why
+    assert "GH_TOKEN" in nr.SELFTEST_PROMPT and "ENV_DONE=$?" in nr.SELFTEST_PROMPT
+    assert {"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"} <= set(nr.TOKEN_VARS)
+
+
+def test_selftest_runs_under_the_production_deny_and_a_start_failure_names_its_cause(env, monkeypatch, tmp_path):
+    # review of audit S3/S7: the self-test proves the profile items run under, and a start failure keeps its evidence
+    vault, tmp = env
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    profiles, real = [], nr.ss.profile
+    monkeypatch.setattr(nr.ss, "profile", lambda *a, **k: profiles.append(real(*a, **k)) or profiles[-1])
+    lines = (FX / "ok.jsonl").read_text().splitlines()
+    error = json.dumps({"type": "result", "subtype": "error_during_execution", "is_error": True,
+                        "result": "Invalid API key. Please run /login"})
+    (tmp_path / "error.jsonl").write_text("\n".join([lines[0], error]) + "\n")
+    stub(tmp, STREAM=str(tmp_path / "error.jsonl"))
+    ok, why = nr.selftest(vault)
+    assert ok is False and "did not start" in why and "Invalid API key. Please run /login" in why
+    assert str(vault) in profiles[-1]["sandbox"]["filesystem"]["denyRead"]
+    (tmp_path / "empty.jsonl").write_text("")
+    stub(tmp, STREAM=str(tmp_path / "empty.jsonl"), SHELL="echo 'OAuth token has expired' >&2")
+    ok, why = nr.selftest(vault)
+    assert ok is False and why.endswith("OAuth token has expired")
 
 
 def test_selftest_names_the_env_token_login_when_the_session_does_not_start(env, monkeypatch, tmp_path):

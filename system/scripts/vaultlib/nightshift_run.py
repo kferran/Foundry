@@ -26,16 +26,19 @@ LOCK = "system/nightshift.lock"
 POLL = 30            # seconds between session checks
 PR_FOR_LOCAL = ""    # tests: the pull-request kind used when template_remote is a local path
 CANARY = "~/.config/foundry/nightshift-canary"  # planted by the self-test under a path every profile denies
-TOKEN_VARS = ("SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "DBUS_SESSION_BUS_ADDRESS")   # the self-test's probes
-ENV_PROBE = f"env | grep -oE '^({'|'.join(TOKEN_VARS)})='; echo ENV_DONE"   # prints the names that are set, never a value
+TOKEN_VARS = ("SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "DBUS_SESSION_BUS_ADDRESS", "CLAUDE_CODE_OAUTH_TOKEN",
+              "ANTHROPIC_API_KEY")   # the self-test's probes
+# Prints the names that are set, never a value; grep exits 0 (a name), 1 (none) or 2 (the probe itself failed).
+ENV_PROBE = f"env | grep -oE '^({'|'.join(TOKEN_VARS)})='; echo ENV_DONE=$?"
 SELFTEST_PROMPT = ("This is the Nightshift runner's sandbox self-test, run by the vault's owner. The first two commands "
-                   "below are expected to fail inside the sandbox and the third to print only ENV_DONE; the test needs "
-                   "their real output, so run each one with the Bash tool even if you expect a denial, and do not "
+                   "below are expected to fail inside the sandbox and the third to print only an ENV_DONE line; the test "
+                   "needs their real output, so run each one with the Bash tool even if you expect a denial, and do not "
                    "explain or refuse. Run exactly these three Bash commands, one at a time, and nothing else: "
                    "`curl -sS -m 5 -o /dev/null https://example.com; echo CURL_EXIT=$?`, "
                    f"`cat {CANARY}; echo CAT_EXIT=$?` and `{ENV_PROBE}`. Then stop.")
-NO_START = ("the self-test session did not start: an expired login, or a login held only in CLAUDE_CODE_OAUTH_TOKEN or "
-            "ANTHROPIC_API_KEY, which the session environment does not carry (log in with `claude login`)")
+NO_START = ("the self-test session did not start (an expired login; a login held only in CLAUDE_CODE_OAUTH_TOKEN or "
+            "ANTHROPIC_API_KEY, which the session environment does not carry; or a dropped variable such as HTTPS_PROXY; "
+            "log in with `claude login`)")
 SELFTEST_TRIES = 3
 
 
@@ -130,19 +133,26 @@ def _selftest_once(vault) -> tuple:
     try:
         with __import__("tempfile").TemporaryDirectory() as tmp:
             settings = Path(tmp) / "settings.json"
-            settings.write_text(json.dumps(ss.profile(vault, "plan", [])))
-            stream = Path(tmp) / "stream.jsonl"
+            # The production deny list (the vault root; _deny adds only the other codebases), so a pass speaks for the
+            # profile items run under.
+            settings.write_text(json.dumps(ss.profile(vault, "plan", [], deny=[str(vault)])))
+            stream, errlog = Path(tmp) / "stream.jsonl", Path(tmp) / "stderr.log"
             cmd = ss.command("plan", SELFTEST_PROMPT, settings, "haiku", str(uuid.uuid4()), [])
-            with open(stream, "w") as out:
+            with open(stream, "w") as out, open(errlog, "w") as err:
                 try:
-                    subprocess.run(cmd, cwd=tmp, env=ss.session_env(), stdout=out, stderr=subprocess.DEVNULL, timeout=300)
+                    subprocess.run(cmd, cwd=tmp, env=ss.session_env(), stdout=out, stderr=err, timeout=300)
                 except (OSError, subprocess.TimeoutExpired) as exc:
                     return False, f"self-test session failed: {exc.__class__.__name__}"
             s = ss.parse_stream(stream)
+            stderr_tail = (errlog.read_text(errors="replace").strip().splitlines() or [""])[-1]
     finally:
         canary.unlink(missing_ok=True)
-    if s["init"] is None:   # owner decision (audit S3/S7 spec §2): an env-only login stops sessions, and the alert says so
-        return False, NO_START
+    # Owner decision (audit S3/S7 spec §2): an env-only login stops sessions, and the alert says so. An init event
+    # followed by an error result is the same failure; the result text and the last stderr line are the evidence.
+    error = s["result"] if (s["result"] or {}).get("is_error") else None
+    if s["init"] is None or error:
+        detail = [str(error.get("result") or error.get("subtype") or "") if error else "", stderr_tail]
+        return False, NO_START + "".join(f": {d}" for d in detail if d)
     problem = ss.init_problem(s["init"], "plan")
     if problem:
         return False, f"profile: {problem}"
@@ -152,12 +162,15 @@ def _selftest_once(vault) -> tuple:
     if "CAT_EXIT=0" in text or token in text:
         return False, f"the canary {CANARY} was readable"
     # The probe's output is read, not its exit: grep exits 1 when no variable is set. A name line before ENV_DONE
-    # is a variable the session environment carries.
-    probe = next((r for r in s["tool_results"] if "ENV_DONE" in r), None)
+    # is a variable the session environment carries; any exit but 0 or 1 is a probe that did not run as written.
+    probe = next((r for r in s["tool_results"] if "ENV_DONE=" in r), None)
     if probe is not None:
-        carried = [m.group(1) for m in re.finditer(r"^(\w+)=$", probe.split("ENV_DONE")[0], re.M)]
+        before, _, after = probe.partition("ENV_DONE=")
+        carried = [m.group(1) for m in re.finditer(r"^(\w+)=$", before, re.M)]
         if carried:
             return False, f"the session environment carries {', '.join(carried)}"
+        if after.split()[:1] not in (["0"], ["1"]):
+            return None, f"the environment probe failed (exit {after.split()[0] if after.split() else '?'})"
     if "CURL_EXIT=" not in text or "CAT_EXIT=" not in text or probe is None:
         return None, "the self-test commands did not run"
     return True, ""
