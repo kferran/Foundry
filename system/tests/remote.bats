@@ -418,6 +418,23 @@ note() {  # <name> <frontmatter>: a work concept with the given frontmatter line
   alerts | grep -q 'Bad.md'
 }
 
+@test "--unattended stops on a published run the hook refused, before fetching (audit C7 spec §3)" {
+  template_setup
+  hooks_on
+  upstream_commit new.txt hello
+  pending_run 20261004T060000-brief-cd34
+  printf '{"run_id": "20261004T060000-brief-cd34", "status": "published", "published": ["wiki/work/concepts/Bad.md"], "conflicts": [], "problems": []}\n' > system/logs/runs/20261004T060000-brief-cd34/publish.json
+  rm briefings/2026-10-04.md
+  note Bad 'type: concept'
+  run "$UT" --unattended
+  [ "$status" -eq 1 ]
+  [ -z "$(git for-each-ref refs/remotes/template)" ]
+  [ ! -e new.txt ]
+  [ "$(git status --porcelain)" = '?? wiki/work/concepts/Bad.md' ]
+  alerts | grep -qF '[update] template update failed: a published run was refused by the pre-commit hook: wiki/work/concepts/Bad.md (see the commit_runs alert)'
+  [ "$(alerts | grep -c '\[commit_runs\]')" -eq 1 ]
+}
+
 @test "--unattended: no git child of the commit step inherits run.lock's fd 9 (audit C4 spec §4)" {
   export REAL_GIT="$(command -v git)"
   template_setup

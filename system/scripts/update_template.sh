@@ -46,6 +46,8 @@ if (( unattended )); then
   # standalone machine nothing else commits between /backup runs. A refusal stops the update before the fetch.
   before="$(g rev-parse HEAD)"
   git_sync_commit "$(config_get machine_role standalone)" || die 1 "$GIT_SYNC_ERROR"
+  # A run the hook refused stays pending until it is fixed (audit C7 §3): the update waits for it too.
+  [[ -z "$GIT_SYNC_REFUSED" ]] || die 1 "a published run was refused by the pre-commit hook: $(paste -sd ' ' <<< "${GIT_SYNC_REFUSED%$'\n'}") (see the commit_runs alert)"
   committed="$(g log --reverse --format=%s "$before..HEAD" | paste -sd ';' | sed 's/;/; /g')"
 else
   [[ -z "$(g status --porcelain)" ]] || die 1 "working tree is not clean; commit or stash first"

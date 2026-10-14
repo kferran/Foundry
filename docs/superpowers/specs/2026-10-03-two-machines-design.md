@@ -138,8 +138,8 @@ Runs from the vault root on any role. Environment for every git call: `GIT_TERMI
 **Deadline:** the whole script has one budget, `SYNC_DEADLINE` (default 300 s). Each network call gets `timeout` set to the smaller of 120 s and the time left. A `TERM`/`INT` trap aborts an in-progress merge (`git merge --abort` when `MERGE_HEAD` exists) before exiting, so a systemd stop never leaves a half-merged tree.
 
 **Cycle:**
-1. `commit_runs.py` (§4.2). Failure: alert, exit 1.
-2. Remaining local changes: `git add -A`, then one `sync(<role>)` commit (§4.1) through the pre-commit hook. Hook failure: `git reset -q` (unstage), alert, exit 1.
+1. `commit_runs.py` (§4.2). Failure: alert, exit 1. Since 2026-10-14 (audit C7, `2026-10-13-audit-sync-refused-commit-design.md`) a run the hook refuses is reported as `refused <run_id> <path>` lines; its paths are left out of step 2 and the cycle goes on.
+2. Remaining local changes: `git add -A`, then one `sync(<role>)` commit (§4.1) through the pre-commit hook. Hook failure: `git reset -q` (unstage), alert, exit 1. Steps 1 and 2 are `git_sync_commit` in `lib_git.sh` since 2026-10-14 (audit C4), shared with `update_template.sh --unattended`.
 3. `git fetch origin`. Failure: alert, exit 1.
 4. `git merge --no-edit -m '<merge message>' origin/<upstream>` when `origin` is ahead. Outcomes:
    - clean (or nothing to merge): continue;
