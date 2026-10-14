@@ -69,6 +69,17 @@ def test_plan_errors(vault_repo):
     assert any("budget" in e for e in errs)
 
 
+def test_a_workspace_inside_the_vault_is_not_ready(vault_repo, tmp_path):
+    # audit S3/S7 spec §2: every session denies the vault root, which would cover its own working directory
+    cfg = vault_repo / "system/config.md"
+    head = cfg.read_text().rsplit("---\n", 1)[0]
+    cfg.write_text(head + f'order_workspace: "{vault_repo / ".scratch" / "ws"}"\n---\n')
+    assert "order_workspace is inside the vault" in nc.check(vault_repo, plan_fm(tasks="1-2"), "")
+    cfg.write_text(head + f'order_workspace: "{tmp_path / "ws"}"\n---\n')
+    assert "order_workspace is inside the vault" not in nc.check(vault_repo, plan_fm(tasks="1-2"), "")
+    assert nc.workspace({}) == Path("~/code/worktrees").expanduser()
+
+
 def test_template_base_must_be_on_the_template_remote(vault_repo):
     git(vault_repo, "branch", "only-here")   # in the vault, never pushed
     errs = nc.check(vault_repo, plan_fm(base="only-here", tasks="1-2"), "")

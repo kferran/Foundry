@@ -3,6 +3,7 @@ import argparse
 import fcntl
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -25,12 +26,19 @@ LOCK = "system/nightshift.lock"
 POLL = 30            # seconds between session checks
 PR_FOR_LOCAL = ""    # tests: the pull-request kind used when template_remote is a local path
 CANARY = "~/.config/foundry/nightshift-canary"  # planted by the self-test under a path every profile denies
-SELFTEST_PROMPT = ("This is the Nightshift runner's sandbox self-test, run by the vault's owner. Both commands below "
-                   "are expected to fail inside the sandbox; the test needs their real exit codes, so run each one with "
-                   "the Bash tool even if you expect a denial, and do not explain or refuse. "
-                   "Run exactly these two Bash commands, one at a time, and nothing else: "
-                   "`curl -sS -m 5 -o /dev/null https://example.com; echo CURL_EXIT=$?` and "
-                   f"`cat {CANARY}; echo CAT_EXIT=$?`. Then stop.")
+TOKEN_VARS = ("SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "DBUS_SESSION_BUS_ADDRESS", "CLAUDE_CODE_OAUTH_TOKEN",
+              "ANTHROPIC_API_KEY")   # the self-test's probes
+# Prints the names that are set, never a value; grep exits 0 (a name), 1 (none) or 2 (the probe itself failed).
+ENV_PROBE = f"env | grep -oE '^({'|'.join(TOKEN_VARS)})='; echo ENV_DONE=$?"
+SELFTEST_PROMPT = ("This is the Nightshift runner's sandbox self-test, run by the vault's owner. The first two commands "
+                   "below are expected to fail inside the sandbox and the third to print only an ENV_DONE line; the test "
+                   "needs their real output, so run each one with the Bash tool even if you expect a denial, and do not "
+                   "explain or refuse. Run exactly these three Bash commands, one at a time, and nothing else: "
+                   "`curl -sS -m 5 -o /dev/null https://example.com; echo CURL_EXIT=$?`, "
+                   f"`cat {CANARY}; echo CAT_EXIT=$?` and `{ENV_PROBE}`. Then stop.")
+NO_START = ("the self-test session did not start (an expired login; a login held only in CLAUDE_CODE_OAUTH_TOKEN or "
+            "ANTHROPIC_API_KEY, which the session environment does not carry; or a dropped variable such as HTTPS_PROXY; "
+            "log in with `claude login`)")
 SELFTEST_TRIES = 3
 
 
@@ -76,7 +84,7 @@ class Ctx:
         self.tz = ZoneInfo(str(cfg.get("timezone") or "UTC"))
         self.brief_time = str(cfg.get("brief_time") or "06:00")
         self.window = ns.parse_window(nc.setting(cfg, "run_window", "nightshift_window"))
-        self.workspace = Path(str(nc.setting(cfg, "order_workspace", "nightshift_workspace") or "~/code/worktrees")).expanduser()
+        self.workspace = nc.workspace(cfg)
         try:
             self.max_five_hour = float(cfg.get("order_max_five_hour", 0.6))
         except (TypeError, ValueError):
@@ -125,17 +133,26 @@ def _selftest_once(vault) -> tuple:
     try:
         with __import__("tempfile").TemporaryDirectory() as tmp:
             settings = Path(tmp) / "settings.json"
-            settings.write_text(json.dumps(ss.profile(vault, "plan", [])))
-            stream = Path(tmp) / "stream.jsonl"
+            # The production deny list (the vault root; _deny adds only the other codebases), so a pass speaks for the
+            # profile items run under.
+            settings.write_text(json.dumps(ss.profile(vault, "plan", [], deny=[str(vault)])))
+            stream, errlog = Path(tmp) / "stream.jsonl", Path(tmp) / "stderr.log"
             cmd = ss.command("plan", SELFTEST_PROMPT, settings, "haiku", str(uuid.uuid4()), [])
-            with open(stream, "w") as out:
+            with open(stream, "w") as out, open(errlog, "w") as err:
                 try:
-                    subprocess.run(cmd, cwd=tmp, stdout=out, stderr=subprocess.DEVNULL, timeout=300)
+                    subprocess.run(cmd, cwd=tmp, env=ss.session_env(), stdout=out, stderr=err, timeout=300)
                 except (OSError, subprocess.TimeoutExpired) as exc:
                     return False, f"self-test session failed: {exc.__class__.__name__}"
             s = ss.parse_stream(stream)
+            stderr_tail = (errlog.read_text(errors="replace").strip().splitlines() or [""])[-1]
     finally:
         canary.unlink(missing_ok=True)
+    # Owner decision (audit S3/S7 spec §2): an env-only login stops sessions, and the alert says so. An init event
+    # followed by an error result is the same failure; the result text and the last stderr line are the evidence.
+    error = s["result"] if (s["result"] or {}).get("is_error") else None
+    if s["init"] is None or error:
+        detail = [str(error.get("result") or error.get("subtype") or "") if error else "", stderr_tail]
+        return False, NO_START + "".join(f": {d}" for d in detail if d)
     problem = ss.init_problem(s["init"], "plan")
     if problem:
         return False, f"profile: {problem}"
@@ -144,14 +161,25 @@ def _selftest_once(vault) -> tuple:
         return False, "curl reached a host outside the allowlist"
     if "CAT_EXIT=0" in text or token in text:
         return False, f"the canary {CANARY} was readable"
-    if "CURL_EXIT=" not in text or "CAT_EXIT=" not in text:
+    # The probe's output is read, not its exit: grep exits 1 when no variable is set. A name line before ENV_DONE
+    # is a variable the session environment carries; any exit but 0 or 1 is a probe that did not run as written.
+    probe = next((r for r in s["tool_results"] if "ENV_DONE=" in r), None)
+    if probe is not None:
+        before, _, after = probe.partition("ENV_DONE=")
+        carried = [m.group(1) for m in re.finditer(r"^(\w+)=$", before, re.M)]
+        if carried:
+            return False, f"the session environment carries {', '.join(carried)}"
+        if after.split()[:1] not in (["0"], ["1"]):
+            return None, f"the environment probe failed (exit {after.split()[0] if after.split() else '?'})"
+    if "CURL_EXIT=" not in text or "CAT_EXIT=" not in text or probe is None:
         return None, "the self-test commands did not run"
     return True, ""
 
 
 def selftest(vault) -> tuple:
-    """(passed, reason). Runs the plan profile's sandbox with two commands that must fail. A model that declines to run
-    them proves nothing either way, so that case is retried; a command that succeeds fails at once."""
+    """(passed, reason). Runs the plan profile's sandbox with two commands that must fail and a probe that must print
+    nothing but ENV_DONE. A model that declines to run them proves nothing either way, so that case is retried; a
+    command that succeeds, or a probe that names a variable, fails at once."""
     reason = ""
     for _ in range(SELFTEST_TRIES):
         verdict, reason = _selftest_once(vault)
@@ -269,8 +297,9 @@ def _research_code(ctx: Ctx, fm: dict, code: Path) -> None:
 
 
 def _deny(ctx: Ctx, fm: dict) -> list:
-    """Paths a session must not read: the vault's notes, inputs and logs, and every other registered codebase."""
-    out = [str(ctx.vault / p) for p in ("wiki", "raw", "briefings", "system/logs")]
+    """Paths a session must not read: the whole vault (its clone, context/ and out/ live under order_workspace, so it
+    needs nothing from the vault; audit S3/S7 spec §2) and every other registered codebase."""
+    out = [str(ctx.vault)]
     # A plan item works in its own codebase; a research item reads code/, so even its own checkout stays denied.
     own = nc.source(ctx.vault, fm.get("repo")) if fm.get("kind") == "plan" and fm.get("repo") != "template" else None
     for p in sorted((ctx.vault / "system" / "codebases").glob("*.md")):
@@ -343,7 +372,8 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
     started = clock.monotonic()
     outcome = None
     with open(stream, "a") as out, open(idir / "run.log", "a") as err:
-        proc = subprocess.Popen(cmd, cwd=cwd, stdout=out, stderr=err, start_new_session=True)
+        # session_env() is the session's whole environment: no agent socket, no host token (audit S3/S7 spec §2).
+        proc = subprocess.Popen(cmd, cwd=cwd, env=ss.session_env(), stdout=out, stderr=err, start_new_session=True)
         (idir / "session.pid").write_text(str(proc.pid))
         checked = False
         while proc.poll() is None:
@@ -518,6 +548,9 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     attempts = int(fm.get("attempts") or 0) + 1
     ni.update(path, state="running", started_at=fm.get("started_at") or ctx.now.isoformat(), attempts=str(attempts),
               reset_at=None)
+    if nc.workspace_inside_vault(ctx.vault, ctx.workspace):   # the session's profile denies the vault root
+        return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "workspace", "needs": [
+            f"Move order_workspace outside the vault ({ctx.workspace} is inside it), then queue {fm['id']} again"]})
     before = {}
     if fm["kind"] == "plan":
         try:

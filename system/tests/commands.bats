@@ -776,6 +776,17 @@ self_edit_contract() {
   grep -qF 'By default `run_window` is empty and the window is always open' FOUNDRY.md
 }
 
+@test "the manual says what a Work Order session reads and gets, and that the workspace sits outside the vault (audit S3/S7 spec §3)" {
+  grep -qF 'reads nothing of the vault, gets eight named environment variables and holds no credential' FOUNDRY.md
+  grep -qF '`PATH`, `HOME`, `USER`, `LANG`, `TZ`, `TMPDIR`, `FOUNDRY_CLAUDE_BIN` and `CLAUDE_CONFIG_DIR`' FOUNDRY.md
+  grep -qF '`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`' FOUNDRY.md
+  grep -qF '`order_workspace` must sit outside the vault' FOUNDRY.md
+  grep -qF 'not ready: order_workspace is inside the vault' FOUNDRY.md
+  grep -qF '`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `SSL_CERT_FILE` and `NODE_EXTRA_CA_CERTS`' FOUNDRY.md
+  grep -qF 'system/scripts/nightshift.py selftest' FOUNDRY.md
+  grep -qF 'must sit outside the vault' system/schemas/config.md
+}
+
 @test "the usage ceiling: what holds, what never holds, and where the reading comes from (usage ceiling spec)" {
   grep -qF '**The usage ceiling.**' FOUNDRY.md
   grep -qF 'intake ingests, the meetings fetch, inbox triage and new Work Orders wait' FOUNDRY.md

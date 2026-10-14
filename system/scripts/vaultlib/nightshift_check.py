@@ -32,6 +32,17 @@ def config(vault) -> dict:
     return _fm(Path(vault) / "system" / "config.md")
 
 
+def workspace(cfg: dict) -> Path:
+    """order_workspace (old name nightshift_workspace), expanded; the default is ~/code/worktrees."""
+    return Path(str(setting(cfg, "order_workspace", "nightshift_workspace") or "~/code/worktrees")).expanduser()
+
+
+def workspace_inside_vault(vault, ws) -> bool:
+    """Every session profile denies the vault root, so a workspace under it would cover the session's own working
+    directory (audit S3/S7 spec §2). check() and the tick refuse such an item."""
+    return Path(ws).resolve().is_relative_to(Path(vault).resolve())
+
+
 def codebase(vault, name) -> dict | None:
     path = Path(vault) / "system" / "codebases" / f"{name}.md"
     return _fm(path) if name and path.is_file() else None
@@ -123,6 +134,8 @@ def check(vault, fm: dict, body: str) -> list:
     errs = identifiers(fm)
     if errs:
         return errs  # nothing below may pass a bad ref or path to git
+    if workspace_inside_vault(vault, workspace(config(vault))):
+        errs.append("order_workspace is inside the vault")
     kind = fm.get("kind")
     try:
         ni.budget_seconds(fm.get("budget") or ("4h" if kind == "plan" else "1h"))

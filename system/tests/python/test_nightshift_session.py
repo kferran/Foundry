@@ -69,6 +69,52 @@ def test_profile_denies_common_credentials_and_extra_paths():
     assert "/srv/other-repo" in deny
 
 
+def test_session_env_passes_only_the_named_variables(monkeypatch):
+    # audit S3/S7 spec §2: one allowlist; the next token variable is on no denylist
+    dropped = ("SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "DBUS_SESSION_BUS_ADDRESS", "ANTHROPIC_API_KEY",
+               "CLAUDE_CODE_OAUTH_TOKEN")
+    for k in dropped:
+        monkeypatch.setenv(k, "secret")
+    monkeypatch.setenv("TZ", "UTC")
+    monkeypatch.setenv("FOUNDRY_CLAUDE_BIN", "/opt/claude")
+    env = ss.session_env()
+    for k in dropped:
+        assert k not in env
+    assert env["PATH"] and env["HOME"] and env["TZ"] == "UTC" and env["FOUNDRY_CLAUDE_BIN"] == "/opt/claude"
+    assert set(env) <= set(ss.ENV)
+    assert len(ss.ENV) == 8
+
+
+def test_profile_denies_the_claude_transcripts_and_mirrors_every_deny_into_read():
+    # audit S3/S7 spec §2: the Read tool is bound whether or not the sandbox list reaches it
+    p = ss.profile(REPO, "plan", [], [], deny=["/srv/other-repo"])
+    deny = p["sandbox"]["filesystem"]["denyRead"]
+    home = str(Path.home())
+    for rel in (".claude/projects", ".claude/settings.json", ".claude/settings.local.json", ".gitconfig"):
+        assert f"{home}/{rel}" in deny
+    reads = p["permissions"]["deny"]
+    for d in deny:
+        assert f"Read(//{d.lstrip('/')})" in reads
+        if "*" not in d:
+            assert f"Read(//{d.lstrip('/')}/**)" in reads   # a file deny (~/.netrc) needs the bare form, a folder the /**
+    assert "Read(//srv/other-repo/**)" in reads
+    assert f"Read(//{home.lstrip('/')}/.netrc)" in reads
+    assert f"Read(//{home.lstrip('/')}/.claude/projects/**)" in reads
+
+
+def test_profile_denies_a_custom_claude_config_dir(monkeypatch, tmp_path):
+    # review of audit S3/S7: CLAUDE_CONFIG_DIR reaches the session, so its files are denied beside the ~/.claude set
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cc"))
+    p = ss.profile(REPO, "plan", [])
+    deny = p["sandbox"]["filesystem"]["denyRead"]
+    for rel in (".credentials.json", "projects", "settings.json", "settings.local.json"):
+        assert str(tmp_path / "cc" / rel) in deny
+        assert f"Read(//{str(tmp_path / 'cc' / rel).lstrip('/')})" in p["permissions"]["deny"]
+    assert f"{Path.home()}/.claude/projects" in deny and f"{Path.home()}/.claude.json" in deny
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR")
+    assert str(tmp_path / "cc" / "projects") not in ss.profile(REPO, "plan", [])["sandbox"]["filesystem"]["denyRead"]
+
+
 def test_research_prompt_points_at_context():
     assert "context/" in ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")
 
