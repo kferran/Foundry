@@ -1,7 +1,7 @@
 # Work Orders: an install phase and toolchain paths for the sealed verify
 
 **Date:** 2026-10-13
-**Status:** Draft for the owner's review.
+**Status:** Accepted 2026-10-14 (both owner decisions below taken as recommended). Plan: `docs/superpowers/plans/2026-10-14-orders-toolchain.md`.
 **Issue:** #138.
 
 ## 1. Problem
@@ -15,15 +15,15 @@ The service PATH (`install_units.sh`) is `<claude's dir>:~/.local/bin:/usr/local
 - **Two optional keys in `system/codebases/<name>.md`, beside `order_hosts`, `order_pr` and `order_plugins`.** `order_toolchain`: a list of directories (`~` allowed) that hold the toolchain's executables. `order_install`: one shell command that installs the project's dependencies. Both are written by the owner in a tracked file, never by a session. No old `nightshift_*` names: the keys are new.
 - **`order_toolchain` directories are bound read-only into the sandbox at their own paths and prepended to its PATH, in the listed order.** Nothing else from `$HOME` appears: the binds come after `--tmpfs $HOME` in the argv (bwrap mounts in order), so the rest of `$HOME` stays empty. The owner lists the directory that holds the real binaries (for nvm, `~/.nvm/versions/node/<version>/bin`); a shim directory that needs its manager's environment does not work under `--clearenv`, and the manual says so.
 - **`order_install` runs once, first, in the same private checkout, with the host network namespace.** It is the only step with network; the verify commands then run offline as today. It logs to `verify.log` like a verify command, and a non-zero exit blocks the item as `verify` does, with the first Needs-you line `order_install: <command>: exit <code>`. The exit 127 wording from the fix applies to it too. An absent key skips the phase: nothing changes for a codebase that does not set it.
-- **Owner decision:** bwrap has no per-host filter; `--unshare-net` is all or nothing, so the install phase cannot be held to `order_hosts` the way `nightshift_session.profile()` holds the session. Recommendation: accept the open network for this one command. The command is the owner's text, the sandbox still hides `$HOME` and the environment, and the install cannot reach the pushed commit (`verify_sha` runs on a throwaway checkout of the runner's own repository). The risk to accept: the branch under test is the session's, so its lockfile decides what the install fetches and which install scripts run; an owner who wants no scripts writes them off in the command (`pnpm install --frozen-lockfile --ignore-scripts`).
-- **Owner decision:** also prepend the `order_toolchain` directories to the session's PATH in `_run_session` (the `Popen` env), so the plan session can run the same tools during its tasks. Recommendation: yes; it is one line, and without it the session reports its own exit 127 while verify passes.
+- **Owner decision (2026-10-14: the network stays open for the install command):** bwrap has no per-host filter; `--unshare-net` is all or nothing, so the install phase cannot be held to `order_hosts` the way `nightshift_session.profile()` holds the session. Recommendation: accept the open network for this one command. The command is the owner's text, the sandbox still hides `$HOME` and the environment, and the install cannot reach the pushed commit (`verify_sha` runs on a throwaway checkout of the runner's own repository). The risk to accept: the branch under test is the session's, so its lockfile decides what the install fetches and which install scripts run; an owner who wants no scripts writes them off in the command (`pnpm install --frozen-lockfile --ignore-scripts`).
+- **Owner decision (2026-10-14: yes):** also prepend the `order_toolchain` directories to the session's PATH in `_run_session` (the `Popen` env), so the plan session can run the same tools during its tasks. Recommendation: yes; it is one line, and without it the session reports its own exit 127 while verify passes.
 - **The readiness check stays command-free.** It refuses an `order_toolchain` entry that is not a directory and an `order_install` that is not a string, at queue time, with the file and key named.
 
 ## 3. Changes
 
 - `system/schemas/codebase.md`: `order_toolchain: {kind: list, of: string}`, `order_install: {kind: string}`.
 - `nightshift_deliver.py`: `bwrap(workdir, cmd, toolchain=(), net=False)` adds `--ro-bind <dir> <dir>` per directory after the `$HOME` tmpfs, builds PATH from the directories plus the fixed three, and drops `--unshare-net` when `net` is true. `run_verify` takes the toolchain; a new `run_install(vdir, cmd, toolchain, log_path)` runs the one command with `net=True`. `verify_sha` calls `run_install` before `run_verify` when the command is set.
-- `nightshift_run.py`: `_deliver_plan` reads both keys with `nc.setting` and passes them; `_run_session` prepends the directories to the session's PATH (if the owner says yes).
+- `nightshift_run.py`: `_deliver_plan` reads both keys with the codebase getter (`cb.get`; the keys have no old names, so no `nc.setting` fallback) and passes them; `_run_session` prepends the directories to the PATH of the environment it assembles for `Popen`. The Needs-you line keeps its `Fix the failing check:` prefix: `Fix the failing check: order_install: <command>: exit <code>`.
 - `nightshift_check.py`: `_plan` adds the two readiness errors.
 - `FOUNDRY.md`: the Work Orders paragraph names the two keys and the sentence on shim directories; `system/codebases/example.md` shows both keys commented in its body text.
 
