@@ -426,13 +426,40 @@ note() {  # <name> <frontmatter>: a work concept with the given frontmatter line
   printf '{"run_id": "20261004T060000-brief-cd34", "status": "published", "published": ["wiki/work/concepts/Bad.md"], "conflicts": [], "problems": []}\n' > system/logs/runs/20261004T060000-brief-cd34/publish.json
   rm briefings/2026-10-04.md
   note Bad 'type: concept'
+  note Fresh $'type: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work'
   run "$UT" --unattended
   [ "$status" -eq 1 ]
   [ -z "$(git for-each-ref refs/remotes/template)" ]
   [ ! -e new.txt ]
   [ "$(git status --porcelain)" = '?? wiki/work/concepts/Bad.md' ]
-  alerts | grep -qF '[update] template update failed: a published run was refused by the pre-commit hook: wiki/work/concepts/Bad.md (see the commit_runs alert)'
-  [ "$(alerts | grep -c '\[commit_runs\]')" -eq 1 ]
+  [ "$(git log -1 --format=%s)" = "sync(standalone): 1 file(s)" ]
+  alerts | grep -qF '[update] template update failed: committed first: sync(standalone): 1 file(s); a published run was refused by the pre-commit hook: wiki/work/concepts/Bad.md (the hook'"'"'s line is in today'"'"'s [commit_runs] alert)'
+  [ "$(alerts | grep -c ' \[commit_runs\] run ')" -eq 1 ]
+}
+
+@test "--unattended with nothing new to merge still reports the commits it made (audit C4 review)" {
+  template_setup
+  hooks_on
+  pending_run 20261004T060000-brief-cd34
+  note Fresh $'type: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work'
+  run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  [ -z "$(git status --porcelain)" ]
+  [ "$(alerts | grep -c '\[update\]')" -eq 1 ]
+  alerts | grep -qF '[update] template update: committed first: brief 2026-10-04: briefings/2026-10-04.md; sync(standalone): 1 file(s); nothing new to merge'
+}
+
+@test "--unattended names the run commits that landed when the sync commit is refused (audit C4 review)" {
+  template_setup
+  hooks_on
+  upstream_commit new.txt hello
+  pending_run 20261004T060000-brief-cd34
+  note Bad 'type: concept'
+  run "$UT" --unattended
+  [ "$status" -eq 1 ]
+  [ -z "$(git for-each-ref refs/remotes/template)" ]
+  [ "$(git log -1 --format=%s)" = "brief 2026-10-04: briefings/2026-10-04.md" ]
+  alerts | grep -qF '[update] template update failed: committed first: brief 2026-10-04: briefings/2026-10-04.md; the sync commit was refused: '
 }
 
 @test "--unattended: no git child of the commit step inherits run.lock's fd 9 (audit C4 spec §4)" {

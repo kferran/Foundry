@@ -40,15 +40,26 @@ if (( unattended )); then
 fi
 
 g remote get-url template >/dev/null 2>&1 || die 1 "no template remote; run system/scripts/setup_remote.sh first"
+# list10 <item…>: the alert's list form, at most 10 items then "and N more".
+list10() {
+  local s
+  s="$(printf '%s; ' "${@:1:10}")"
+  s="${s%; }"
+  (( $# <= 10 )) || s+="; and $(( $# - 10 )) more"
+  printf '%s' "$s"
+}
 committed=""
 if (( unattended )); then
   # A dirty tree is committed the way the sync does it (audit C4): on a server the --pre sync already did; on a
-  # standalone machine nothing else commits between /backup runs. A refusal stops the update before the fetch.
+  # standalone machine nothing else commits between /backup runs. Every outcome names the commits made first.
   before="$(g rev-parse HEAD)"
-  git_sync_commit "$(config_get machine_role standalone)" || die 1 "$GIT_SYNC_ERROR"
+  rc=0
+  git_sync_commit "$(config_get machine_role standalone)" || rc=$?
+  mapfile -t subjects < <(g log --reverse --format=%s "$before..HEAD")
+  (( ${#subjects[@]} == 0 )) || committed="committed first: $(list10 "${subjects[@]}"); "
+  (( rc == 0 )) || die 1 "$committed$GIT_SYNC_ERROR"
   # A run the hook refused stays pending until it is fixed (audit C7 §3): the update waits for it too.
-  [[ -z "$GIT_SYNC_REFUSED" ]] || die 1 "a published run was refused by the pre-commit hook: $(paste -sd ' ' <<< "${GIT_SYNC_REFUSED%$'\n'}") (see the commit_runs alert)"
-  committed="$(g log --reverse --format=%s "$before..HEAD" | paste -sd ';' | sed 's/;/; /g')"
+  [[ -z "$GIT_SYNC_REFUSED" ]] || die 1 "${committed}a published run was refused by the pre-commit hook: $(paste -sd ' ' <<< "${GIT_SYNC_REFUSED%$'\n'}") (the hook's line is in today's [commit_runs] alert)"
 else
   [[ -z "$(g status --porcelain)" ]] || die 1 "working tree is not clean; commit or stash first"
 fi
@@ -60,7 +71,10 @@ branch="$(LC_ALL=C g remote show template 2>/dev/null | sed -n 's/^ *HEAD branch
 ref="template/$branch"
 g merge-base HEAD "$ref" >/dev/null 2>&1 \
   || die 1 "$ref shares no history with this vault (created from a GitHub template?); merge it by hand: git merge --allow-unrelated-histories $ref"
-(( ! unattended )) || ! g merge-base --is-ancestor "$ref" HEAD || exit 0
+if (( unattended )) && g merge-base --is-ancestor "$ref" HEAD; then
+  [[ -z "$committed" ]] || alert "template update: ${committed}nothing new to merge"
+  exit 0
+fi
 
 # The vault owns README.md (#90): for this merge only, an attributes file marks it merge=ours and the driver keeps
 # the vault's version, the first update included. Sync merges between machines define neither and merge it normally.
@@ -93,9 +107,7 @@ if (( unattended )); then
       merged+=("$subject")
     fi
   done < <(g log --first-parent --format='%s%x1f%b%x1e' HEAD^1..HEAD^2)
-  list="$(printf '%s; ' "${merged[@]:0:10}")"
-  list="${list%; }"
-  (( ${#merged[@]} <= 10 )) || list+="; and $(( ${#merged[@]} - 10 )) more"
+  list="$(list10 "${merged[@]}")"
 fi
 # after_merge <step> <command…>: the merge has landed, so an unattended run names it when a later step fails.
 after_merge() {
@@ -126,5 +138,5 @@ else
 fi
 
 if (( unattended )); then
-  alert "template updated: ${committed:+committed first: $committed; }merged ${#merged[@]} change(s): $list${new_units:+; new unit available: $new_units (install with system/scripts/install_units.sh)}"
+  alert "template updated: ${committed}merged ${#merged[@]} change(s): $list${new_units:+; new unit available: $new_units (install with system/scripts/install_units.sh)}"
 fi

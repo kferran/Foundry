@@ -125,7 +125,7 @@ refused_run() {  # a published run whose note the hook refuses
   run "$VS"
   [ "$status" -eq 1 ]
   [ ! -e .git/MERGE_HEAD ]
-  alerts | grep -q '\[sync\] sync failed (merge)'
+  alerts | grep -q '\[sync\] sync failed (merge): .*wiki/work/concepts/Bad.md'
   grep -qx '# Bad' wiki/work/concepts/Bad.md
 }
 
@@ -160,7 +160,7 @@ refused_run() {  # a published run whose note the hook refuses
   run "$VS"
   [ "$status" -eq 1 ]
   [ ! -e .git/MERGE_HEAD ]
-  alerts | grep -q 'sync failed (merge)'
+  alerts | grep -q 'sync failed (merge): .*wiki/work/concepts/Clash.md'
 }
 
 @test "a push rejected because origin moved is retried once" {

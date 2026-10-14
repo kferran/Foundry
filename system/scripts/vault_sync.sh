@@ -139,7 +139,8 @@ for attempt in 1 2; do
           "pending branch: $pending"$'\n'"$paths"$'\n'
       fi
       [[ ! -e "$git_dir/MERGE_HEAD" ]] || git merge --abort
-      fail merge "git merge origin/$branch was refused: $(head -n 1 <<< "$err")"
+      # git names the files it would overwrite on tab-indented lines after its first line (C7 §2).
+      fail merge "git merge origin/$branch was refused: $(head -n 1 <<< "$err") $(grep -P '^\t' <<< "$err" | sed 's/^\t//' | paste -sd ' ')"
     fi
   fi
   net push -q origin "HEAD:refs/heads/$branch" && break
