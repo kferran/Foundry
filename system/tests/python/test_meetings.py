@@ -547,6 +547,20 @@ def test_a_hand_edited_empty_note_is_kept_and_the_later_source_archived(iv):
     assert frontmatter.parse(note.read_text()).data.get("status", "canonical") == "canonical"
 
 
+def test_a_section_holding_only_a_horizontal_rule_still_counts_as_empty(iv):
+    # A Gemini Doc with nothing under Details renders a rule, "***" or "---", which is not text the owner wrote (#142).
+    config(iv, meetings_partition="work")
+    fetched(iv, body=NOT_PRODUCED + TRANSCRIPT + END)
+    tick(iv)
+    note = iv / f"wiki/work/meetings/{NAME}.md"
+    note.write_text(note.read_text().replace("## Details\nNone.", "## Details\n***"))
+    aged(iv, "work", NAME)
+    dup = dropped(iv, "work/2026-10-05 1500 Weekly sync - Planning.srt", long_cues(30, ".srt"))
+    tick(iv)
+    assert len(meeting_runs(iv)) == 2 and not dup.exists()
+    assert frontmatter.parse(note.read_text()).data["status"] == "deprecated"
+
+
 def test_a_recent_empty_note_is_left_for_the_next_tick_without_a_rejected_run(iv):
     config(iv, meetings_partition="work")
     fetched(iv, body=NOT_PRODUCED + TRANSCRIPT + END)
