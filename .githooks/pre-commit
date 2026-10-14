@@ -16,23 +16,34 @@ for f in "${staged[@]}"; do
   fi
 done
 (( markers == 0 )) || exit 1
-# Meeting drops (meetings spec §2.2): transcripts only, and none a named secret detector fires on. The generic
-# high-entropy detector is left out (transcript cue IDs trip it); the server redacts before it publishes.
+# Meeting drops (meetings spec §2.2; audit S6 spec §2): transcripts only, and each staged one is rewritten through
+# the import's full redaction (redact.py --drop decodes UTF-8 or UTF-16 as the import does) in the working file and
+# the index, so the pushed blob holds nothing the published transcript does not. A drop the import would quarantine
+# is refused with its reason; the file is only ever overwritten with a successful result.
 drops=0
+tmp="$(mktemp)" err="$(mktemp)"
 for f in "${staged[@]}"; do
   [[ "$f" == meetings/drop/* ]] || continue
   case "${f,,}" in
-    */.gitkeep|*.vtt|*.srt|*.txt|*.md) ;;
+    */.gitkeep) continue ;;
+    *.vtt|*.srt|*.txt|*.md) ;;
     *) echo "pre-commit: $f is not a transcript (.vtt, .srt, .txt or .md); remove it from meetings/drop/" >&2
        drops=1
        continue ;;
   esac
-  kinds="$(git cat-file blob ":$f" | python3 "$root/system/scripts/redact.py" --kinds | paste -sd, -)"
-  if [[ -n "$kinds" ]]; then
-    echo "pre-commit: $f holds a secret ($kinds); remove it before committing" >&2
+  rc=0
+  git cat-file blob ":$f" | python3 "$root/system/scripts/redact.py" --drop > "$tmp" 2> "$err" || rc=$?
+  if (( rc != 0 )); then
+    echo "pre-commit: $f: $(sed 's/^redact: //' "$err"); remove it from meetings/drop/" >&2
     drops=1
+    continue
   fi
+  cat "$tmp" > "$root/$f"
+  git add -- "$root/$f"
+  n="$(sed -n 's/^redactions: //p' "$err")"
+  (( ${n:-0} == 0 )) || echo "pre-commit: redacted $n in $f"
 done
+rm -f "$tmp" "$err"
 (( drops == 0 )) || exit 1
 found=0
 for f in "${staged[@]}"; do
