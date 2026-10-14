@@ -217,7 +217,7 @@ The only way automation invokes Claude.
 
 - **After claude exits:** run `system/scripts/publish_staged.py <run_id> --targets <publishable targets>` (§6.20). The run succeeds only if claude exited 0 **and** publish succeeded with at least one published file (or, for `ingest`, a `_decisions.jsonl` that parses and contains only `noop` entries). Allowed Bash for every command also includes `vault_index.py stage`.
 - **Logging:** timestamped header plus all output to `system/logs/headless/<command>_<YYYY-MM-DD>.log` (command name only, no leading `/`); the run's decisions file and publish report are kept in `system/logs/runs/<run_id>/`.
-- **Exit code:** 0 success; claude's non-zero exit code; 124 timeout; 3 invalid settings, missing command file, or snapshot failure (vault configuration/environment error); 4 daily cap (inputs untouched); 5 publish rejected (validation error or conflict); 6 `run.lock` wait timed out (`brief`/`debrief`).
+- **Exit code:** 0 success; claude's non-zero exit code; 124 timeout; 3 invalid settings, missing command file, or snapshot failure (vault configuration/environment error); 4 daily cap (inputs untouched); 5 publish rejected or empty (validation error; a note held back at the rename is a success with an alert, audit C2); 6 `run.lock` wait timed out (`brief`/`debrief`).
 
 ### 6.4 `intake_daemon.sh [--retry <run_id> | --retry-all]`
 
@@ -241,7 +241,7 @@ Per run, holding `flock system/run.lock` only around step 1 (each ingest takes t
 
 **Retry policy (automatic):** attempts are tracked per input `sha256` in the ledger.
 - A rejected **batch** is split: each digest is requeued on its own, so one bad digest can't stall the other four.
-- A **conflict** is requeued once automatically (the user's edit has landed by then).
+- A **conflict** found at validation is a rejection and counts as an attempt. A note held back at the rename is not retried (audit C2): the run succeeds, the input is archived and the staged copy waits in `system/quarantine/<run_id>/staged/`.
 - Any other failure is retried on the next run; after **3** failed attempts the input moves to `system/quarantine/poisoned/` with an alert.
 
 **Manual retry:** `--retry <run_id>` moves that run's quarantined inputs back to `raw/inbox/` or `raw/<partition>/notes/` (looked up in the ledger) and exits; the next timer run re-ingests them. `--retry-all` does the same for every quarantined run. Retries are recorded in the ledger.
@@ -487,7 +487,7 @@ If any check fails, **nothing is published**: the staging tree moves to `system/
 **Commit phase.**
 1. Append `headless` to each staged file's `provenance` list (a list, so a headless patch to a user-written note keeps `interactive`).
 2. Write `system/logs/runs/<run_id>/publish.journal` (one line per file: staged path, target, expected target hash) and `fsync` it.
-3. For each entry: re-check the target hash immediately before an atomic `rename()` (staging is under `wiki/`, same filesystem). A target that changed in the milliseconds since validation is held back as a conflict and alerted; it is never overwritten. This residual race with Obsidian (which takes no lock) is accepted and documented.
+3. For each entry: re-check the target hash immediately before an atomic `rename()` (staging is under `wiki/`, same filesystem). A target that changed in the milliseconds since validation is held back as a conflict and alerted; it is never overwritten. The rest publishes and the run succeeds with `status: conflict` (exit 0, audit C2). This residual race with Obsidian (which takes no lock) is accepted and documented. `stage` holds `<run dir>/stage.lock` while it updates the snapshot, so concurrent `stage` calls in one run lose no entry (audit C1).
 4. Append `committed` to the journal, refresh the index, delete the staging directory.
 
 **Recovery.** At the start of every `run_headless.sh` and intake run, while holding `run.lock` (so no other run is live): a journal without `committed` is rolled forward (remaining renames with the same per-entry hash check, then `committed`); a staging directory with no journal is an aborted run, so it moves to quarantine and its inputs are requeued (§6.4). No time-based rule.

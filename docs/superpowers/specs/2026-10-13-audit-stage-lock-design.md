@@ -1,7 +1,7 @@
 # Staging lock and partial publish: no stage entry is lost, a held-back note is not a failed run
 
 **Date:** 2026-10-13
-**Status:** Draft for the owner's review.
+**Status:** Accepted 2026-10-14. Plan: `docs/superpowers/plans/2026-10-14-stage-lock.md`.
 **Issue:** #136 (C1, C2). From the 2026-10-13 audit (`docs/superpowers/2026-10-13-audit.md` on the audit branch).
 
 ## 1. Problem
@@ -14,7 +14,7 @@ C2: `_apply` holds back a target that changed between validation and the rename,
 
 - **`record_stage` holds an exclusive `fcntl.flock` on `<run dir>/stage.lock`** from the snapshot load to the write. The holder copies one file and writes one JSON document, so the lock blocks with no timeout. Under it the shared `.tmp` name is harmless, so no per-process name. `record_stage` is the only writer of `snapshot.json` after `snapshot()`. Not `system/run.lock`: `run_headless.sh` holds it for the whole run. Not `Intake.lock`: `intake` imports `publish`, and the lock is four lines.
 - **`conflict` is a successful publish with held-back notes.** `publish_cli.OK_STATUSES` gains `conflict` (exit 0). `run_headless.sh` reads `.status` and `.conflicts` from the `publish.json` it already summarises and alerts `<cmd> <run_id>: published; held back <paths> (changed during the run; staged copies in system/quarantine/<run_id>/staged/)`. The ledger line already carries `publish.conflicts`. Why this over a partial-publish exit code: a new code would have to join the three exclusion lists (`write_ledger`'s jq, `runs_today`, `NOT_INPUT_FAULT`) and the daemon's branches; the status is already in `publish.json` and the ledger for anyone who needs to tell the two apart.
-- **A held-back note is not retried.** The input is archived with its run (`rc == 0`); the staged copy waits in quarantine, where the alert points. The owner edited that note during the run and that edit stands. **Owner decision:** this, or re-run the input (today's behaviour minus the poisoning), which replays every note of the input against a note still being edited. Recommendation: no retry.
+- **A held-back note is not retried.** The input is archived with its run (`rc == 0`); the staged copy waits in quarantine, where the alert points. The owner edited that note during the run and that edit stands. **Owner decision (2026-10-14): no retry.** The alternative, re-running the input, would replay every note of the input against a note still being edited.
 
 ## 3. Changes
 
