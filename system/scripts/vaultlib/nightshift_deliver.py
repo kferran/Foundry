@@ -27,30 +27,41 @@ def code_status(vault) -> str:
     return nc.git(vault, "status", "--porcelain", "--", *CODE_PATHS).stdout
 
 
-def bwrap(workdir, cmd: str) -> list:
-    """Run cmd with the host read-only, $HOME and /tmp empty, no network, an empty environment, and only workdir writable."""
+def bwrap(workdir, cmd: str, toolchain=(), net=False) -> list:
+    """Run cmd with the host read-only, $HOME and /tmp empty, an empty environment, and only workdir writable.
+    The toolchain directories (a codebase's order_toolchain) are bound read-only after the $HOME tmpfs, so they
+    alone show through it, and lead PATH. The network is unshared unless net (the order_install step)."""
     home = str(Path.home())
-    path = "/usr/local/bin:/usr/bin:/bin"
-    return ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--tmpfs", home,
-            "--bind", str(workdir), str(workdir), "--unshare-net", "--die-with-parent", "--clearenv",
-            "--setenv", "PATH", path, "--setenv", "HOME", home, "--setenv", "LANG", "C.UTF-8", "--setenv", "TMPDIR", "/tmp",
-            "--chdir", str(workdir), "bash", "-c", cmd]
+    dirs = [str(d) for d in toolchain]
+    argv = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--tmpfs", home]
+    for d in dirs:
+        argv += ["--ro-bind", d, d]
+    argv += ["--bind", str(workdir), str(workdir)] + ([] if net else ["--unshare-net"])
+    return argv + ["--die-with-parent", "--clearenv", "--setenv", "PATH", ":".join(dirs + ["/usr/local/bin", "/usr/bin", "/bin"]),
+                   "--setenv", "HOME", home, "--setenv", "LANG", "C.UTF-8", "--setenv", "TMPDIR", "/tmp",
+                   "--chdir", str(workdir), "bash", "-c", cmd]
 
 
-def run_verify(clone, cmds, log_path, timeout=1800) -> tuple:
+def run_verify(clone, cmds, log_path, timeout=1800, toolchain=(), net=False, label="") -> tuple:
     with open(log_path, "a", encoding="utf-8") as log:
         for cmd in cmds:
             try:
-                r = subprocess.run(bwrap(clone, cmd), capture_output=True, text=True, timeout=timeout)
+                r = subprocess.run(bwrap(clone, cmd, toolchain, net), capture_output=True, text=True, timeout=timeout)
                 code, text = r.returncode, r.stdout + r.stderr
             except subprocess.TimeoutExpired:
                 code, text = 124, f"timed out after {timeout}s"
             log.write(f"$ {cmd}\n{text}\n[exit {code}]\n")
             if code != 0:
-                # 127: the sandbox's PATH is /usr/local/bin:/usr/bin:/bin and $HOME is empty (#138)
+                # 127: the sandbox's PATH is the order_toolchain directories then /usr/local/bin:/usr/bin:/bin,
+                # and the rest of $HOME is empty (#138)
                 why = " (command not found in the sealed verify sandbox)" if code == 127 else ""
-                return False, f"{cmd}: exit {code}{why}\n" + "\n".join(text.splitlines()[-20:])
+                return False, f"{label}{cmd}: exit {code}{why}\n" + "\n".join(text.splitlines()[-20:])
     return True, ""
+
+
+def run_install(clone, cmd: str, toolchain, log_path) -> tuple:
+    """A codebase's order_install, once, with the host network: the only sandboxed step that has it."""
+    return run_verify(clone, [cmd], log_path, toolchain=toolchain, net=True, label="order_install: ")
 
 
 def push_target(vault, fm: dict) -> tuple:
@@ -143,9 +154,10 @@ def apply_protected(runner_repo, sha: str, branch: str, files, workdir) -> tuple
     return True, new
 
 
-def verify_sha(runner_repo, sha: str, vdir, cmds, log_path, lfs_store: str = "") -> tuple:
+def verify_sha(runner_repo, sha: str, vdir, cmds, log_path, lfs_store: str = "", install: str = "", toolchain=()) -> tuple:
     """Run the verify commands on a private checkout of sha, so nothing they do reaches the commit that is pushed.
-    LFS files come from lfs_store, the live clone's store (#83): the runner's repository holds none."""
+    LFS files come from lfs_store, the live clone's store (#83): the runner's repository holds none. The codebase's
+    order_install runs first when set, then the verify commands offline (orders toolchain spec)."""
     vdir = Path(vdir)
     shutil.rmtree(vdir, ignore_errors=True)
     lfs = ["-c", f"lfs.storage={lfs_store}"] if lfs_store else []
@@ -154,7 +166,11 @@ def verify_sha(runner_repo, sha: str, vdir, cmds, log_path, lfs_store: str = "")
                        capture_output=True, env=_git_env())
         subprocess.run(["git", "-C", str(vdir), "-c", "advice.detachedHead=false", *lfs, "checkout", "-q", "--detach", sha],
                        check=True, capture_output=True, env=_git_env())
-        return run_verify(vdir, cmds, log_path)
+        if install:
+            ok, out = run_install(vdir, install, toolchain, log_path)
+            if not ok:
+                return ok, out
+        return run_verify(vdir, cmds, log_path, toolchain=toolchain)
     finally:
         shutil.rmtree(vdir, ignore_errors=True)
 

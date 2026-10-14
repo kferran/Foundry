@@ -764,6 +764,21 @@ self_edit_contract() {
   done
 }
 
+@test "Work Orders: the manual, the schema and the codebase example name order_toolchain and order_install (orders toolchain spec §3)" {
+  grep -qF '`order_toolchain`' FOUNDRY.md
+  grep -qF '`order_install`' FOUNDRY.md
+  grep -qF 'A shim directory that needs its manager'"'"'s environment does not work' FOUNDRY.md
+  grep -qF 'and its `lib` sibling' FOUNDRY.md
+  grep -qF 'Each sandboxed step starts with a fresh, empty `$HOME`' FOUNDRY.md
+  grep -qF 'from an empty cache every run' FOUNDRY.md
+  grep -qF 'without `--ignore-scripts`' FOUNDRY.md
+  grep -qF '`Fix the failing check: order_install: <command>: exit <code>`' FOUNDRY.md
+  grep -q '^  order_toolchain: {kind: list, of: string}$' system/schemas/codebase.md
+  grep -q '^  order_install: {kind: string}$' system/schemas/codebase.md
+  grep -qF 'order_toolchain' system/codebases/example.md
+  grep -qF 'order_install' system/codebases/example.md
+}
+
 @test "Work Orders start now by default; tonight, hold, the window and the 5-hour ceiling are documented (Foreman v1 §3.2)" {
   f=.claude/skills/order/SKILL.md
   grep -qF 'With no start flag a Work Order starts now.' "$f"

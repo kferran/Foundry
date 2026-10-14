@@ -371,9 +371,14 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
     size0 = stream.stat().st_size if stream.is_file() else 0
     started = clock.monotonic()
     outcome = None
+    # The codebase's order_toolchain leads the plan session's PATH too (owner decision 2026-10-14), so the tasks run
+    # the same tools the sealed verify will. A research item has no verify to match.
+    # session_env() is the session's whole environment: no agent socket, no host token (audit S3/S7 spec §2).
+    env = ss.session_env()
+    if kind == "plan" and (tools := nc.toolchain(cb)):
+        env["PATH"] = ":".join(tools + [p for p in [env.get("PATH")] if p])
     with open(stream, "a") as out, open(idir / "run.log", "a") as err:
-        # session_env() is the session's whole environment: no agent socket, no host token (audit S3/S7 spec §2).
-        proc = subprocess.Popen(cmd, cwd=cwd, env=ss.session_env(), stdout=out, stderr=err, start_new_session=True)
+        proc = subprocess.Popen(cmd, cwd=cwd, stdout=out, stderr=err, start_new_session=True, env=env)
         (idir / "session.pid").write_text(str(proc.pid))
         checked = False
         while proc.poll() is None:
@@ -471,8 +476,9 @@ def _deliver_plan(ctx: Ctx, fm: dict, clone: Path, idir: Path, before: dict) -> 
     ok, sha = nd.apply_protected(runner, sha, branch, files, idir)
     if not ok:
         return {"state": "failed", "reason": "delivery", "notes": sha}
+    cb = nc.codebase(ctx.vault, fm["repo"]) or {}   # a template item has no codebase file, so no install or toolchain
     ok, out = nd.verify_sha(runner, sha, ctx.workspace / f"nightshift-{fm['id']}-verify", fm.get("verify") or [],
-                            idir / "verify.log", nc.lfs_store(src))
+                            idir / "verify.log", nc.lfs_store(src), str(cb.get("order_install") or ""), nc.toolchain(cb))
     if not ok:
         return {"state": "blocked", "reason": "verify", "needs": [f"Fix the failing check: {out.splitlines()[0]}"]}
     (idir / "delivery.json").write_text(json.dumps({"sha": sha, "branch": branch, "title": _text(res.get("pr_title")) or fm["id"],
@@ -559,6 +565,9 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
                 f"Push {fm['base']} to the template remote, then queue {fm['id']} again ({exc})"]})
         before = _before(ctx, fm, idir)
+        gone = nc.toolchain_errors(fm["repo"], nc.codebase(ctx.vault, fm["repo"]) or {})
+        if gone:   # a directory that passed readiness is gone: block now, before the session spends its budget
+            return _finish(ctx, path, fm, idir, cwd, {"state": "blocked", "reason": "toolchain", "needs": gone})
     else:
         try:
             cwd = _research_dir(ctx, fm)

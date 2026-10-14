@@ -82,6 +82,100 @@ def test_verify_exit_127_names_the_sealed_sandbox_as_the_cause(tmp_path):
     assert out.splitlines()[0] == "no-such-tool-xyz install: exit 127 (command not found in the sealed verify sandbox)"
 
 
+def test_bwrap_binds_the_toolchain_after_home_and_opens_the_network_only_for_install(tmp_path):
+    """Orders toolchain spec §2: the binds follow the $HOME tmpfs; only the install step keeps the host network."""
+    assert "--unshare-net" in nd.bwrap(tmp_path, "x")
+    assert "--unshare-net" not in nd.bwrap(tmp_path, "x", net=True)
+    argv = nd.bwrap(tmp_path, "x", toolchain=["/opt/a/bin", "/opt/b/bin"])
+    home = argv.index("--tmpfs", argv.index("--tmpfs") + 1)   # the second --tmpfs is $HOME
+    assert argv[home + 1] == str(Path.home())
+    a, b = argv.index("/opt/a/bin"), argv.index("/opt/b/bin")
+    assert home < a < b < argv.index("--bind")
+    assert argv[a - 1:a + 2] == ["--ro-bind", "/opt/a/bin", "/opt/a/bin"]
+    assert argv[argv.index("PATH") + 1] == "/opt/a/bin:/opt/b/bin:/usr/local/bin:/usr/bin:/bin"
+    assert "--unshare-net" in argv
+
+
+def tool_dir(home: Path) -> Path:
+    """A toolchain directory under home with one executable, hello-tool, beside a credential file."""
+    tool = home / ".tools" / "bin"
+    tool.mkdir(parents=True)
+    (tool / "hello-tool").write_text("#!/bin/sh\necho hi\n")
+    (tool / "hello-tool").chmod(0o755)
+    (home / ".netrc").write_text("machine x password y")
+    return tool
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_toolchain_dirs_are_visible_and_first_on_path_while_home_stays_empty(tmp_path, monkeypatch):
+    """Orders toolchain spec §4: the listed directory runs by bare name; nothing else under $HOME appears."""
+    home = tmp_path / "home"
+    tool = tool_dir(home)
+    monkeypatch.setenv("HOME", str(home))
+    r = repo_with_commit(tmp_path / "r")
+    ok, out = nd.run_verify(r, ["hello-tool", 'test ! -e "$HOME/.netrc"', f'test "${{PATH%%:*}}" = "{tool}"'],
+                            tmp_path / "v.log", toolchain=[str(tool)])
+    assert ok, out
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_a_symlinked_tool_needs_its_target_directory_listed_too(tmp_path, monkeypatch):
+    """Orders toolchain spec §2: only the listed directories show through the empty $HOME. An nvm bin/npm is a symlink
+    into ../lib, so bin alone dangles (exit 127) and bin plus lib works; the manual says to list both."""
+    home = tmp_path / "home"
+    lib, bin_ = home / ".tools" / "lib", home / ".tools" / "bin"
+    lib.mkdir(parents=True)
+    bin_.mkdir()
+    (lib / "tool.sh").write_text("#!/bin/sh\necho hi\n")
+    (lib / "tool.sh").chmod(0o755)
+    (bin_ / "tool").symlink_to("../lib/tool.sh")
+    monkeypatch.setenv("HOME", str(home))
+    r = repo_with_commit(tmp_path / "r")
+    ok, out = nd.run_verify(r, ["tool"], tmp_path / "v.log", toolchain=[str(bin_)])
+    assert not ok and out.startswith("tool: exit 127 (command not found in the sealed verify sandbox)")
+    ok, out = nd.run_verify(r, ["tool"], tmp_path / "v.log", toolchain=[str(bin_), str(lib)])
+    assert ok, out
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_verify_sha_runs_the_install_first_with_network_and_keeps_it_out_of_the_commit(tmp_path, monkeypatch):
+    """Orders toolchain spec §2: order_install runs once, first, with the network, in the throwaway checkout."""
+    home = tmp_path / "home"
+    tool = tool_dir(home)
+    monkeypatch.setenv("HOME", str(home))
+    src = repo_with_commit(tmp_path / "src")
+    sha = git(src, "rev-parse", "HEAD").strip()
+    runner = tmp_path / "runner.git"
+    assert nd.fetch_branch(runner, src, "master") == (True, sha)
+    seen, real = [], nd.bwrap
+
+    def spy(workdir, cmd, toolchain=(), net=False):
+        seen.append((cmd, list(toolchain), net))
+        return real(workdir, cmd, toolchain, net)
+    monkeypatch.setattr(nd, "bwrap", spy)
+    install, verify = 'echo "$PATH" | tee installed', "test -f installed"
+    ok, out = nd.verify_sha(runner, sha, tmp_path / "vdir", [verify], tmp_path / "v.log", "", install, [str(tool)])
+    assert ok, out
+    assert seen == [(install, [str(tool)], True), (verify, [str(tool)], False)]
+    assert "installed" not in git(runner, "ls-tree", "--name-only", sha)
+    log = (tmp_path / "v.log").read_text()
+    assert log.index(f"$ {install}\n{tool}:") < log.index(f"$ {verify}")
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_a_failing_install_blocks_before_verify_with_the_exit_127_wording(tmp_path):
+    """Orders toolchain spec §2: the first line names the key and the command; no verify command runs after it."""
+    src = repo_with_commit(tmp_path / "src")
+    sha = git(src, "rev-parse", "HEAD").strip()
+    runner = tmp_path / "runner.git"
+    assert nd.fetch_branch(runner, src, "master") == (True, sha)
+    ok, out = nd.verify_sha(runner, sha, tmp_path / "vdir", ["touch ran-verify"], tmp_path / "v.log", "",
+                            "no-such-tool-xyz install", [])
+    assert not ok
+    assert out.splitlines()[0] == "order_install: no-such-tool-xyz install: exit 127 (command not found in the sealed verify sandbox)"
+    assert "$ touch" not in (tmp_path / "v.log").read_text()
+
+
 def test_fetch_push_and_github_pr(tmp_path, monkeypatch):
     src = repo_with_commit(tmp_path / "src")
     git(src, "checkout", "-q", "-b", "nightshift/x")

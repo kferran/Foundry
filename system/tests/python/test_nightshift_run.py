@@ -696,6 +696,74 @@ def test_protected_files_reach_the_pushed_branch(env, monkeypatch, tmp_path):
     assert git(tmp / "remote.git", "show", f"{branch}:done.txt") == "yes"
 
 
+def codebase_item(vault, tmp_path, verify, **keys):
+    """A plan item on a registered codebase (shop, main) whose file carries order_pr and the given keys."""
+    from test_nightshift_check import registered, set_codebase
+    registered(vault, tmp_path / "cb")
+    set_codebase(vault, "shop", order_pr="github:o/shop", **keys)
+    args = [a for v in verify for a in ("--verify", v)]
+    assert nr.main(["add", "--kind", "plan", "--title", "shop work", "--partition", "work", "--repo", "shop",
+                    "--base", "main", "--plan", "docs/p.md", "--tasks", "1-2", *args, "--now"], vault, NOW) == 0
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_a_codebase_item_runs_its_install_before_verify_and_the_session_sees_the_toolchain(env, monkeypatch, tmp_path):
+    """Orders toolchain spec §2: order_install runs first in the verify checkout; the session's PATH starts with the
+    order_toolchain directories (owner decision 2026-10-14)."""
+    vault, tmp = env
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "hello-tool").write_text("#!/bin/sh\necho hi\n")
+    (tools / "hello-tool").chmod(0o755)
+    stub(tmp, SHELL=f'echo "$PATH" > {tmp_path}/path.txt && git add done.txt && '
+                    "git -c user.name=t -c user.email=t@e commit -qm work")
+    codebase_item(vault, tmp_path, ["test -f done.txt", "test -f installed"], order_toolchain=[str(tools)],
+                  order_install="hello-tool > installed")
+    assert nr.main(["tick"], vault, NOW) == 0
+    _, fm = only_item(vault)
+    assert fm["state"] == "done", fm
+    log = (vault / "system/logs/nightshift/items" / fm["id"] / "verify.log").read_text()
+    assert log.index("$ hello-tool > installed\n") < log.index("$ test -f done.txt\n")
+    assert (tmp_path / "path.txt").read_text().startswith(f"{tools}:")
+
+
+def test_a_research_session_on_the_same_codebase_keeps_its_own_path(env, monkeypatch, tmp_path):
+    """Orders toolchain spec §2: the toolchain leads the plan session's PATH; a research item has no verify to match."""
+    vault, tmp = env
+    from test_nightshift_check import registered, set_codebase
+    registered(vault, tmp_path / "cb")
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    set_codebase(vault, "shop", order_toolchain=[str(tools)])
+    empty = tmp_path / "none.txt"
+    empty.write_text("")
+    stub(tmp, WRITE=str(empty), SHELL=f'echo "$PATH" > {tmp_path}/path.txt')
+    brief = tmp_path / "brief.md"
+    brief.write_text("## Question\nQ\n## Scope\nCode.\n## Done when\nAnswered.\n## Output\nA note.\n")
+    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+                    "--output", "wiki/work/concepts/Answer.md", "--repo", "shop", "--now"], vault, NOW) == 0
+    nr.main(["tick"], vault, NOW)
+    assert (tmp_path / "path.txt").read_text().strip() == os.environ["PATH"]   # the service PATH, unchanged
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_a_toolchain_dir_gone_at_run_time_blocks_before_the_session_starts(env, monkeypatch, tmp_path):
+    """Orders toolchain spec §2: an nvm upgrade or a client's paths can remove a directory between queue and run; the
+    item blocks with the readiness wording before any budget is spent, instead of bwrap blaming the first command."""
+    vault, tmp = env
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    stub(tmp, SHELL=f"touch {tmp_path}/session-ran")
+    codebase_item(vault, tmp_path, ["test -f done.txt"], order_toolchain=[str(tools)])
+    tools.rmdir()
+    assert nr.main(["tick"], vault, NOW) == 1
+    _, fm = only_item(vault)
+    assert (fm["state"], fm["reason"]) == ("blocked", "toolchain"), fm
+    out = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
+    assert out["needs"] == [f"codebase shop: order_toolchain {tools} is not a directory"]
+    assert not (tmp_path / "session-ran").exists()
+
+
 def test_selftest_retries_when_the_model_declines(env, monkeypatch, tmp_path):
     vault, tmp = env
     monkeypatch.setenv("HOME", str(tmp_path / "home"))  # the self-test plants its canary under $HOME
