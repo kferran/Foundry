@@ -108,6 +108,16 @@ def test_meeting_notes_reject_bad_fields(rel, text, field):
     assert any(i.severity == "error" and field in i.message for i in issues), [i.message for i in issues]
 
 
+def test_codebase_schema_accepts_the_toolchain_keys(tmp_path):
+    """Orders toolchain spec §3: order_toolchain (list of string) and order_install (string) are known fields."""
+    schemas, ctx = load()
+    text = (f'---\ntype: codebase\nname: "shop"\npath: "{tmp_path}"\npartition: "work"\nsearch_globs: ["*"]\n'
+            'order_toolchain: ["~/.tools/bin"]\norder_install: "true"\n---\n')
+    ntype, issues = schema.validate_note(schemas, "system/codebases/shop.md", frontmatter.parse(text), ctx)
+    assert ntype == "codebase"
+    assert [i.message for i in issues] == []
+
+
 def test_config_meeting_keys():
     schemas, ctx = load()
     example = (REPO / "system" / "config.example.md").read_text(encoding="utf-8")
