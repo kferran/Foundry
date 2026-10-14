@@ -632,6 +632,8 @@ self_edit_contract() {
 @test "meetings: the manual says the pre-commit hook redacts a committed drop (audit S6 spec §3)" {
   grep -qF 'redacted by the pre-commit hook when it is committed' FOUNDRY.md
   grep -qF 'redact.py --drop' FOUNDRY.md
+  grep -qF 'the pre-commit hook refuses any other file type and redacts the transcript as it commits it' .claude/commands/setup.md
+  grep -qF 'a drop from a phone is redacted only at import' .claude/commands/setup.md
 }
 
 @test "/brief lists telemetry from v_production_error, new first, capped per environment" {
