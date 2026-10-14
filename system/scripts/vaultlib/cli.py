@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from . import frontmatter, guard, publish, recall as recallmod, retrieve, schema as schemamod, scope as scopemod
-from .index import Index
+from .index import NOT_INDEXED, Index
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
 
@@ -140,29 +140,47 @@ def print_issues(rows, as_json):
     return EXIT_FAIL if errors else EXIT_OK
 
 
-def staged_paths(vault: Path) -> set:
+def _git(vault: Path, *argv, what: str) -> subprocess.CompletedProcess:
     try:
-        out = subprocess.run(["git", "-C", str(vault), "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"],
-                             capture_output=True, text=True)
+        out = subprocess.run(["git", "-C", str(vault), *argv], capture_output=True)
     except OSError as exc:
-        raise UsageError(f"git diff --cached failed: {exc}")
+        raise UsageError(f"{what} failed: {exc}")
     if out.returncode != 0:
-        raise UsageError(f"git diff --cached failed: {out.stderr.strip()}")
-    return set(p for p in out.stdout.split("\0") if p)
+        raise UsageError(f"{what} failed: {out.stderr.decode(errors='replace').strip()}")
+    return out
 
 
-def cmd_issues(args, vault, sc):
-    require_vault_scope(sc)
-    idx = Index(vault)
+def staged_paths(vault: Path) -> set:
+    out = _git(vault, "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR", what="git diff --cached")
+    return set(p for p in out.stdout.decode("utf-8", errors="surrogateescape").split("\0") if p)
+
+
+def staged_blobs(vault: Path, paths) -> dict:
+    """The index content of each staged note that the index would lint: what the commit records (#166)."""
+    return {p: _git(vault, "cat-file", "blob", f":{p}", what=f"git cat-file :{p}").stdout
+            for p in paths if p.endswith(".md") and not p.startswith(NOT_INDEXED)}
+
+
+def _issue_rows(idx: Index) -> list:
     idx.refresh()
     conn = sqlite3.connect(idx.db_path)
     rows = conn.execute("SELECT path, line, severity, code, message FROM issues "
                         "ORDER BY severity, path, line").fetchall()
     conn.close()
-    if args.staged:
-        keep = staged_paths(vault)
-        rows = [r for r in rows if r[0] in keep]
-    return print_issues(rows, args.json)
+    return rows
+
+
+def cmd_issues(args, vault, sc):
+    require_vault_scope(sc)
+    if not args.staged:
+        return print_issues(_issue_rows(Index(vault)), args.json)
+    keep = staged_paths(vault)
+    # The staged lint reads the index blobs over the working tree, in a throwaway db so the live index never
+    # caches blob content under a working file's mtime.
+    # ponytail: a full index build per commit; copy the live db and force-reindex the overlay if it measures slow.
+    with tempfile.TemporaryDirectory(prefix="staged-lint-") as tmp:
+        rows = _issue_rows(Index(vault, db_path=Path(tmp) / "index.db", overlay=staged_blobs(vault, keep)))
+    return print_issues([r for r in rows if r[0] in keep], args.json)
 
 
 def cmd_validate(args, vault, sc):

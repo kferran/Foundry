@@ -55,11 +55,13 @@ def wall_blocked(src_partition: str, target_partition: str) -> bool:
 
 
 class Index:
-    def __init__(self, vault, db_path=None):
+    def __init__(self, vault, db_path=None, overlay=None):
         self.vault = Path(vault)
         self.db_path = Path(db_path) if db_path else self.vault / "system" / "index.db"
         self.lock_path = self.vault / "system" / "index.lock"
         self.ctx = schemamod.Context(self.vault)
+        # rel path -> bytes read in place of the working file (the staged lint's index blobs, #166).
+        self.overlay = overlay or {}
 
     @contextlib.contextmanager
     def locked(self, timeout=None):
@@ -170,7 +172,7 @@ class Index:
 
     def _index_note(self, conn, schemas, rel, path, st):
         try:
-            data = path.read_bytes()
+            data = self.overlay[rel] if rel in self.overlay else path.read_bytes()
         except OSError as exc:
             self._drop_note(conn, rel)
             conn.execute("INSERT INTO issues VALUES(?,?,?,?,?,'note')",
