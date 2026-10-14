@@ -2,7 +2,8 @@
 """Validate the calendar fetch's stream-json and print the day's events as TSV (calendar spec §4.4).
 
 Usage: calendar_tsv.py YYYY-MM-DD --summary FILE < claude-stream-json
-Exit: 0 ok, 1 claude error result, 2 usage, 3 no connector, 5 invalid list, 6 connector error,
+Exit: 0 ok, 1 claude error result, 2 usage, 3 no connector, 5 invalid list, 6 connector error or a page over the
+harness's result limit,
 7 unexpected tool use, 8 more than 100 events. A non-zero exit writes one reason line to stderr.
 FILE always receives {events, reason, cost_usd, turns, denials, tools, unexpected_tools}.
 """
@@ -18,6 +19,9 @@ TIME = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 MAX_EVENTS = 100
 MAX_TITLE = 200
+# The notice the harness puts in place of a tool result over its size limit (#164). Matched at the start only, so
+# event text that quotes it does not count.
+OVERFLOW = re.compile(r"\s*(Error: .{0,80}exceeds maximum allowed tokens|Output too large)")
 
 
 class Fail(Exception):
@@ -70,6 +74,19 @@ def check_output(output):
     return output
 
 
+def overflowed(message):
+    """True when a user message carries a tool result the harness replaced with its size-limit notice."""
+    for block in (message.get("message") or {}).get("content") or []:
+        if not isinstance(block, dict) or block.get("type") != "tool_result":
+            continue
+        content = block.get("content")
+        parts = [content] if isinstance(content, str) else [
+            c.get("text") for c in content or [] if isinstance(c, dict)]
+        if any(isinstance(t, str) and OVERFLOW.match(t) for t in parts):
+            return True
+    return False
+
+
 def rows(events, day):
     out = []
     for e in events:
@@ -120,6 +137,9 @@ def main(argv):
             summary["denials"] = len(denials) if isinstance(denials, list) else None
         if summary["unexpected_tools"]:
             raise Fail(7, "the session used unexpected tools: " + ", ".join(summary["unexpected_tools"]))
+        if any(m.get("type") == "user" and overflowed(m) for m in messages):
+            raise Fail(6, "the connector returned an error: a list_events page exceeded the result limit "
+                          "(lower pageSize in calendar_fetch.sh)")
         if result is None:
             raise Fail(1, "claude produced no result")
         if result.get("is_error") or result.get("subtype") != "success":
