@@ -25,6 +25,14 @@ def test_known_patterns(secret, kind):
     assert text.startswith("before ") and text.endswith(" after")
 
 
+def test_ssn_shape_redacts_and_skips_invalid_areas_and_the_run():
+    """(#166): an SSN shape joins the shared list; 000, 666 and 9xx areas and the 123-45-6789 run are not SSNs."""
+    ssn = "219-09-" + "9999"
+    assert redact(f"ssn {ssn} here") == ("ssn [REDACTED:ssn] here", 1)
+    for safe in ("000-12-3456", "666-12-3456", "912-34-5678", "123-45-6789", "2026-10-14", "1219-09-99990"):
+        assert redact(safe, high_entropy=False) == (safe, 0)
+
+
 def test_bearer_keeps_prefix():
     text, count = redact("Authorization: Bearer abc.def.ghi")
     assert text == "Authorization: Bearer [REDACTED:bearer]" and count == 1

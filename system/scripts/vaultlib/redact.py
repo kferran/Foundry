@@ -15,6 +15,8 @@ PATTERNS = [
     ("anthropic_key", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}")),
     ("openai_key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}")),
     ("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
+    # US Social Security number: no 000, 666 or 9xx area, and not the 123-45-6789 run (#166).
+    ("ssn", re.compile(r"\b(?!000|666|9)(?!123-45-6789)\d{3}-\d{2}-\d{4}\b")),
 ]
 BEARER = re.compile(r"(?i)(authorization:\s*bearer\s+)\S+")
 ASSIGNMENT = re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key)(\s*[:=]\s*)(?!\[REDACTED)(\S+)")
