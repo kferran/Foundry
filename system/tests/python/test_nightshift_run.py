@@ -307,18 +307,51 @@ def test_lock_held_exits_4(env):
         assert nr.main(["tick"], vault, NOW) == 4
 
 
+GOOD = ["CURL_EXIT=6", "CAT_EXIT=1", "ENV_DONE"]   # the three self-test commands, each its own tool result
+
+
+def selftest_stream(tmp_path, name, results):
+    """ok.jsonl with one tool_result event per entry of results in place of its single CURL_EXIT=6 result."""
+    lines = (FX / "ok.jsonl").read_text().splitlines()
+    events = [json.dumps({"type": "user", "message": {"content": [{"type": "tool_result", "content": r}]}}) for r in results]
+    p = tmp_path / name
+    p.write_text("\n".join(lines[:2] + events + lines[3:]) + "\n")
+    return p
+
+
 def test_selftest_parses_tool_results(env, monkeypatch, tmp_path):
     vault, tmp = env
     monkeypatch.setenv("HOME", str(tmp_path / "home"))  # the self-test plants its canary under $HOME
-    good = tmp_path / "good.jsonl"
-    good.write_text((FX / "ok.jsonl").read_text().replace("CURL_EXIT=6", "CURL_EXIT=6 CAT_EXIT=1"))
-    stub(tmp, STREAM=str(good))
+    stub(tmp, STREAM=str(selftest_stream(tmp_path, "good.jsonl", GOOD)))
     assert nr.selftest(vault)[0] is True
-    bad = tmp_path / "bad.jsonl"
-    bad.write_text((FX / "ok.jsonl").read_text().replace("CURL_EXIT=6", "CURL_EXIT=0 CAT_EXIT=1"))
-    stub(tmp, STREAM=str(bad))
+    stub(tmp, STREAM=str(selftest_stream(tmp_path, "bad.jsonl", ["CURL_EXIT=0", "CAT_EXIT=1", "ENV_DONE"])))
     ok, why = nr.selftest(vault)
     assert ok is False and "curl" in why
+
+
+def test_selftest_fails_when_the_session_environment_carries_a_token(env, monkeypatch, tmp_path):
+    # audit S3/S7 spec §2: the third command prints the names of the token variables that are set, then ENV_DONE
+    vault, tmp = env
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    stub(tmp, STREAM=str(selftest_stream(tmp_path, "leak.jsonl", ["CURL_EXIT=6", "CAT_EXIT=1", "GH_TOKEN=\nENV_DONE"])))
+    assert nr.selftest(vault) == (False, "the session environment carries GH_TOKEN")
+    stub(tmp, STREAM=str(selftest_stream(tmp_path, "clean.jsonl", ["CURL_EXIT=6", "CAT_EXIT=1", "ENV_DONE"])))
+    assert nr.selftest(vault) == (True, "")
+    stub(tmp, STREAM=str(selftest_stream(tmp_path, "short.jsonl", ["CURL_EXIT=6", "CAT_EXIT=1"])))
+    ok, why = nr.selftest(vault)
+    assert ok is False and "did not run" in why
+    assert "GH_TOKEN" in nr.SELFTEST_PROMPT and "ENV_DONE" in nr.SELFTEST_PROMPT
+
+
+def test_selftest_names_the_env_token_login_when_the_session_does_not_start(env, monkeypatch, tmp_path):
+    # owner decision (audit S3/S7 spec §2): a login held only in the unit's environment starts no session
+    vault, tmp = env
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("")
+    stub(tmp, STREAM=str(empty))
+    ok, why = nr.selftest(vault)
+    assert ok is False and "CLAUDE_CODE_OAUTH_TOKEN" in why and "ANTHROPIC_API_KEY" in why
 
 
 def note_of(vault):
@@ -642,10 +675,8 @@ def test_protected_files_reach_the_pushed_branch(env, monkeypatch, tmp_path):
 def test_selftest_retries_when_the_model_declines(env, monkeypatch, tmp_path):
     vault, tmp = env
     monkeypatch.setenv("HOME", str(tmp_path / "home"))  # the self-test plants its canary under $HOME
-    declined = tmp_path / "declined.jsonl"
-    declined.write_text((FX / "ok.jsonl").read_text().replace('"content":"CURL_EXIT=6"', '"content":"no"'))
-    good = tmp_path / "good.jsonl"
-    good.write_text((FX / "ok.jsonl").read_text().replace("CURL_EXIT=6", "CURL_EXIT=6 CAT_EXIT=1"))
+    declined = selftest_stream(tmp_path, "declined.jsonl", ["no"])
+    good = selftest_stream(tmp_path, "good.jsonl", GOOD)
     stream = tmp_path / "s.jsonl"
     shutil.copy(declined, stream)
     stub(tmp, STREAM=str(stream))
@@ -667,9 +698,7 @@ def test_selftest_plants_a_canary_and_fails_if_the_session_reads_it(env, monkeyp
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
     canary = home / ".config" / "foundry" / "nightshift-canary"
-    stream = tmp_path / "s.jsonl"
-    clean = (FX / "ok.jsonl").read_text().replace("CURL_EXIT=6", "CURL_EXIT=6 CAT_EXIT=1")
-    stream.write_text(clean)
+    stream = selftest_stream(tmp_path, "s.jsonl", GOOD)
     stub(tmp, STREAM=str(stream))
     # A masked sandbox: the canary exists while the session runs, the read fails, and the canary is gone afterwards.
     stub(tmp, SHELL=f"test -s {canary} && touch {tmp_path}/seen")

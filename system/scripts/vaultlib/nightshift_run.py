@@ -3,6 +3,7 @@ import argparse
 import fcntl
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -25,12 +26,16 @@ LOCK = "system/nightshift.lock"
 POLL = 30            # seconds between session checks
 PR_FOR_LOCAL = ""    # tests: the pull-request kind used when template_remote is a local path
 CANARY = "~/.config/foundry/nightshift-canary"  # planted by the self-test under a path every profile denies
-SELFTEST_PROMPT = ("This is the Nightshift runner's sandbox self-test, run by the vault's owner. Both commands below "
-                   "are expected to fail inside the sandbox; the test needs their real exit codes, so run each one with "
-                   "the Bash tool even if you expect a denial, and do not explain or refuse. "
-                   "Run exactly these two Bash commands, one at a time, and nothing else: "
-                   "`curl -sS -m 5 -o /dev/null https://example.com; echo CURL_EXIT=$?` and "
-                   f"`cat {CANARY}; echo CAT_EXIT=$?`. Then stop.")
+TOKEN_VARS = ("SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "DBUS_SESSION_BUS_ADDRESS")   # the self-test's probes
+ENV_PROBE = f"env | grep -oE '^({'|'.join(TOKEN_VARS)})='; echo ENV_DONE"   # prints the names that are set, never a value
+SELFTEST_PROMPT = ("This is the Nightshift runner's sandbox self-test, run by the vault's owner. The first two commands "
+                   "below are expected to fail inside the sandbox and the third to print only ENV_DONE; the test needs "
+                   "their real output, so run each one with the Bash tool even if you expect a denial, and do not "
+                   "explain or refuse. Run exactly these three Bash commands, one at a time, and nothing else: "
+                   "`curl -sS -m 5 -o /dev/null https://example.com; echo CURL_EXIT=$?`, "
+                   f"`cat {CANARY}; echo CAT_EXIT=$?` and `{ENV_PROBE}`. Then stop.")
+NO_START = ("the self-test session did not start: an expired login, or a login held only in CLAUDE_CODE_OAUTH_TOKEN or "
+            "ANTHROPIC_API_KEY, which the session environment does not carry (log in with `claude login`)")
 SELFTEST_TRIES = 3
 
 
@@ -136,6 +141,8 @@ def _selftest_once(vault) -> tuple:
             s = ss.parse_stream(stream)
     finally:
         canary.unlink(missing_ok=True)
+    if s["init"] is None:   # owner decision (audit S3/S7 spec §2): an env-only login stops sessions, and the alert says so
+        return False, NO_START
     problem = ss.init_problem(s["init"], "plan")
     if problem:
         return False, f"profile: {problem}"
@@ -144,14 +151,22 @@ def _selftest_once(vault) -> tuple:
         return False, "curl reached a host outside the allowlist"
     if "CAT_EXIT=0" in text or token in text:
         return False, f"the canary {CANARY} was readable"
-    if "CURL_EXIT=" not in text or "CAT_EXIT=" not in text:
+    # The probe's output is read, not its exit: grep exits 1 when no variable is set. A name line before ENV_DONE
+    # is a variable the session environment carries.
+    probe = next((r for r in s["tool_results"] if "ENV_DONE" in r), None)
+    if probe is not None:
+        carried = [m.group(1) for m in re.finditer(r"^(\w+)=$", probe.split("ENV_DONE")[0], re.M)]
+        if carried:
+            return False, f"the session environment carries {', '.join(carried)}"
+    if "CURL_EXIT=" not in text or "CAT_EXIT=" not in text or probe is None:
         return None, "the self-test commands did not run"
     return True, ""
 
 
 def selftest(vault) -> tuple:
-    """(passed, reason). Runs the plan profile's sandbox with two commands that must fail. A model that declines to run
-    them proves nothing either way, so that case is retried; a command that succeeds fails at once."""
+    """(passed, reason). Runs the plan profile's sandbox with two commands that must fail and a probe that must print
+    nothing but ENV_DONE. A model that declines to run them proves nothing either way, so that case is retried; a
+    command that succeeds, or a probe that names a variable, fails at once."""
     reason = ""
     for _ in range(SELFTEST_TRIES):
         verdict, reason = _selftest_once(vault)
