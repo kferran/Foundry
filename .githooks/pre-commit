@@ -17,11 +17,13 @@ for f in "${staged[@]}"; do
 done
 (( markers == 0 )) || exit 1
 # Meeting drops (meetings spec §2.2; audit S6 spec §2): transcripts only, and each staged one is rewritten through
-# the import's full redaction (redact.py --drop decodes UTF-8 or UTF-16 as the import does) in the working file and
-# the index, so the pushed blob holds nothing the published transcript does not. A drop the import would quarantine
-# is refused with its reason; the file is only ever overwritten with a successful result.
+# the import's Drive-link stripping and full redaction (redact.py --drop decodes UTF-8 or UTF-16 as the import does)
+# in the working file and the index, so the pushed blob holds nothing the published transcript does not. A drop that
+# does not decode (NULs in the text) is refused with the import's reason, and so is a symlink or a partly staged file
+# (the rewrite would follow the link or drop the unstaged text); a file is only ever overwritten with a successful result.
 drops=0
 tmp="$(mktemp)" err="$(mktemp)"
+trap 'rm -f "$tmp" "$err"' EXIT
 for f in "${staged[@]}"; do
   [[ "$f" == meetings/drop/* ]] || continue
   case "${f,,}" in
@@ -31,10 +33,22 @@ for f in "${staged[@]}"; do
        drops=1
        continue ;;
   esac
+  if [[ -L "$root/$f" || ! -f "$root/$f" ]]; then
+    echo "pre-commit: $f is not a regular file; remove it from meetings/drop/" >&2
+    drops=1
+    continue
+  fi
+  if ! git diff --quiet -- "$root/$f"; then
+    echo "pre-commit: $f has unstaged changes; stage the whole file (git add $f)" >&2
+    drops=1
+    continue
+  fi
   rc=0
   git cat-file blob ":$f" | python3 "$root/system/scripts/redact.py" --drop > "$tmp" 2> "$err" || rc=$?
   if (( rc != 0 )); then
-    echo "pre-commit: $f: $(sed 's/^redact: //' "$err"); remove it from meetings/drop/" >&2
+    reason="$(cat "$err")"
+    [[ "$reason" != redact:* ]] || reason="${reason#redact: }; remove it from meetings/drop/"
+    echo "pre-commit: $f: $reason" >&2
     drops=1
     continue
   fi

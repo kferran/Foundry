@@ -451,3 +451,39 @@ token = [REDACTED:assignment]'
   [ "$(stat -c %s meetings/drop/work/bin.txt)" -eq 8 ]
   [ "$(git log --format=%s | wc -l)" -eq 1 ]
 }
+
+@test "pre-commit: a symlinked drop is refused and its target is never written (audit S6 review)" {
+  cp -r "$REPO/.githooks" .githooks
+  git config core.hooksPath .githooks
+  mkdir -p meetings/drop/work
+  printf 'token = hunter2\n' > "$BATS_TEST_TMPDIR/target.txt"
+  ln -s "$BATS_TEST_TMPDIR/target.txt" meetings/drop/work/link.txt
+  git add -- meetings/drop/work/link.txt
+  run git commit -qm "drop"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"pre-commit: meetings/drop/work/link.txt is not a regular file; remove it from meetings/drop/"* ]]
+  [ "$(cat "$BATS_TEST_TMPDIR/target.txt")" = 'token = hunter2' ]
+  [ -L meetings/drop/work/link.txt ]
+}
+
+@test "pre-commit: a partly staged drop is refused, its unstaged text kept (audit S6 review)" {
+  cp -r "$REPO/.githooks" .githooks
+  git config core.hooksPath .githooks
+  mkdir -p meetings/drop/work
+  : > meetings/drop/work/call.txt
+  git add -- meetings/drop/work/call.txt
+  printf 'Avery: token = hunter2\n' >> meetings/drop/work/call.txt
+  run git commit -qm "drop"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"pre-commit: meetings/drop/work/call.txt has unstaged changes; stage the whole file (git add meetings/drop/work/call.txt)"* ]]
+  [ "$(cat meetings/drop/work/call.txt)" = 'Avery: token = hunter2' ]
+  [ -z "$(git log --oneline 2>/dev/null)" ]
+}
+
+@test "pre-commit: a Drive link in a drop is stripped as the import strips it (audit S6 review)" {
+  cp -r "$REPO/.githooks" .githooks
+  git config core.hooksPath .githooks
+  hook_commit meetings/drop/work/notes.txt 'Avery: see [Doc](https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit) now\n'
+  [ "$status" -eq 0 ]
+  [ "$(git cat-file blob HEAD:meetings/drop/work/notes.txt)" = 'Avery: see Doc now' ]
+}

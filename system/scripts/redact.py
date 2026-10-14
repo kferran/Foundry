@@ -2,8 +2,8 @@
 """Redact secrets from stdin to stdout; print the count to stderr (spec §6.18).
 
 With --drop, stdin is a meeting transcript drop: decoded as the import does (UTF-8 with or without a byte-order
-mark, or UTF-16 with one), redacted, written as UTF-8. A drop the import would quarantine exits 1 with its reason
-and writes nothing (audit S6 spec §2)."""
+mark, or UTF-16 with one), its Drive links stripped as the import strips them, redacted, written as UTF-8. A drop
+that does not decode (NULs in the text) exits 1 with the import's reason and writes nothing (audit S6 spec §2)."""
 import sys
 from pathlib import Path
 
@@ -14,7 +14,7 @@ raw_bytes = sys.stdin.buffer.read()
 if sys.argv[1:] == ["--drop"]:
     from vaultlib import meetings  # here only: the digest path stays free of meetings' PyYAML import
     try:
-        text, count = redact(meetings.decode(raw_bytes))
+        text, count = redact(meetings.strip_drive(meetings.decode(raw_bytes)))
     except meetings.ParseError as e:
         print(f"redact: {e}", file=sys.stderr)
         sys.exit(1)

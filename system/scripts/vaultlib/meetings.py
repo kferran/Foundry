@@ -262,7 +262,7 @@ def parse_drop(name: str, data: bytes, tz, start: datetime) -> Meeting:
 
 
 # -- making text safe for the vault ----------------------------------------
-def _strip_drive(text: str) -> str:
+def strip_drive(text: str) -> str:
     return EMPTY_LINK.sub(r"\1", DRIVE_URL.sub("", text))
 
 
@@ -273,12 +273,12 @@ def _escape(text: str) -> str:
 
 def safe(text: str) -> str:
     """Participant text can never become a link: Drive links removed, wiki and Markdown links escaped."""
-    return _escape(_strip_drive(text))
+    return _escape(strip_drive(text))
 
 
 def _clean(text: str) -> str:
     """Drive links stripped, then redacted, then escaped: a redaction placeholder can never open a link."""
-    return _escape(redactmod.redact(_strip_drive(text))[0])
+    return _escape(redactmod.redact(strip_drive(text))[0])
 
 
 def scrub(m: Meeting) -> Meeting:

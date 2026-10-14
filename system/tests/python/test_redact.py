@@ -83,6 +83,20 @@ def test_cli_drop_decodes_as_the_import_does():
         assert res.stdout == want and res.stderr.strip() == b"redactions: 2"
 
 
+def test_cli_drop_strips_drive_links_before_redacting_so_the_import_publishes_the_same_text():
+    """audit S6 review: redact() alone eats part of a Drive URL, leaving a broken link the import can no longer strip."""
+    from datetime import datetime, timezone
+
+    from vaultlib import meetings
+    raw = b"Avery: see [Doc](https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit) now\n"
+    res = drop(raw)
+    assert res.returncode == 0 and res.stdout == b"Avery: see Doc now\n"
+    start = datetime(2026, 10, 5, 15, 0, tzinfo=timezone.utc)
+    published = meetings.scrub(meetings.parse_drop("notes.txt", res.stdout, timezone.utc, start)).turns
+    assert published == meetings.scrub(meetings.parse_drop("notes.txt", raw, timezone.utc, start)).turns
+    assert "google" not in str(published)
+
+
 def test_cli_drop_refuses_what_the_import_quarantines():
     """audit S6 spec §2: a drop the decoder rejects exits 1 with the import's reason and writes nothing to stdout."""
     res = drop(b"\x00" * 8)
