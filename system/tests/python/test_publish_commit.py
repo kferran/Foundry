@@ -266,9 +266,11 @@ def test_apply_oserror_holds_entry_back_and_journal_commits(run, monkeypatch):
 
     monkeypatch.setattr(publish, "_rename", failing)
     report = publish.commit_run(run, RID, now=LATER)
-    assert report["status"] == "conflict"
+    # A rename fault is a failed run, never a held-back note: only a hash mismatch is a conflict (audit C2 review).
+    assert report["status"] == "rejected"
     assert report["published"] == ["wiki/work/concepts/A.md"]
-    assert report["conflicts"] == ["wiki/work/concepts/B.md"]
+    assert report["conflicts"] == []
+    assert [(p["path"], p["reason"]) for p in report["problems"]] == [("wiki/work/concepts/B.md", "publish failed: simulated EIO")]
     assert (run / "wiki/work/concepts/A.md").is_file()
     assert not (run / "wiki/work/concepts/B.md").exists()
     assert (run / "system/quarantine" / RID / "staged/wiki/work/concepts/B.md").is_file()

@@ -430,7 +430,9 @@ def _hold_back(vault: Path, run_id, staged: Path, target: str) -> None:
 
 
 def _apply(vault: Path, journal: Path):
-    published, conflicts = [], []
+    """Rename each journal entry into place. Returns (published, conflicts, failed): a hash mismatch is a
+    conflict (the owner's edit wins, the run succeeds); a filesystem fault is a Problem (the run fails)."""
+    published, conflicts, failed = [], [], []
     entries = _read_journal(journal)
     run_id = journal.parent.name
     for entry in entries:
@@ -453,10 +455,9 @@ def _apply(vault: Path, journal: Path):
             target.parent.mkdir(parents=True, exist_ok=True)
             _rename(str(staged), str(target))
             published.append(entry["target"])
-        except OSError:
+        except OSError as exc:
             # one unpublishable entry is held back; the journal must still reach committed
-            if entry["target"] not in conflicts:
-                conflicts.append(entry["target"])
+            failed.append(Problem(entry["target"], f"publish failed: {exc}"))
             try:
                 if staged.exists():
                     _hold_back(vault, run_id, staged, entry["target"])
@@ -466,7 +467,7 @@ def _apply(vault: Path, journal: Path):
         handle.write(json.dumps({"committed": True}) + "\n")
         handle.flush()
         os.fsync(handle.fileno())
-    return published, conflicts
+    return published, conflicts, failed
 
 
 def _refresh_index(vault) -> None:
@@ -517,11 +518,11 @@ def commit_run(vault, run_id, now=None) -> dict:
         os.fsync(dir_fd)
     finally:
         os.close(dir_fd)
-    published, conflicts = _apply(vault, journal)
+    published, conflicts, failed = _apply(vault, journal)
     shutil.rmtree(sd, ignore_errors=True)
     _refresh_index(vault)
-    status = "conflict" if conflicts else "published"
-    return _report(vault, run_id, status, published=published, conflicts=conflicts)
+    status = "rejected" if failed else "conflict" if conflicts else "published"
+    return _report(vault, run_id, status, problems=failed, published=published, conflicts=conflicts)
 
 
 def abort_run(vault, run_id) -> dict:
@@ -561,10 +562,10 @@ def recover(vault) -> dict:
                     continue
                 if _committed(journal):
                     continue
-                published, conflicts = _apply(vault, journal)
+                published, conflicts, faults = _apply(vault, journal)
                 shutil.rmtree(staging_dir(vault, rd.name), ignore_errors=True)
-                _report(vault, rd.name, "conflict" if conflicts else "recovered",
-                        published=published, conflicts=conflicts)
+                _report(vault, rd.name, "recovery_failed" if faults else "conflict" if conflicts else "recovered",
+                        problems=faults, published=published, conflicts=conflicts)
                 recovered.append(rd.name)
             except ValueError as exc:
                 fail(rd.name, f"unreadable journal: {exc}")

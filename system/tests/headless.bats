@@ -117,7 +117,7 @@ EOF
   [ "$(jq -r '.exit' "$LEDGER")" = "0" ]
   [ "$(jq -r '.publish.conflicts[0]' "$LEDGER")" = "wiki/work/concepts/New.md" ]
   run_id="$(jq -r .run_id "$LEDGER")"
-  run grep -c "ingest $run_id: published; held back wiki/work/concepts/New.md (changed during the run; staged copies in system/quarantine/$run_id/staged/)" system/logs/alerts_*.md
+  run grep -c "ingest $run_id: published 0; held back wiki/work/concepts/New.md (changed during the run; staged copies in system/quarantine/$run_id/staged/)" system/logs/alerts_*.md
   [ "$status" -eq 0 ]
   [ "$output" -eq 1 ]
   run grep -c 'rejected or empty' system/logs/alerts_*.md

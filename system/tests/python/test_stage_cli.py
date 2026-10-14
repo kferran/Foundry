@@ -55,8 +55,18 @@ def test_publish_cli_exit_codes(vault):
     assert bad.returncode == 2
 
 
-def test_publish_cli_conflict_exits_0_and_empty_exits_5(vault):
-    """A held-back note is a successful publish; an empty run still fails, as does a rejected one above (audit C2 spec §2)."""
+def test_publish_cli_conflict_exits_0_rejected_exits_5(monkeypatch):
+    """A held-back note is a successful publish; a rejected run still fails (audit C2 spec §2)."""
+    from vaultlib import publish_cli
+    report = {"run_id": RID, "published": ["a.md"], "conflicts": ["b.md"], "problems": []}
+    monkeypatch.setattr(publish, "commit_run", lambda vault, run_id: {**report, "status": "conflict"})
+    assert publish_cli.main(["commit", RID]) == 0
+    monkeypatch.setattr(publish, "commit_run", lambda vault, run_id: {**report, "status": "rejected"})
+    assert publish_cli.main(["commit", RID]) == 5
+
+
+def test_publish_cli_rename_fault_is_a_rejected_run_and_empty_exits_5(vault):
+    """A rename the filesystem refuses is a failed run with the fault as a problem, never a conflict (audit C2 review)."""
     import os
     import shutil
     from helpers import REPO, concept, write
@@ -76,14 +86,17 @@ def test_publish_cli_conflict_exits_0_and_empty_exits_5(vault):
     write(vault, f"wiki/.staging/{RID}/_decisions.jsonl",
           json.dumps({"item": "i", "decision": "create", "target": target, "source": "s", "reason": "r"}) + "\n")
     folder = vault / "wiki/work/concepts"
-    folder.chmod(0o555)  # validation reads; the rename fails and _apply holds the note back
+    folder.chmod(0o555)  # validation reads; the rename fails with EACCES
     try:
         res = commit(RID)
     finally:
         folder.chmod(0o755)
     report = json.loads(res.stdout)
-    assert (report["status"], report["conflicts"]) == ("conflict", [target]), res.stderr
-    assert res.returncode == 0
+    assert (report["status"], report["conflicts"], report["published"]) == ("rejected", [], []), res.stderr
+    assert [p["path"] for p in report["problems"]] == [target]
+    assert report["problems"][0]["reason"].startswith("publish failed: ")
+    assert res.returncode == 5
+    assert (vault / "system/quarantine" / RID / "staged" / target).is_file()
     brief = "20261001T120000-brief-ab12"
     publish.snapshot(vault, brief, ["briefings/2026-10-01.md"])
     empty = commit(brief)
