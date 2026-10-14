@@ -69,6 +69,35 @@ def test_profile_denies_common_credentials_and_extra_paths():
     assert "/srv/other-repo" in deny
 
 
+def test_session_env_passes_only_the_named_variables(monkeypatch):
+    # audit S3/S7 spec §2: one allowlist; the next token variable is on no denylist
+    for k in ("SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "DBUS_SESSION_BUS_ADDRESS", "ANTHROPIC_API_KEY"):
+        monkeypatch.setenv(k, "secret")
+    monkeypatch.setenv("TZ", "UTC")
+    monkeypatch.setenv("FOUNDRY_CLAUDE_BIN", "/opt/claude")
+    env = ss.session_env()
+    for k in ("SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "DBUS_SESSION_BUS_ADDRESS", "ANTHROPIC_API_KEY"):
+        assert k not in env
+    assert env["PATH"] and env["HOME"] and env["TZ"] == "UTC" and env["FOUNDRY_CLAUDE_BIN"] == "/opt/claude"
+    assert set(env) <= set(ss.ENV)
+    assert len(ss.ENV) == 8
+
+
+def test_profile_denies_the_claude_transcripts_and_mirrors_every_deny_into_read():
+    # audit S3/S7 spec §2: the Read tool is bound whether or not the sandbox list reaches it
+    p = ss.profile(REPO, "plan", [], [], deny=["/srv/other-repo"])
+    deny = p["sandbox"]["filesystem"]["denyRead"]
+    home = str(Path.home())
+    for rel in (".claude/projects", ".claude/settings.json", ".claude/settings.local.json", ".gitconfig"):
+        assert f"{home}/{rel}" in deny
+    reads = p["permissions"]["deny"]
+    for d in deny:
+        assert f"Read(//{d.lstrip('/')})" in reads
+        if "*" not in d:
+            assert f"Read(//{d.lstrip('/')}/**)" in reads   # a file deny (~/.netrc) needs the bare form, a folder the /**
+    assert "Read(//srv/other-repo/**)" in reads
+
+
 def test_research_prompt_points_at_context():
     assert "context/" in ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")
 
