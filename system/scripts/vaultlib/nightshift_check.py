@@ -54,6 +54,19 @@ def toolchain(cb: dict) -> list:
     return [os.path.expanduser(str(d)) for d in (v if isinstance(v, list) else [v])]
 
 
+def toolchain_errors(repo, cb: dict) -> list:
+    """Why the sandbox could not bind a codebase's order_toolchain: a relative path (bwrap would try to create it on
+    the read-only host) or a missing directory. Checked at queue time and again before a session starts, since an
+    nvm upgrade or a client's paths can remove a directory in between."""
+    errs = []
+    for d in toolchain(cb):
+        if not os.path.isabs(d):
+            errs.append(f"codebase {repo}: order_toolchain {d} must be an absolute path (~ allowed)")
+        elif not os.path.isdir(d):
+            errs.append(f"codebase {repo}: order_toolchain {d} is not a directory")
+    return errs
+
+
 def source(vault, repo) -> Path | None:
     """A codebase's registered clone. A template item has none: it is read from template_remote, never the vault."""
     if repo == "template":
@@ -187,7 +200,7 @@ def _plan(vault, fm: dict) -> list:
     cb = codebase(vault, repo) or {}
     if not setting(cb, "order_pr", "nightshift_pr"):
         errs.append(f"codebase {repo} has no order_pr (github:<owner>/<repo> or bitbucket-link)")
-    errs += [f"codebase {repo}: order_toolchain {d} is not a directory" for d in toolchain(cb) if not os.path.isdir(d)]
+    errs += toolchain_errors(repo, cb)
     if cb.get("order_install") is not None and not isinstance(cb["order_install"], str):
         errs.append(f"codebase {repo}: order_install must be one command (a string)")
     if not base or git(src, "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}").returncode:

@@ -167,6 +167,11 @@ def test_a_codebase_plan_refuses_a_missing_toolchain_dir_and_a_list_valued_insta
     set_codebase(vault_repo, "shop", order_install=["a", "b"])
     errs = nc.check(vault_repo, fm, "")
     assert any("order_install" in e and "shop" in e for e in errs), errs
+    set_codebase(vault_repo, "shop", order_install="true", order_toolchain=["system/tests"])   # exists from the vault root
+    errs = nc.check(vault_repo, fm, "")
+    assert any("order_toolchain system/tests" in e and "absolute" in e for e in errs), errs
+    assert nc.toolchain_errors("shop", {"order_toolchain": [str(tools), "rel/bin"]}) == \
+        ["codebase shop: order_toolchain rel/bin must be an absolute path (~ allowed)"]
     assert nc.toolchain({"order_toolchain": ["~/x"]})[0].endswith("/x")
     assert not nc.toolchain({"order_toolchain": ["~/x"]})[0].startswith("~")
     assert nc.toolchain({}) == []

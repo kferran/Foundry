@@ -565,6 +565,9 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
                 f"Push {fm['base']} to the template remote, then queue {fm['id']} again ({exc})"]})
         before = _before(ctx, fm, idir)
+        gone = nc.toolchain_errors(fm["repo"], nc.codebase(ctx.vault, fm["repo"]) or {})
+        if gone:   # a directory that passed readiness is gone: block now, before the session spends its budget
+            return _finish(ctx, path, fm, idir, cwd, {"state": "blocked", "reason": "toolchain", "needs": gone})
     else:
         try:
             cwd = _research_dir(ctx, fm)

@@ -769,6 +769,10 @@ self_edit_contract() {
   grep -qF '`order_install`' FOUNDRY.md
   grep -qF 'A shim directory that needs its manager'"'"'s environment does not work' FOUNDRY.md
   grep -qF 'and its `lib` sibling' FOUNDRY.md
+  grep -qF 'Each sandboxed step starts with a fresh, empty `$HOME`' FOUNDRY.md
+  grep -qF 'from an empty cache every run' FOUNDRY.md
+  grep -qF 'without `--ignore-scripts`' FOUNDRY.md
+  grep -qF '`Fix the failing check: order_install: <command>: exit <code>`' FOUNDRY.md
   grep -q '^  order_toolchain: {kind: list, of: string}$' system/schemas/codebase.md
   grep -q '^  order_install: {kind: string}$' system/schemas/codebase.md
   grep -qF 'order_toolchain' system/codebases/example.md

@@ -744,8 +744,25 @@ def test_a_research_session_on_the_same_codebase_keeps_its_own_path(env, monkeyp
     assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
                     "--output", "wiki/work/concepts/Answer.md", "--repo", "shop", "--now"], vault, NOW) == 0
     nr.main(["tick"], vault, NOW)
-    path = (tmp_path / "path.txt").read_text()
-    assert path and not path.startswith(f"{tools}:")
+    assert (tmp_path / "path.txt").read_text().strip() == os.environ["PATH"]   # the service PATH, unchanged
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_a_toolchain_dir_gone_at_run_time_blocks_before_the_session_starts(env, monkeypatch, tmp_path):
+    """Orders toolchain spec §2: an nvm upgrade or a client's paths can remove a directory between queue and run; the
+    item blocks with the readiness wording before any budget is spent, instead of bwrap blaming the first command."""
+    vault, _ = env
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", f"touch {tmp_path}/session-ran")
+    codebase_item(vault, tmp_path, ["test -f done.txt"], order_toolchain=[str(tools)])
+    tools.rmdir()
+    assert nr.main(["tick"], vault, NOW) == 1
+    _, fm = only_item(vault)
+    assert (fm["state"], fm["reason"]) == ("blocked", "toolchain"), fm
+    out = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
+    assert out["needs"] == [f"codebase shop: order_toolchain {tools} is not a directory"]
+    assert not (tmp_path / "session-ran").exists()
 
 
 def test_selftest_retries_when_the_model_declines(env, monkeypatch, tmp_path):
