@@ -48,6 +48,12 @@ def codebase(vault, name) -> dict | None:
     return _fm(path) if name and path.is_file() else None
 
 
+def toolchain(cb: dict) -> list:
+    """A codebase's order_toolchain directories, ~ expanded, in the listed order (orders toolchain spec §2)."""
+    v = cb.get("order_toolchain") or []
+    return [os.path.expanduser(str(d)) for d in (v if isinstance(v, list) else [v])]
+
+
 def source(vault, repo) -> Path | None:
     """A codebase's registered clone. A template item has none: it is read from template_remote, never the vault."""
     if repo == "template":
@@ -178,8 +184,12 @@ def _plan(vault, fm: dict) -> list:
     src = source(vault, repo)
     if src is None:
         return [f"repo {repo!r} is not a registered codebase or 'template'"]
-    if not setting(codebase(vault, repo) or {}, "order_pr", "nightshift_pr"):
+    cb = codebase(vault, repo) or {}
+    if not setting(cb, "order_pr", "nightshift_pr"):
         errs.append(f"codebase {repo} has no order_pr (github:<owner>/<repo> or bitbucket-link)")
+    errs += [f"codebase {repo}: order_toolchain {d} is not a directory" for d in toolchain(cb) if not os.path.isdir(d)]
+    if cb.get("order_install") is not None and not isinstance(cb["order_install"], str):
+        errs.append(f"codebase {repo}: order_install must be one command (a string)")
     if not base or git(src, "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}").returncode:
         return errs + [f"base {base or '(empty)'} does not resolve in {src}"]
     return errs + _plan_at(src, fm)

@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 
@@ -114,12 +115,13 @@ def test_remote_git_uses_gh_credentials_for_github_https_only():
 
 
 def registered(vault: Path, tmp_path: Path, name: str = "shop") -> Path:
-    """A registered codebase whose clone has origin/HEAD, like a real checkout."""
+    """A registered codebase whose clone has origin/HEAD, like a real checkout, with the PLAN committed as docs/p.md."""
     tmp_path.mkdir(parents=True, exist_ok=True)
     seed = tmp_path / f"{name}-seed"
     git(tmp_path, "init", "-q", "-b", "main", str(seed))
     write(seed, "app.py", "print(1)\n")
-    git(seed, "add", "app.py")
+    write(seed, "docs/p.md", PLAN)
+    git(seed, "add", "app.py", "docs/p.md")
     git(seed, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "first")
     git(tmp_path, "clone", "-q", "--bare", str(seed), str(tmp_path / f"{name}.git"))
     clone = tmp_path / name
@@ -130,10 +132,11 @@ def registered(vault: Path, tmp_path: Path, name: str = "shop") -> Path:
 
 
 def set_codebase(vault: Path, name: str, **keys) -> None:
-    """Add frontmatter keys to a registered codebase's file."""
+    """Add or replace frontmatter keys in a registered codebase's file (a list value stays a list)."""
     p = vault / "system" / "codebases" / f"{name}.md"
     head, _, rest = p.read_text().rpartition("---\n")
-    p.write_text(head + "".join(f'{k}: "{v}"\n' for k, v in keys.items()) + "---\n" + rest)
+    kept = [line for line in head.splitlines(keepends=True) if line.split(":")[0] not in keys]
+    p.write_text("".join(kept) + "".join(f"{k}: {json.dumps(v)}\n" for k, v in keys.items()) + "---\n" + rest)
 
 
 def test_setting_reads_the_old_key_and_the_new_one_wins():
@@ -148,6 +151,25 @@ def test_a_codebase_plan_needs_order_pr_or_its_old_name(vault_repo, tmp_path):
     assert any("codebase shop has no order_pr" in e for e in nc.check(vault_repo, fm, ""))
     set_codebase(vault_repo, "shop", nightshift_pr="github:o/shop")
     assert not any("order_pr" in e for e in nc.check(vault_repo, fm, ""))
+
+
+def test_a_codebase_plan_refuses_a_missing_toolchain_dir_and_a_list_valued_install(vault_repo, tmp_path):
+    """Orders toolchain spec §2: readiness stays command-free; it refuses what the sandbox could not bind or run."""
+    registered(vault_repo, tmp_path)
+    fm = plan_fm(tasks="1-2", repo="shop", base="main")
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    set_codebase(vault_repo, "shop", order_pr="github:o/shop", order_toolchain=[str(tools)], order_install="true")
+    assert nc.check(vault_repo, fm, "") == []
+    set_codebase(vault_repo, "shop", order_toolchain=[str(tmp_path / "gone")])
+    errs = nc.check(vault_repo, fm, "")
+    assert any("order_toolchain" in e and str(tmp_path / "gone") in e and "shop" in e for e in errs), errs
+    set_codebase(vault_repo, "shop", order_install=["a", "b"])
+    errs = nc.check(vault_repo, fm, "")
+    assert any("order_install" in e and "shop" in e for e in errs), errs
+    assert nc.toolchain({"order_toolchain": ["~/x"]})[0].endswith("/x")
+    assert not nc.toolchain({"order_toolchain": ["~/x"]})[0].startswith("~")
+    assert nc.toolchain({}) == []
 
 
 def test_research_may_name_a_repository_and_commit(vault_repo, tmp_path):
