@@ -19,7 +19,7 @@ TAG = "[notify]"
 TRIAGE_TEXT = re.compile(r"(?<=\[triage\] )(\d+) new: .*$")
 # Steps the intake retries on its own; their outcome (published, poisoned, quarantined) is what goes out (#162).
 INTERIM = re.compile(r"; will retry$|; retrying one at a time$|\[intake\] ingest \S+(: publish rejected or empty| failed \(exit)")
-POISONED = re.compile(r"(?<=\[intake\] )poisoned (?P<when>.+?): (?P<origin>.+?) → .+$")
+POISONED = re.compile(r"(?<=\[intake\] )poisoned (?P<when>.+?): (?P<origin>.+?) → (?P<dest>.+)$")
 WIKILINK = re.compile(r"\[\[([^\[\]|/]+)\]\]")
 SAFE = re.compile(r"\b(?:raw|wiki|system|briefings|meetings)/\S+|\b\d{8}T\d{6}-\w+-[0-9a-f]{4}\b")
 POST_ARGS = {"channel_id", "message", "unfurl_app_links"}
@@ -124,17 +124,22 @@ def _cut(text: str) -> str:
     return text if len(text) <= LINE_MAX else text[:LINE_MAX - 1] + "…"
 
 
-def _gate_reason(vault, origin: str) -> tuple:
-    """(run id, the publish gate's first reason) of the last failed run of an input, from the run ledger and the
-    run's publish.json. The reason stops before its detail (a shrink guard's detail quotes note headings)."""
+def _gate_reason(vault, dest: str) -> tuple:
+    """(run id, the publish gate's first reason) of the last failed run of a poisoned input, found by the hash in
+    its sidecar (an inbox run's ledger names the staged copy, not the origin) and read from the run's publish.json.
+    The reason stops before its detail (a shrink guard's detail quotes note headings)."""
     run = ""
+    try:
+        sha = json.loads((Path(vault) / f"{dest}.origin.json").read_text())["sha256"]
+    except (OSError, ValueError, LookupError, TypeError):
+        return run, ""
     for path in sorted((Path(vault) / "system" / "logs").glob("runs-*.jsonl"))[-2:]:
         for line in path.read_text(errors="replace").splitlines():
             try:
                 rec = json.loads(line)
             except ValueError:
                 continue
-            if isinstance(rec, dict) and rec.get("run_id") and rec.get("exit") and origin in (rec.get("inputs") or []):
+            if isinstance(rec, dict) and rec.get("run_id") and rec.get("exit") and sha in (rec.get("input_sha256") or []):
                 run = str(rec["run_id"])
     try:
         problem = json.loads((Path(vault) / "system/logs/runs" / run / "publish.json").read_text())["problems"][0]
@@ -153,7 +158,7 @@ def _alert(vault, line: str):
     m = TRIAGE_TEXT.search(body)
     p = POISONED.search(body)
     if p:
-        run, why = _gate_reason(vault, p.group("origin"))
+        run, why = _gate_reason(vault, p.group("dest"))
         body = (body[:p.start()] + f"{p.group('origin')} was not published" + (f" ({why})" if why else "")
                 + f"; quarantined {p.group('when')}. Fix the cause, then run system/scripts/intake.py "
                 + (f"--retry {run}" if run else "--retry-all"))

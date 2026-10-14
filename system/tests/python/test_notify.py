@@ -104,15 +104,20 @@ def test_only_terminal_outcomes_go_to_slack(vault):
 
 def test_a_poisoned_digest_names_the_digest_the_gate_reason_and_the_retry(vault):
     # #162: what (the input's path), why (the gate's reason, no note text) and the next step.
+    # The run is found by the input's hash in the poisoned file's sidecar: an inbox run's ledger names its staged copy.
     prepare(vault)
     with (vault / "system/logs/runs-2026-10.jsonl").open("a") as f:
-        f.write(json.dumps({"run_id": RUN, "command": "ingest", "inputs": [DIGEST], "exit": 5}) + "\n")
-        f.write(json.dumps({"run_id": "retry-1", "command": "retry", "inputs": [DIGEST], "exit": 0}) + "\n")
+        f.write(json.dumps({"run_id": RUN, "command": "ingest", "inputs": ["raw/inbox/.staging/x.md"],
+                            "input_sha256": ["abc"], "exit": 5}) + "\n")
+        f.write(json.dumps({"run_id": "retry-1", "command": "retry", "inputs": [DIGEST], "input_sha256": ["abc"],
+                            "exit": 0}) + "\n")
     write(vault, f"system/logs/runs/{RUN}/publish.json", json.dumps({"status": "rejected", "problems": [
         {"path": "wiki/work/concepts/MeetingImport.md", "reason": "shrink guard: headings removed: ## Foundry PRs"}]}))
     dest = "system/quarantine/poisoned/" + DIGEST.rsplit("/", 1)[1]
+    write(vault, dest + ".origin.json", json.dumps({"origin": DIGEST, "sha256": "abc"}))
     alert(vault, f"[intake] poisoned after 3 failed attempts: {DIGEST} → {dest}")
-    alert(vault, f"[intake] poisoned immediately, rejected as invalid input (exit 2): raw/inbox/a b.md → {dest}")
+    alert(vault, f"[intake] poisoned immediately, rejected as invalid input (exit 2): raw/inbox/a b.md → "
+                 "system/quarantine/poisoned/a b.md")
     assert lines(vault)[0] == [
         f"Alert 06:10:00 [intake] {DIGEST} was not published (MeetingImport: shrink guard: headings removed); "
         f"quarantined after 3 failed attempts. Fix the cause, then run system/scripts/intake.py --retry {RUN}",
