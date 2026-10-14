@@ -936,7 +936,8 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   [[ "$sec" == *'Write no marker line'* ]]
   [[ "$sec" == *'Skip this step on a client'* ]]
   [[ "$sec" == *'when `remote_mode` is `keep`'* ]]
-  [ ! -e .gitattributes ]
+  run grep -q 'merge=' .gitattributes
+  [ "$status" -eq 1 ]
   grep -qF 'the setup prompt in `FOUNDRY.md`, Getting started' .claude/commands/setup.md
   grep -qF '(FOUNDRY.md: Sync conflicts)' system/scripts/vault_sync.sh .claude/commands/backup.md
   run grep -rn 'README: Sync conflicts' system/scripts .claude

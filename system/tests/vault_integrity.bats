@@ -48,6 +48,10 @@ setup() {
   git check-ignore -q system/quarantine/x.md
 }
 
+@test "text files are stored and checked out with LF endings on every machine (#166)" {
+  grep -qxF '* text=auto eol=lf' .gitattributes
+}
+
 @test "the scratch folder ships, ignores everything else in it, and CLAUDE.md names it" {
   [ "$(git ls-files .scratch)" = ".scratch/.gitignore" ]
   git check-ignore -q .scratch/clone/README.md
