@@ -629,6 +629,11 @@ self_edit_contract() {
   grep -qF 'meetings/drop/' FOUNDRY.md
 }
 
+@test "meetings: the manual says the pre-commit hook redacts a committed drop (audit S6 spec §3)" {
+  grep -qF 'redacted by the pre-commit hook when it is committed' FOUNDRY.md
+  grep -qF 'redact.py --drop' FOUNDRY.md
+}
+
 @test "/brief lists telemetry from v_production_error, new first, capped per environment" {
   f=".claude/commands/brief.md"
   grep -qF 'v_production_error' "$f"
