@@ -2,8 +2,8 @@
 """Commit each published headless run with a message built from its records (two-machines spec §4).
 
 Usage: commit_runs.py [--init-cutover]. Exit 0 when every pending run is committed or recorded as
-already committed; 1 when a commit was refused (one "refused <run_id> <path>" line per path on stdout, an
-alert once a day per run, that run stays pending and the later runs are still committed); 2 usage.
+already committed; 3 when a commit was refused (one "refused <run_id> <path>" line per path on stdout, an
+alert once a day per run, that run stays pending and the later runs are still committed); 2 usage; 1 a crash.
 """
 import json
 import re
@@ -206,6 +206,7 @@ def main(argv):
             later = owner[published[0]]
             (RUNS / run_id / "committed").write_text(
                 json.dumps({"sha": None, "reason": f"superseded by {later}"}) + "\n", encoding="utf-8")
+            (RUNS / run_id / "refused").unlink(missing_ok=True)
             print(f"{run_id} superseded by {later}")
             continue
         sha, error = commit(own, message(run_id, command, own, conflicts, role, carried))
@@ -227,7 +228,7 @@ def main(argv):
         (RUNS / run_id / "committed").write_text(json.dumps(record) + "\n", encoding="utf-8")
         (RUNS / run_id / "refused").unlink(missing_ok=True)
         print(f"{run_id} {sha or 'already committed'}")
-    return 1 if refused else 0
+    return 3 if refused else 0
 
 
 if __name__ == "__main__":

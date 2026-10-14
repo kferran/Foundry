@@ -238,11 +238,13 @@ def test_a_note_two_pending_runs_published_is_committed_with_the_later_run(vault
 def test_a_run_whose_notes_a_later_run_published_again_is_recorded_as_superseded(vault):
     first = "20261004T110000-ingest-aa11"
     alpha = "wiki/work/concepts/Alpha.md"
-    make_run(vault, first, [alpha], decisions=[("create", alpha, "s1")], partition="work")
+    rd = make_run(vault, first, [alpha], decisions=[("create", alpha, "s1")], partition="work")
+    (rd / "refused").write_text('{"day": "2000-01-01", "error": "x"}\n')
     make_run(vault, ING, [alpha], decisions=[("patch", alpha, "s2")], partition="work")
     p = run_commits(vault)
     assert p.returncode == 0
     assert marker(vault, first) == {"sha": None, "reason": f"superseded by {ING}"}
+    assert not (rd / "refused").exists()
     assert p.stdout.splitlines()[0] == f"{first} superseded by {ING}"
     assert git(vault, "log", "-1", "--format=%(trailers:key=Foundry-Run,valueonly)").strip() == ING
 
@@ -266,7 +268,7 @@ def test_a_refused_run_stays_pending_and_the_later_run_is_committed(vault):
     refused_then_good(vault)
     head = git(vault, "rev-parse", "HEAD")
     p = run_commits(vault)
-    assert p.returncode == 1
+    assert p.returncode == 3
     assert f"commit_runs: {BRIEF}" in p.stderr
     assert f"refused {BRIEF} {BAD}\n" in p.stdout
     assert git(vault, "rev-parse", "HEAD") != head
@@ -285,22 +287,22 @@ def test_a_refused_run_stays_pending_and_the_later_run_is_committed(vault):
 
 def test_a_refused_run_alerts_once_a_day(vault):
     refused_then_good(vault)
-    assert run_commits(vault).returncode == 1
+    assert run_commits(vault).returncode == 3
     p = run_commits(vault)
-    assert p.returncode == 1
+    assert p.returncode == 3
     assert f"refused {BRIEF} {BAD}\n" in p.stdout
     assert len(alert_lines(vault)) == 1
     mark = vault / "system" / "logs" / "runs" / BRIEF / "refused"
     held = json.loads(mark.read_text())
     mark.write_text(json.dumps({**held, "day": "2000-01-01"}) + "\n")
-    assert run_commits(vault).returncode == 1
+    assert run_commits(vault).returncode == 3
     assert len(alert_lines(vault)) == 2
     assert json.loads(mark.read_text())["day"] == held["day"]
 
 
 def test_a_run_committed_after_a_refusal_has_no_refused_marker(vault):
     refused_then_good(vault)
-    assert run_commits(vault).returncode == 1
+    assert run_commits(vault).returncode == 3
     write(vault, BAD, concept("work", "Bad", "[[Index]]"))
     p = run_commits(vault)
     assert p.returncode == 0

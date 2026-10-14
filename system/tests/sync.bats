@@ -129,7 +129,7 @@ refused_run() {  # a published run whose note the hook refuses
   grep -qx '# Bad' wiki/work/concepts/Bad.md
 }
 
-@test "commit_runs.py exiting 1 without a refused line is still fail commit (audit C7 spec §4)" {
+@test "commit_runs.py exiting 1 (a crash) without a refused line is still fail commit (audit C7 spec §4)" {
   printf '#!/bin/bash\nexit 1\n' > system/scripts/commit_runs.py
   printf 'more\n' >> wiki/work/concepts/Kafka.md
   run "$VS"
@@ -181,7 +181,7 @@ pending_run() {  # <name>: a published brief run whose briefing is pending commi
   printf -- '---\ntype: briefing\ndate: "2026-10-04"\n---\n# Briefing\n' > briefings/2026-10-04.md
 }
 
-@test "no git child inherits run.lock's fd 9, commit_runs.py's included (audit C4 spec §3)" {
+@test "no git child inherits run.lock's fd 9, with a pending run in the cycle" {
   wrap_git
   export WRAP_EACH='[[ ! -e /proc/self/fd/9 ]] || echo "$1" >> "$BATS_TEST_TMPDIR/fd9"'
   pending_run 20261004T060000-brief-cd34

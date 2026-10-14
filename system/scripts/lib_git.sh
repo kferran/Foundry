@@ -47,8 +47,9 @@ git_sync_message() {
 
 # git_sync_commit <role>: commit_runs.py, then every remaining change as one sync(<role>) commit through the
 # pre-commit hook. Returns 0 (nothing staged included); on a refusal unstages, sets GIT_SYNC_ERROR, returns 1.
-# A run commit_runs.py reports as refused (audit C7) is left out of the sync commit, its paths listed one per
-# line in GIT_SYNC_REFUSED, and the return is still 0. Runs from the vault root.
+# A run commit_runs.py reports as refused (exit 3 with "refused <run_id> <path>" lines, audit C7) is left out of
+# the sync commit, its paths listed one per line in GIT_SYNC_REFUSED, and the return is still 0. Runs from the
+# vault root.
 git_sync_commit() {
   local role="$1" err out rc=0 tag rid p
   local -a exclude=()
@@ -56,10 +57,11 @@ git_sync_commit() {
   out="$(system/scripts/commit_runs.py 9>&-)" || rc=$?
   while read -r tag rid p; do
     [[ "$tag" == refused && -n "$p" ]] || continue
-    exclude+=(":!$p")
+    exclude+=(":(exclude,literal)$p")
     GIT_SYNC_REFUSED+="$p"$'\n'
   done <<< "$out"
-  if (( rc != 0 )) && (( rc != 1 || ${#exclude[@]} == 0 )); then
+  # 3 with refused lines is the refused-run case; any other non-zero exit (1 a crash, 2 usage) is a failure.
+  if (( rc != 0 )) && (( rc != 3 || ${#exclude[@]} == 0 )); then
     GIT_SYNC_ERROR="commit_runs.py could not commit a run (see its alert)"
     return 1
   fi

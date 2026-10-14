@@ -462,7 +462,7 @@ note() {  # <name> <frontmatter>: a work concept with the given frontmatter line
   alerts | grep -qF '[update] template update failed: committed first: brief 2026-10-04: briefings/2026-10-04.md; the sync commit was refused: '
 }
 
-@test "--unattended: no git child of the commit step inherits run.lock's fd 9 (audit C4 spec §4)" {
+@test "--unattended: no git child of the update inherits run.lock's fd 9, with a pending run and a dirty tree (audit C4 spec §4)" {
   export REAL_GIT="$(command -v git)"
   template_setup
   hooks_on
