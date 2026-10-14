@@ -133,4 +133,50 @@ if [[ -f system/dtcc/map.yaml ]]; then
   check dtcc "${SMOKE_DTCC_TIMEOUT:-60}" system/scripts/dtcc_watch.py --check
 else echo "dtcc: off"; fi
 
+# Timers (#166): each enabled timer this vault installed fired by its next tick after systemd's LastTrigger plus a
+# grace of one interval, at most 2 hours (every template timer runs at most 15 minutes, hourly or daily apart, so
+# this is one interval or 2 hours for the daily ones). A failed run is the run ledger's business, not this check's.
+SYSTEMCTL="${SYSTEMCTL:-systemctl}"
+UNIT_DIR="${SYSTEMD_USER_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
+shopt -s nullglob
+for f in "$UNIT_DIR"/foundry-*.timer; do
+  [[ "$(head -n 1 -- "$f")" == "# Managed by vault: $VAULT_ROOT" ]] || continue
+  t="${f##*/}"
+  if ! "$SYSTEMCTL" --user is-enabled --quiet "$t"; then echo "$t: off"; continue; fi
+  props="$(TZ=UTC "$SYSTEMCTL" --user show -p LastTriggerUSec -p SubState "$t" 2>/dev/null || true)"
+  last="$(sed -n 's/^LastTriggerUSec=//p' <<< "$props")"
+  # A timer waiting on its own still-running service fired (a long intake run outlasts the 5-minute interval).
+  if grep -qx SubState=running <<< "$props"; then logline "$t" 0 ""; echo "$t: ok"; continue; fi
+  [[ -z "$last" ]] || last="$(date -d "$last" +%s 2>/dev/null || true)"
+  cal="$(sed -n 's/^OnCalendar=//p' "$f" | head -n 1)" span="$(sed -n 's/^OnUnitActiveSec=//p' "$f" | head -n 1)"
+  due="" step=""
+  if [[ -z "$last" ]]; then :
+  elif [[ -n "$cal" ]]; then
+    mapfile -t next < <(TZ=UTC LC_ALL=C systemd-analyze calendar --iterations=2 --base-time="@$last" "$cal" 2>/dev/null \
+                        | awk '/Next elapse:|Iter. #2:/ { print $3, $4, $5, $6 }')
+    if (( ${#next[@]} == 2 )); then
+      due="$(date -d "${next[0]}" +%s)" step=$(( $(date -d "${next[1]}" +%s) - due ))
+    fi
+  elif [[ -n "$span" ]]; then
+    step="$(LC_ALL=C systemd-analyze timespan "$span" 2>/dev/null | awk '$1 == "us:" { print int($2 / 1000000) }')"
+    [[ -z "$step" ]] || due=$(( last + step ))
+  fi
+  if [[ -z "$due" ]]; then
+    logline "$t" 0 unknown
+    echo "$t: unknown"
+    continue
+  fi
+  (( step < 7200 )) || step=7200
+  if (( $(date +%s) > due + step )); then
+    r="stale: no run since $(date -d "@$last" '+%F %H:%M')"
+    logline "$t" 1 "$r"
+    echo "$t: $r"
+    alert_once "$t stale:" "${r#stale: }"
+    failed=1
+  else
+    logline "$t" 0 ""
+    echo "$t: ok"
+  fi
+done
+
 exit "$failed"

@@ -123,7 +123,7 @@ after_merge "the index rebuild" system/scripts/vault_index.py rebuild
 
 # Re-render units only where this vault already installed them: an update must never install or
 # enable units the user skipped (spec gate: no unit runs before Plan 4 rewrites the commands).
-unit_dir="${SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
+unit_dir="${SYSTEMD_USER_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
 owned=0
 for f in "$unit_dir"/*.service "$unit_dir"/*.timer "$unit_dir"/*.service.d/*.conf; do
   if [[ -f "$f" && "$(head -n 1 -- "$f")" == "# Managed by vault: $VAULT_ROOT" ]]; then owned=1; break; fi

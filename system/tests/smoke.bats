@@ -19,6 +19,29 @@ setup() {
   stub triage_fetch.sh 0 "triage_fetch: 0 threads need you" 1
   stub dtcc_watch.py 0 "map ok" 1
   stub telemetry_fetch.py 0 "telemetry_fetch: prod-sentry: ok" 1
+  # Units (#166): an empty unit directory, and a systemctl that answers from $STUB_TIMERS lines
+  # "<timer>|<LastTriggerUSec>|<SubState>"; a timer with no line is not enabled.
+  cp -r "$REPO/system/systemd" system/systemd
+  export SYSTEMD_USER_DIR="$BATS_TEST_TMPDIR/units" SYSTEMCTL="$BATS_TEST_TMPDIR/bin/systemctl"
+  export STUB_TIMERS="$BATS_TEST_TMPDIR/timers"
+  UD="$SYSTEMD_USER_DIR"
+  mkdir -p "$UD"
+  touch "$STUB_TIMERS"
+  cat > "$SYSTEMCTL" <<'EOF'
+#!/bin/bash
+line="$(grep -F "${*: -1}|" "$STUB_TIMERS")" || exit 1
+[[ "$2" != show ]] || { IFS='|' read -r _ last sub <<< "$line"; printf 'LastTriggerUSec=%s\nSubState=%s\n' "$last" "$sub"; }
+EOF
+  chmod +x "$SYSTEMCTL"
+}
+
+# timer <name> <schedule line> <seconds ago or ""> [substate]: an installed timer of this vault, enabled, last
+# triggered that long ago ("" for never), as systemctl prints it under TZ=UTC.
+timer() {
+  printf '# Managed by vault: %s\n[Timer]\n%s\n' "$(pwd -P)" "$2" > "$UD/$1"
+  local last=""
+  [[ -z "$3" ]] || last="$(TZ=UTC date -d "@$(( $(date +%s) - $3 ))" '+%a %F %T %Z')"
+  printf '%s|%s|%s\n' "$1" "$last" "${4:-waiting}" >> "$STUB_TIMERS"
 }
 
 # stub <script> <exit> <message> [stream]: the vault's copy of a fetch records its call, prints the message to stderr
@@ -197,6 +220,46 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   run "$SC"
   [ "$status" -eq 0 ]
   [ "$(cat system/logs/claude.version)" = "1.0.0 (Claude Code)" ]
+}
+
+@test "an enabled timer past its next tick plus the grace reads stale and alerts once a day; on time reads ok (#166)" {
+  timer foundry-brief.timer 'OnCalendar=*-*-* 06:00:00 America/Denver' $(( 3 * 86400 ))
+  timer foundry-debrief.timer 'OnCalendar=*-*-* 17:00:00 America/Denver' 3600
+  timer foundry-intake.timer 'OnUnitActiveSec=5min' 120
+  timer foundry-telemetry.timer 'OnUnitActiveSec=1h' $(( 3 * 3600 ))
+  since="$(TZ=America/Denver date -d "@$(( $(date +%s) - 3 * 86400 ))" '+%F %H:%M')"
+  run "$SC"
+  [ "$status" -eq 1 ]
+  grep -qx "foundry-brief.timer: stale: no run since $since" <<< "$output"
+  grep -qx 'foundry-debrief.timer: ok' <<< "$output"
+  grep -qx 'foundry-intake.timer: ok' <<< "$output"
+  grep -q '^foundry-telemetry.timer: stale: no run since ' <<< "$output"
+  alerts | grep -qF "[smoke] foundry-brief.timer stale: no run since $since"
+  [ "$(jq -r 'select(.source == "foundry-brief.timer") | .exit' "$LOG")" = 1 ]
+  run "$SC"
+  [ "$(alerts | grep -c '\[smoke\]')" -eq 2 ]
+}
+
+@test "a 15-minute timer that fired 10 minutes ago reads ok in a timezone east of UTC (#166)" {
+  sed -i 's|^timezone:.*|timezone: "Asia/Tokyo"|' system/config.md
+  timer foundry-nightshift.timer 'OnCalendar=*:0/15' 600
+  run "$SC"
+  grep -qx 'foundry-nightshift.timer: ok' <<< "$output"
+}
+
+@test "a timer never triggered reads unknown, one running its service reads ok, a disabled one reads off (#166)" {
+  timer foundry-brief.timer 'OnCalendar=*-*-* 06:00:00 America/Denver' ""
+  timer foundry-intake.timer 'OnUnitActiveSec=5min' $(( 2 * 3600 )) running
+  printf '# Managed by vault: %s\n[Timer]\nOnCalendar=*:0/15\n' "$(pwd -P)" > "$UD/foundry-nightshift.timer"
+  printf '# Managed by vault: /elsewhere\n[Timer]\nOnCalendar=*:0/15\n' > "$UD/foundry-notify.timer"
+  run "$SC"
+  [ "$status" -eq 0 ]
+  grep -qx 'foundry-brief.timer: unknown' <<< "$output"
+  grep -qx 'foundry-intake.timer: ok' <<< "$output"
+  grep -qx 'foundry-nightshift.timer: off' <<< "$output"
+  run grep -c foundry-notify <<< "$output"
+  [ "$output" = 0 ]
+  [ -z "$(alerts)" ]
 }
 
 @test "a client runs no checks" {
