@@ -5,6 +5,9 @@
              [--evidence <PR URL, Work Order id or key>]
   now.py list [--partition <p>]   the open lines; without --partition, both pages under "## <partition>"
   now.py check                    close lines on checked evidence, stamp hand ticks, prune (the intake timer runs it)
+  now.py review --partition <p> [--stale-days N]
+                                  read-only: lines closed by their evidence, open more than N days (14) with no
+                                  evidence, or duplicated; nothing printed when there is nothing to review
   now.py seed YYYY-MM-DD          once: a missing default-partition page takes the previous brief's open objectives
 """
 import argparse
@@ -29,6 +32,9 @@ a.add_argument("--who", default="")
 a.add_argument("--evidence", default="")
 sub.add_parser("list").add_argument("--partition", choices=now.PARTITIONS)
 sub.add_parser("check")
+r = sub.add_parser("review")
+r.add_argument("--partition", required=True, choices=now.PARTITIONS)
+r.add_argument("--stale-days", type=int, default=now.STALE_DAYS)
 sub.add_parser("seed").add_argument("date")
 args = p.parse_args()
 
@@ -38,6 +44,16 @@ if args.cmd == "list":
         lines = now.open_lines(now.read(VAULT, part))
         if lines:
             print("\n".join(lines if args.partition else [f"## {part}", *lines]))
+    sys.exit(0)
+if args.cmd == "review":  # read-only, so no run.lock
+    found = now.review(VAULT, args.partition, intake.today(), args.stale_days,
+                       on_fail=lambda line, reason: print(f"now.py review: pull requests not checked ({reason})",
+                                                          file=sys.stderr))
+    for heading, key in (("## Closed by evidence", "closed"),
+                         (f"## Stale: open more than {args.stale_days} days with no evidence", "stale"),
+                         ("## Duplicates", "duplicate")):
+        if found[key]:
+            print("\n".join([heading, *found[key]]))
     sys.exit(0)
 if args.cmd == "seed":
     try:

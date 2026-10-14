@@ -55,7 +55,8 @@
       "Bash(git config user.name)",
       "Bash(git config user.email)",
       "Bash(git fetch -q template:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Bash(system/scripts/now.py review:*)"
     ],
     "deny": [
       "Read(~/.ssh/**)", "Read(~/.gnupg/**)",

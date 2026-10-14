@@ -175,6 +175,39 @@ def test_a_failed_pr_check_skips_the_other_prs_this_tick(vault, tmp_path):
     assert len((vault / "system/logs/now-2026-10.jsonl").read_text().splitlines()) == 1
 
 
+def test_review_groups_closed_stale_and_duplicate_lines_and_writes_nothing(vault, tmp_path):
+    # Lull review (#145): stale is open more than stale_days with no evidence; a duplicate is the same statement
+    # after lowercasing and collapsing whitespace, whatever the kind.
+    prepare(vault)
+    now.add(vault, "work", "owed", "Merged one", "2026-09-01", evidence="https://github.com/acme/shop/pull/7")
+    now.add(vault, "work", "owed", "Old one", "2026-09-24")
+    now.add(vault, "work", "owed", "Fourteen days", "2026-09-25")
+    now.add(vault, "work", "owed", "Send the  report", "2026-10-01")
+    now.add(vault, "work", "draft", "send the report", TODAY)
+    path = vault / "wiki/work/Now.md"
+    path.write_text(path.read_text().replace("## Waiting\n", "## Waiting\n- [ ] call the bank back\n"))
+    before = path.read_text()
+    assert now.review(vault, "work", TODAY, gh=gh_stub(tmp_path, "MERGED")) == {
+        "closed": ["- [ ] owed: Merged one (since 2026-09-01, https://github.com/acme/shop/pull/7) _(closed: PR merged)_"],
+        "stale": ["- [ ] owed: Old one (since 2026-09-24)"],
+        "duplicate": ["- [ ] owed: Send the  report (since 2026-10-01)", "- [ ] draft: send the report (since 2026-10-09)"]}
+    assert now.review(vault, "work", TODAY, stale_days=13, gh=gh_stub(tmp_path, "OPEN"))["stale"] == [
+        "- [ ] owed: Old one (since 2026-09-24)", "- [ ] owed: Fourteen days (since 2026-09-25)"]
+    assert path.read_text() == before
+    assert not (vault / "system/logs").exists()
+    assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": []}
+
+
+def test_review_reports_a_failed_pr_check_and_skips_the_other_prs(vault, tmp_path):
+    prepare(vault)  # (#145)
+    now.add(vault, "work", "owed", "One", TODAY, evidence="https://github.com/acme/shop/pull/7")
+    now.add(vault, "work", "owed", "Two", TODAY, evidence="https://github.com/acme/shop/pull/8")
+    fails = []
+    found = now.review(vault, "work", TODAY, gh=str(tmp_path / "no-such-gh"), on_fail=lambda l, r: fails.append(r))
+    assert found["closed"] == []
+    assert fails == ["gh is not installed"]
+
+
 def test_a_line_with_trailing_space_or_a_crlf_end_still_parses(vault, tmp_path):
     # Audit C12: an editor's trailing space or CRLF must not hide a line from dedupe and evidence checks.
     prepare(vault)
@@ -236,6 +269,21 @@ def test_cli_add_list_and_usage(vault):
     assert cli(vault, "list", "--partition", "personal").stdout.startswith("- [ ] draft: Reply to Sam")
     assert cli(vault, "add", "--partition", "shared", "--kind", "owed", "--statement", "x").returncode == 2
     assert cli(vault, "seed", "yesterday").returncode == 2
+
+
+def test_cli_review_prints_only_grouped_findings_and_exits_0(vault):
+    prepare(vault)  # (#145)
+    assert cli(vault, "review", "--partition", "work").stdout == ""
+    now.add(vault, "work", "owed", "Old one", "2020-01-01")
+    now.add(vault, "work", "owed", "Same thing", "2020-01-01")
+    now.add(vault, "work", "waiting", "same  thing", TODAY)
+    r = cli(vault, "review", "--partition", "work")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == ("## Stale: open more than 14 days with no evidence\n- [ ] owed: Old one (since 2020-01-01)\n"
+                        "- [ ] owed: Same thing (since 2020-01-01)\n"
+                        "## Duplicates\n- [ ] owed: Same thing (since 2020-01-01)\n"
+                        "- [ ] waiting: same  thing (since 2026-10-09)\n")
+    assert cli(vault, "review", "--partition", "shared").returncode == 2
 
 
 def test_cli_waits_for_run_lock_and_exits_4_when_busy(vault):

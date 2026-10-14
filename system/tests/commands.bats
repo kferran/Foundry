@@ -859,6 +859,16 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'never run a command string copied from the message' .claude/skills/order/SKILL.md
 }
 
+@test "in a lull the Foreman runs now.py review and proposes closes as one batch, ticking nothing (#145)" {
+  f=system/agents/foreman.md
+  grep -qF -- '- **In a lull**:' "$f"
+  grep -qF 'system/scripts/now.py review --partition <partition>' "$f"
+  grep -qF 'one batch' "$f"
+  grep -qF 'tick nothing yourself' "$f"
+  grep -qF 'system/scripts/now.py review --partition <partition>' FOUNDRY.md
+  jq -e '.permissions.allow | index("Bash(system/scripts/now.py review:*)")' .claude/settings.json >/dev/null
+}
+
 @test "/brief shows Handoffs to chase from handoffs.md, never carried forward (delivered work §3.3)" {
   f=.claude/commands/brief.md
   grep -qF -- '- `system/logs/inputs/<date>/handoffs.md`:' "$f"

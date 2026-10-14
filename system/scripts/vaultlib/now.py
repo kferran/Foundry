@@ -16,6 +16,7 @@ PARTITIONS = ("work", "personal")
 KINDS = ("owed", "waiting", "draft")
 NEEDS, WAITING = "## Needs you", "## Waiting"
 KEEP_DAYS = 7
+STALE_DAYS = 14
 LOOKBACK_DAYS = briefings.LOOKBACK_DAYS
 FAILURE_ALERT = 3
 GH_TIMEOUT = 10
@@ -163,27 +164,36 @@ def _failed(vault, today: str, line: str, reason: str, alert) -> None:
         alert(f"Now check failed {FAILURE_ALERT} times today for: {line} ({reason})")
 
 
+def closures(vault, lines: list, gh: str = "gh", on_fail=lambda line, reason: None) -> dict:
+    """{line: how} for the open lines whose evidence shows them finished. Read-only. The first failed pull-request
+    check (reported through on_fail) skips the other pull requests."""
+    found, gh_down = {}, False
+    for line in lines:
+        m = LINE.match(line)
+        if not m or not m.group("evidence") or (gh_down and PR_URL.match(m.group("evidence"))):
+            continue
+        try:
+            how = evidence_state(vault, m.group("evidence"), gh)
+        except CheckFailed as exc:
+            on_fail(line, str(exc))
+            gh_down = True
+            continue
+        if how:
+            found[line.rstrip()] = how
+    return found
+
+
 def check(vault, today: str, alert, gh: str = "gh") -> int:
     """Close each open line whose evidence shows it is finished. Returns the lines closed.
 
     The page is written only when a line closes, and from a fresh read, so a tick made while gh ran is kept.
     The first failed pull-request check skips the others until the next tick."""
-    closed, gh_down = 0, False
-    for partition in PARTITIONS:
-        found = {}
-        for line in open_lines(read(vault, partition)):
-            m = LINE.match(line)
-            if not m or not m.group("evidence") or (gh_down and PR_URL.match(m.group("evidence"))):
-                continue
-            try:
-                how = evidence_state(vault, m.group("evidence"), gh)
-            except CheckFailed as exc:
-                _failed(vault, today, line, str(exc), alert)
-                gh_down = True
-                continue
-            if how:
-                found[line.rstrip()] = how
-        if not found:
+    closed = 0
+    pages = {partition: open_lines(read(vault, partition)) for partition in PARTITIONS}
+    found = closures(vault, [line for lines in pages.values() for line in lines], gh,
+                     lambda line, reason: _failed(vault, today, line, reason, alert))
+    for partition, open_ in pages.items():
+        if not any(line.rstrip() in found for line in open_):
             continue
         lines = read(vault, partition).split("\n")
         for i, line in enumerate(lines):
@@ -193,6 +203,25 @@ def check(vault, today: str, alert, gh: str = "gh") -> int:
                 closed += 1
         write(vault, partition, stamp_and_prune("\n".join(lines), today))
     return closed
+
+
+def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: str = "gh",
+           on_fail=lambda line, reason: None) -> dict:
+    """The lull review (#145), read-only: "closed" (open lines whose evidence shows them finished, each with its
+    close reason), "stale" (open more than stale_days with no evidence) and "duplicate" (the same statement after
+    lowercasing and collapsing whitespace, whatever the kind), in page order. A hand-written line that does not
+    parse has no date or evidence and is left out of every group."""
+    lines = [line.rstrip() for line in open_lines(read(vault, partition))]  # an editor's trailing space (C12)
+    cutoff = (date.fromisoformat(today) - timedelta(days=stale_days)).isoformat()
+    parsed = [(line, LINE.match(line)) for line in lines]
+    found = closures(vault, lines, gh, on_fail)
+    statements = {}
+    for line, m in parsed:
+        if m:
+            statements.setdefault(" ".join(m.group("statement").lower().split()), []).append(line)
+    return {"closed": [f"{line} _(closed: {found[line]})_" for line in lines if line in found],
+            "stale": [line for line, m in parsed if m and not m.group("evidence") and m.group("since") < cutoff],
+            "duplicate": [line for group in statements.values() if len(group) > 1 for line in group]}
 
 
 def latest_open_objectives(vault, day: str) -> list:
