@@ -696,6 +696,37 @@ def test_protected_files_reach_the_pushed_branch(env, monkeypatch, tmp_path):
     assert git(tmp / "remote.git", "show", f"{branch}:done.txt") == "yes"
 
 
+def codebase_item(vault, tmp_path, verify, **keys):
+    """A plan item on a registered codebase (shop, main) whose file carries order_pr and the given keys."""
+    from test_nightshift_check import registered, set_codebase
+    registered(vault, tmp_path / "cb")
+    set_codebase(vault, "shop", order_pr="github:o/shop", **keys)
+    args = [a for v in verify for a in ("--verify", v)]
+    assert nr.main(["add", "--kind", "plan", "--title", "shop work", "--partition", "work", "--repo", "shop",
+                    "--base", "main", "--plan", "docs/p.md", "--tasks", "1-2", *args, "--now"], vault, NOW) == 0
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_a_codebase_item_runs_its_install_before_verify_and_the_session_sees_the_toolchain(env, monkeypatch, tmp_path):
+    """Orders toolchain spec §2: order_install runs first in the verify checkout; the session's PATH starts with the
+    order_toolchain directories (owner decision 2026-10-14)."""
+    vault, _ = env
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "hello-tool").write_text("#!/bin/sh\necho hi\n")
+    (tools / "hello-tool").chmod(0o755)
+    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", f'echo "$PATH" > {tmp_path}/path.txt && git add done.txt && '
+                       "git -c user.name=t -c user.email=t@e commit -qm work")
+    codebase_item(vault, tmp_path, ["test -f done.txt", "test -f installed"], order_toolchain=[str(tools)],
+                  order_install="hello-tool > installed")
+    assert nr.main(["tick"], vault, NOW) == 0
+    _, fm = only_item(vault)
+    assert fm["state"] == "done", fm
+    log = (vault / "system/logs/nightshift/items" / fm["id"] / "verify.log").read_text()
+    assert log.index("$ hello-tool > installed\n") < log.index("$ test -f done.txt\n")
+    assert (tmp_path / "path.txt").read_text().startswith(f"{tools}:")
+
+
 def test_selftest_retries_when_the_model_declines(env, monkeypatch, tmp_path):
     vault, tmp = env
     monkeypatch.setenv("HOME", str(tmp_path / "home"))  # the self-test plants its canary under $HOME
