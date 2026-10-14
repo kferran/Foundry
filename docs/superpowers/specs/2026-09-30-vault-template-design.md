@@ -479,7 +479,7 @@ Implemented in `vaultlib/publish.py`; the only path by which headless output rea
 1. **Target:** the path must be one of `--targets` (exact paths for `brief`/`debrief`, partition folders for `ingest`).
 2. **Schema:** frontmatter and schema validation (§6.15), including partition walls and lifecycle rules, against the staged content as if at its target.
 3. **Protected fields:** headless runs may not add or change `accepted_at`, `rejected_at` (§6.21), or remove `provenance` entries.
-4. **Shrink guard (patches only):** no existing frontmatter key or heading removed, and the body keeps ≥ 60% of its original length, unless the item's decision is `deprecate` or `supersede`. A heading renamed in place (same level, same ordinal among that level's headings, a new title, every line of its section kept) is not a removal (`2026-10-14-shrink-guard-rename-design.md`).
+4. **Shrink guard (patches only):** no existing frontmatter key or heading removed, and the body keeps ≥ 60% of its original length, unless the item's decision is `deprecate` or `supersede`. A heading renamed in place (same level, same ordinal among that level's headings, a new title, every non-blank line of its section kept) is not a removal; each copy of a repeated heading counts on its own (`2026-10-14-shrink-guard-rename-design.md`).
 5. **Conflict:** the target's current `sha256` equals the snapshot (or stage) hash, a target absent at start is still absent, and the target was not modified in the last 60 s.
 
 If any check fails, **nothing is published**: the staging tree moves to `system/quarantine/<run_id>/staged/`, `system/logs/runs/<run_id>/publish.json` lists every problem, and the run fails (exit 5).

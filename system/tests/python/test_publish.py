@@ -151,6 +151,55 @@ def test_shrink_guard_refuses_a_renamed_heading_moved_elsewhere(vault, sectioned
     assert any("headings removed: " + STATE_HEADING.strip() in r for r in rs)
 
 
+def patch_note(vault, old_body, new_body):
+    """Write a note with old_body, snapshot, stage it as a patch and rewrite the staged copy with new_body."""
+    write(vault, "wiki/work/concepts/Deploys.md", concept("work", "Deploys", old_body))
+    publish.snapshot(vault, RID, ["wiki/work/**"])
+    decide(vault, rec("wiki/work/concepts/Deploys.md", "patch"))
+    publish.record_stage(vault, RID, "wiki/work/concepts/Deploys.md").write_text(concept("work", "Deploys", new_body))
+    return reasons(publish.validate_run(vault, RID, now=LATER)[2])
+
+
+S1 = "The first release shipped on time and the vendor contract was signed for one year.\n"
+S2 = "- [ ] owner task: pay the vendor\n"
+A_, B_, C_ = ("Alpha section line one.\n", "Beta section line one.\n", "Gamma section line one.\n")
+
+
+def test_shrink_guard_refuses_a_duplicate_heading_deleted_beside_a_rename(vault):
+    """(#160) a rename consumes one occurrence of a repeated heading, never all of them"""
+    rs = patch_note(vault, "## Alpha\n### Status\n" + S1 + "## Beta\n### Status\n" + S2,
+                    "## Alpha\n### Status (done)\n" + S1 + "## Beta\n")
+    assert any("headings removed: ### Status" in r for r in rs)
+    assert not any("below 60%" in r for r in rs)
+
+
+def test_shrink_guard_refuses_deleting_one_of_two_duplicate_headings(vault):
+    """(#160) headings are counted, so one surviving copy does not cover a deleted one"""
+    rs = patch_note(vault, "## Alpha\n### Status\n" + S1 + "## Beta\n### Status\n" + S2,
+                    "## Alpha\n### Status\n" + S1 + "## Beta\n")
+    assert any("headings removed: ### Status" in r for r in rs)
+    assert not any("below 60%" in r for r in rs)
+
+
+def test_shrink_guard_accepts_renaming_one_of_two_duplicate_headings(vault):
+    """(#160) one copy renamed in place with its section kept, the other untouched"""
+    old = "## Alpha\n### Status\n" + S1 + "## Beta\n### Status\n" + S2
+    assert patch_note(vault, old, old.replace("### Status\n" + S1, "### Status (done)\n" + S1)) == []
+
+
+def test_shrink_guard_refuses_a_rename_onto_a_title_the_note_has(vault):
+    """(#160) the heading at the old position must carry a title new to the note"""
+    rs = patch_note(vault, "## A\n" + A_ + "## B\n" + B_ + "## C\n" + C_, "## A\n" + A_ + "## C\n" + B_)
+    assert any("headings removed: ## B" in r for r in rs)
+
+
+def test_shrink_guard_refuses_a_rename_that_changes_level(vault):
+    """(#160) a rename keeps the heading's level"""
+    rs = patch_note(vault, "## A\n" + A_ + "## B\n" + B_ + "## C\n" + C_,
+                    "## A\n" + A_ + "### X\n" + B_ + "## C\n" + C_)
+    assert any("headings removed: ## B" in r for r in rs)
+
+
 def test_protected_fields(run):
     stage_new(run, "wiki/work/preferences/P.md",
               '---\ntype: preference\nstatement: "x"\npartition: work\naccepted_at: "2026-10-01"\n---\n# P\n')

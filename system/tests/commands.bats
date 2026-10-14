@@ -59,7 +59,8 @@ headless_contract() {
 
 @test "ingest: retire a state heading by renaming it in place (#160)" {
   grep -qF 'Retire a heading that encodes a state (such as `(not yet merged)`) by renaming it in place and keeping its section; never delete the section.' .claude/commands/ingest.md
-  grep -qF 'A heading renamed in place passes when its section keeps every line.' FOUNDRY.md
+  grep -qF 'In that run, add or remove no heading of the same level above the renamed one' .claude/commands/ingest.md
+  grep -qF 'A heading renamed in place passes when its section keeps every non-blank line.' FOUNDRY.md
 }
 
 @test "brief: headless contract, allowlisted index calls, template sections" {
