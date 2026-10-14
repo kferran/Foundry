@@ -36,6 +36,7 @@ fields:
   triage_watch_senders: {kind: list, of: string}
   slack_notify_channel: {kind: string}
   slack_connector: {kind: string, default: "claude.ai Slack"}
+  notify_links: {kind: enum, values: [github, obsidian], default: "github"}
   orders_enabled: {kind: bool, default: "true"}
   update_enabled: {kind: bool, default: "true"}
 ---
@@ -50,7 +51,7 @@ The per-user global configuration written by `/setup` (gitignored). `system/conf
 
 `triage_enabled` turns on inbox triage on a standalone machine or a server (inbox triage spec): every 30 minutes on workdays, mail that needs the owner becomes an `owed` line on the Now page of `triage_partition` (default `work`). `triage_watch_senders` lists domains (`@example.com`) or addresses whose unread mail outside the inbox from the last two days also becomes an `owed` line: mail from them archived unread is not missed.
 
-`slack_notify_channel` turns on Slack notices on a standalone machine or a server (Slack notices spec): a Slack channel ID, or the owner's user ID for a direct message; empty is off. `slack_connector` is the connector a headless session loads: `claude.ai Slack` (the default) for Slack connected at claude.ai; `plugin:slack:slack` only when headless sessions load the Slack plugin. `claude mcp list` can show the plugin while a headless session loads only the claude.ai connector (#133); `notify.sh --check` names the server the session loaded.
+`slack_notify_channel` turns on Slack notices on a standalone machine or a server (Slack notices spec): a Slack channel ID, or the owner's user ID for a direct message; empty is off. `slack_connector` is the connector a headless session loads: `claude.ai Slack` (the default) for Slack connected at claude.ai; `plugin:slack:slack` only when headless sessions load the Slack plugin. `claude mcp list` can show the plugin while a headless session loads only the claude.ai connector (#133); `notify.sh --check` names the server the session loaded. `notify_links` picks the notices' links: `github` (the default) or `obsidian`, an `obsidian://open?file=<path>` link that names no vault; with several vaults on one device, check which one it opens (#157).
 
 `orders_enabled` and `update_enabled` turn on the Work Orders tick and the daily template update on a standalone machine or a server. Absent means on, so vaults made before 2026-10-12 keep both; the example config sets both to `false`, and `/setup` asks.
 

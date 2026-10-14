@@ -143,6 +143,20 @@ def test_a_work_order_is_sent_once(vault):
     assert lines(vault)[0] == []
 
 
+def test_a_work_order_shows_its_id_and_a_link_to_its_findings_note(vault):
+    # #157: the id is written by a script, so it is never redacted; a [[wikilink]] result becomes the note's link.
+    prepare(vault)
+    oid = "2026-10-13-vendor-billing-dashboards-review-prep-2026-10"
+    write(vault, "wiki/work/summaries/ReviewPrep.md", "---\ntype: summary\n---\n")
+    write(vault, f"system/logs/nightshift/items/{oid}/outcome.json",
+          json.dumps({"id": oid, "state": "done", "result": "[[ReviewPrep]]", "needs": []}))
+    write(vault, "system/logs/nightshift/items/2026-10-13-y/outcome.json",
+          json.dumps({"id": "2026-10-13-y", "state": "done", "result": "[[Missing]]", "needs": []}))
+    assert lines(vault)[0] == [
+        f"Work Order {oid} done: ReviewPrep https://github.com/owner/vault/blob/master/wiki/work/summaries/ReviewPrep.md",
+        "Work Order 2026-10-13-y done: [[Missing]]"]
+
+
 def test_nothing_is_lost_while_the_cursor_is_not_committed(vault):
     prepare(vault)
     alert(vault, "[intake] first")
@@ -169,6 +183,13 @@ def test_a_long_message_is_cut_with_a_count(vault):
 def test_the_link_is_a_github_file_link_or_nothing(vault, remote, url):
     prepare(vault, remote)
     assert notify.link(vault, "briefings/x.md") == url
+
+
+def test_notify_links_obsidian_gives_an_obsidian_uri_without_a_vault_name(vault):
+    # #157: the note opens in Obsidian; no remote and no vault-name setting needed.
+    prepare(vault, remote="")
+    write(vault, "system/config.md", '---\ntype: config\nslack_notify_channel: "C0EXAMPLE"\nnotify_links: "obsidian"\n---\n')
+    assert notify.link(vault, "briefings/2026 10.md") == "obsidian://open?file=briefings%2F2026%2010"
 
 
 def test_the_tool_prefix_comes_from_the_connector_name():

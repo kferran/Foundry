@@ -6,6 +6,7 @@ import re
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 from . import frontmatter, now as nowmod
 from .redact import redact
@@ -19,6 +20,7 @@ TRIAGE_TEXT = re.compile(r"(?<=\[triage\] )(\d+) new: .*$")
 # Steps the intake retries on its own; their outcome (published, poisoned, quarantined) is what goes out (#162).
 INTERIM = re.compile(r"; will retry$|; retrying one at a time$|\[intake\] ingest \S+(: publish rejected or empty| failed \(exit)")
 POISONED = re.compile(r"(?<=\[intake\] )poisoned (?P<when>.+?): (?P<origin>.+?) → .+$")
+WIKILINK = re.compile(r"\[\[([^\[\]|/]+)\]\]")
 SAFE = re.compile(r"\b(?:raw|wiki|system|briefings|meetings)/\S+|\b\d{8}T\d{6}-\w+-[0-9a-f]{4}\b")
 POST_ARGS = {"channel_id", "message", "unfurl_app_links"}
 EXTRA_TEXT = 500  # a posted text this much longer than the collected one carries text nobody collected
@@ -48,7 +50,10 @@ def _git(vault, *args) -> str:
 
 
 def link(vault, rel: str) -> str:
-    """A GitHub file link for a path in the vault, or "" when origin is not on github.com."""
+    """A link to a path in the vault: with notify_links "obsidian", an obsidian:// URI that names no vault (#157);
+    otherwise a GitHub file link, or "" when origin is not on github.com."""
+    if config(vault).get("notify_links") == "obsidian":
+        return "obsidian://open?file=" + quote(rel.removesuffix(".md"), safe="")
     m = re.match(r"^(?:git@github\.com:|https://github\.com/)([^/]+/[^/]+?)(?:\.git)?/?$", _git(vault, "remote", "get-url", "origin"))
     branch = _git(vault, "symbolic-ref", "--short", "HEAD")
     return f"https://github.com/{m.group(1)}/blob/{branch}/{rel}" if m and branch else ""
@@ -210,8 +215,13 @@ def collect(vault, now: datetime) -> tuple:
             continue
         cursor["outcomes"].append(oid)
         if not first:
-            detail = out.get("result") or next(iter(out.get("needs") or []), "") or out.get("reason") or ""
-            orders.append(_cut(f"Work Order {oid} {out.get('state')}" + (f": {detail}" if detail else "")))
+            detail = str(out.get("result") or next(iter(out.get("needs") or []), "") or out.get("reason") or "")
+            head = f"Work Order {oid} {out.get('state')}"  # the id is written by a script: never redacted (#157)
+            note = WIKILINK.fullmatch(detail)
+            found = next((p for p in sorted((vault / "wiki").rglob(f"{note.group(1)}.md")) if ".staging" not in p.parts),
+                         None) if note else None
+            url = link(vault, found.relative_to(vault).as_posix()) if found else ""
+            orders.append(f"{head}: {note.group(1)} {url}" if url else head + (_cut(f": {detail}") if detail else ""))
     keep = {f"alerts_{d}.md" for d in ((now - timedelta(days=1)).strftime("%F"), now.strftime("%F"))}
     cursor["alerts"] = {k: v for k, v in cursor["alerts"].items() if k in keep}
     cursor["sent"] = {k: v for k, v in cursor["sent"].items() if f"alerts_{k}.md" in keep}
