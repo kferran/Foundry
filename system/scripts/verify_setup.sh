@@ -1,6 +1,6 @@
 #!/bin/bash
 # Run the gate (spec §6.14): lint_vault.sh, then every system/tests/*.bats except system_health.bats and
-# pytest when bats and pytest are installed. --require-suites fails when they are not (verify_on_host.sh, so a
+# pytest when bats and pytest are installed (side by side with GNU parallel and pytest-xdist). --require-suites fails when they are not (verify_on_host.sh, so a
 # host proof always runs the suites). --health also runs system_health.bats; its result is reported but never
 # changes the exit code.
 set -euo pipefail
@@ -23,12 +23,15 @@ mkdir -p "$TMPDIR"
 
 results=() failed=0
 # Each suite's exit status is read directly, never through a pipe, so a failing suite cannot report green.
+record() {  # <label> <exit status>
+  if [[ "$2" == 0 ]]; then results+=("PASS $1"); else results+=("FAIL $1 (exit $2)"); failed=1; fi
+}
 gate() {  # <label> <command…>
   local label="$1" rc=0
   shift
   echo "===== $label"
   "$@" || rc=$?
-  if (( rc == 0 )); then results+=("PASS $label"); else results+=("FAIL $label (exit $rc)"); failed=1; fi
+  record "$label" "$rc"
 }
 
 gate lint system/scripts/lint_vault.sh
@@ -47,8 +50,28 @@ if (( have_bats )) && python3 -m pytest --version >/dev/null 2>&1; then
     results+=("FAIL no gating bats suites in system/tests/")
     failed=1
   fi
-  for f in "${suites[@]}"; do gate "$f" bats "$f"; done
-  gate "pytest system/tests/python" python3 -m pytest system/tests/python -q
+  # With GNU parallel (moreutils ships another program of that name) the suites run side by side, one bats
+  # process each. Every suite writes its own log and its exit status to its own file; a suite with no status
+  # file fails. The largest files start first, so a long suite does not start last. Without GNU parallel
+  # they run one after another.
+  if (( ${#suites[@]} )) && [[ "$(parallel --version 2>/dev/null || true)" == "GNU parallel"* ]]; then
+    GATE_LOGS="$(mktemp -d)"
+    export GATE_LOGS
+    ls -S -- "${suites[@]}" | parallel --will-cite --jobs "$(nproc)" \
+      'bats {} > "$GATE_LOGS/{/}.log" 2>&1; echo $? > "$GATE_LOGS/{/}.rc"' || true
+    for f in "${suites[@]}"; do
+      echo "===== $f"
+      cat "$GATE_LOGS/${f##*/}.log" 2>/dev/null || true
+      record "$f" "$(cat "$GATE_LOGS/${f##*/}.rc" 2>/dev/null || echo 'no status')"
+    done
+    rm -rf "$GATE_LOGS"
+  else
+    for f in "${suites[@]}"; do gate "$f" bats "$f"; done
+  fi
+  # pytest-xdist, when installed, spreads the tests over every core.
+  xdist=()
+  if python3 -c 'import xdist' >/dev/null 2>&1; then xdist=(-n auto); fi
+  gate "pytest system/tests/python" python3 -m pytest system/tests/python -q "${xdist[@]}"
 elif (( require_suites )); then
   results+=("FAIL suites: bats or pytest is not installed (development tools)")
   failed=1

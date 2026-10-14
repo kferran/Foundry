@@ -255,6 +255,26 @@ failing_bats() { printf '#!/usr/bin/env bats\n@test "no" { false; }\n' > "$M/sys
   grep -qx 'PASS pytest system/tests/python' <<< "$output"
 }
 
+@test "verify_setup: GNU parallel runs the suites side by side, another parallel falls back to serial, each suite keeps its result" {
+  [[ "$(parallel --version 2>/dev/null || true)" == "GNU parallel"* ]] || skip "GNU parallel is not installed"
+  mini_vault
+  failing_bats b.bats
+  P="$BATS_TEST_TMPDIR/p"
+  mkdir -p "$P"
+  printf '#!/bin/bash\necho "$*" >> "%s/calls"\nexec %s "$@"\n' "$P" "$(command -v parallel)" > "$P/parallel"
+  chmod +x "$P/parallel"
+  run env PATH="$P:$PATH" "$VS"
+  [ "$status" -eq 1 ]
+  grep -q -- '--jobs' "$P/calls"
+  grep -qx 'PASS system/tests/a.bats' <<< "$output"
+  grep -qx 'FAIL system/tests/b.bats (exit 1)' <<< "$output"
+  printf '#!/bin/bash\necho "parallel: another program" >&2\nexit 1\n' > "$P/parallel"
+  run env PATH="$P:$PATH" "$VS"
+  [ "$status" -eq 1 ]
+  grep -qx 'PASS system/tests/a.bats' <<< "$output"
+  grep -qx 'FAIL system/tests/b.bats (exit 1)' <<< "$output"
+}
+
 @test "verify_setup: a failing pytest run fails the run" {
   mini_vault
   printf 'def test_no():\n    assert False\n' > "$M/system/tests/python/test_no.py"
