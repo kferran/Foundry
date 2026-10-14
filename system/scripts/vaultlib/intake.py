@@ -36,6 +36,7 @@ DUPLICATE_SECONDS = 15 * 60
 # A meeting note with no summary, decisions or action items and a transcript under this many spoken lines is empty:
 # the reported case (#142) had 9 lines from a minute of talk before everyone left; a meeting that was held has dozens.
 EMPTY_TRANSCRIPT_LINES = 20
+EMPTY_SECTION = re.compile(r"(None\.|[*_-]{3,}|)")  # "None.", a Markdown horizontal rule, or nothing
 
 
 def _append_jsonl(path, record) -> None:
@@ -632,12 +633,14 @@ class Intake:
         path.unlink()
 
     def _empty(self, note_text: str, transcript_text: str) -> bool:
-        """Every section reads only "None." and the transcript has under EMPTY_TRANSCRIPT_LINES spoken lines.
-        Any text written into the note (under Details, after a None., or under a section added by hand) keeps it."""
+        """Every section reads only "None.", a horizontal rule or nothing, and the transcript has under
+        EMPTY_TRANSCRIPT_LINES spoken lines. A Gemini Doc with nothing under Details renders a rule ("***" or
+        "---"). Any text written into the note (under Details, after a None., or under a section added by hand)
+        keeps it."""
         sections = re.split(r"^## .*$", frontmatter.parse(note_text).body, flags=re.M)[1:]
         spoken = [line for line in frontmatter.parse(transcript_text).body.splitlines()
                   if line.strip() and not line.startswith("#")]
-        return (bool(sections) and all(s.strip() == "None." for s in sections)
+        return (bool(sections) and all(EMPTY_SECTION.fullmatch(s.strip()) for s in sections)
                 and len(spoken) < EMPTY_TRANSCRIPT_LINES)
 
     def _empty_note(self, note: Path) -> bool:
