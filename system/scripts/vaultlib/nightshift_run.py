@@ -130,7 +130,7 @@ def _selftest_once(vault) -> tuple:
             cmd = ss.command("plan", SELFTEST_PROMPT, settings, "haiku", str(uuid.uuid4()), [])
             with open(stream, "w") as out:
                 try:
-                    subprocess.run(cmd, cwd=tmp, stdout=out, stderr=subprocess.DEVNULL, timeout=300)
+                    subprocess.run(cmd, cwd=tmp, env=ss.session_env(), stdout=out, stderr=subprocess.DEVNULL, timeout=300)
                 except (OSError, subprocess.TimeoutExpired) as exc:
                     return False, f"self-test session failed: {exc.__class__.__name__}"
             s = ss.parse_stream(stream)
@@ -343,7 +343,8 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
     started = clock.monotonic()
     outcome = None
     with open(stream, "a") as out, open(idir / "run.log", "a") as err:
-        proc = subprocess.Popen(cmd, cwd=cwd, stdout=out, stderr=err, start_new_session=True)
+        # session_env() is the session's whole environment: no agent socket, no host token (audit S3/S7 spec §2).
+        proc = subprocess.Popen(cmd, cwd=cwd, env=ss.session_env(), stdout=out, stderr=err, start_new_session=True)
         (idir / "session.pid").write_text(str(proc.pid))
         checked = False
         while proc.poll() is None:

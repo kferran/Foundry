@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -39,18 +40,32 @@ def env(vault: Path, tmp_path: Path, monkeypatch):
     shutil.copy(FX / "ok.jsonl", stream)
     writes = tmp_path / "writes.txt"
     writes.write_text(f"done.txt=yes\n.nightshift/result.json={RESULT}\n")
-    monkeypatch.setenv("FOUNDRY_CLAUDE_BIN", str(REPO / "system/tests/stub_claude_nightshift"))
-    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(stream))
-    monkeypatch.setenv("NIGHTSHIFT_STUB_WRITE", str(writes))
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "git add done.txt && git -c user.name=t -c user.email=t@e commit -qm work")
-    monkeypatch.setattr(nr, "PR_FOR_LOCAL", "github:o/r")  # a local bare remote stands in for GitHub
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
+    # The session's environment is session_env() alone, so the stub's settings reach it through this wrapper.
+    (bin_dir / "claude").write_text(f'#!/bin/bash\nset -a\n. "{tmp_path / "stub.env"}"\nset +a\n'
+                                    f'exec "{REPO / "system/tests/stub_claude_nightshift"}" "$@"\n')
+    (bin_dir / "claude").chmod(0o755)
+    monkeypatch.setenv("FOUNDRY_CLAUDE_BIN", str(bin_dir / "claude"))
+    stub(tmp_path, STREAM=str(stream), WRITE=str(writes),
+         SHELL="git add done.txt && git -c user.name=t -c user.email=t@e commit -qm work")
+    monkeypatch.setattr(nr, "PR_FOR_LOCAL", "github:o/r")  # a local bare remote stands in for GitHub
     (bin_dir / "gh").write_text('#!/bin/bash\n[[ "$1" == auth ]] && exit 0\necho https://github.com/o/r/pull/1\n')
     (bin_dir / "gh").chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     monkeypatch.setattr(nr, "health", lambda vault, now, entries: {"claude": "ok", "sandbox": "ok", "usage7": 0.4})
     return vault, tmp_path
+
+
+def stub(tmp, **settings):
+    """NIGHTSHIFT_STUB_<KEY> settings for the stub, exported by the fixture's wrapper (the session environment is
+    session_env() alone and carries none of them)."""
+    f = tmp / "stub.env"
+    names = {f"NIGHTSHIFT_STUB_{k}" for k in settings}
+    keep = [l for l in (f.read_text().splitlines() if f.is_file() else [])
+            if l.removeprefix("export ").split("=", 1)[0] not in names]
+    f.write_text("".join(f"{l}\n" for l in keep) +
+                 "".join(f"export NIGHTSHIFT_STUB_{k}={shlex.quote(v)}\n" for k, v in settings.items()))
 
 
 def add(vault, *extra):
@@ -65,7 +80,7 @@ def only_item(vault):
 
 
 def test_add_refuses_unready(env):
-    vault, _ = env
+    vault, tmp = env
     assert nr.main(["add", "--kind", "plan", "--title", "x", "--partition", "work", "--repo", "template",
                     "--base", "feat/x", "--plan", "docs/p.md", "--verify", "true"], vault, NOW) == 2
     assert ni.items(vault) == []
@@ -89,7 +104,7 @@ def test_now_item_runs_verifies_pushes_and_reports(env):
 def test_first_tick_checks_health_even_when_a_usage_reading_made_the_file(env, monkeypatch):
     # run_headless.sh records usage into the day's health file before any tick (usage ceiling spec): the
     # first tick must still run the claude, gh and sandbox checks, and keep the newer reading.
-    vault, _ = env
+    vault, tmp = env
     monkeypatch.setattr(nr, "health", lambda vault, now, entries: {"claude": "ok", "sandbox": "FAILED: canary read"})
     day = nr.Ctx(vault, NOW).date
     rep.record_usage(vault, day, {"five_hour": 0.3, "seven_day": 0.2}, NOW.isoformat())
@@ -101,7 +116,7 @@ def test_first_tick_checks_health_even_when_a_usage_reading_made_the_file(env, m
 
 
 def test_window_item_waits_in_daytime(env):
-    vault, _ = env
+    vault, tmp = env
     assert add(vault, "--window") == 0
     assert nr.main(["tick"], vault, NOW) == 0
     assert only_item(vault)[1]["state"] == "queued"
@@ -110,7 +125,7 @@ def test_window_item_waits_in_daytime(env):
 @pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
 def test_verify_failure_blocks_without_push(env, monkeypatch):
     vault, tmp = env
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "true")  # no commit, done.txt left uncommitted
+    stub(tmp, SHELL="true")  # no commit, done.txt left uncommitted
     assert add(vault, "--now") == 0
     assert nr.main(["tick"], vault, NOW) == 1
     _, fm = only_item(vault)
@@ -120,7 +135,7 @@ def test_verify_failure_blocks_without_push(env, monkeypatch):
 
 def test_usage_limit_waits_then_resumes(env, monkeypatch):
     vault, tmp = env
-    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(FX / "limited.jsonl"))
+    stub(tmp, STREAM=str(FX / "limited.jsonl"))
     assert add(vault, "--now") == 0
     nr.main(["tick"], vault, NOW)
     _, fm = only_item(vault)
@@ -128,27 +143,41 @@ def test_usage_limit_waits_then_resumes(env, monkeypatch):
 
 
 def test_profile_mismatch_kills_and_fails(env, monkeypatch):
-    vault, _ = env
-    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(FX / "badinit.jsonl"))
+    vault, tmp = env
+    stub(tmp, STREAM=str(FX / "badinit.jsonl"))
     assert add(vault, "--now") == 0
     assert nr.main(["tick"], vault, NOW) == 1
     _, fm = only_item(vault)
     assert fm["state"] == "failed" and fm["reason"] == "profile"
 
 
+def test_the_session_gets_only_the_allowlisted_environment(env, monkeypatch):
+    # audit S3/S7 spec §2: session_env() is the session's whole environment; a planted agent socket never reaches it
+    vault, tmp = env
+    stub(tmp, ENV=str(tmp / "env.txt"))
+    monkeypatch.setenv("SSH_AUTH_SOCK", "/run/user/1/keyring/ssh")
+    assert add(vault, "--now") == 0
+    nr.main(["tick"], vault, NOW)
+    names = {line.split("=", 1)[0] for line in (tmp / "env.txt").read_text().splitlines() if "=" in line}
+    assert "SSH_AUTH_SOCK" not in names
+    assert {"PATH", "HOME"} <= names
+    bash_own = {"_", "SHLVL", "PWD", "OLDPWD"}
+    assert names - bash_own - {n for n in names if n.startswith("NIGHTSHIFT_STUB_")} <= set(nr.ss.ENV)
+
+
 def test_no_result_is_failed(env, monkeypatch, tmp_path):
-    vault, _ = env
+    vault, tmp = env
     empty = tmp_path / "none.txt"
     empty.write_text("")
-    monkeypatch.setenv("NIGHTSHIFT_STUB_WRITE", str(empty))
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "true")
+    stub(tmp, WRITE=str(empty))
+    stub(tmp, SHELL="true")
     assert add(vault, "--now") == 0
     assert nr.main(["tick"], vault, NOW) == 1
     assert only_item(vault)[1]["reason"] == "no result"
 
 
 def test_settings_read_the_old_keys_and_the_new_ones_win(env, tmp_path):
-    vault, _ = env
+    vault, tmp = env
     assert nr.Ctx(vault, NOW).workspace == tmp_path / "ws"   # the fixture sets only nightshift_workspace
     write(vault, "system/config.md", '---\ntype: config\ntimezone: "UTC"\nnightshift_workspace: "/old"\n'
           'order_workspace: "/new"\nnightshift_window: "21:00-04:00"\n---\n')
@@ -160,7 +189,7 @@ def test_settings_read_the_old_keys_and_the_new_ones_win(env, tmp_path):
 
 
 def test_alerts_carry_the_orders_tag(env):
-    vault, _ = env
+    vault, tmp = env
     ctx = nr.Ctx(vault, NOW)
     ctx.alert("k", "something broke")
     text = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
@@ -168,7 +197,7 @@ def test_alerts_carry_the_orders_tag(env):
 
 
 def test_add_starts_now_unless_told_otherwise(env):
-    vault, _ = env
+    vault, tmp = env
     assert add(vault) == 0
     path, fm = only_item(vault)
     assert fm["start"] == "now"
@@ -178,11 +207,11 @@ def test_add_starts_now_unless_told_otherwise(env):
 
 
 def test_a_finished_session_stores_the_five_hour_usage(env, monkeypatch, tmp_path):
-    vault, _ = env
+    vault, tmp = env
     empty = tmp_path / "none.txt"
     empty.write_text("")
-    monkeypatch.setenv("NIGHTSHIFT_STUB_WRITE", str(empty))
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "true")
+    stub(tmp, WRITE=str(empty))
+    stub(tmp, SHELL="true")
     assert add(vault) == 0
     nr.main(["tick"], vault, NOW)
     h = json.loads((vault / "system/logs/nightshift/health-2026-10-07.json").read_text())
@@ -196,7 +225,7 @@ def health_at(vault, usage5, age_hours, date="2026-10-07"):
 
 
 def test_a_hold_reaches_the_report_file_the_brief_copies(env):
-    vault, _ = env
+    vault, tmp = env
     assert add(vault) == 0
     health_at(vault, 0.7, 1)
     nr.main(["tick"], vault, NOW)
@@ -204,7 +233,7 @@ def test_a_hold_reaches_the_report_file_the_brief_copies(env):
 
 
 def test_a_cancelled_held_item_clears_the_held_line(env):
-    vault, _ = env
+    vault, tmp = env
     assert add(vault) == 0
     health_at(vault, 0.7, 1)
     nr.main(["tick"], vault, NOW)
@@ -214,7 +243,7 @@ def test_a_cancelled_held_item_clears_the_held_line(env):
 
 
 def test_a_new_report_day_keeps_the_last_five_hour_reading(env):
-    vault, _ = env
+    vault, tmp = env
     assert add(vault) == 0
     health_at(vault, 0.7, 1, date="2026-10-06")   # read by the last session before the brief
     nr.main(["tick"], vault, NOW)
@@ -223,7 +252,7 @@ def test_a_new_report_day_keeps_the_last_five_hour_reading(env):
 
 
 def test_the_five_hour_ceiling_holds_a_new_item_and_says_why(env, capsys):
-    vault, _ = env
+    vault, tmp = env
     assert add(vault) == 0
     health_at(vault, 0.7, 1)
     assert nr.main(["tick"], vault, NOW) == 0
@@ -234,11 +263,11 @@ def test_the_five_hour_ceiling_holds_a_new_item_and_says_why(env, capsys):
 
 @pytest.mark.parametrize("age,config", [(6, ""), (1, 'order_max_five_hour: "0.8"\n')])
 def test_an_old_reading_or_a_higher_ceiling_lets_it_start(env, monkeypatch, capsys, age, config):
-    vault, _ = env
+    vault, tmp = env
     if config:
         cfg = vault / "system/config.md"
         cfg.write_text(cfg.read_text().rsplit("---\n", 1)[0] + config + "---\n")
-    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(FX / "limited.jsonl"))
+    stub(tmp, STREAM=str(FX / "limited.jsonl"))
     assert add(vault) == 0
     health_at(vault, 0.7, age)
     nr.main(["tick"], vault, NOW)
@@ -249,8 +278,8 @@ def test_an_old_reading_or_a_higher_ceiling_lets_it_start(env, monkeypatch, caps
 
 @pytest.mark.parametrize("state", ["running", "waiting_reset"])
 def test_the_five_hour_ceiling_never_stops_an_item_already_started(env, monkeypatch, state):
-    vault, _ = env
-    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(FX / "limited.jsonl"))
+    vault, tmp = env
+    stub(tmp, STREAM=str(FX / "limited.jsonl"))
     assert add(vault) == 0
     path, _ = only_item(vault)
     ni.update(path, state=state, attempts="1", session_id="old", reset_at=(NOW - timedelta(hours=1)).isoformat())
@@ -260,7 +289,7 @@ def test_the_five_hour_ceiling_never_stops_an_item_already_started(env, monkeypa
 
 
 def test_cancel_and_list(env, capsys):
-    vault, _ = env
+    vault, tmp = env
     assert add(vault) == 0
     _, fm = only_item(vault)
     assert nr.main(["cancel", fm["id"]], vault, NOW) == 0
@@ -271,7 +300,7 @@ def test_cancel_and_list(env, capsys):
 
 def test_lock_held_exits_4(env):
     import fcntl
-    vault, _ = env
+    vault, tmp = env
     (vault / "system").mkdir(exist_ok=True)
     with open(vault / nr.LOCK, "w") as f:
         fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -279,15 +308,15 @@ def test_lock_held_exits_4(env):
 
 
 def test_selftest_parses_tool_results(env, monkeypatch, tmp_path):
-    vault, _ = env
+    vault, tmp = env
     monkeypatch.setenv("HOME", str(tmp_path / "home"))  # the self-test plants its canary under $HOME
     good = tmp_path / "good.jsonl"
     good.write_text((FX / "ok.jsonl").read_text().replace("CURL_EXIT=6", "CURL_EXIT=6 CAT_EXIT=1"))
-    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(good))
+    stub(tmp, STREAM=str(good))
     assert nr.selftest(vault)[0] is True
     bad = tmp_path / "bad.jsonl"
     bad.write_text((FX / "ok.jsonl").read_text().replace("CURL_EXIT=6", "CURL_EXIT=0 CAT_EXIT=1"))
-    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(bad))
+    stub(tmp, STREAM=str(bad))
     ok, why = nr.selftest(vault)
     assert ok is False and "curl" in why
 
@@ -297,7 +326,7 @@ def note_of(vault):
 
 
 def test_template_clone_holds_no_private_vault_objects(env):
-    vault, _ = env
+    vault, tmp = env
     write(vault, "wiki/work/concepts/Secret.md", "private")
     git(vault, "add", "-A")
     git(vault, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "private note")
@@ -310,7 +339,7 @@ def test_template_clone_holds_no_private_vault_objects(env):
 
 
 def test_template_clone_comes_from_the_template_remote(env):
-    vault, _ = env
+    vault, tmp = env
     on_remote = git(vault, "rev-parse", "feat/x").strip()
     assert add(vault) == 0
     git(vault, "checkout", "-q", "feat/x")
@@ -355,8 +384,8 @@ def test_a_template_base_gone_from_the_remote_fails_at_once_with_a_needs_you_lin
 
 @pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
 def test_vault_master_moving_during_a_run_is_not_a_containment_failure(env, monkeypatch):
-    vault, _ = env
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "git add done.txt && git -c user.name=t -c user.email=t@e commit -qm work"
+    vault, tmp = env
+    stub(tmp, SHELL="git add done.txt && git -c user.name=t -c user.email=t@e commit -qm work"
                        f" && git -C {vault} -c user.name=t -c user.email=t@e commit -q --allow-empty -m ingest")
     assert add(vault, "--now") == 0
     assert nr.main(["tick"], vault, NOW) == 0
@@ -364,7 +393,7 @@ def test_vault_master_moving_during_a_run_is_not_a_containment_failure(env, monk
 
 
 def test_resume_stops_a_session_left_running(env):
-    vault, _ = env
+    vault, tmp = env
     assert add(vault, "--now") == 0
     path, fm = only_item(vault)
     stale = subprocess.Popen(["sleep", "300"], start_new_session=True)
@@ -377,7 +406,7 @@ def test_resume_stops_a_session_left_running(env):
 
 
 def test_cancel_stops_a_live_session(env):
-    vault, _ = env
+    vault, tmp = env
     assert add(vault, "--now") == 0
     path, fm = only_item(vault)
     live = subprocess.Popen(["sleep", "300"], start_new_session=True)
@@ -390,9 +419,9 @@ def test_cancel_stops_a_live_session(env):
 
 
 def test_budget_spans_attempts(env, monkeypatch):
-    vault, _ = env
+    vault, tmp = env
     monkeypatch.setattr(nr, "POLL", 1)
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "sleep 4")
+    stub(tmp, SHELL="sleep 4")
     assert add(vault, "--now") == 0
     _, fm = only_item(vault)
     idir = vault / "system/logs/nightshift/items" / fm["id"]
@@ -403,10 +432,10 @@ def test_budget_spans_attempts(env, monkeypatch):
 
 
 def test_no_init_event_requeues_with_a_fresh_session(env, monkeypatch, tmp_path):
-    vault, _ = env
+    vault, tmp = env
     empty = tmp_path / "empty.jsonl"
     empty.write_text("")
-    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(empty))
+    stub(tmp, STREAM=str(empty))
     assert add(vault, "--now") == 0
     nr.main(["tick"], vault, NOW)
     _, fm = only_item(vault)
@@ -423,7 +452,7 @@ def test_delivery_failure_is_retried_without_a_new_session(env, monkeypatch, tmp
     nr.main(["tick"], vault, NOW)
     assert only_item(vault)[1]["state"] == "delivering"
     hook.unlink()
-    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(tmp_path / "missing.jsonl"))  # a new session would fail
+    stub(tmp, STREAM=str(tmp_path / "missing.jsonl"))  # a new session would fail
     assert nr.main(["tick"], vault, NOW) == 0
     assert only_item(vault)[1]["state"] == "done"
 
@@ -441,19 +470,19 @@ def test_failed_clones_are_removed_after_seven_days(env):
 
 
 def test_research_runs_on_a_context_copy_and_publishes(env, monkeypatch, tmp_path):
-    vault, _ = env
+    vault, tmp = env
     from helpers import concept
     write(vault, "wiki/work/concepts/Background.md", concept("work", "Background"))
     note = concept("work", "Answer", "Found it.", provenance='["headless"]').replace("\n", "\\n")
     writes = tmp_path / "rw.txt"
     writes.write_text(f'out/Answer.md={note}\nout/result.json={{"status": "done", "summary": "ok", "questions": []}}\n')
-    monkeypatch.setenv("NIGHTSHIFT_STUB_WRITE", str(writes))
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "test -f context/concepts/Background.md")
-    monkeypatch.setenv("NIGHTSHIFT_STUB_ARGS", str(tmp_path / "args.txt"))
+    stub(tmp, WRITE=str(writes))
+    stub(tmp, SHELL="test -f context/concepts/Background.md")
+    stub(tmp, ARGS=str(tmp_path / "args.txt"))
     shutil.copy(FX / "ok.jsonl", tmp_path / "r.jsonl")
     (tmp_path / "r.jsonl").write_text((FX / "ok.jsonl").read_text().replace(
         '"tools":["Read","Glob","Grep","Edit","Write","Bash","Skill","Agent","TodoWrite"]', '"tools":["Read","Write"]'))
-    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(tmp_path / "r.jsonl"))
+    stub(tmp, STREAM=str(tmp_path / "r.jsonl"))
     brief = tmp_path / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
     assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
@@ -518,7 +547,7 @@ def test_research_code_half_built_or_moved_is_rebuilt_at_the_recorded_commit(env
 
 @pytest.mark.skipif(not shutil.which("git-lfs"), reason="git-lfs not installed")
 def test_research_copy_of_an_lfs_codebase_holds_the_files(env, tmp_path, monkeypatch):
-    vault, _ = env
+    vault, tmp = env
     from test_nightshift_deliver import lfs_repo
     src = lfs_repo(tmp_path / "cb" / "shop", monkeypatch)
     git(src, "update-ref", "refs/remotes/origin/HEAD", "HEAD")   # research reads the remote's default branch
@@ -535,7 +564,7 @@ def test_research_copy_of_an_lfs_codebase_holds_the_files(env, tmp_path, monkeyp
 
 @pytest.mark.skipif(not shutil.which("git-lfs"), reason="git-lfs not installed")
 def test_research_reads_a_pointer_for_an_lfs_file_the_live_clone_never_downloaded(env, tmp_path, monkeypatch):
-    vault, _ = env
+    vault, tmp = env
     from test_nightshift_deliver import lfs_repo
     src = lfs_repo(tmp_path / "cb" / "shop", monkeypatch)
     (src / "b.png").write_bytes(b"NEWPNG\n")   # a commit fetched but never checked out: its object is not in the store
@@ -567,7 +596,7 @@ def test_protected_files_reach_the_pushed_branch(env, monkeypatch, tmp_path):
     writes = tmp_path / "pw.txt"
     writes.write_text(f"done.txt=yes\n.nightshift/protected/claude/skills/demo/SKILL.md=hello\\n\n"
                       f".nightshift/result.json={RESULT}\n")
-    monkeypatch.setenv("NIGHTSHIFT_STUB_WRITE", str(writes))
+    stub(tmp, WRITE=str(writes))
     assert add(vault, "--now") == 0
     assert nr.main(["tick"], vault, NOW) == 0
     branch = git(tmp / "remote.git", "branch", "--list").split()[-1]
@@ -576,7 +605,7 @@ def test_protected_files_reach_the_pushed_branch(env, monkeypatch, tmp_path):
 
 
 def test_selftest_retries_when_the_model_declines(env, monkeypatch, tmp_path):
-    vault, _ = env
+    vault, tmp = env
     monkeypatch.setenv("HOME", str(tmp_path / "home"))  # the self-test plants its canary under $HOME
     declined = tmp_path / "declined.jsonl"
     declined.write_text((FX / "ok.jsonl").read_text().replace('"content":"CURL_EXIT=6"', '"content":"no"'))
@@ -584,11 +613,11 @@ def test_selftest_retries_when_the_model_declines(env, monkeypatch, tmp_path):
     good.write_text((FX / "ok.jsonl").read_text().replace("CURL_EXIT=6", "CURL_EXIT=6 CAT_EXIT=1"))
     stream = tmp_path / "s.jsonl"
     shutil.copy(declined, stream)
-    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(stream))
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", f"if [ -f {tmp_path}/once ]; then cp {good} {stream}; else touch {tmp_path}/once; fi")
+    stub(tmp, STREAM=str(stream))
+    stub(tmp, SHELL=f"if [ -f {tmp_path}/once ]; then cp {good} {stream}; else touch {tmp_path}/once; fi")
     assert nr.selftest(vault)[0] is True
     shutil.copy(declined, stream)
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", "true")
+    stub(tmp, SHELL="true")
     ok, why = nr.selftest(vault)
     assert ok is False and "did not run" in why
 
@@ -599,23 +628,23 @@ def test_selftest_prompt_says_failures_are_expected():
 
 
 def test_selftest_plants_a_canary_and_fails_if_the_session_reads_it(env, monkeypatch, tmp_path):
-    vault, _ = env
+    vault, tmp = env
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
     canary = home / ".config" / "foundry" / "nightshift-canary"
     stream = tmp_path / "s.jsonl"
     clean = (FX / "ok.jsonl").read_text().replace("CURL_EXIT=6", "CURL_EXIT=6 CAT_EXIT=1")
     stream.write_text(clean)
-    monkeypatch.setenv("NIGHTSHIFT_STUB_STREAM", str(stream))
+    stub(tmp, STREAM=str(stream))
     # A masked sandbox: the canary exists while the session runs, the read fails, and the canary is gone afterwards.
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", f"test -s {canary} && touch {tmp_path}/seen")
+    stub(tmp, SHELL=f"test -s {canary} && touch {tmp_path}/seen")
     assert nr.selftest(vault) == (True, "")
     assert (tmp_path / "seen").exists() and not canary.exists()
     # An unmasked sandbox: the session's output carries the canary's content, even with a non-zero exit code.
     line = json.dumps({"type": "user", "message": {"content": [{"type": "tool_result", "content": "LEAK CAT_EXIT=1"}]}})
     leak = tmp_path / "leak.sh"
     leak.write_text(f"echo '{line}' | sed \"s/LEAK/$(cat {canary})/\" >> {stream}\n")
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", f"bash {leak}")
+    stub(tmp, SHELL=f"bash {leak}")
     ok, why = nr.selftest(vault)
     assert ok is False and "canary" in why
     assert not canary.exists()
