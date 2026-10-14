@@ -76,7 +76,7 @@ class Ctx:
         self.tz = ZoneInfo(str(cfg.get("timezone") or "UTC"))
         self.brief_time = str(cfg.get("brief_time") or "06:00")
         self.window = ns.parse_window(nc.setting(cfg, "run_window", "nightshift_window"))
-        self.workspace = Path(str(nc.setting(cfg, "order_workspace", "nightshift_workspace") or "~/code/worktrees")).expanduser()
+        self.workspace = nc.workspace(cfg)
         try:
             self.max_five_hour = float(cfg.get("order_max_five_hour", 0.6))
         except (TypeError, ValueError):
@@ -269,8 +269,9 @@ def _research_code(ctx: Ctx, fm: dict, code: Path) -> None:
 
 
 def _deny(ctx: Ctx, fm: dict) -> list:
-    """Paths a session must not read: the vault's notes, inputs and logs, and every other registered codebase."""
-    out = [str(ctx.vault / p) for p in ("wiki", "raw", "briefings", "system/logs")]
+    """Paths a session must not read: the whole vault (its clone, context/ and out/ live under order_workspace, so it
+    needs nothing from the vault; audit S3/S7 spec §2) and every other registered codebase."""
+    out = [str(ctx.vault)]
     # A plan item works in its own codebase; a research item reads code/, so even its own checkout stays denied.
     own = nc.source(ctx.vault, fm.get("repo")) if fm.get("kind") == "plan" and fm.get("repo") != "template" else None
     for p in sorted((ctx.vault / "system" / "codebases").glob("*.md")):
@@ -519,6 +520,9 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     attempts = int(fm.get("attempts") or 0) + 1
     ni.update(path, state="running", started_at=fm.get("started_at") or ctx.now.isoformat(), attempts=str(attempts),
               reset_at=None)
+    if nc.workspace_inside_vault(ctx.vault, ctx.workspace):   # the session's profile denies the vault root
+        return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "workspace", "needs": [
+            f"Move order_workspace outside the vault ({ctx.workspace} is inside it), then queue {fm['id']} again"]})
     before = {}
     if fm["kind"] == "plan":
         try:

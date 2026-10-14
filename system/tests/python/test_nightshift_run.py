@@ -382,6 +382,28 @@ def test_a_template_base_gone_from_the_remote_fails_at_once_with_a_needs_you_lin
     assert out["needs"][0].startswith(f"Push feat/x to the template remote, then queue {fm['id']} again")
 
 
+def set_workspace(vault, ws):
+    cfg = vault / "system/config.md"
+    cfg.write_text(cfg.read_text().rsplit("---\n", 1)[0] + f'order_workspace: "{ws}"\n---\n')
+
+
+def test_add_refuses_a_workspace_inside_the_vault_and_a_tick_fails_a_queued_one(env, capsys):
+    # audit S3/S7 spec §2: the deny would cover the session's own working directory
+    vault, tmp = env
+    assert add(vault, "--now") == 0   # queued while the workspace was outside the vault
+    set_workspace(vault, vault / ".scratch" / "ws")
+    assert nr.main(["add", "--kind", "plan", "--title", "second", "--partition", "work", "--repo", "template",
+                    "--base", "feat/x", "--plan", "docs/p.md", "--tasks", "1-2", "--verify", "true", "--now"], vault, NOW) == 2
+    assert "not ready: order_workspace is inside the vault" in capsys.readouterr().out
+    assert nr.main(["tick"], vault, NOW) == 1
+    _, fm = only_item(vault)
+    assert (fm["state"], fm["reason"]) == ("failed", "workspace")
+    out = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
+    assert out["needs"][0].startswith("Move order_workspace outside the vault")
+    assert f"then queue {fm['id']} again" in out["needs"][0]
+    assert not (vault / ".scratch" / "ws").exists()
+
+
 @pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
 def test_vault_master_moving_during_a_run_is_not_a_containment_failure(env, monkeypatch):
     vault, tmp = env
@@ -513,6 +535,19 @@ def test_research_reads_a_pinned_copy_of_its_codebase(env, tmp_path):
     assert git(d / "code", "rev-parse", "HEAD").strip() == first
     assert not (d / "code" / "later.py").exists()
     assert str(clone) in nr._deny(ctx, fm)   # the live checkout stays denied
+
+
+def test_a_run_denies_the_vault_root_and_not_only_its_four_folders(env):
+    # audit S3/S7 spec §2: the clone, context/ and out/ live under order_workspace, so a session needs nothing from the vault
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    nr.main(["tick"], vault, NOW)
+    _, fm = only_item(vault)
+    settings = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "settings.json").read_text())
+    deny = settings["sandbox"]["filesystem"]["denyRead"]
+    assert str(vault) in deny
+    assert not any(d.startswith(str(vault) + "/") for d in deny)   # the root alone, none of the four folders
+    assert f"Read(//{str(vault).lstrip('/')}/**)" in settings["permissions"]["deny"]
 
 
 def test_research_code_is_one_commit_with_no_links_to_the_live_clone(env, tmp_path):
