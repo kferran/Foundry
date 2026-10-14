@@ -53,7 +53,7 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   [ "$(arg_after --permission-mode)" = dontAsk ]
   [ "$(arg_after --output-format)" = stream-json ]
   [ "$(arg_after --max-budget-usd)" = 1 ]
-  [ "$(arg_after --max-turns)" = 15 ]
+  [ "$(arg_after --max-turns)" = 40 ]
   deny="$(awk '$0 == "--disallowedTools" { p = 1; next } p' "$STUB_ARGS")"
   for t in Bash PowerShell Monitor Read Write Edit Glob Grep WebFetch WebSearch Skill Agent Workflow SendMessage \
       Artifact CronCreate RemoteTrigger ListMcpResourcesTool ReadMcpResourceTool \
@@ -88,6 +88,14 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   run "$CF" "$DAY"
   [ "$status" -eq 0 ]
   grep -qF 'startTime "2026-10-05T00:00:00", endTime "2026-10-06T00:00:00", timeZone "America/Denver"' "$STUB_ARGS"
+}
+
+@test "the prompt asks for pages of 3 events, follows every nextPageToken and has the turns for it (#164)" {
+  run "$CF" "$DAY"
+  [ "$status" -eq 0 ]
+  grep -qF 'timeZone "America/Denver", pageSize 3.' "$STUB_ARGS"
+  grep -qF 'with that pageToken and pageSize 3 until none is left' "$STUB_ARGS"
+  [ "$(arg_after --max-turns)" = 40 ]
 }
 
 @test "every tool the user's settings allow is denied, except list_events and rules that would match it" {
@@ -223,4 +231,13 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   [ "$(jq .exit "$log")" = 0 ]
   run "$CF" --check "$DAY"
   [ "$status" -eq 2 ]
+}
+
+@test "--check fails with exit 6 when a page exceeded the result limit, even with an ok reply (#164)" {
+  stream_ok '[]'
+  sed -i '$i {"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"Error: result (54,846 characters) exceeds maximum allowed tokens. Output has been saved to /x/1.txt."}]}}' "$STUB_STREAM"
+  run "$CF" --check
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"exceeded the result limit"* ]]
+  [ "$(jq .exit system/logs/calendar_fetch-*.jsonl)" = 6 ]
 }

@@ -78,6 +78,40 @@ def test_tool_error_reason_is_reported(tmp_path):
     assert data["reason"] == "quota exceeded"
 
 
+OVERFLOW = "Error: result (54,846 characters) exceeds maximum allowed tokens. Output has been saved to /x/tool-results/1.txt."
+
+
+@pytest.mark.parametrize("content", [
+    OVERFLOW,
+    [{"type": "text", "text": OVERFLOW}],
+    "Output too large (78 KB). Full output saved to: /x/1.txt",
+    "MCP tool response (31,000 tokens) exceeds maximum allowed tokens (25000).",
+])
+def test_an_oversized_list_events_result_exits_6_even_with_an_ok_output(tmp_path, content):
+    # The harness replaced a page with a note that it was saved to disk; the session cannot read it (#164).
+    text = stream(ok([]))
+    lines = text.splitlines()
+    user = {"type": "user", "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "t1", "content": content, "is_error": True}]}}
+    lines.insert(-1, json.dumps(user))
+    p, data = run("\n".join(lines) + "\n", tmp_path)
+    assert p.returncode == 6, p.stderr
+    assert p.stdout == ""
+    assert "exceeded the result limit" in p.stderr and "pageSize" in p.stderr
+    assert "exceeded the result limit" in data["reason"]
+
+
+def test_an_event_whose_text_mentions_the_limit_is_not_an_overflow(tmp_path):
+    # Only a tool result that is the harness's notice counts, never event text that quotes it (#164).
+    text = stream(ok([ev()]))
+    lines = text.splitlines()
+    user = {"type": "user", "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "t1", "content": '{"events": [{"description": "' + OVERFLOW + '"}]}'}]}}
+    lines.insert(-1, json.dumps(user))
+    p, _ = run("\n".join(lines) + "\n", tmp_path)
+    assert p.returncode == 0, p.stderr
+
+
 def test_unexpected_tool_use_fails_even_with_valid_output(tmp_path):
     p, data = run(stream(ok([ev()]), tools=("ToolSearch", "mcp__claude_ai_Gmail__send_message",
                                             "mcp__claude_ai_Google_Calendar__list_events")), tmp_path)
