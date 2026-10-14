@@ -119,6 +119,19 @@ digests() { find raw -path '*/notes/*.md' -type f | sort; }
   [ "$(jq -r .codebase "$S/after-1.json")" = code ]
 }
 
+@test "scope: an inherited GIT_DIR never maps a session to another repository (#166)" {
+  C="$BATS_TEST_TMPDIR/code" O="$BATS_TEST_TMPDIR/other"
+  repo "$C"
+  repo "$O"
+  register code "$C" work
+  GIT_DIR="$O/.git" start gd-1 "$O"
+  [ ! -e "$S/gd-1.json" ]
+  GIT_DIR="$O/.git" start gd-2 "$C"
+  [ "$(jq -r '[.scope, .codebase, .partition] | join(" ")' "$S/gd-2.json")" = "codebase code work" ]
+  GIT_DIR="$O/.git" stop gd-2 $'<vault-digest>\n## Outcome\nMine.\n</vault-digest>' "$C"
+  [[ "$(digests)" == raw/work/notes/* ]]
+}
+
 @test "scope: a symlinked cwd resolves to the vault" {
   ln -s "$VP" "$BATS_TEST_TMPDIR/vault-link"
   start ln-1 "$BATS_TEST_TMPDIR/vault-link"

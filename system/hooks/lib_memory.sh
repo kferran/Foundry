@@ -22,6 +22,9 @@ mem_env_ok() {
 }
 
 _mem_vi() { (cd "$MEM_VAULT" && system/scripts/vault_index.py "$@"); }
+# A session launched from a git hook or an editor inherits git's environment, which would make every
+# rev-parse below answer for that repository instead of the directory asked about (#166).
+_mem_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git "$@"; }
 
 # scope_cache.tsv: one "#config" line (default_partition, timezone, min events, min minutes), then
 # "<git common dir>\t<codebase name>\t<partition>" per registered codebase. Rebuilt when the config
@@ -43,7 +46,7 @@ mem_cache_build() {
   jq -r '.rows[0] // ["personal", "UTC", 5, 20] | ["#config"] + map(tostring) | @tsv' <<< "$cfg" > "$tmp" || return 1
   while IFS=$'\t' read -r name path part; do
     [[ "$path" == "~/"* ]] && path="$HOME/${path#\~/}"
-    common="$(git -C "$path" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || continue
+    common="$(_mem_git -C "$path" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || continue
     common="$(realpath -e -- "$common" 2>/dev/null)" || continue
     printf '%s\t%s\t%s\n' "$common" "$name" "$part" >> "$tmp"
   done < <(jq -r '.rows[] | map(tostring) | @tsv' <<< "$rows")
@@ -57,14 +60,16 @@ mem_config() {  # prints "<default_partition> <timezone> <min_events> <min_minut
 
 # memory_scope <cwd>: "vault <partition>", "codebase <name> <partition>", or nothing (out of scope).
 memory_scope() {
-  local real common
+  local real out top common
   real="$(realpath -e -- "${1-}" 2>/dev/null)" || return 1
   mem_cache_fresh || mem_cache_build || return 1
   if [[ "$real" == "$MEM_VAULT" || "$real" == "$MEM_VAULT"/* ]]; then
     awk -F'\t' '$1 == "#config" { print "vault", $2; exit }' "$MEM_CACHE"
     return 0
   fi
-  common="$(git -C "$real" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 1
+  out="$(_mem_git -C "$real" rev-parse --path-format=absolute --show-toplevel --git-common-dir 2>/dev/null)" || return 1
+  top="${out%%$'\n'*}" common="${out#*$'\n'}"
+  [[ "$real" == "$top" || "$real" == "$top"/* ]] || return 1  # the mapped tree must hold the cwd
   common="$(realpath -e -- "$common" 2>/dev/null)" || return 1
   # Exactly one registration for this repo; two registrations of one repo are ambiguous (none).
   awk -F'\t' -v c="$common" '$1 == c { n++; hit = "codebase " $2 " " $3 } END { if (n == 1) print hit }' "$MEM_CACHE"
