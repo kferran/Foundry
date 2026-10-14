@@ -1,12 +1,15 @@
 #!/bin/bash
 # Fetch and merge template updates; never auto-resolves (spec §6.12).
-# --unattended (foundry-update.timer, #87): take run.lock, abort a conflicted merge, and report through the
-# alerts file the brief reads: what merged, a conflict, a failure or a busy skip. Nothing new is silent.
+# --unattended (foundry-update.timer, #87): take run.lock, commit a dirty tree as the sync does (audit C4), abort a
+# conflicted merge, and report through the alerts file the brief reads: what was committed and merged, a conflict,
+# a failure or a busy skip. Nothing new is silent.
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$VAULT_ROOT"
 # shellcheck source=lib_config.sh
 source system/scripts/lib_config.sh
+# shellcheck source=lib_git.sh
+source system/scripts/lib_git.sh
 # The vault's own day names the alerts file the brief reads, whatever the host's timezone.
 TZ="$(config_get timezone UTC)"
 export TZ GIT_TERMINAL_PROMPT=0
@@ -37,7 +40,16 @@ if (( unattended )); then
 fi
 
 g remote get-url template >/dev/null 2>&1 || die 1 "no template remote; run system/scripts/setup_remote.sh first"
-[[ -z "$(g status --porcelain)" ]] || die 1 "working tree is not clean; commit or stash first"
+committed=""
+if (( unattended )); then
+  # A dirty tree is committed the way the sync does it (audit C4): on a server the --pre sync already did; on a
+  # standalone machine nothing else commits between /backup runs. A refusal stops the update before the fetch.
+  before="$(g rev-parse HEAD)"
+  git_sync_commit "$(config_get machine_role standalone)" || die 1 "$GIT_SYNC_ERROR"
+  committed="$(g log --reverse --format=%s "$before..HEAD" | paste -sd ';' | sed 's/;/; /g')"
+else
+  [[ -z "$(g status --porcelain)" ]] || die 1 "working tree is not clean; commit or stash first"
+fi
 
 timeout "${UPDATE_FETCH_TIMEOUT:-300}" git fetch --quiet template 9>&- || die 1 "git fetch template failed"
 # LC_ALL=C: "HEAD branch:" is translated in other locales.
@@ -112,5 +124,5 @@ else
 fi
 
 if (( unattended )); then
-  alert "template updated: merged ${#merged[@]} change(s): $list${new_units:+; new unit available: $new_units (install with system/scripts/install_units.sh)}"
+  alert "template updated: ${committed:+committed first: $committed; }merged ${#merged[@]} change(s): $list${new_units:+; new unit available: $new_units (install with system/scripts/install_units.sh)}"
 fi

@@ -6,6 +6,6 @@ Type=oneshot
 WorkingDirectory={{VAULT_ROOT}}
 Environment="TZ={{TZ}}"
 Environment="PATH={{UNIT_PATH}}"
-# Waiting for run.lock (5 min), the fetch, the merge, the index rebuild and re-rendered units.
+# Waiting for run.lock (5 min), the sync commit (seconds), the fetch, the merge, the index rebuild and re-rendered units.
 TimeoutStartSec=20min
 ExecStart="{{VAULT_ROOT}}/system/scripts/update_template.sh" --unattended
