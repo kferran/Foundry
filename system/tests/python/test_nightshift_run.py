@@ -570,6 +570,8 @@ def test_research_runs_on_a_context_copy_and_publishes(env, monkeypatch, tmp_pat
     assert only_item(vault)[1]["state"] == "done"
     assert (vault / "wiki/work/concepts/Answer.md").is_file()
     assert "--add-dir" not in (tmp_path / "args.txt").read_text()
+    out = json.loads((vault / "system/logs/nightshift/items" / only_item(vault)[1]["id"] / "outcome.json").read_text())
+    assert out["output"] == "wiki/work/concepts/Answer.md"  # the notice links the item's own note (#157)
 
 
 def test_research_reads_a_pinned_copy_of_its_codebase(env, tmp_path):

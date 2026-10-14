@@ -538,7 +538,8 @@ def _finish(ctx: Ctx, path: Path, fm: dict, idir: Path, cwd, out: dict) -> int:
         rep.write_outcome(ctx.vault, {"id": fm["id"], "kind": fm["kind"], "state": out["state"], "result": out.get("result", ""),
                                       "reason": out.get("reason", ""), "started_at": fm.get("started_at") or ctx.now.isoformat(),
                                       "finished_at": ctx.now.isoformat(), "report_date": ctx.date,
-                                      "needs": out.get("needs", []), "notes": out.get("notes", "")})
+                                      "needs": out.get("needs", []), "notes": out.get("notes", ""),
+                                      "output": fm.get("output") or ""})  # a notice links it (#157)
         rep.write(ctx.vault, ctx.date)
     ctx.log({"item": fm["id"], "state": out["state"], "reason": out.get("reason", "")})
     return 0 if out["state"] in ("done", "cancelled", "delivering") else 1

@@ -17,11 +17,20 @@ LINE_MAX = 300
 MESSAGE_MAX = 4000
 TAG = "[notify]"
 TRIAGE_TEXT = re.compile(r"(?<=\[triage\] )(\d+) new: .*$")
-# Steps the intake retries on its own; their outcome (published, poisoned, quarantined) is what goes out (#162).
-INTERIM = re.compile(r"; will retry$|; retrying one at a time$|\[intake\] ingest \S+(: publish rejected or empty| failed \(exit)")
+# Retries of an inbox file, a digest or a meeting file, which end poisoned or quarantined: that outcome goes out,
+# the retries stay in the alerts file (#162). Every other "will retry" line goes out once a day.
+INTERIM = re.compile(r"\[intake\] (?:ingest of raw/inbox/.+ failed \(exit \d+\); will retry"
+                     r"|digest .+ failed \(exit \d+\); (?:will retry|retrying one at a time)"
+                     r"|meeting import of .+ failed \(.*\); will retry"
+                     r"|ingest \d{8}T\d{6}-ingest-[0-9a-f]{4}(?:: publish rejected or empty \(.*\)| failed \(exit \d+\)))$")
 POISONED = re.compile(r"(?<=\[intake\] )poisoned (?P<when>.+?): (?P<origin>.+?) → (?P<dest>.+)$")
-WIKILINK = re.compile(r"\[\[([^\[\]|/]+)\]\]")
-SAFE = re.compile(r"\b(?:raw|wiki|system|briefings|meetings)/\S+|\b\d{8}T\d{6}-\w+-[0-9a-f]{4}\b")
+WIKILINK = re.compile(r"\[\[[^\[\]]+\]\]")
+ORDER_ID = re.compile(r"\d{4}-\d{2}-\d{2}-[a-z0-9-]+")  # nightshift_check.ID
+# What scripts write and redaction leaves alone (#162, #157): a vault path standing on its own (never inside a URL
+# or glued to other text), a run id and a Work Order id. What follows one (":", "?", ",") is redacted as usual.
+SAFE = re.compile(r"(?<![^\s(\"'`])(?:(?:raw|wiki|system|briefings|meetings)/[\w./-]+"
+                  r"|\d{8}T\d{6}-[a-z]{1,16}-[0-9a-f]{4}(?![\w-])|\d{4}-\d{2}-\d{2}-[a-z0-9-]+(?![\w-]))")
+NAME = re.compile(r"[\w.-]{1,64}")
 POST_ARGS = {"channel_id", "message", "unfurl_app_links"}
 EXTRA_TEXT = 500  # a posted text this much longer than the collected one carries text nobody collected
 LIMIT = re.compile(r"usage limit|rate limit|limit reached|hit your limit", re.I)
@@ -56,7 +65,7 @@ def link(vault, rel: str) -> str:
         return "obsidian://open?file=" + quote(rel.removesuffix(".md"), safe="")
     m = re.match(r"^(?:git@github\.com:|https://github\.com/)([^/]+/[^/]+?)(?:\.git)?/?$", _git(vault, "remote", "get-url", "origin"))
     branch = _git(vault, "symbolic-ref", "--short", "HEAD")
-    return f"https://github.com/{m.group(1)}/blob/{branch}/{rel}" if m and branch else ""
+    return f"https://github.com/{m.group(1)}/blob/{branch}/{quote(rel)}" if m and branch else ""
 
 
 def _load(vault) -> dict:
@@ -110,11 +119,14 @@ def _run_event(vault, rec: dict):
 
 
 def _redact(text: str) -> str:
-    """redact() with vault paths and run ids carried through (#162, #157): scripts write them, and the high-entropy
-    guess would eat a hashed file name. The named secret shapes still run over the whole text first."""
+    """redact() with SAFE paths and ids carried through (#162, #157): the high-entropy guess would eat a whole path.
+    The named secret shapes run over the whole text first; inside a path, each piece between "/", "." and "-" still
+    gets the high-entropy guess, so a secret used as a file name is caught and a slugged digest name is not."""
+    # ponytail: a high-entropy secret that itself holds "-" or "." is split into pieces under 32 characters and
+    # passes inside a path; the named shapes (sk-, ghp_, xox…, JWT) still catch the common ones.
     text, out, pos = redact(text, high_entropy=False)[0], [], 0
     for m in SAFE.finditer(text):
-        out += [redact(text[pos:m.start()])[0], m.group(0)]
+        out += [redact(text[pos:m.start()])[0], re.sub(r"[^/.-]+", lambda p: redact(p.group(0))[0], m.group(0))]
         pos = m.end()
     return "".join(out + [redact(text[pos:])[0]])
 
@@ -124,10 +136,16 @@ def _cut(text: str) -> str:
     return text if len(text) <= LINE_MAX else text[:LINE_MAX - 1] + "…"
 
 
+def _slack(text: str) -> str:
+    """Slack's control characters escaped (#162): a name a model or a dropper chose cannot @-mention or format."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _gate_reason(vault, dest: str) -> tuple:
     """(run id, the publish gate's first reason) of the last failed run of a poisoned input, found by the hash in
     its sidecar (an inbox run's ledger names the staged copy, not the origin) and read from the run's publish.json.
-    The reason stops before its detail (a shrink guard's detail quotes note headings)."""
+    The reason stops before its detail (a shrink guard's detail quotes note headings) and before any path (a
+    partition-wall reason names the other partition's note); a note name outside NAME is left out."""
     run = ""
     try:
         sha = json.loads((Path(vault) / f"{dest}.origin.json").read_text())["sha256"]
@@ -143,7 +161,10 @@ def _gate_reason(vault, dest: str) -> tuple:
                 run = str(rec["run_id"])
     try:
         problem = json.loads((Path(vault) / "system/logs/runs" / run / "publish.json").read_text())["problems"][0]
-        return run, f"{Path(problem['path']).stem}: " + ": ".join(str(problem["reason"]).split(": ")[:2])
+        parts = str(problem["reason"]).split(": ")[:2]
+        reason = ": ".join(p for p in parts[:1] + [x for x in parts[1:] if "/" not in x])
+        stem = Path(str(problem["path"])).stem
+        return run, (f"{stem}: " if NAME.fullmatch(stem) else "") + reason
     except (OSError, ValueError, LookupError, TypeError):
         return run, ""
 
@@ -161,7 +182,7 @@ def _alert(vault, line: str):
         run, why = _gate_reason(vault, p.group("dest"))
         body = (body[:p.start()] + f"{p.group('origin')} was not published" + (f" ({why})" if why else "")
                 + f"; quarantined {p.group('when')}. Fix the cause, then run system/scripts/intake.py "
-                + (f"--retry {run}" if run else "--retry-all"))
+                + (f"--retry {run}" if run else "--retry-all (it restores every poisoned input)"))
     elif m:
         body = body[:m.start()] + f"{m.group(1)} new"
     return _cut("Alert " + body)
@@ -221,16 +242,16 @@ def collect(vault, now: datetime) -> tuple:
         cursor["outcomes"].append(oid)
         if not first:
             detail = str(out.get("result") or next(iter(out.get("needs") or []), "") or out.get("reason") or "")
-            head = f"Work Order {oid} {out.get('state')}"  # the id is written by a script: never redacted (#157)
-            note = WIKILINK.fullmatch(detail)
-            found = next((p for p in sorted((vault / "wiki").rglob(f"{note.group(1)}.md")) if ".staging" not in p.parts),
-                         None) if note else None
-            url = link(vault, found.relative_to(vault).as_posix()) if found else ""
-            orders.append(f"{head}: {note.group(1)} {url}" if url else head + (_cut(f": {detail}") if detail else ""))
+            # The id is written by a script in a fixed shape: never redacted (#157).
+            head = f"Work Order {oid if ORDER_ID.fullmatch(oid) else _cut(oid)} {_cut(str(out.get('state')))}"
+            output = str(out.get("output") or "")  # a research item's own note: no lookup by name (#157)
+            url = link(vault, output) if WIKILINK.fullmatch(detail) and output else ""
+            orders.append(head + _cut(f": {Path(output).stem}") + f" {url}" if url
+                          else head + (_cut(f": {detail}") if detail else ""))
     keep = {f"alerts_{d}.md" for d in ((now - timedelta(days=1)).strftime("%F"), now.strftime("%F"))}
     cursor["alerts"] = {k: v for k, v in cursor["alerts"].items() if k in keep}
     cursor["sent"] = {k: v for k, v in cursor["sent"].items() if f"alerts_{k}.md" in keep}
-    return runs + orders + alerts, cursor
+    return [_slack(e) for e in runs + orders + alerts], cursor
 
 
 def message(vault, events: list) -> tuple:

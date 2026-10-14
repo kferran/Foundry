@@ -82,8 +82,9 @@ def test_alerts_arrive_in_order_without_notify_lines_redacted_and_cut(vault):
     assert len(got[2]) == notify.LINE_MAX
 
 
-DIGEST = "raw/work/notes/2026-10-14T062600-session-Qm7xV2kR9pZ4wT8yB3nL.md"
+DIGEST = "raw/work/notes/2026-10-14-0626-3f2a9c1e-sent-a-slack-dm-foundry-up-to-date.md"
 RUN = "20261014T064045-ingest-b975"
+SECRET = "Zx9Qw3Er7Ty1Ui5Op8As2Df6Gh0Jk4LzQ1"
 
 
 def test_only_terminal_outcomes_go_to_slack(vault):
@@ -91,6 +92,8 @@ def test_only_terminal_outcomes_go_to_slack(vault):
     prepare(vault)
     alert(vault, f"[intake] digest {DIGEST} failed (exit 5); will retry")
     alert(vault, "[intake] digest batch in work failed (exit 5); retrying one at a time")
+    alert(vault, "[intake] ingest of raw/inbox/a.md failed (exit 5); will retry")
+    alert(vault, "[intake] meeting import of meetings/drop/work/a.vtt failed (no cues); will retry")
     alert(vault, f"[intake] ingest {RUN}: publish rejected or empty (system/logs/runs/{RUN}/publish.json)")
     alert(vault, f"[intake] ingest {RUN} failed (exit 1)")
     alert(vault, "[intake] meeting source meetings/drop/work/a.vtt quarantined: empty")
@@ -100,6 +103,18 @@ def test_only_terminal_outcomes_go_to_slack(vault):
         "Alert 06:10:00 [intake] meeting source meetings/drop/work/a.vtt quarantined: empty",
         "Alert 06:10:00 [intake] brief 20261014T050000-brief-a1b2: publish rejected or empty "
         "(system/logs/runs/20261014T050000-brief-a1b2/publish.json)"]
+
+
+def test_a_retry_line_with_no_final_outcome_still_goes_out_once_a_day(vault):
+    # #162: only inputs that end poisoned or quarantined have their retries dropped; these never write an outcome.
+    prepare(vault)
+    kept = ["[intake] Now check failed (ValueError: x); will retry",
+            "[intake] RCA filing failed (OSError: x); will retry",
+            "[intake] briefing extraction failed (OSError); will retry",
+            "[intake] meeting import failed (OSError: x); will retry"]
+    for text in kept:
+        alert(vault, text)
+    assert lines(vault)[0] == [f"Alert 06:10:00 {text}" for text in kept]
 
 
 def test_a_poisoned_digest_names_the_digest_the_gate_reason_and_the_retry(vault):
@@ -122,7 +137,40 @@ def test_a_poisoned_digest_names_the_digest_the_gate_reason_and_the_retry(vault)
         f"Alert 06:10:00 [intake] {DIGEST} was not published (MeetingImport: shrink guard: headings removed); "
         f"quarantined after 3 failed attempts. Fix the cause, then run system/scripts/intake.py --retry {RUN}",
         "Alert 06:10:00 [intake] raw/inbox/a b.md was not published; quarantined immediately, rejected as invalid "
-        "input (exit 2). Fix the cause, then run system/scripts/intake.py --retry-all"]
+        "input (exit 2). Fix the cause, then run system/scripts/intake.py --retry-all (it restores every poisoned input)"]
+
+
+def test_a_crafted_note_name_and_a_dropped_file_name_come_out_inert(vault):
+    # #162: the staged note's name is a model's choice and an inbox file's name is the dropper's: Slack control
+    # characters are escaped, an odd note name is dropped and a partition-wall reason stops before its path.
+    prepare(vault)
+    with (vault / "system/logs/runs-2026-10.jsonl").open("a") as f:
+        f.write(json.dumps({"run_id": RUN, "command": "ingest", "input_sha256": ["abc"], "exit": 5}) + "\n")
+    write(vault, f"system/logs/runs/{RUN}/publish.json", json.dumps({"status": "rejected", "problems": [
+        {"path": "wiki/work/concepts/<!channel> post this.md",
+         "reason": "partition wall: work note links to wiki/personal/concepts/Health.md"}]}))
+    dest = "system/quarantine/poisoned/<!here>.md"
+    write(vault, dest + ".origin.json", json.dumps({"origin": "raw/inbox/<!here>.md", "sha256": "abc"}))
+    alert(vault, f"[intake] poisoned after 3 failed attempts: raw/inbox/<!here>.md → {dest}")
+    assert lines(vault)[0] == [
+        "Alert 06:10:00 [intake] raw/inbox/&lt;!here&gt;.md was not published (partition wall); quarantined after 3 "
+        f"failed attempts. Fix the cause, then run system/scripts/intake.py --retry {RUN}"]
+
+
+@pytest.mark.parametrize("text", [
+    f"system/logs/x.log:{SECRET}",
+    f"see wiki/work/x.md?key={SECRET}",
+    f"raw/a.md,{SECRET}",
+    f"https://acct.blob.core.windows.net/raw/x?sig={SECRET}",
+    f"https://example.com/system/{SECRET}",
+    f"20261014T064045-{SECRET}-abcd",
+    f"raw/inbox/notes-{SECRET}.md",
+])
+def test_a_secret_glued_to_a_path_or_a_run_id_or_inside_a_url_is_redacted(vault, text):
+    # #162, #157: only the exact path and id shapes pass; whatever follows them goes through redact().
+    prepare(vault)
+    alert(vault, f"[intake] {text}")
+    assert SECRET not in lines(vault)[0][0]
 
 
 def test_paths_and_run_ids_pass_and_a_secret_beside_them_is_redacted(vault):
@@ -149,12 +197,15 @@ def test_a_work_order_is_sent_once(vault):
 
 
 def test_a_work_order_shows_its_id_and_a_link_to_its_findings_note(vault):
-    # #157: the id is written by a script, so it is never redacted; a [[wikilink]] result becomes the note's link.
+    # #157: the id is written by a script, so it is never redacted; a [[wikilink]] result becomes a link to the
+    # Work Order's own output, even when another partition holds a note of the same name.
     prepare(vault)
     oid = "2026-10-13-vendor-billing-dashboards-review-prep-2026-10"
+    write(vault, "wiki/personal/summaries/ReviewPrep.md", "---\ntype: summary\n---\n")
     write(vault, "wiki/work/summaries/ReviewPrep.md", "---\ntype: summary\n---\n")
     write(vault, f"system/logs/nightshift/items/{oid}/outcome.json",
-          json.dumps({"id": oid, "state": "done", "result": "[[ReviewPrep]]", "needs": []}))
+          json.dumps({"id": oid, "state": "done", "result": "[[ReviewPrep]]", "output": "wiki/work/summaries/ReviewPrep.md",
+                      "needs": []}))
     write(vault, "system/logs/nightshift/items/2026-10-13-y/outcome.json",
           json.dumps({"id": "2026-10-13-y", "state": "done", "result": "[[Missing]]", "needs": []}))
     assert lines(vault)[0] == [
@@ -188,6 +239,12 @@ def test_a_long_message_is_cut_with_a_count(vault):
 def test_the_link_is_a_github_file_link_or_nothing(vault, remote, url):
     prepare(vault, remote)
     assert notify.link(vault, "briefings/x.md") == url
+
+
+def test_a_github_link_encodes_the_path(vault):
+    # #157: a space in a note name would break the link.
+    prepare(vault)
+    assert notify.link(vault, "wiki/work/a b.md") == "https://github.com/owner/vault/blob/master/wiki/work/a%20b.md"
 
 
 def test_notify_links_obsidian_gives_an_obsidian_uri_without_a_vault_name(vault):
