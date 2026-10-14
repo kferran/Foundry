@@ -710,13 +710,13 @@ def codebase_item(vault, tmp_path, verify, **keys):
 def test_a_codebase_item_runs_its_install_before_verify_and_the_session_sees_the_toolchain(env, monkeypatch, tmp_path):
     """Orders toolchain spec §2: order_install runs first in the verify checkout; the session's PATH starts with the
     order_toolchain directories (owner decision 2026-10-14)."""
-    vault, _ = env
+    vault, tmp = env
     tools = tmp_path / "tools"
     tools.mkdir()
     (tools / "hello-tool").write_text("#!/bin/sh\necho hi\n")
     (tools / "hello-tool").chmod(0o755)
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", f'echo "$PATH" > {tmp_path}/path.txt && git add done.txt && '
-                       "git -c user.name=t -c user.email=t@e commit -qm work")
+    stub(tmp, SHELL=f'echo "$PATH" > {tmp_path}/path.txt && git add done.txt && '
+                    "git -c user.name=t -c user.email=t@e commit -qm work")
     codebase_item(vault, tmp_path, ["test -f done.txt", "test -f installed"], order_toolchain=[str(tools)],
                   order_install="hello-tool > installed")
     assert nr.main(["tick"], vault, NOW) == 0
@@ -729,7 +729,7 @@ def test_a_codebase_item_runs_its_install_before_verify_and_the_session_sees_the
 
 def test_a_research_session_on_the_same_codebase_keeps_its_own_path(env, monkeypatch, tmp_path):
     """Orders toolchain spec §2: the toolchain leads the plan session's PATH; a research item has no verify to match."""
-    vault, _ = env
+    vault, tmp = env
     from test_nightshift_check import registered, set_codebase
     registered(vault, tmp_path / "cb")
     tools = tmp_path / "tools"
@@ -737,8 +737,7 @@ def test_a_research_session_on_the_same_codebase_keeps_its_own_path(env, monkeyp
     set_codebase(vault, "shop", order_toolchain=[str(tools)])
     empty = tmp_path / "none.txt"
     empty.write_text("")
-    monkeypatch.setenv("NIGHTSHIFT_STUB_WRITE", str(empty))
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", f'echo "$PATH" > {tmp_path}/path.txt')
+    stub(tmp, WRITE=str(empty), SHELL=f'echo "$PATH" > {tmp_path}/path.txt')
     brief = tmp_path / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nCode.\n## Done when\nAnswered.\n## Output\nA note.\n")
     assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
@@ -751,10 +750,10 @@ def test_a_research_session_on_the_same_codebase_keeps_its_own_path(env, monkeyp
 def test_a_toolchain_dir_gone_at_run_time_blocks_before_the_session_starts(env, monkeypatch, tmp_path):
     """Orders toolchain spec §2: an nvm upgrade or a client's paths can remove a directory between queue and run; the
     item blocks with the readiness wording before any budget is spent, instead of bwrap blaming the first command."""
-    vault, _ = env
+    vault, tmp = env
     tools = tmp_path / "tools"
     tools.mkdir()
-    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", f"touch {tmp_path}/session-ran")
+    stub(tmp, SHELL=f"touch {tmp_path}/session-ran")
     codebase_item(vault, tmp_path, ["test -f done.txt"], order_toolchain=[str(tools)])
     tools.rmdir()
     assert nr.main(["tick"], vault, NOW) == 1
