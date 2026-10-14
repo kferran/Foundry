@@ -101,6 +101,30 @@ teardown() {
   [ -z "$(ls -A wiki/.staging)" ]
 }
 
+@test "a publish that held back a changed note succeeds and alerts the held-back paths (audit C2 spec §2)" {
+  # The gate stands in for one whose commit held back New.md: it reports conflict and exits 0.
+  cat > system/scripts/publish_staged.py <<'EOF'
+#!/bin/bash
+case "$1" in
+  recover) echo '{}' ;;
+  snapshot) mkdir -p "wiki/.staging/$2" "system/logs/runs/$2"; echo '{}' ;;
+  commit) printf '{"run_id":"%s","status":"conflict","published":[],"conflicts":["wiki/work/concepts/New.md"],"problems":[]}\n' "$2" \
+            | tee "system/logs/runs/$2/publish.json" ;;
+esac
+EOF
+  run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.exit' "$LEDGER")" = "0" ]
+  [ "$(jq -r '.publish.conflicts[0]' "$LEDGER")" = "wiki/work/concepts/New.md" ]
+  run_id="$(jq -r .run_id "$LEDGER")"
+  run grep -c "ingest $run_id: published; held back wiki/work/concepts/New.md (changed during the run; staged copies in system/quarantine/$run_id/staged/)" system/logs/alerts_*.md
+  [ "$status" -eq 0 ]
+  [ "$output" -eq 1 ]
+  run grep -c 'rejected or empty' system/logs/alerts_*.md
+  [ "$status" -ne 0 ]
+  [ ! -e "system/logs/runs/$run_id/stream.jsonl" ]
+}
+
 @test "noop ingest succeeds; brief that writes nothing exits 5" {
   STUB_MODE=noop run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 0 ]

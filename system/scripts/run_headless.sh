@@ -196,10 +196,14 @@ if (( rc == 0 )); then
   set +e
   system/scripts/publish_staged.py commit "$run_id" >> "$LOG" 2>&1
   prc=$?
+  # A conflict publish succeeded with held-back notes (audit C2): the paths go to the alert, the run stays 0.
+  held="$(jq -r 'select(.status == "conflict") | (.conflicts // []) | map(strings) | join(", ")' "system/logs/runs/$run_id/publish.json" 2>/dev/null)"
   set -e
   if (( prc != 0 )); then
     rc=5
     alert "$cmd $run_id: publish rejected or empty (system/logs/runs/$run_id/publish.json)"
+  elif [[ -n "$held" ]]; then
+    alert "$cmd $run_id: published; held back $held (changed during the run; staged copies in system/quarantine/$run_id/staged/)"
   fi
 else
   system/scripts/publish_staged.py abort "$run_id" >> "$LOG" 2>&1 || true
