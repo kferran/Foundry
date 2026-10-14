@@ -55,6 +55,41 @@ def test_publish_cli_exit_codes(vault):
     assert bad.returncode == 2
 
 
+def test_publish_cli_conflict_exits_0_rejected_and_empty_exit_5(vault):
+    """A held-back note is a successful publish; a rejected or empty run still fails (audit C2 spec §2)."""
+    import os
+    import shutil
+    from helpers import REPO, concept, write
+    if os.geteuid() == 0:
+        import pytest
+        pytest.skip("root ignores directory modes")
+    shutil.copytree(REPO / "system/scripts", vault / "system/scripts", dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    script = vault / "system/scripts/publish_staged.py"
+
+    def commit(run_id):
+        return subprocess.run([sys.executable, str(script), "commit", run_id], cwd=vault, capture_output=True, text=True)
+
+    target = "wiki/work/concepts/New.md"
+    publish.snapshot(vault, RID, ["wiki/work/**"])
+    write(vault, f"wiki/.staging/{RID}/{target}", concept("work", "New"))
+    write(vault, f"wiki/.staging/{RID}/_decisions.jsonl",
+          json.dumps({"item": "i", "decision": "create", "target": target, "source": "s", "reason": "r"}) + "\n")
+    folder = vault / "wiki/work/concepts"
+    folder.chmod(0o555)  # validation reads; the rename fails and _apply holds the note back
+    try:
+        res = commit(RID)
+    finally:
+        folder.chmod(0o755)
+    report = json.loads(res.stdout)
+    assert (report["status"], report["conflicts"]) == ("conflict", [target]), res.stderr
+    assert res.returncode == 0
+    brief = "20261001T120000-brief-ab12"
+    publish.snapshot(vault, brief, ["briefings/2026-10-01.md"])
+    empty = commit(brief)
+    assert empty.returncode == 5 and json.loads(empty.stdout)["status"] == "empty"
+
+
 def test_publish_cli_corrupt_snapshot_exits_2(vault):
     import shutil
     from helpers import REPO
