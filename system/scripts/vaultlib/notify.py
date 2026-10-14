@@ -12,10 +12,14 @@ from .redact import redact
 from .stream import blocks
 
 STATE = Path("system/logs/notify/state.json")
-LINE_MAX = 200
+LINE_MAX = 300
 MESSAGE_MAX = 4000
 TAG = "[notify]"
 TRIAGE_TEXT = re.compile(r"(?<=\[triage\] )(\d+) new: .*$")
+# Steps the intake retries on its own; their outcome (published, poisoned, quarantined) is what goes out (#162).
+INTERIM = re.compile(r"; will retry$|; retrying one at a time$|\[intake\] ingest \S+(: publish rejected or empty| failed \(exit)")
+POISONED = re.compile(r"(?<=\[intake\] )poisoned (?P<when>.+?): (?P<origin>.+?) → .+$")
+SAFE = re.compile(r"\b(?:raw|wiki|system|briefings|meetings)/\S+|\b\d{8}T\d{6}-\w+-[0-9a-f]{4}\b")
 POST_ARGS = {"channel_id", "message", "unfurl_app_links"}
 EXTRA_TEXT = 500  # a posted text this much longer than the collected one carries text nobody collected
 LIMIT = re.compile(r"usage limit|rate limit|limit reached|hit your limit", re.I)
@@ -100,17 +104,57 @@ def _run_event(vault, rec: dict):
     return " ".join(x for x in (f"Debrief {day} is ready", link(vault, f"briefings/{day}.debrief.md")) if x)
 
 
+def _redact(text: str) -> str:
+    """redact() with vault paths and run ids carried through (#162, #157): scripts write them, and the high-entropy
+    guess would eat a hashed file name. The named secret shapes still run over the whole text first."""
+    text, out, pos = redact(text, high_entropy=False)[0], [], 0
+    for m in SAFE.finditer(text):
+        out += [redact(text[pos:m.start()])[0], m.group(0)]
+        pos = m.end()
+    return "".join(out + [redact(text[pos:])[0]])
+
+
 def _cut(text: str) -> str:
-    text = " ".join(redact(text)[0].split())
+    text = " ".join(_redact(text).split())
     return text if len(text) <= LINE_MAX else text[:LINE_MAX - 1] + "…"
 
 
-def _alert(line: str) -> str:
-    """An alert line as sent. Triage lines carry mail text (senders and asks a model wrote), so only their count
-    goes out: text from outside the vault never reaches the posting session's prompt."""
+def _gate_reason(vault, origin: str) -> tuple:
+    """(run id, the publish gate's first reason) of the last failed run of an input, from the run ledger and the
+    run's publish.json. The reason stops before its detail (a shrink guard's detail quotes note headings)."""
+    run = ""
+    for path in sorted((Path(vault) / "system" / "logs").glob("runs-*.jsonl"))[-2:]:
+        for line in path.read_text(errors="replace").splitlines():
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(rec, dict) and rec.get("run_id") and rec.get("exit") and origin in (rec.get("inputs") or []):
+                run = str(rec["run_id"])
+    try:
+        problem = json.loads((Path(vault) / "system/logs/runs" / run / "publish.json").read_text())["problems"][0]
+        return run, f"{Path(problem['path']).stem}: " + ": ".join(str(problem["reason"]).split(": ")[:2])
+    except (OSError, ValueError, LookupError, TypeError):
+        return run, ""
+
+
+def _alert(vault, line: str):
+    """An alert line as sent, or None for a step the intake will retry (#162: Slack gets the outcome). Triage lines
+    carry mail text (senders and asks a model wrote), so only their count goes out: text from outside the vault
+    never reaches the posting session's prompt. A poisoned input says what, why and what to run."""
     body = line[2:]
+    if INTERIM.search(body):
+        return None
     m = TRIAGE_TEXT.search(body)
-    return _cut("Alert " + (body[:m.start()] + f"{m.group(1)} new" if m else body))
+    p = POISONED.search(body)
+    if p:
+        run, why = _gate_reason(vault, p.group("origin"))
+        body = (body[:p.start()] + f"{p.group('origin')} was not published" + (f" ({why})" if why else "")
+                + f"; quarantined {p.group('when')}. Fix the cause, then run system/scripts/intake.py "
+                + (f"--retry {run}" if run else "--retry-all"))
+    elif m:
+        body = body[:m.start()] + f"{m.group(1)} new"
+    return _cut("Alert " + body)
 
 
 def _sans_time(event: str) -> str:
@@ -151,8 +195,8 @@ def collect(vault, now: datetime) -> tuple:
         for x in [] if first else new:
             if not x.startswith("- ") or TAG in x:
                 continue
-            event = _alert(x)
-            if _sans_time(event) in sent:  # an alert repeated each tick while a problem lasts goes out once a day
+            event = _alert(vault, x)
+            if event is None or _sans_time(event) in sent:  # an alert repeated each tick while a problem lasts goes out once a day
                 continue
             sent.append(_sans_time(event))
             alerts.append(event)
