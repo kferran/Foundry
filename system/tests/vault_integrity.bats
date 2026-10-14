@@ -225,3 +225,42 @@ OLD="jar""vis|opt""imus|wheel""jack|ultra[ -]mag""nus|sound""wave|tele""traan|th
   printf '%s\n' "$out"
   [ -z "$out" ]
 }
+
+# leak_hits <list file> <repo>: for each entry of the list (one case-insensitive fixed string per line, blank and
+# `#` lines skipped), print `<path>:<line> list:<N>` for every tracked line of <repo> that holds it. The matched
+# text is never printed, so a failing run does not echo an owner name into a log.
+leak_hits() {
+  local n=0 entry hit
+  while IFS= read -r entry || [ -n "$entry" ]; do
+    n=$((n + 1))
+    entry="${entry%$'\r'}"
+    entry="$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' <<< "$entry")"
+    case "$entry" in ''|'#'*) continue ;; esac
+    git -C "$2" grep -n -i -F -e "$entry" -- . | cut -d: -f1,2 | while IFS= read -r hit; do
+      echo "$hit list:$n"
+    done
+  done < "$1"
+}
+
+@test "no name from the owner's forbidden-names list appears in a tracked template file (#166)" {
+  list="${FOUNDRY_FORBIDDEN_NAMES:-$HOME/.config/foundry/forbidden-names}"
+  [ -f "$list" ] || skip "no forbidden-names list at $list"
+  [ ! -e system/config.md ] || skip "this checkout is a vault (system/config.md exists); the list guards the template"
+  run leak_hits "$list" .
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "the forbidden-names check reports the path, line and list line of a hit, never the name (#166)" {
+  r="$BATS_TEST_TMPDIR/repo"
+  git init -q "$r"
+  printf 'intro\nwritten by Zorblatt Quexley\n' > "$r/notes.md"
+  printf 'clean\n' > "$r/other.md"
+  git -C "$r" add notes.md other.md
+  printf '# names kept outside the repo\n\nzorblatt\n' > "$BATS_TEST_TMPDIR/list"
+  run leak_hits "$BATS_TEST_TMPDIR/list" "$r"
+  [ "$status" -eq 0 ]
+  [ "$output" = "notes.md:2 list:3" ]
+  [[ "$output" != *orblatt* ]]
+}
