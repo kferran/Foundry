@@ -371,11 +371,11 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
     size0 = stream.stat().st_size if stream.is_file() else 0
     started = clock.monotonic()
     outcome = None
-    # The codebase's order_toolchain leads the session's PATH too (owner decision 2026-10-14), so the tasks run the
-    # same tools the sealed verify will.
+    # The codebase's order_toolchain leads the plan session's PATH too (owner decision 2026-10-14), so the tasks run
+    # the same tools the sealed verify will. A research item has no verify to match.
     # session_env() is the session's whole environment: no agent socket, no host token (audit S3/S7 spec §2).
     env = ss.session_env()
-    if tools := nc.toolchain(cb):
+    if kind == "plan" and (tools := nc.toolchain(cb)):
         env["PATH"] = ":".join(tools + [p for p in [env.get("PATH")] if p])
     with open(stream, "a") as out, open(idir / "run.log", "a") as err:
         proc = subprocess.Popen(cmd, cwd=cwd, stdout=out, stderr=err, start_new_session=True, env=env)

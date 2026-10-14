@@ -119,6 +119,25 @@ def test_toolchain_dirs_are_visible_and_first_on_path_while_home_stays_empty(tmp
 
 
 @pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_a_symlinked_tool_needs_its_target_directory_listed_too(tmp_path, monkeypatch):
+    """Orders toolchain spec §2: only the listed directories show through the empty $HOME. An nvm bin/npm is a symlink
+    into ../lib, so bin alone dangles (exit 127) and bin plus lib works; the manual says to list both."""
+    home = tmp_path / "home"
+    lib, bin_ = home / ".tools" / "lib", home / ".tools" / "bin"
+    lib.mkdir(parents=True)
+    bin_.mkdir()
+    (lib / "tool.sh").write_text("#!/bin/sh\necho hi\n")
+    (lib / "tool.sh").chmod(0o755)
+    (bin_ / "tool").symlink_to("../lib/tool.sh")
+    monkeypatch.setenv("HOME", str(home))
+    r = repo_with_commit(tmp_path / "r")
+    ok, out = nd.run_verify(r, ["tool"], tmp_path / "v.log", toolchain=[str(bin_)])
+    assert not ok and out.startswith("tool: exit 127 (command not found in the sealed verify sandbox)")
+    ok, out = nd.run_verify(r, ["tool"], tmp_path / "v.log", toolchain=[str(bin_), str(lib)])
+    assert ok, out
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
 def test_verify_sha_runs_the_install_first_with_network_and_keeps_it_out_of_the_commit(tmp_path, monkeypatch):
     """Orders toolchain spec §2: order_install runs once, first, with the network, in the throwaway checkout."""
     home = tmp_path / "home"

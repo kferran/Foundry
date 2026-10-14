@@ -767,7 +767,8 @@ self_edit_contract() {
 @test "Work Orders: the manual, the schema and the codebase example name order_toolchain and order_install (orders toolchain spec §3)" {
   grep -qF '`order_toolchain`' FOUNDRY.md
   grep -qF '`order_install`' FOUNDRY.md
-  grep -qF 'a shim directory that needs its manager'"'"'s environment does not work' FOUNDRY.md
+  grep -qF 'A shim directory that needs its manager'"'"'s environment does not work' FOUNDRY.md
+  grep -qF 'and its `lib` sibling' FOUNDRY.md
   grep -q '^  order_toolchain: {kind: list, of: string}$' system/schemas/codebase.md
   grep -q '^  order_install: {kind: string}$' system/schemas/codebase.md
   grep -qF 'order_toolchain' system/codebases/example.md

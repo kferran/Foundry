@@ -727,6 +727,27 @@ def test_a_codebase_item_runs_its_install_before_verify_and_the_session_sees_the
     assert (tmp_path / "path.txt").read_text().startswith(f"{tools}:")
 
 
+def test_a_research_session_on_the_same_codebase_keeps_its_own_path(env, monkeypatch, tmp_path):
+    """Orders toolchain spec §2: the toolchain leads the plan session's PATH; a research item has no verify to match."""
+    vault, _ = env
+    from test_nightshift_check import registered, set_codebase
+    registered(vault, tmp_path / "cb")
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    set_codebase(vault, "shop", order_toolchain=[str(tools)])
+    empty = tmp_path / "none.txt"
+    empty.write_text("")
+    monkeypatch.setenv("NIGHTSHIFT_STUB_WRITE", str(empty))
+    monkeypatch.setenv("NIGHTSHIFT_STUB_SHELL", f'echo "$PATH" > {tmp_path}/path.txt')
+    brief = tmp_path / "brief.md"
+    brief.write_text("## Question\nQ\n## Scope\nCode.\n## Done when\nAnswered.\n## Output\nA note.\n")
+    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+                    "--output", "wiki/work/concepts/Answer.md", "--repo", "shop", "--now"], vault, NOW) == 0
+    nr.main(["tick"], vault, NOW)
+    path = (tmp_path / "path.txt").read_text()
+    assert path and not path.startswith(f"{tools}:")
+
+
 def test_selftest_retries_when_the_model_declines(env, monkeypatch, tmp_path):
     vault, tmp = env
     monkeypatch.setenv("HOME", str(tmp_path / "home"))  # the self-test plants its canary under $HOME
