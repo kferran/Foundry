@@ -124,7 +124,7 @@ Plan: load `superpowers:executing-plans` with the Skill tool and execute tasks `
 
 ### 5.3 Self-test
 
-`nightshift.py selftest` plants a canary file holding a fresh token at `~/.config/foundry/nightshift-canary` (a denied path), then runs the plan profile's sandbox with two commands that must fail, a request to a host outside the allowlist and a read of the canary, and a third that must print nothing but `ENV_DONE`: `env | grep -oE '^(SSH_AUTH_SOCK|GH_TOKEN|GITHUB_TOKEN|DBUS_SESSION_BUS_ADDRESS)='` (2026-10-14, audit S3/S7 spec). Either of the first two succeeding, the token appearing in the session's output, or a variable name before `ENV_DONE` fails the self-test. The canary is removed afterwards, whatever the outcome.
+`nightshift.py selftest` plants a canary file holding a fresh token at `~/.config/foundry/nightshift-canary` (a denied path), then runs the plan profile's sandbox with two commands that must fail, a request to a host outside the allowlist and a read of the canary, and a third that must print nothing but `ENV_DONE=<0|1>`: `env | grep -oE '^(SSH_AUTH_SOCK|GH_TOKEN|GITHUB_TOKEN|DBUS_SESSION_BUS_ADDRESS|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)='; echo ENV_DONE=$?` (2026-10-14, audit S3/S7 spec). Either of the first two succeeding, the token appearing in the session's output, or a variable name before `ENV_DONE` fails the self-test; a probe exit other than 0 or 1 is retried as "did not run". The session runs under the production deny list (the vault root), its stderr's last line and an error result's text join the reason of a session that did not start. The canary is removed afterwards, whatever the outcome.
 
 ## 6. Report and brief
 

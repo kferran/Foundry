@@ -775,6 +775,9 @@ self_edit_contract() {
   grep -qF '`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`' FOUNDRY.md
   grep -qF '`order_workspace` must sit outside the vault' FOUNDRY.md
   grep -qF 'not ready: order_workspace is inside the vault' FOUNDRY.md
+  grep -qF '`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `SSL_CERT_FILE` and `NODE_EXTRA_CA_CERTS`' FOUNDRY.md
+  grep -qF 'system/scripts/nightshift.py selftest' FOUNDRY.md
+  grep -qF 'must sit outside the vault' system/schemas/config.md
 }
 
 @test "the usage ceiling: what holds, what never holds, and where the reading comes from (usage ceiling spec)" {

@@ -54,4 +54,4 @@ The per-user global configuration written by `/setup` (gitignored). `system/conf
 
 `orders_enabled` and `update_enabled` turn on the Work Orders tick and the daily template update on a standalone machine or a server. Absent means on, so vaults made before 2026-10-12 keep both; the example config sets both to `false`, and `/setup` asks.
 
-`nightshift_workspace` and `nightshift_window` are the old names of `order_workspace` and `run_window`. They are still read when the new key is absent; the new key wins when both are set.
+`nightshift_workspace` and `nightshift_window` are the old names of `order_workspace` and `run_window`. They are still read when the new key is absent; the new key wins when both are set. `order_workspace` (default `~/code/worktrees`) must sit outside the vault: every Work Order session denies the vault root, so `/order add` and the tick refuse a workspace inside it (audit S3/S7 spec).
