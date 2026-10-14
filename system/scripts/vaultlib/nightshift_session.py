@@ -24,6 +24,9 @@ def superpowers_dir() -> Path | None:
 CREDENTIALS = ["~/.npmrc", "~/.netrc", "~/.pypirc", "~/.aws", "~/.docker", "~/.config/git", "~/.gnupg", "~/.kube",
                "~/.azure", "~/.local/share/keyrings", "~/.cargo/credentials.toml", "~/.m2/settings.xml", "~/.nuget",
                "~/.claude/projects", "~/.claude/settings.json", "~/.claude/settings.local.json", "~/.gitconfig"]
+# CLAUDE_CONFIG_DIR reaches the session, so a custom config dir's files are denied beside the ~/.claude set above
+# (~/.claude.json stays where it is).
+CONFIG_DIR_FILES = (".credentials.json", "projects", "settings.json", "settings.local.json")
 # The session's whole environment (audit S3/S7 spec §2): what nightshift_deliver.bwrap() gives the verify step, plus
 # the variables the runner itself reads. An allowlist, since the next token variable is on no denylist.
 ENV = ("PATH", "HOME", "USER", "LANG", "TZ", "TMPDIR", "FOUNDRY_CLAUDE_BIN", "CLAUDE_CONFIG_DIR")
@@ -37,7 +40,9 @@ def profile(vault, kind: str, hosts, web_hosts=(), deny=()) -> dict:
     data = json.loads((Path(vault) / "system" / "nightshift" / f"{kind}.settings.json").read_text(encoding="utf-8"))
     sb = data["sandbox"]
     sb["network"]["allowedDomains"] = sorted(set(sb["network"]["allowedDomains"]) | set(hosts) | set(web_hosts))
-    reads = [os.path.expanduser(p) for p in sb["filesystem"]["denyRead"] + CREDENTIALS] + list(deny)
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR")
+    custom = [str(Path(cfg).expanduser() / f) for f in CONFIG_DIR_FILES] if cfg else []
+    reads = [os.path.expanduser(p) for p in sb["filesystem"]["denyRead"] + CREDENTIALS] + custom + list(deny)
     sb["filesystem"]["denyRead"] = reads
     # denyRead fences sandboxed Bash; the same paths as Read rules fence the Read tool. Read(//a/b) is the absolute
     # path /a/b (the form headless.settings.json uses): the bare rule for a file or a glob, plus /** for a folder.
