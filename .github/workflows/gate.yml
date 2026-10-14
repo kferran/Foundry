@@ -1,0 +1,28 @@
+# The gate (FOUNDRY.md Development) on every pull request and push. It runs only where the repository
+# variable FOUNDRY_CI is 'true', so a vault that inherits this file stays inert.
+name: gate
+on:
+  pull_request:
+  push:
+    branches: ['**']
+jobs:
+  gate:
+    if: vars.FOUNDRY_CI == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the development tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bats jq sqlite3 parallel shellcheck bubblewrap \
+            python3-yaml python3-pytest python3-pytest-xdist
+      # bwrap needs unprivileged user namespaces, which the runner's AppArmor policy restricts by default.
+      - name: Allow unprivileged user namespaces for bwrap
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Set a git identity for the tests
+        run: |
+          git config --global user.name "Foundry CI"
+          git config --global user.email "ci@example.invalid"
+      - name: Gate
+        run: system/scripts/verify_setup.sh --require-suites
