@@ -196,15 +196,28 @@ setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } o
 
 @test "the Foreman and the Workcells carry their names, and nothing names the retired persona file" {
   [ "$(cd system/agents && LC_ALL=C ls | tr '\n' ' ')" = 'foreman.md workcells ' ]
-  [ "$(cd system/agents/workcells && LC_ALL=C ls | tr '\n' ' ')" = 'coding.md maintenance.md ' ]
+  [ "$(cd system/agents/workcells && LC_ALL=C ls | tr '\n' ' ')" = 'coding.md maintenance.md research.md ' ]
   grep -qx '# The Foreman' system/agents/foreman.md
   grep -qx '# Coding Workcell' system/agents/workcells/coding.md
   grep -qx '# Maintenance Workcell' system/agents/workcells/maintenance.md
+  grep -qx '# Research Workcell' system/agents/workcells/research.md
   [ "$(head -n 1 system/agents/foreman.md)" = '# The Foreman' ]
   grep -qF 'Persona: `system/agents/foreman.md`.' CLAUDE.md
   # The [C] bracket keeps the pattern from matching this line.
   run git grep -nE '[C]hiefOfStaff' -- CLAUDE.md README.md FOUNDRY.md .claude system
   [ "$status" -eq 1 ]
+}
+
+@test "the research Workcell takes in-session research read-only, index first, and hands back a draft (#168)" {
+  f=system/agents/workcells/research.md
+  [ "$(system/scripts/vault_index.py field "$f" capabilities)" = research ]
+  grep -qF 'system/scripts/vault_index.py related' "$f"
+  grep -qF 'raw/inbox/' "$f"
+  grep -qF '`/ingest`' "$f"
+  grep -qF 'no writes to `wiki/`' "$f"
+  grep -qF 'what the sources do not show' "$f"
+  grep -qF '| `research.md` | `research`' FOUNDRY.md
+  grep -qF 'coding.md, maintenance.md, research.md' FOUNDRY.md
 }
 
 @test "prompts, personas and templates name no specific company or stack" {
@@ -541,7 +554,7 @@ self_edit_contract() {
   grep -qF 'hand each concrete slice to a capability' .claude/commands/brief.md
   grep -qF '`capability: code`' .claude/commands/setup.md
   grep -qx 'GROUP BY capability' wiki/Index.md
-  run grep -rnE '(Coding|Maintenance) Workcell' CLAUDE.md .claude/commands wiki/Index.md
+  run grep -rnE '(Coding|Maintenance|Research) Workcell' CLAUDE.md .claude/commands wiki/Index.md
   [ "$status" -eq 1 ]
 }
 
