@@ -196,6 +196,23 @@ def test_record_stage_refuses_non_targets_and_unknown_runs(run):
         publish.record_stage(run, RID, "../outside.md")
 
 
+def test_record_stage_holds_stage_lock_while_writing_the_snapshot(run, monkeypatch):
+    """A second writer blocks on stage.lock until the first has written snapshot.json (audit C1 spec §2)."""
+    import fcntl
+    real, seen = publish._write_json, []
+
+    def locked_write(path, data):
+        with open(run / "system/logs/runs" / RID / "stage.lock", "w") as other:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(other.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        seen.append(path)
+        real(path, data)
+
+    monkeypatch.setattr(publish, "_write_json", locked_write)
+    publish.record_stage(run, RID, "wiki/work/concepts/Kafka.md")
+    assert len(seen) == 1
+
+
 def test_list_valued_decision_is_invalid_record_not_crash(run):
     stage_new(run, "wiki/work/concepts/New.md", concept("work", "New"))
     decide(run, rec("wiki/work/concepts/New.md", ["create"]))

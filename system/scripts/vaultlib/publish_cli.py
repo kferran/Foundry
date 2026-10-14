@@ -6,7 +6,7 @@ from pathlib import Path
 
 from . import publish, schema as schemamod
 
-OK_STATUSES = {"published", "noop", "aborted"}
+OK_STATUSES = {"published", "noop", "aborted", "conflict"}  # conflict: published with held-back notes (audit C2)
 
 
 def main(argv=None) -> int:
