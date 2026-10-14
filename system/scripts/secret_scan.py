@@ -11,8 +11,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-# .scratch/ is throwaway; system/tests/ and docs/superpowers/ hold the redaction tests' fake tokens by design.
-SKIP = (".scratch/", "system/tests/", "docs/superpowers/")
+# .scratch/ is throwaway. The tree report also skips the template's system/tests/ and docs/superpowers/, which hold
+# the redaction tests' fake tokens by design; a staged file there is still scanned.
+SKIP = (".scratch/",)
+TREE_SKIP = SKIP + ("system/tests/", "docs/superpowers/")
 
 
 def unscanned(reason: str):
@@ -48,7 +50,7 @@ def main(argv: list) -> int:
                else git("ls-files", "-z", "--cached", "--others", "--exclude-standard"))
     found = 0
     for path in sorted({p for p in listing.decode("utf-8", "surrogateescape").split("\0") if p}):
-        if path.startswith(SKIP):
+        if path.startswith(SKIP if staged else TREE_SKIP):
             continue
         if staged:
             data = git("cat-file", "blob", f":{path}")

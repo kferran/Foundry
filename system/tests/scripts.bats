@@ -124,9 +124,13 @@ TOKEN="AKIA""IOSFODNN7EXAMPLE"
   printf 'first\nkey %s here\n' "$TOKEN" > "$V/notes.txt"
   git -C "$V" add notes.txt
   printf 'fixed on disk only\n' > "$V/notes.txt"
+  mkdir -p "$V/docs/superpowers"
+  printf 'key %s\n' "$TOKEN" > "$V/docs/superpowers/pasted.md"
+  git -C "$V" add docs/superpowers/pasted.md
   run git -C "$V" commit -qm secret
   [ "$status" -ne 0 ]
   [[ "$output" == *"secret shape: notes.txt:2: aws_key"* ]]
+  [[ "$output" == *"secret shape: docs/superpowers/pasted.md:1: aws_key"* ]]
   [[ "$output" == *"pre-commit: a staged file holds a secret shape"* ]]
   [[ "$output" != *"$TOKEN"* ]]
   run git -C "$V" rev-parse -q --verify HEAD
