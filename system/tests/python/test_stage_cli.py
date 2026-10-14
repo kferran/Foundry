@@ -16,6 +16,24 @@ def test_stage_subcommand(cli, vault):
     assert "wiki/work/concepts/Kafka.md" in snap["staged"]
 
 
+def test_concurrent_stage_calls_all_land_in_the_snapshot(cli, vault):
+    """20 stage subprocesses started together leave 20 staged entries (audit C1 spec §2)."""
+    import os
+    from helpers import concept, write
+    targets = [f"wiki/work/concepts/Note{i}.md" for i in range(20)]
+    for t in targets:
+        write(vault, t, concept("work", t[-8:-3]))
+    publish.snapshot(vault, RID, ["wiki/work/**"])
+    env = {k: v for k, v in os.environ.items() if k != "VAULT_ROOT"}
+    script = vault / "system/scripts/vault_index.py"
+    procs = [subprocess.Popen([sys.executable, str(script), "stage", t, RID], cwd=vault, env=env,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True) for t in targets]
+    errors = [p.communicate()[1] for p in procs]
+    assert [p.returncode for p in procs] == [0] * 20, errors
+    snap = json.loads((vault / "system/logs/runs" / RID / "snapshot.json").read_text())
+    assert sorted(snap["staged"]) == sorted(targets)
+
+
 def test_stage_refuses_bad_input(cli, vault):
     publish.snapshot(vault, RID, ["wiki/work/**"])
     assert cli("stage", "wiki/personal/concepts/Gardening.md", RID).returncode == 2

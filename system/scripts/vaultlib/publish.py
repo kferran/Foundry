@@ -1,4 +1,5 @@
 """Publish gate: staged, validated, journaled publish of headless output (spec §6.20)."""
+import fcntl
 import hashlib
 import json
 import os
@@ -139,21 +140,28 @@ def load_snapshot(vault, run_id) -> dict:
 def record_stage(vault, run_id, target) -> Path:
     vault = Path(vault)
     target = safe_rel(target)
-    snap = load_snapshot(vault, run_id)
-    if not staging_dir(vault, run_id).is_dir():
-        raise PublishError(f"run is not open: {run_id}")
-    if not target_matches(target, snap["targets"]):
-        raise PublishError(f"not a publishable target for this run: {target}")
-    src = vault / target
-    if src.is_symlink() or not src.is_file():
-        raise PublishError(f"no such note to stage: {target}")
-    if target not in snap["files"]:
-        raise PublishError(f"target was created during the run: {target}")
-    dst = staging_dir(vault, run_id) / target
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(src, dst)
-    snap["staged"][target] = sha256_file(dst)
-    _write_json(run_dir(vault, run_id) / "snapshot.json", snap)
+    check_run_id(run_id)
+    rd = run_dir(vault, run_id)
+    if not (rd / "snapshot.json").is_file():
+        raise PublishError(f"unknown run: {run_id}")
+    # Concurrent stage calls in one run (Claude Code runs Bash calls in parallel) must not lose an entry (audit C1).
+    with open(rd / "stage.lock", "w") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        snap = load_snapshot(vault, run_id)
+        if not staging_dir(vault, run_id).is_dir():
+            raise PublishError(f"run is not open: {run_id}")
+        if not target_matches(target, snap["targets"]):
+            raise PublishError(f"not a publishable target for this run: {target}")
+        src = vault / target
+        if src.is_symlink() or not src.is_file():
+            raise PublishError(f"no such note to stage: {target}")
+        if target not in snap["files"]:
+            raise PublishError(f"target was created during the run: {target}")
+        dst = staging_dir(vault, run_id) / target
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+        snap["staged"][target] = sha256_file(dst)
+        _write_json(rd / "snapshot.json", snap)
     return dst
 
 
