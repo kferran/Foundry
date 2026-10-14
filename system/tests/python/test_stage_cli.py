@@ -55,8 +55,8 @@ def test_publish_cli_exit_codes(vault):
     assert bad.returncode == 2
 
 
-def test_publish_cli_conflict_exits_0_rejected_and_empty_exit_5(vault):
-    """A held-back note is a successful publish; a rejected or empty run still fails (audit C2 spec §2)."""
+def test_publish_cli_conflict_exits_0_and_empty_exits_5(vault):
+    """A held-back note is a successful publish; an empty run still fails, as does a rejected one above (audit C2 spec §2)."""
     import os
     import shutil
     from helpers import REPO, concept, write
