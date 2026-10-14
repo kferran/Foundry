@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from . import frontmatter, guard, publish, recall as recallmod, retrieve, schema as schemamod, scope as scopemod
-from .index import NOT_INDEXED, Index
+from .index import ISSUE_ROWS, NOT_INDEXED, Index
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
 
@@ -161,26 +161,19 @@ def staged_blobs(vault: Path, paths) -> dict:
             for p in paths if p.endswith(".md") and not p.startswith(NOT_INDEXED)}
 
 
-def _issue_rows(idx: Index) -> list:
-    idx.refresh()
-    conn = sqlite3.connect(idx.db_path)
-    rows = conn.execute("SELECT path, line, severity, code, message FROM issues "
-                        "ORDER BY severity, path, line").fetchall()
-    conn.close()
-    return rows
-
-
 def cmd_issues(args, vault, sc):
     require_vault_scope(sc)
-    if not args.staged:
-        return print_issues(_issue_rows(Index(vault)), args.json)
-    keep = staged_paths(vault)
-    # The staged lint reads the index blobs over the working tree, in a throwaway db so the live index never
-    # caches blob content under a working file's mtime.
-    # ponytail: a full index build per commit; copy the live db and force-reindex the overlay if it measures slow.
-    with tempfile.TemporaryDirectory(prefix="staged-lint-") as tmp:
-        rows = _issue_rows(Index(vault, db_path=Path(tmp) / "index.db", overlay=staged_blobs(vault, keep)))
-    return print_issues([r for r in rows if r[0] in keep], args.json)
+    idx = Index(vault)
+    if args.staged:
+        keep = staged_paths(vault)
+        with tempfile.TemporaryDirectory(prefix="staged-lint-") as tmp:
+            rows = idx.staged_issues(staged_blobs(vault, keep), Path(tmp) / "index.db")
+        return print_issues([r for r in rows if r[0] in keep], args.json)
+    idx.refresh()
+    conn = sqlite3.connect(idx.db_path)
+    rows = conn.execute(ISSUE_ROWS).fetchall()
+    conn.close()
+    return print_issues(rows, args.json)
 
 
 def cmd_validate(args, vault, sc):

@@ -21,6 +21,7 @@ NAME_EXCLUDED = ("system/tests/", "system/templates/", "system/schemas/", "syste
                  "system/codebases/", "system/telemetry/", "system/dtcc/", "system/nightshift/")  # named after what they configure
 SKIP_FILES = ("system/index.db", "system/index.lock")
 TABLES = ("files", "notes", "fields", "links", "tags", "issues", "notes_fts")
+ISSUE_ROWS = "SELECT path, line, severity, code, message FROM issues ORDER BY severity, path, line"
 
 DDL = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -55,13 +56,11 @@ def wall_blocked(src_partition: str, target_partition: str) -> bool:
 
 
 class Index:
-    def __init__(self, vault, db_path=None, overlay=None):
+    def __init__(self, vault, db_path=None):
         self.vault = Path(vault)
         self.db_path = Path(db_path) if db_path else self.vault / "system" / "index.db"
         self.lock_path = self.vault / "system" / "index.lock"
         self.ctx = schemamod.Context(self.vault)
-        # rel path -> bytes read in place of the working file (the staged lint's index blobs, #166).
-        self.overlay = overlay or {}
 
     @contextlib.contextmanager
     def locked(self, timeout=None):
@@ -164,15 +163,42 @@ class Index:
         conn.execute("INSERT OR REPLACE INTO meta VALUES('version', ?)", (INDEX_VERSION,))
         conn.execute("INSERT OR REPLACE INTO meta VALUES('built_at', ?)", (str(time.time()),))
 
+    def staged_issues(self, blobs, db_path) -> list:
+        """Issue rows with each note in blobs (rel -> bytes) read from those bytes (the staged lint, #166).
+        The live index is refreshed and copied to db_path under the lock; only the blobs are reindexed in the
+        copy, so the live index never caches them and links resolve against the rest of the vault."""
+        with self.locked():
+            conn = self._open_or_rebuild()
+            try:
+                with conn:
+                    self._refresh(conn, False)
+                copy = sqlite3.connect(db_path)
+                conn.backup(copy)
+            finally:
+                conn.close()
+        try:
+            with copy:
+                schemas = schemamod.load_schemas(self.vault)
+                for rel, data in blobs.items():
+                    path = self.vault / rel
+                    st = path.stat() if path.exists() else os.stat_result((0,) * 10)
+                    self._index_note(copy, schemas, rel, path, st, data)
+                files = {p for (p,) in copy.execute("SELECT path FROM files")} | set(blobs)
+                self._resolve_links(copy, files)
+                self._global_issues(copy, schemas)
+            return copy.execute(ISSUE_ROWS).fetchall()
+        finally:
+            copy.close()
+
     def _drop_note(self, conn, rel):
         for sql in ("DELETE FROM notes WHERE path=?", "DELETE FROM fields WHERE path=?",
                     "DELETE FROM links WHERE src=?", "DELETE FROM tags WHERE path=?",
                     "DELETE FROM issues WHERE path=? AND scope='note'", "DELETE FROM notes_fts WHERE path=?"):
             conn.execute(sql, (rel,))
 
-    def _index_note(self, conn, schemas, rel, path, st):
+    def _index_note(self, conn, schemas, rel, path, st, data=None):
         try:
-            data = self.overlay[rel] if rel in self.overlay else path.read_bytes()
+            data = path.read_bytes() if data is None else data
         except OSError as exc:
             self._drop_note(conn, rel)
             conn.execute("INSERT INTO issues VALUES(?,?,?,?,?,'note')",
