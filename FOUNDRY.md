@@ -114,6 +114,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 |---|---|
 | `coding.md` | `code`, `tests`, `refactor`; writes a `compilation-metric.json` instance to `system/logs/metrics/` after each task |
 | `maintenance.md` | `vault-health`, `dependencies`, `telemetry`, `alerts`; owns `raw/telemetry/` notes, which it checks against local branches of the affected codebase |
+| `research.md` | `research`; answers a question within the session, read-only (index first, then named sources and public web pages), and hands the Foreman a findings note draft to file through `/ingest` or `raw/inbox/` |
 
 **Friction.** Ingest sets `is_friction: "true"` when a fact's source text says "not sure", "waiting on", "stuck", "blocked", "tbd" or "double-check". The brief prints each flagged note's name once, the first morning after it is flagged, then counts it: "listed before" is read from the earlier briefings (the Friction part, or the old Friction notes bullet), so the two machines agree without a ledger.
 
@@ -175,7 +176,7 @@ system/
   hooks/                      user-level memory hooks
   templates/                  briefing, debrief, concept, intent-shaper, compilation-metric.json
   agents/                     foreman.md (the Foreman persona)
-    workcells/                coding.md, maintenance.md: one per Workcell, with its capabilities
+    workcells/                coding.md, maintenance.md, research.md: one per Workcell, with its capabilities
   scripts/                    vault_index.py, vaultlib/, publish_staged.py, run_headless.sh,
                               intake_daemon.sh, install_units.sh, install_hooks.sh,
                               setup_remote.sh, update_template.sh, check_deps.sh,

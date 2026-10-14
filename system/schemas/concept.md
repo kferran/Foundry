@@ -8,7 +8,7 @@ fields:
   compiled_at: {kind: date, required: true}
   partition: {kind: enum, values: [work, personal, shared], required: true, matches_folder: true}
   codebase: {kind: string}
-  capability: {kind: enum, values: [code, tests, refactor, vault-health, dependencies, telemetry, alerts]}
+  capability: {kind: enum, values: [code, tests, refactor, vault-health, dependencies, telemetry, alerts, research]}
   is_friction: {kind: bool, default: "false"}
   status: {kind: enum, values: [canonical, draft, deprecated], default: canonical}
   supersedes: {kind: list, of: link}
