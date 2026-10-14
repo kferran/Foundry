@@ -111,7 +111,7 @@ The body is the research brief (research) or a free note (plan). The runner chan
 
 ### 5.1 Profiles
 
-Both profiles: sandbox enabled, `allowUnsandboxedCommands: false`, `network.strictAllowlist: true` with `allowedDomains` from the profile plus the item's hosts; `filesystem.denyRead` for `~/.ssh`, `~/.config/gh`, `~/.config/foundry`, `~/.claude/.credentials.json`, `~/.claude.json`, `~/.git-credentials` and `**/.env*`; `disableAllHooks: true`; no MCP servers.
+Both profiles: sandbox enabled, `allowUnsandboxedCommands: false`, `network.strictAllowlist: true` with `allowedDomains` from the profile plus the item's hosts; `filesystem.denyRead` for `~/.ssh`, `~/.config/gh`, `~/.config/foundry`, `~/.claude/.credentials.json`, `~/.claude.json`, `~/.git-credentials` and `**/.env*`, plus `nightshift_session.CREDENTIALS`, the vault root and every other registered codebase, each mirrored into `permissions.deny` as a `Read(...)` rule (2026-10-14, audit S3/S7 spec); `disableAllHooks: true`; no MCP servers. The session's environment is `nightshift_session.session_env()`: `PATH`, `HOME`, `USER`, `LANG`, `TZ`, `TMPDIR`, `FOUNDRY_CLAUDE_BIN` and `CLAUDE_CONFIG_DIR`, each when set, nothing else. Readiness and the tick refuse an `order_workspace` under the vault.
 
 - **Plan:** tools `Read, Glob, Grep, Edit, Write, Bash, Skill, Agent, TodoWrite`; writes inside the clone only.
 - **Research:** tools `Read, Glob, Grep, Write, Bash, Skill, WebFetch, TodoWrite`; writes to `out/` only; `WebFetch` limited to the item's hosts.
@@ -124,7 +124,7 @@ Plan: load `superpowers:executing-plans` with the Skill tool and execute tasks `
 
 ### 5.3 Self-test
 
-`nightshift.py selftest` plants a canary file holding a fresh token at `~/.config/foundry/nightshift-canary` (a denied path), then runs the plan profile's sandbox with two commands that must fail: a request to a host outside the allowlist, and a read of the canary. Either succeeding, or the token appearing in the session's output, fails the self-test. The canary is removed afterwards, whatever the outcome.
+`nightshift.py selftest` plants a canary file holding a fresh token at `~/.config/foundry/nightshift-canary` (a denied path), then runs the plan profile's sandbox with two commands that must fail, a request to a host outside the allowlist and a read of the canary, and a third that must print nothing but `ENV_DONE`: `env | grep -oE '^(SSH_AUTH_SOCK|GH_TOKEN|GITHUB_TOKEN|DBUS_SESSION_BUS_ADDRESS)='` (2026-10-14, audit S3/S7 spec). Either of the first two succeeding, the token appearing in the session's output, or a variable name before `ENV_DONE` fails the self-test. The canary is removed afterwards, whatever the outcome.
 
 ## 6. Report and brief
 
