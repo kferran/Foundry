@@ -57,6 +57,11 @@ headless_contract() {
   grep -qF '(headless: the run id'"'"'s first 8 digits written as `YYYY-MM-DD`)' "$f"
 }
 
+@test "ingest: retire a state heading by renaming it in place (#160)" {
+  grep -qF 'Retire a heading that encodes a state (such as `(not yet merged)`) by renaming it in place and keeping its section; never delete the section.' .claude/commands/ingest.md
+  grep -qF 'A heading renamed in place passes when its section keeps every line.' FOUNDRY.md
+}
+
 @test "brief: headless contract, allowlisted index calls, template sections" {
   f=.claude/commands/brief.md
   headless_contract "$f"
