@@ -10,8 +10,8 @@
 
 ## 2. Decisions
 
-- **`commit_runs.py` carries on past a refused run.** It alerts, leaves the run pending, prints `refused <run_id> <path>` per path on stdout, commits the later runs and exits 1 at the end when any run was refused (what `/backup` reads today). The alert is written once a day per run: `<run dir>/refused` holds the day and the hook's first line, and a later successful commit removes it.
-- **`vault_sync.sh` leaves the refused paths out of the sync commit** (`git add -A -- . ':!<path>'` per path) and goes on to fetch, merge and push. Exit 1 with `refused` lines is that case; exit 1 with none, or exit 2, stays `fail commit`. The refused notes stay modified in the working tree and the next cycle tries them again. Should `origin` bring a change to one of them, `git merge` refuses before it starts ("local changes would be overwritten") and the cycle ends in `fail merge`, alerted once a day with the file named.
+- **`commit_runs.py` carries on past a refused run.** It alerts, leaves the run pending, prints `refused <run_id> <path>` per path on stdout, commits the later runs and exits 3 at the end when any run was refused (a code of its own, so a crash's exit 1 is never read as a refusal; built 2026-10-14). The alert is written once a day per run: `<run dir>/refused` holds the day and the hook's first line, and a later successful commit removes it.
+- **`vault_sync.sh` leaves the refused paths out of the sync commit** (`git add -A -- . ':(exclude,literal)<path>'` per path, literal so a bracket in a name is no glob) and goes on to fetch, merge and push. Exit 3 with `refused` lines is that case; exit 3 with none, exit 1 or exit 2 stays `fail commit`. The refused notes stay modified in the working tree and the next cycle tries them again. Should `origin` bring a change to one of them, `git merge` refuses before it starts ("local changes would be overwritten") and the cycle ends in `fail merge`, alerted once a day with the file named.
 - Two fixes rejected: `--no-verify` for run commits, because the hook is the last check before the private remote; restoring the pre-run version of a refused note, because the owner may have edited it since.
 
 ## 3. Changes
@@ -20,7 +20,7 @@
 - `system/scripts/vault_sync.sh`: captures `commit_runs.py`'s stdout, the exclusion pathspec, the exit mapping.
 - `.claude/commands/backup.md` step 3: "If it exits 1, stop" becomes "If it prints `refused` lines, report them; the other runs are committed", and step 5's hook still stops the manual commit as now.
 - `FOUNDRY.md`, the sync paragraph: one sentence on a refused run.
-- Cross-reference: the C4 spec's pre-update commit meets the same refusal and stops the update with the hook's line, so a refused run also blocks the daily update until it is fixed.
+- Cross-reference: the C4 spec's pre-update commit runs the same step, so a refused run also blocks the daily update until it is fixed. As built (2026-10-14): the other runs and the sync commit land, the update stops before fetching, and its `[update]` line lists the commits made, names the refused paths and points at the `[commit_runs]` alert in the same day's alerts file, which carries the hook's line.
 
 **Existing vault:** no config or unit change. A vault stuck on a refused run today syncs again on the next cycle, with the refused note still waiting.
 
