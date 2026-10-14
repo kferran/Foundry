@@ -59,6 +59,18 @@ for f in "${staged[@]}"; do
 done
 rm -f "$tmp" "$err"
 (( drops == 0 )) || exit 1
+# Secret shapes never land (secret-shape lint spec §2, #166): every staged blob, after the drop rewrite above, scanned
+# with redact.py's shape list. The lines name path, line and shape, never the value. Any other non-zero exit (an
+# unreadable or empty shape list, a git failure, a missing scanner) refuses too: unscanned is never clean.
+rc=0
+python3 "$root/system/scripts/secret_scan.py" --staged >&2 || rc=$?
+if (( rc == 1 )); then
+  echo "pre-commit: a staged file holds a secret shape; remove it, or commit with --no-verify if it is not a secret" >&2
+  exit 1
+elif (( rc != 0 )); then
+  echo "pre-commit: the secret scan could not run, so nothing was committed" >&2
+  exit 1
+fi
 found=0
 for f in "${staged[@]}"; do
   if [[ $f =~ $pattern ]]; then

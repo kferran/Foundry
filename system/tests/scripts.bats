@@ -7,7 +7,8 @@ setup() {
   cp -r "$REPO/system/tests/fixtures/vault" "$V"
   mkdir -p "$V/system/scripts" "$V/.githooks"
   cp -r "$REPO/system/schemas" "$V/system/schemas"
-  cp -r "$REPO/system/scripts/vault_index.py" "$REPO/system/scripts/vaultlib" "$REPO/system/scripts/lint_vault.sh" "$V/system/scripts/"
+  cp -r "$REPO/system/scripts/vault_index.py" "$REPO/system/scripts/vaultlib" "$REPO/system/scripts/lint_vault.sh" \
+    "$REPO/system/scripts/secret_scan.py" "$V/system/scripts/"
   cp "$REPO/.githooks/pre-commit" "$V/.githooks/pre-commit"
   git -C "$V" init -q
   git -C "$V" config user.email test@example.com
@@ -114,6 +115,55 @@ bad_note() {
   printf -- '---\ntype: concept\n---\n# Bad\n' > "$V/wiki/work/concepts/Bad.md"
   run git -C "$V" commit -qm staged-clean
   [ "$status" -eq 0 ]
+}
+
+# A fixture token built by concatenation, so this file never holds the shape itself.
+TOKEN="AKIA""IOSFODNN7EXAMPLE"
+
+@test "hook refuses a staged secret shape, naming path, line and shape but never the value (#166)" {
+  printf 'first\nkey %s here\n' "$TOKEN" > "$V/notes.txt"
+  git -C "$V" add notes.txt
+  printf 'fixed on disk only\n' > "$V/notes.txt"
+  run git -C "$V" commit -qm secret
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"secret shape: notes.txt:2: aws_key"* ]]
+  [[ "$output" == *"pre-commit: a staged file holds a secret shape"* ]]
+  [[ "$output" != *"$TOKEN"* ]]
+  run git -C "$V" rev-parse -q --verify HEAD
+  [ "$status" -ne 0 ]
+}
+
+@test "hook passes a clean commit, and a secret only in the working tree does not block it (#166)" {
+  printf 'clean\n' > "$V/notes.txt"
+  git -C "$V" add notes.txt
+  printf 'key %s\n' "$TOKEN" > "$V/notes.txt"
+  printf 'key %s\n' "$TOKEN" > "$V/untracked.txt"
+  run git -C "$V" commit -qm clean
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$V" show HEAD:notes.txt)" = clean ]
+}
+
+@test "hook refuses as unscanned when the shape list is empty or unreadable, or the scanner is missing (#166)" {
+  echo hi > "$V/README.txt"
+  git -C "$V" add README.txt
+  cp "$V/system/scripts/vaultlib/redact.py" "$BATS_TEST_TMPDIR/redact.py"
+  printf 'import re\nPATTERNS = []\nPEM_BEGIN = re.compile("x^")\n' > "$V/system/scripts/vaultlib/redact.py"
+  run git -C "$V" commit -qm empty
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"secret shape: unscanned (empty shape list)"* ]]
+  [[ "$output" == *"pre-commit: the secret scan could not run"* ]]
+  cp "$BATS_TEST_TMPDIR/redact.py" "$V/system/scripts/vaultlib/redact.py"
+  chmod 000 "$V/system/scripts/vaultlib/redact.py"
+  run git -C "$V" commit -qm unreadable
+  chmod 644 "$V/system/scripts/vaultlib/redact.py"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"secret shape: unscanned (shape list unreadable"* ]]
+  rm "$V/system/scripts/secret_scan.py"
+  run git -C "$V" commit -qm missing
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pre-commit: the secret scan could not run"* ]]
+  run git -C "$V" rev-parse -q --verify HEAD
+  [ "$status" -ne 0 ]
 }
 
 @test "hook allows setext underlines and a start marker without an end marker" {
