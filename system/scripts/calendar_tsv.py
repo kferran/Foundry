@@ -20,8 +20,8 @@ CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 MAX_EVENTS = 100
 MAX_TITLE = 200
 # The notice the harness puts in place of a tool result over its size limit (#164). Matched at the start only, so
-# event text that quotes it does not count.
-OVERFLOW = re.compile(r"\s*(Error: .{0,80}exceeds maximum allowed tokens|Output too large)")
+# event text that quotes it does not count: a real page is JSON and starts with { or [.
+OVERFLOW = re.compile(r"\s*(?![\[{])(.{0,80}exceeds maximum allowed tokens|Output too large)")
 
 
 class Fail(Exception):

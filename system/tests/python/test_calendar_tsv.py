@@ -85,6 +85,7 @@ OVERFLOW = "Error: result (54,846 characters) exceeds maximum allowed tokens. Ou
     OVERFLOW,
     [{"type": "text", "text": OVERFLOW}],
     "Output too large (78 KB). Full output saved to: /x/1.txt",
+    "MCP tool response (31,000 tokens) exceeds maximum allowed tokens (25000).",
 ])
 def test_an_oversized_list_events_result_exits_6_even_with_an_ok_output(tmp_path, content):
     # The harness replaced a page with a note that it was saved to disk; the session cannot read it (#164).

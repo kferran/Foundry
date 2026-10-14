@@ -53,7 +53,7 @@ Writes that day's events as TSV to stdout. The date defaults to today in the con
 
 - Working directory: `mktemp -d -p /tmp`, removed on exit (an explicit `/tmp`, so no `CLAUDE.md` above it is picked up).
 - `JARVIS_HEADLESS=1` (the Jarvis memory hooks exit at once), stdin from `/dev/null`, `${CLAUDE_BIN:-claude}`.
-- `timeout -k 10 ${CALENDAR_TIMEOUT:-150}`.
+- `timeout -k 10 ${CALENDAR_TIMEOUT:-190}`.
 
 ### 4.2 Confinement
 
@@ -86,7 +86,7 @@ The prompt, with `<date>`, `<next day>` and `<tz>` filled in (all three from the
 Reads claude's stream-json output (one JSON object per line) on stdin, takes the date as its argument, and decides, in this order:
 
 - **Tool-use check:** every `tool_use` in an assistant message must be named `ToolSearch`, `mcp__claude_ai_Google_Calendar__list_events` or `StructuredOutput`. Any other name: exit 7, reason naming the tools (names only). This holds whatever the deny list missed.
-- **Result-limit check (#164):** a `tool_result` in a user message whose text starts with the harness's size-limit notice (`Error: … exceeds maximum allowed tokens` or `Output too large`): exit 6, whatever the reply says, because the session never saw that page's events.
+- **Result-limit check (#164):** a `tool_result` in a user message whose text is the harness's size-limit notice (it does not start with `{` or `[`, and has `exceeds maximum allowed tokens` in its first 80 characters or starts with `Output too large`): exit 6, whatever the reply says, because the session never saw that page's events.
 - the `result` message: `is_error` true, or `subtype` other than `success` (for example `error_max_turns`, a budget stop, a logged-out account): exit 1, reason from `subtype`/`errors`. No `result` message: exit 1.
 - no `structured_output`, or it fails the schema checks, written by hand (Python's standard library has no JSON Schema validator): exactly the three keys, their types, the status enum, at most 100 events, each with exactly the five string fields: exit 5.
 - `status` `no_tool`: exit 3. `tool_error`: exit 6 with `reason`. `too_many`: exit 8 with `reason`.
