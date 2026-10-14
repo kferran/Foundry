@@ -215,14 +215,17 @@ def test_ordinary_phrasings_pass(text):
 
 
 @pytest.mark.parametrize("text", [*nc.CREDENTIALED, "npm  publish", "Docker PUSH img", "aws s3 cp x s3://b",
-                                  "```\ncargo publish\n```", "helm\tupgrade app ./chart"])
+                                  "```\ncargo publish\n```", "helm\tupgrade app ./chart", "$ gcloud auth login",
+                                  "- az account show", "Run `aws s3 ls`.", "```bash\n  az login\n```"])
 def test_credentialed_actions_are_caught(text):
     # (#166) the sealed session holds no credential, so a task that needs one cannot finish
     assert nc.CREDENTIAL.search(f"{text}x" if text.endswith(" ") else text)   # "aws " stands for "aws <command>"
 
 
 @pytest.mark.parametrize("text", ["the publisher field", "pushed the branch", "apply the patch", "terraform plan",
-                                  "npm publisher", "docker pushes", "az", "gh release list"])
+                                  "npm publisher", "docker pushes", "az", "gh release list",
+                                  "exit 1 when az is not installed", "an AWS key", "a stub az",
+                                  "raise Error(\"az timed out\")", "Use gcloud auth when asked."])
 def test_lookalike_words_pass_the_credential_check(text):
     # (#166)
     assert not nc.CREDENTIAL.search(text)
