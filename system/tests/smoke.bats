@@ -20,7 +20,7 @@ setup() {
   stub dtcc_watch.py 0 "map ok" 1
   stub telemetry_fetch.py 0 "telemetry_fetch: prod-sentry: ok" 1
   # Units (#166): an empty unit directory, and a systemctl that answers from $STUB_TIMERS lines
-  # "<timer>|<LastTriggerUSec>|<SubState>"; a timer with no line is not enabled.
+  # "<timer>|<LastTriggerUSec>|<SubState>"; a timer with no line is not enabled. Other verbs succeed silently.
   cp -r "$REPO/system/systemd" system/systemd
   export SYSTEMD_USER_DIR="$BATS_TEST_TMPDIR/units" SYSTEMCTL="$BATS_TEST_TMPDIR/bin/systemctl"
   export STUB_TIMERS="$BATS_TEST_TMPDIR/timers"
@@ -29,6 +29,7 @@ setup() {
   touch "$STUB_TIMERS"
   cat > "$SYSTEMCTL" <<'EOF'
 #!/bin/bash
+[[ "$2" == is-enabled || "$2" == show ]] || exit 0
 line="$(grep -F "${*: -1}|" "$STUB_TIMERS")" || exit 1
 [[ "$2" != show ]] || { IFS='|' read -r _ last sub <<< "$line"; printf 'LastTriggerUSec=%s\nSubState=%s\n' "$last" "$sub"; }
 EOF
@@ -237,7 +238,7 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   alerts | grep -qF "[smoke] foundry-brief.timer stale: no run since $since"
   [ "$(jq -r 'select(.source == "foundry-brief.timer") | .exit' "$LOG")" = 1 ]
   run "$SC"
-  [ "$(alerts | grep -c '\[smoke\]')" -eq 2 ]
+  [ "$(alerts | grep -c 'stale:')" -eq 2 ]
 }
 
 @test "a 15-minute timer that fired 10 minutes ago reads ok in a timezone east of UTC (#166)" {
@@ -253,13 +254,45 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   printf '# Managed by vault: %s\n[Timer]\nOnCalendar=*:0/15\n' "$(pwd -P)" > "$UD/foundry-nightshift.timer"
   printf '# Managed by vault: /elsewhere\n[Timer]\nOnCalendar=*:0/15\n' > "$UD/foundry-notify.timer"
   run "$SC"
-  [ "$status" -eq 0 ]
   grep -qx 'foundry-brief.timer: unknown' <<< "$output"
   grep -qx 'foundry-intake.timer: ok' <<< "$output"
   grep -qx 'foundry-nightshift.timer: off' <<< "$output"
   run grep -c foundry-notify <<< "$output"
   [ "$output" = 0 ]
-  [ -z "$(alerts)" ]
+  # The hand-written timers differ from the render (the drift line's business); no timer line alerts.
+  run grep -c 'stale:' <<< "$(alerts)"
+  [ "$output" = 0 ]
+}
+
+@test "installed units that match the render read ok; a unit never installed is left out, never differs (#166)" {
+  run "$SC"
+  grep -qx 'units: off' <<< "$output"
+  run system/scripts/install_units.sh
+  [ "$status" -eq 0 ]
+  rm "$UD/foundry-smoke.timer"
+  run "$SC"
+  [ "$status" -eq 0 ]
+  grep -qx 'units: ok' <<< "$output"
+  run grep -c differs <<< "$output"
+  [ "$output" = 0 ]
+}
+
+@test "an edited unit and an edited drop-in each read differs and alert once a day, naming the fix (#166)" {
+  set_key machine_role '"server"'
+  run system/scripts/install_units.sh
+  [ "$status" -eq 0 ]
+  echo '# edited' >> "$UD/foundry-intake.service"
+  echo '# edited' >> "$UD/foundry-intake.service.d/foundry-sync.conf"
+  run "$SC"
+  [ "$status" -eq 1 ]
+  grep -qx 'units: differs: foundry-intake.service' <<< "$output"
+  grep -qx 'units: differs: foundry-intake.service.d/foundry-sync.conf' <<< "$output"
+  run grep -c '^units: ' <<< "$output"
+  [ "$output" = 2 ]
+  alerts | grep -qF '[smoke] foundry-intake.service differs: run system/scripts/install_units.sh --update'
+  alerts | grep -qF '[smoke] foundry-intake.service.d/foundry-sync.conf differs: run system/scripts/install_units.sh --update'
+  run "$SC"
+  [ "$(alerts | grep -c '\[smoke\]')" -eq 2 ]
 }
 
 @test "a client runs no checks" {

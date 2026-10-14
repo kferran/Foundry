@@ -179,4 +179,31 @@ for f in "$UNIT_DIR"/foundry-*.timer; do
   fi
 done
 
+# Unit drift (#166): each unit and drop-in install_units.sh --dry-run renders against its installed copy. A unit not
+# installed (one the owner never installed, or removed) is left out; with none installed the line reads off.
+rdir="$(mktemp -d)"
+trap 'rm -rf -- "$out" "$rdir"' EXIT
+urc=0
+timeout "${SMOKE_UNITS_TIMEOUT:-60}" system/scripts/install_units.sh --dry-run > "$rdir/all" 2> "$out" < /dev/null || urc=$?
+if (( urc != 0 )); then
+  report units "$urc" "install_units.sh --dry-run failed (exit $urc): $(reason install_units.sh)"
+else
+  # "===== <name>" opens each file; a drop-in's "/" is stored as "%".
+  awk -v d="$rdir" '/^===== / { f = substr($0, 7); gsub("/", "%", f); f = d "/" f; next } { print > f }' "$rdir/all"
+  installed=0 differs=0
+  for r in "$rdir"/foundry-*; do
+    n="${r##*/}" n="${n//%//}"
+    [[ -f "$UNIT_DIR/$n" ]] || continue
+    installed=1
+    cmp -s -- "$r" "$UNIT_DIR/$n" && continue
+    differs=1
+    logline units 1 "differs: $n"
+    echo "units: differs: $n"
+    alert_once "$n differs:" "run system/scripts/install_units.sh --update"
+  done
+  if (( differs )); then failed=1
+  elif (( installed )); then report units 0 ""
+  else echo "units: off"; fi
+fi
+
 exit "$failed"
