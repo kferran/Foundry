@@ -748,6 +748,22 @@ self_edit_contract() {
   grep -qF '`wiki/<partition>/Now.md` is the one note both machines write' FOUNDRY.md
 }
 
+@test "the Now clock: the brief prints Overdue before From Now and dates its headless lines; CLAUDE.md and the manual name it (Now clock spec §6, §7, §12)" {
+  f=.claude/commands/brief.md
+  grep -qF 'system/logs/inputs/<date>/overdue.md' "$f"
+  grep -qF 'system/logs/inputs/<date>/clock.md' "$f"
+  grep -qF 'print `overdue.md` verbatim under the bold label **Overdue**' "$f"
+  line="$(grep -F '**Overdue**' "$f")"
+  [[ "$line" == *'**Before today'*'**Overdue**'*'**From Now**'* ]]
+  grep -qF '[due:: <long>]' "$f"
+  grep -qF 'ignoring their `[rec:: …]` and `[due:: …]` fields' "$f"
+  grep -qF '[--rec "<option>: <why>"] [--due YYYY-MM-DD]' CLAUDE.md
+  now_par="$(grep -F '**The Now page.**' FOUNDRY.md)"
+  [[ "$now_par" == *'[due:: YYYY-MM-DD]'* ]]
+  [[ "$now_par" == *'system/scripts/now.py overdue'* ]]
+  grep -F '| `/brief [date]` |' FOUNDRY.md | grep -qF 'Overdue'
+}
+
 @test "the README says update_template.sh lists new units and never installs them (#35)" {
   grep -qF 'A unit the update adds is listed as `new unit available: <unit>` and left out' FOUNDRY.md
 }
