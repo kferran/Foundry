@@ -63,6 +63,14 @@ headless_contract() {
   grep -qF '(headless: the run id'"'"'s first 8 digits written as `YYYY-MM-DD`)' "$f"
 }
 
+@test "note tags: ingest reuses the partition's tags; FOUNDRY.md and the concept schema carry the form (#158)" {
+  grep -qF 'run `system/scripts/vault_index.py tags --partition <p>` and reuse a listed tag' .claude/commands/ingest.md
+  grep -qF 'invent one only when none fits' .claude/commands/ingest.md
+  grep -qF '**Tags.**' FOUNDRY.md
+  grep -qF 'the pre-commit hook and the publish gate refuse either on a new note' FOUNDRY.md
+  grep -qF '`tags` are lowercase kebab-case' system/schemas/concept.md
+}
+
 @test "ingest: retire a state heading by renaming it in place (#160)" {
   grep -qF 'Retire a heading that encodes a state (such as `(not yet merged)`) by renaming it in place and keeping its section; never delete the section.' .claude/commands/ingest.md
   grep -qF 'In that run, add or remove no heading of the same level above the renamed one' .claude/commands/ingest.md

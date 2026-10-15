@@ -18,4 +18,4 @@ fields:
   provenance: {kind: list, of: {kind: enum, values: [headless, interactive, session]}}
 ---
 # Concept
-An evergreen, atomic knowledge node compiled from raw inputs and session digests. Retire with `status: deprecated` or supersession; never delete. `capability` is set only on a note that assigns work: the capability the work needs, from the union of the Workcells' `capabilities` in `system/agents/workcells/` (work for the Foreman needs no field).
+An evergreen, atomic knowledge node compiled from raw inputs and session digests. Retire with `status: deprecated` or supersession; never delete. `capability` is set only on a note that assigns work: the capability the work needs, from the union of the Workcells' `capabilities` in `system/agents/workcells/` (work for the Foreman needs no field). `tags` are lowercase kebab-case, `/` between the parts of a nested tag; reuse one from `system/scripts/vault_index.py tags --partition <p>` before inventing one.
