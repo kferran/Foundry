@@ -84,6 +84,16 @@ setup() {
   grep -qx 'ok fts5' <<< "$output"
 }
 
+@test "check_deps: a python3 older than 3.11 is missing and names its version (audit C13)" {
+  real="$(command -v python3)"
+  rm "$BIN/python3"
+  printf '#!/bin/bash\n[[ "$1" == --version ]] && { echo "Python 3.9.2"; exit 0; }\nfor a in "$@"; do [[ "$a" == *version_info* ]] && exit 1; done\nexec %s "$@"\n' "$real" > "$BIN/python3"
+  chmod +x "$BIN/python3"
+  run env PATH="$BIN" "$CD" --strict
+  [ "$status" -eq 1 ]
+  grep -qx 'missing python3 Python 3.9.2 is too old; 3.11 or newer is required (sudo pacman -S python)' <<< "$output"
+}
+
 @test "check_deps: without python3 every python check is missing" {
   rm "$BIN/python3"
   run env PATH="$BIN" "$CD"

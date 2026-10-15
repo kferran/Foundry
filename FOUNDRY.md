@@ -227,7 +227,7 @@ The next server sync clears the marker, deletes the pending branch and starts a 
 The Foundry runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh --role <role>` checks what that role needs and prints `pacman` or `apt` install hints:
 
 - `claude` (Claude Code), `git`, `jq`, `flock`, `timeout`
-- `python3` with PyYAML (`sudo pacman -S python-yaml`). Missing PyYAML blocks setup.
+- `python3` 3.11 or newer, with PyYAML (`sudo pacman -S python-yaml`). Missing PyYAML blocks setup.
 - `sqlite3` built with FTS5
 - systemd user units (`systemctl --user`, `systemd-analyze`). If you want timers to run while you are logged out, enable lingering.
 - `bwrap` (bubblewrap): headless runs turn Claude Code's sandbox on.
