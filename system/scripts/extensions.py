@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What each enabled extension gives the shared scripts, as lines bash can read (extensions spec §3).
 
-Usage: extensions.py list | check | field <name> <key> | smoke | brief | units <role> | allow | ignore
+Usage: extensions.py list | check | field <name> <key> | smoke | brief | units <role> | allow [--write | --remove <name>] | ignore
 Exit: 0; 1 from `check` when an extension cannot load; 2 usage.
 """
 import json
@@ -55,6 +55,18 @@ def main(argv: list) -> int:
             for u in d.get("units") or []:
                 if args[0] in (u.get("roles") or []):
                     out.append(f"{name}\t{u.get('name', '')}")
+    elif cmd == "allow" and args and args[0] in ("--write", "--remove"):
+        if args[0] == "--write" and len(args) == 1:
+            done, err = extensions.write_allow(VAULT)
+        elif args[0] == "--remove" and len(args) == 2:
+            done, err = extensions.remove_allow(VAULT, args[1])
+        else:
+            return usage()
+        for rule in done:
+            print(f"{'added' if args[0] == '--write' else 'removed'} {rule}")
+        if err:
+            print(f"extensions: {err}", file=sys.stderr)
+            return 1
     elif cmd == "allow" and not args:
         out = [r for _, d in loaded for r in extensions._strs(d.get("allow"))]
     elif cmd == "ignore" and not args:

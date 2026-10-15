@@ -2,6 +2,7 @@
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -144,3 +145,72 @@ def test_index_skips_extensions_and_their_ignore_paths(ext, cli):
     assert "wiki/work/things/Blue.md" in r.stdout
     assert "extensions/" not in r.stdout
     assert "raw/demo" not in r.stdout
+
+
+# The allow rules: whole lines inserted after `"allow": [`, never a JSON rewrite (template rule for settings.json).
+RULE = "Bash(extensions/demo/scripts/demo_check.sh)"
+
+
+def with_settings(vault):
+    (vault / ".claude").mkdir(exist_ok=True)
+    return Path(shutil.copy(REPO / ".claude" / "settings.json", vault / ".claude" / "settings.json"))
+
+
+def test_write_inserts_each_rule_once_after_the_allow_line_and_keeps_json_valid(ext):
+    import json
+    config(ext, "demo")
+    settings = with_settings(ext)
+    r = run(ext, "allow", "--write")
+    assert r.returncode == 0, r.stderr
+    lines = settings.read_text().split("\n")
+    at = lines.index('    "allow": [')
+    assert lines[at + 1] == f'      "{RULE}",'
+    assert json.loads(settings.read_text())["permissions"]["allow"].count(RULE) == 1
+    assert json.loads((ext / "system/logs/extensions-allow.json").read_text()) == {RULE: "demo"}
+
+
+def test_write_twice_changes_nothing(ext):
+    config(ext, "demo")
+    settings = with_settings(ext)
+    run(ext, "allow", "--write")
+    once = settings.read_bytes()
+    assert run(ext, "allow", "--write").returncode == 0
+    assert settings.read_bytes() == once
+
+
+def test_remove_deletes_only_that_extensions_rules(ext):
+    import json
+    manifest(ext, "other", allow='["Bash(extensions/other/x.sh)"]')
+    config(ext, "demo", "other")
+    settings = with_settings(ext)
+    original = settings.read_text()
+    run(ext, "allow", "--write")
+    assert run(ext, "allow", "--remove", "demo").returncode == 0
+    allow = json.loads(settings.read_text())["permissions"]["allow"]
+    assert RULE not in allow
+    assert "Bash(extensions/other/x.sh)" in allow
+    assert run(ext, "allow", "--remove", "other").returncode == 0
+    assert settings.read_text() == original
+
+
+def test_a_rule_the_owner_wrote_by_hand_is_never_removed(ext):
+    import json
+    config(ext, "demo")
+    settings = with_settings(ext)
+    text = settings.read_text().replace('    "allow": [\n', f'    "allow": [\n      "{RULE}",\n', 1)
+    settings.write_text(text)
+    run(ext, "allow", "--write")
+    assert settings.read_text() == text
+    run(ext, "allow", "--remove", "demo")
+    assert RULE in json.loads(settings.read_text())["permissions"]["allow"]
+
+
+def test_bytes_outside_the_inserted_lines_are_unchanged(ext):
+    config(ext, "demo")
+    settings = with_settings(ext)
+    original = settings.read_text().split("\n")
+    run(ext, "allow", "--write")
+    after = settings.read_text().split("\n")
+    assert len(after) == len(original) + 1
+    after.remove(f'      "{RULE}",')
+    assert after == original
