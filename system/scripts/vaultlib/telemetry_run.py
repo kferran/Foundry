@@ -5,6 +5,7 @@ import fcntl
 import json
 import os
 import time
+import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -163,6 +164,19 @@ def _run_source(vault, src, store, by_name, now, dry, line):
     return start, end, moved, counters
 
 
+def _classed(src, exc: TelemetryError) -> str:
+    """The reason led by its class (connector health spec §2); a network failure names the host the smoke check
+    reports as unreachable."""
+    if exc.kind == "auth":
+        return f"auth: {exc.reason}"
+    if exc.kind == "transient" and exc.reason.startswith("network: "):
+        host = urllib.parse.urlsplit(src.adx_cluster if src.kind == "adx" else src.sentry_url).hostname or "?"
+        return f"network: {host} ({exc.reason.removeprefix('network: ')})"
+    if exc.kind == "transient":
+        return f"{'timeout' if 'timed out' in exc.reason else 'connector'}: {exc.reason}"
+    return f"other: {exc.reason}"
+
+
 def main(argv: list, vault: Path, now: datetime | None = None) -> int:
     vault = Path(vault)
     now = now or datetime.now(timezone.utc)
@@ -188,7 +202,7 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
             else:
                 sentry.project_ids(src.sentry_url, src.sentry_org, src.sentry_projects)
         except TelemetryError as exc:
-            print(f"telemetry_fetch: {src.name}: {exc.reason}")
+            print(f"telemetry_fetch: {src.name}: {_classed(src, exc)}")
             return 1
         print(f"telemetry_fetch: {src.name}: ok")
         return 0

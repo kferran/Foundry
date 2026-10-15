@@ -141,3 +141,20 @@ outcome() {
   [ "$status" -eq 0 ]
   [ "$output" = "3 boom" ]
 }
+
+@test "connector_classify gives every failure one class (connector health spec §2)" {
+  prepare
+  : > "$work/claude.err"
+  cls() { CONNECTOR_RC="${3:-0}"; connector_classify "$1" "$2" "$work"; [ "$CONNECTOR_CLASS" = "$4" ]; }
+  cls 0 "" 0 ""
+  cls 3 "no Atlassian connector reachable" 0 auth
+  cls 6 'the connector returned an error: "401 Unauthorized"' 0 auth
+  cls 6 "the connector returned an error: token expired, reconnect" 0 auth
+  cls 6 "the connector returned an error: 500 Internal Server Error" 0 connector
+  cls 4 "timed out after 30s" 124 timeout
+  cls 127 "claude not found (claude)" 0 claude
+  cls 7 "the session used an unexpected tool: Bash" 0 other
+  cls 1 "claude returned an error result" 1 other
+  printf 'Invalid API key · Please run /login\n' > "$work/claude.err"
+  cls 1 "claude returned an error result" 1 claude
+}

@@ -85,6 +85,22 @@ codebase() {  # <name> <path>
   CLAUDE_BIN="$BATS_TEST_TMPDIR/no-such-claude" check 'claude is not on PATH'
 }
 
+@test "brief_prep: sources.md lists every source with ok, off or failed and the since date from the smoke log (connector health spec §2)" {
+  system/scripts/vault_index.py set system/config.md triage_enabled true > /dev/null
+  printf '%s\n' '{"time":"2026-09-30T05:45:00-06:00","source":"calendar","exit":3,"reason":"auth: no Google Calendar connector reachable"}' \
+    '{"time":"2026-10-01T05:45:00-06:00","source":"triage","exit":0,"reason":""}' > system/logs/smoke-2026-10.jsonl
+  calendar_says '{"status":"no_tool","reason":"","events":[]}'
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qxF -- '- calendar: failed: auth: no Google Calendar connector reachable (since 2026-09-30); expired: Google connector; renew: reconnect it at claude.ai, Settings, Connectors' "$IN/sources.md"
+  grep -qxF -- '- meetings: off' "$IN/sources.md"
+  grep -qxF -- '- triage: ok' "$IN/sources.md"
+  grep -qxF -- '- notify: off' "$IN/sources.md"
+  calendar_says '{"status":"ok","reason":"","events":[]}'
+  run "$BP" 2026-10-01
+  grep -qxF -- '- calendar: ok' "$IN/sources.md"
+}
+
 @test "brief_prep: the default date is today in the configured timezone" {
   run "$BP"
   [ "$status" -eq 0 ]

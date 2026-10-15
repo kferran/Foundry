@@ -47,6 +47,8 @@ alert_once() {  # <key> <text>: at most one alert a day per key
   grep -qF -- "[rca] $1" "$f" 2>/dev/null || printf -- '- %s [rca] %s %s\n' "$(date +%H:%M:%S)" "$1" "$2" >> "$f"
 }
 fail() {  # <exit> <reason>
+  connector_classify "$1" "$2" "${work:-}"   # connector health spec §2: the class leads the reason
+  set -- "$1" "${CONNECTOR_CLASS:+$CONNECTOR_CLASS: }$2"
   logline "$1" "$2"
   case "$1" in 1|2|3|4|5|6|7) alert_once "Filing $stem failed (exit $1):" "$2" ;; esac
   echo "rca_file: $2" >&2

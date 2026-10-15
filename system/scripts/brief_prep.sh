@@ -12,17 +12,19 @@ source system/scripts/lib_config.sh
 # shellcheck source=lib_prep.sh
 source system/scripts/lib_prep.sh
 prep_init brief_prep "$@"
+prep_sources_init
 
 # The calendar comes from the Google Calendar connector through a narrow claude session
 # (calendar_fetch.sh, calendar spec §4); its reason line on failure lands in prep_errors.log.
 rc=0
 prep_write calendar.tsv system/scripts/calendar_fetch.sh "$PREP_DATE" || rc=$?
+if (( rc == 0 )); then prep_source calendar ok; else prep_source calendar failed "$(prep_reason calendar_fetch "$rc")"; fi
 case "$rc" in
   0) ;;
   3) prep_unavailable "calendar: no Google Calendar connector reachable (connect it at claude.ai with the account this machine's claude is logged in with, then re-run /setup phase 6)" ;;
   4) prep_unavailable "calendar: the connector timed out" ;;
   5) prep_unavailable "calendar: the connector returned an unreadable event list (see system/logs/calendar_fetch-${PREP_DATE:0:7}.jsonl)" ;;
-  6) prep_unavailable "calendar: the connector returned an error: $(sed -n 's/^calendar_fetch: the connector returned an error: //p' "$PREP_DIR/prep_errors.log" | tail -n 1) (if it persists, reconnect Google Calendar at claude.ai)" ;;
+  6) prep_unavailable "calendar: the connector returned an error: $(sed -nE 's/^calendar_fetch: ([a-z]+: )?the connector returned an error: //p' "$PREP_DIR/prep_errors.log" | tail -n 1) (if it persists, reconnect Google Calendar at claude.ai)" ;;
   7) prep_unavailable "calendar: the fetch session used an unexpected tool; nothing was written (see system/logs/alerts_$(date +%F).md)" ;;
   8) prep_unavailable "calendar: more than 100 events that day; not listed" ;;
   127) prep_unavailable "calendar: claude is not on PATH" ;;
@@ -78,6 +80,7 @@ fi
 if [[ -n "$(config_get handoffs_projects)" ]]; then
   rc=0
   prep_write handoffs.md system/scripts/jira_fetch.sh || rc=$?
+  if (( rc == 0 )); then prep_source handoffs ok; else prep_source handoffs failed "$(prep_reason jira_fetch "$rc")"; fi
   case "$rc" in
     0) ;;
     2) prep_unavailable "handoffs: $(sed -n 's/^jira_fetch: //p' "$PREP_DIR/prep_errors.log" | tail -n 1) (set it with /setup)" ;;
@@ -92,6 +95,10 @@ fi
 # New DTCC changes since the latest earlier briefing (DTCC watcher spec §7); empty without a map.
 prep_write dtcc.md system/scripts/dtcc_watch.py --brief "$PREP_DATE" \
   || prep_unavailable "dtcc: dtcc_watch.py --brief failed (see $PREP_DIR/prep_errors.log)"
+# One line per source for the brief's Sources line (connector health spec §2): this run's own readings, the rest from
+# this morning's smoke check, each failure with its class, since date and renewal.
+prep_write sources.md system/scripts/sources.py report "$PREP_DATE" --given "$PREP_DIR/sources.given" \
+  || prep_unavailable "sources: sources.py report failed (see $PREP_DIR/prep_errors.log)"
 
 # Briefings and debriefs dated before today move to briefings/archive/<YYYY-MM>/, after the Now seed and
 # dtcc.md are written (now.py seed and dtcc_watch.py read the archive too). The sync commit records

@@ -80,7 +80,7 @@ ITEM='{"items": [{"thread_id": "a1", "who": "Blake", "ask": "asks how to proceed
   printf '{"type":"result","subtype":"success","is_error":false,"result":"{}"}\n' > "$STUB_STREAM"
   run "$TF"
   [ "$status" -eq 3 ]
-  grep -qF '[triage] Inbox triage failed (exit 3): no Gmail connector reachable' "$ALERTS"
+  grep -qF '[triage] Inbox triage failed (exit 3): auth: no Gmail connector reachable' "$ALERTS"
 }
 
 @test "a tick outside workdays 08:00-18:00, while off, or over the usage ceiling is skipped and logged" {

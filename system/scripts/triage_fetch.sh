@@ -44,6 +44,8 @@ alert_once() {  # <key> <text>: at most one alert a day per key
   grep -qF -- "[triage] $1" "$f" 2>/dev/null || printf -- '- %s [triage] %s %s\n' "$(date +%H:%M:%S)" "$1" "$2" >> "$f"
 }
 fail() {  # <exit> <reason>
+  connector_classify "$1" "$2" "${work:-}"   # connector health spec §2: the class leads the reason
+  set -- "$1" "${CONNECTOR_CLASS:+$CONNECTOR_CLASS: }$2"
   logline "$1" "$2"
   case "$1" in 1|2|3|4|6|7) alert_once "Inbox triage failed (exit $1):" "$2" ;; esac
   echo "triage_fetch: $2" >&2

@@ -23,12 +23,31 @@ prep_init() {  # <script name> [date]
 
 prep_unavailable() { printf -- '- %s: %s\n' "$PREP_NAME" "$1" >> "$PREP_DIR/unavailable.md"; }
 
-# prep_meetings: an unavailable line when the last Google Drive search of the day (meetings_fetch.sh) failed.
+# prep_source <source> <ok|off|failed> [reason]: what this run read itself, for sources.py report (connector health
+# spec §2). The file is the run's own: prep_sources_init empties it.
+prep_sources_init() { : > "$PREP_DIR/sources.given"; }
+prep_source() { printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}" >> "$PREP_DIR/sources.given"; }
+
+# prep_reason <script name> <exit>: the script's last "<name>: …" line in prep_errors.log without that prefix (its
+# class leads it), else the exit.
+prep_reason() {
+  local r
+  r="$(sed -n "s/^$1: //p" "$PREP_DIR/prep_errors.log" 2>/dev/null | tail -n 1)"
+  printf '%s\n' "${r:-other: $1 exited $2}"
+}
+
+# prep_meetings: an unavailable line when the last Google Drive search of the day (meetings_fetch.sh) failed; with
+# a search today, its reading for the Sources line.
 prep_meetings() {
   local log="system/logs/meetings_fetch-${PREP_DATE:0:7}.jsonl" last
   [[ -f "$log" ]] || return 0
   last="$(jq -cR --arg d "$PREP_DATE" 'fromjson? | select(.step == "search" and ((.time // "") | startswith($d)))' "$log" | tail -n 1)"
-  [[ -n "$last" && "$(jq -r .exit <<< "$last")" != 0 ]] || return 0
+  [[ -n "$last" ]] || return 0
+  if [[ "$(jq -r .exit <<< "$last")" == 0 ]]; then
+    [[ "$PREP_NAME" != brief_prep ]] || prep_source meetings ok
+    return 0
+  fi
+  [[ "$PREP_NAME" != brief_prep ]] || prep_source meetings failed "$(jq -r .reason <<< "$last")"
   prep_unavailable "meetings: the last Google Drive search today failed (exit $(jq -r '"\(.exit): \(.reason)"' <<< "$last"))"
 }
 
