@@ -6,6 +6,7 @@ UNITS=(foundry-intake.service foundry-intake.timer foundry-brief.service foundry
        foundry-debrief.service foundry-debrief.timer foundry-smoke.service foundry-smoke.timer)
 
 setup() {
+  need_user_systemd  # every test renders units, which systemd-analyze --user verify checks
   make_vault
   cp -r "$REPO/system/systemd" "$V/system/systemd"
   STUBS="$BATS_TEST_TMPDIR/stubs"

@@ -190,6 +190,7 @@ upstream_commit() {  # <file> <text>
 }
 
 @test "update_template merges a clean update, then rebuilds the index and re-renders installed units" {
+  need_user_systemd
   template_setup
   system/scripts/install_units.sh > /dev/null
   printf '# Managed by vault: %s\nstale\n' "$(pwd -P)" > "$SYSTEMD_USER_DIR/foundry-brief.service"

@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+load helpers  # need_non_root
 
 setup() {
   REPO="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
@@ -219,6 +220,7 @@ TOKEN="AKIA""IOSFODNN7EXAMPLE"
 }
 
 @test "hook refuses as unscanned when the shape list is empty or unreadable, or the scanner is missing (#166)" {
+  need_non_root
   echo hi > "$V/README.txt"
   git -C "$V" add README.txt
   cp "$V/system/scripts/vaultlib/redact.py" "$BATS_TEST_TMPDIR/redact.py"
