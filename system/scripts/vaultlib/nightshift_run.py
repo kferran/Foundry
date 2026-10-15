@@ -80,6 +80,7 @@ def _parser():
 class Ctx:
     def __init__(self, vault: Path, now: datetime):
         self.vault, self.now = vault, now
+        self.t0 = clock.monotonic()
         cfg = nc.config(vault)
         self.tz = ZoneInfo(str(cfg.get("timezone") or "UTC"))
         self.brief_time = str(cfg.get("brief_time") or "06:00")
@@ -92,6 +93,10 @@ class Ctx:
         self.local = now.astimezone(self.tz)
         self.date = ns.report_date(self.local, self.brief_time)
         self.alerts = {}
+
+    def clock_now(self) -> datetime:
+        """Now, read again: the tick's own reading plus the time since, so a stamp written after a session is later."""
+        return self.now + timedelta(seconds=clock.monotonic() - self.t0)
 
     def alert(self, key: str, msg: str) -> None:
         day = self.local.date().isoformat()
@@ -532,12 +537,13 @@ def _finish(ctx: Ctx, path: Path, fm: dict, idir: Path, cwd, out: dict) -> int:
         tail = (idir / "run.log").read_text(errors="replace").splitlines()[-3:] if (idir / "run.log").is_file() else []
         out["needs"] = [f"{fm['id']} {out['state']} ({out.get('reason')}); work kept in {cwd}" + (f"; log: {' | '.join(tail)}" if tail else "")]
     final = out["state"] != "delivering"
+    finished = ctx.clock_now().isoformat()
     ni.update(path, state=out["state"], reason=out.get("reason") or None, result=out.get("result") or None,
-              finished_at=ctx.now.isoformat() if final else None)
+              finished_at=finished if final else None)
     if final:
         rep.write_outcome(ctx.vault, {"id": fm["id"], "kind": fm["kind"], "state": out["state"], "result": out.get("result", ""),
                                       "reason": out.get("reason", ""), "started_at": fm.get("started_at") or ctx.now.isoformat(),
-                                      "finished_at": ctx.now.isoformat(), "report_date": ctx.date,
+                                      "finished_at": finished, "report_date": ctx.date,
                                       "needs": out.get("needs", []), "notes": out.get("notes", ""),
                                       "output": fm.get("output") or ""})  # a notice links it (#157)
         rep.write(ctx.vault, ctx.date)
@@ -575,10 +581,8 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
         except CloneError as exc:
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
                 f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then queue {fm['id']} again ({exc})"]})
-    t0 = clock.monotonic()
     run = _run_session(ctx, path, fm, body, cwd, idir, resume)
-    rep.record_usage(ctx.vault, ctx.date, run.get("usage") or {},
-                     (ctx.now + timedelta(seconds=clock.monotonic() - t0)).isoformat())
+    rep.record_usage(ctx.vault, ctx.date, run.get("usage") or {}, ctx.clock_now().isoformat())
     if run["outcome"] == "waiting_reset":
         reset = datetime.fromtimestamp(run["reset_at"], tz=timezone.utc).astimezone(ctx.tz)
         ni.update(path, state="waiting_reset", reset_at=reset.isoformat())
