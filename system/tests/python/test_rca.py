@@ -165,14 +165,17 @@ def test_reopen_unticks_the_line_with_the_reason_and_returns_the_draft(vault):
     rca.approve(vault, "work", "2026-10-11-orders")
     rca.reopen(vault, "work", "2026-10-11-orders", 'Jira: "Team is required." (customfield_10042)', TODAY)
     page = now.read(vault, "work")
-    assert ("- [ ] owed: Review RCA draft: 2026-10-11-orders: not filed 2026-10-11, Jira: \"Team is required.\" "
-            "customfield_10042 (since 2026-10-11, rca:2026-10-11-orders)") in page
-    assert "- [ ] owed: Another line (since 2026-10-11)" in page
+    # The reason joins the bare statement; the line keeps its Now clock field after it (Now clock spec §3).
+    reopened = next(l for l in page.split("\n") if "rca:2026-10-11-orders" in l)
+    assert reopened.startswith("- [ ] owed: Review RCA draft: 2026-10-11-orders: not filed 2026-10-11, "
+                               "Jira: \"Team is required.\" customfield_10042 [due:: ")
+    assert reopened.endswith("] (since 2026-10-11, rca:2026-10-11-orders)")
+    assert "- [ ] owed: Another line [due:: 2026-11-10] (since 2026-10-11)" in page
     assert 'status: "draft"' in path.read_text()
     assert rca.pending(vault) == []   # nothing retries until the line is ticked again
     rca.reopen(vault, "work", "2026-10-11-orders", "403 Forbidden", "2026-10-12")
     page = now.read(vault, "work")
-    assert page.count("not filed") == 1 and "not filed 2026-10-12, 403 Forbidden (since" in page
+    assert page.count("not filed") == 1 and "not filed 2026-10-12, 403 Forbidden [due:: " in page
 
 
 def test_filed_writes_the_key_to_the_note_and_the_now_line(vault):
