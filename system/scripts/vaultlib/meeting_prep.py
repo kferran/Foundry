@@ -72,7 +72,7 @@ def _now_lines(text: str, title: str) -> list:
         if not match:
             continue
         who = (match.group("who") or "").strip()
-        if who.casefold() == title.casefold() or matches(match.group("statement"), title):
+        if who.casefold() == title.casefold() or matches(now.fields(match.group("statement"))[0], title):
             found.append((KIND_ORDER.get(match.group("kind"), 9), f"- {line[6:]}"))
     return [line for _, line in sorted(found, key=lambda x: x[0])]
 

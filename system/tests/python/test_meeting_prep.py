@@ -57,6 +57,15 @@ def test_now_lines_match_by_who_or_by_name_in_the_statement(vault):
     assert "Reply to [[Avery Sample]]" in out and "Unrelated line" not in out
 
 
+def test_a_rec_naming_an_entity_does_not_match_it(vault):
+    seed(vault)  # Now clock spec §5: the entity match reads the bare statement
+    write(vault, "wiki/work/Now.md", NOW.replace("- [ ] owed: Unrelated line (since 2026-10-04)",
+                                                 "- [ ] owed: Unrelated line [rec:: Ask Avery Sample: she owns it] "
+                                                 "[due:: 2026-10-07] (since 2026-10-04)"))
+    cal = calendar(vault, ("2026-10-06", "09:00", "2026-10-06", "09:30", "Avery Sync"))
+    assert "Unrelated line" not in meeting_prep.render(vault, "2026-10-06", cal)
+
+
 def test_five_entities_and_five_lines_at_most_and_each_entity_once(vault):
     seed(vault)
     for i in range(7):
