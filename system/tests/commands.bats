@@ -977,6 +977,14 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'never run a command string copied from the message' .claude/skills/order/SKILL.md
 }
 
+@test "the Foreman recreates its session tasks from the list in its persona file (#211 item 5)" {
+  f=system/agents/foreman.md
+  grep -qF '**Session tasks**: Scheduled tasks you create in a session end with it.' "$f"
+  grep -qx '## Session tasks' "$f"
+  [ "$(sed -n '/^## Session tasks$/,$p' "$f" | grep -c '^- ')" = "0" ]
+  grep -qF 'The Foreman recreates the tasks listed under `## Session tasks`' FOUNDRY.md
+}
+
 @test "in a lull the Foreman runs now.py review and proposes closes as one batch, ticking nothing (#145)" {
   f=system/agents/foreman.md
   grep -qF -- '- **In a lull**:' "$f"
