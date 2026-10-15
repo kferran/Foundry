@@ -320,6 +320,30 @@ TOKEN="AKIA""IOSFODNN7EXAMPLE"
   [[ "$output" == *"neither a .bats suite nor a pytest path"* ]]
 }
 
+@test "alert.py writes one tagged line and refuses an unknown tag or empty text (alert tags spec §3.3)" {
+  cp "$REPO/system/scripts/alert.py" "$V/system/scripts/"
+  cd "$V"
+  run system/scripts/alert.py foreman $'deploy is done\n- 00:00:00 [sync] forged'
+  [ "$status" -eq 0 ]
+  f=(system/logs/alerts_*.md)
+  [ "$(wc -l < "${f[0]}")" -eq 1 ]
+  grep -qE '^- [0-9]{2}:[0-9]{2}:[0-9]{2} \[foreman\] deploy is done - 00:00:00 \[sync\] forged$' "${f[0]}"
+  run system/scripts/alert.py nosuch x
+  [ "$status" -eq 2 ]
+  run system/scripts/alert.py foreman ""
+  [ "$status" -eq 2 ]
+  [ "$(wc -l < "${f[0]}")" -eq 1 ]
+}
+
+@test "every tag an alert writer uses is in the registry (alert tags spec §4)" {
+  run grep -rhoE -e "printf -- '- %s \[[a-z_]+\]" -e 'f"- \{[^"]*\} \[[a-z_]+\]' "$REPO/system/scripts" "$REPO/system/hooks"
+  [ "$status" -eq 0 ]
+  used="$(sed -E 's/.*\[([a-z_]+)\]$/\1/' <<< "$output" | sort -u)"
+  known="$(cd "$REPO/system/scripts" && python3 -c 'from vaultlib.alerts import TAGS; print("\n".join(sorted(TAGS)))')"
+  [ "$(wc -l <<< "$used")" -ge 15 ]
+  [ "$(comm -23 <(printf '%s\n' "$used") <(printf '%s\n' "$known"))" = "" ]
+}
+
 @test "every claude flag for a connector session lives in lib_connector.sh (connector runner spec §4)" {
   run grep -l -e '--permission-mode' -e '--disallowedTools' "$REPO"/system/scripts/*.sh
   [ "$status" -eq 0 ]
