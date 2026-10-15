@@ -756,6 +756,8 @@ self_edit_contract() {
   line="$(grep -F '**Overdue**' "$f")"
   [[ "$line" == *'**Before today'*'**Overdue**'*'**From Now**'* ]]
   grep -qF '[due:: <long>]' "$f"
+  grep -qF -- '- [ ] owed: <statement> [due:: <due>] (since <date>)' "$f"  # review finding 4
+  grep -qF '[ [rec:: <option>: <why>]][ [due:: YYYY-MM-DD]]' system/templates/now.md  # review finding 5
   grep -qF 'ignoring their `[rec:: …]` and `[due:: …]` fields' "$f"
   grep -qF '[--rec "<option>: <why>"] [--due YYYY-MM-DD]' CLAUDE.md
   now_par="$(grep -F '**The Now page.**' FOUNDRY.md)"

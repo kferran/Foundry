@@ -1,7 +1,7 @@
 # The Now clock: a recommendation and a decide-by date on Now lines, and an Overdue block in the brief
 
 **Date:** 2026-10-15
-**Status:** Draft for the owner's review.
+**Status:** Accepted by the owner (PR #187 merged 2026-10-15, with the recommended decisions in §13).
 **Issue:** #166, line "`due` and `rec` on Now lines, and an Overdue block in the brief" (accepted as the first #166 spec on 2026-10-15). Related: #98 (session continuity), #107 (Now page known limits), #145 (`now.py review`, merged).
 
 ## 1. Problem
