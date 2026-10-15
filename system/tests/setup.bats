@@ -204,7 +204,7 @@ failing_bats() { printf '#!/usr/bin/env bats\n@test "no" { false; }\n' > "$M/sys
   mini_vault
   cp "$REPO/system/tests/helpers.bash" "$M/system/tests/"
   printf '#!/usr/bin/env bats\nload helpers\n@test "needs" { need_env "no such tool" false; true; }\n' > "$M/system/tests/env.bats"
-  run "$VS"
+  run env -u FOUNDRY_REQUIRE_ENV "$VS"   # this gate may itself run under --require-suites (CI)
   [ "$status" -eq 0 ]
   grep -q '^ok 1 needs # skip.*environment: no such tool' <<< "$output"
   grep -qx 'PASS system/tests/env.bats' <<< "$output"
