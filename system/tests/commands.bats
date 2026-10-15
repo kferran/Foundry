@@ -1135,3 +1135,11 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'slack_notify_channel: {kind: string}' system/schemas/config.md
   grep -qF 'slack_notify_channel: ""' system/config.example.md
 }
+
+@test "brief: reads each enabled extension's section prompt and data, and omits a section with no data" {
+  f=.claude/commands/brief.md
+  grep -qF 'system/logs/inputs/<date>/sections/' "$f"
+  grep -qF 'sections/<name>.prompt.md' "$f"
+  grep -qF 'sections/<name>.md' "$f"
+  grep -qF 'Omit a section whose data file is missing or empty.' "$f"
+}

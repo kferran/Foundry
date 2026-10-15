@@ -95,6 +95,30 @@ fi
 # New DTCC changes since the latest earlier briefing (DTCC watcher spec §7); empty without a map.
 prep_write dtcc.md system/scripts/dtcc_watch.py --brief "$PREP_DATE" \
   || prep_unavailable "dtcc: dtcc_watch.py --brief failed (see $PREP_DIR/prep_errors.log)"
+# Sections from enabled extensions (extensions spec §3): each extension's brief/prep.sh is sourced in a subshell with
+# PREP_DATE, PREP_DIR and the prep_* functions, writes sections/<name>.md and records its readings; its
+# brief/section.md is copied beside it as sections/<name>.prompt.md for the headless brief to read.
+rm -rf "$PREP_DIR/sections"
+rc=0
+ext_brief="$(system/scripts/extensions.py brief 2>> "$PREP_DIR/prep_errors.log")" || rc=$?
+if (( rc != 0 )); then
+  prep_unavailable "extensions: extensions.py brief failed (see $PREP_DIR/prep_errors.log)"
+  ext_brief=""
+fi
+while IFS= read -r ext; do
+  [[ -n "$ext" ]] || continue
+  mkdir -p "$PREP_DIR/sections"
+  [[ ! -f "extensions/$ext/brief/section.md" ]] || cp -- "extensions/$ext/brief/section.md" "$PREP_DIR/sections/$ext.prompt.md"
+  rc=0
+  if [[ -f "extensions/$ext/brief/prep.sh" ]]; then
+    # shellcheck disable=SC1090
+    ( source "extensions/$ext/brief/prep.sh" ) 2>> "$PREP_DIR/prep_errors.log" || rc=$?
+  fi
+  if (( rc != 0 )); then
+    rm -f -- "$PREP_DIR/sections/$ext.md"
+    prep_unavailable "$ext: brief section failed (see $PREP_DIR/prep_errors.log)"
+  fi
+done <<< "$ext_brief"
 # One line per source for the brief's Sources line (connector health spec §2): this run's own readings, the rest from
 # this morning's smoke check, each failure with its class, since date and renewal.
 prep_write sources.md system/scripts/sources.py report "$PREP_DATE" --given "$PREP_DIR/sources.given" \

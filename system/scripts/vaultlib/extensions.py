@@ -1,9 +1,11 @@
 """Extensions (extensions spec §3): read extensions/<name>/extension.md manifests for the shared scripts."""
+import re
 from pathlib import Path
 
 from . import frontmatter
 
 CONTRACT = 1
+NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
 FIELDS = {"name", "contract", "description", "requires", "config_keys", "sources", "smoke", "brief", "debrief",
           "units", "alert_tags", "allow", "deps", "index_ignore", "importer"}
 
@@ -25,6 +27,8 @@ def listed(vault: Path) -> list:
 
 def manifest(vault: Path, name: str):
     """(data, None) or (None, reason)."""
+    if not NAME.fullmatch(name):
+        return None, f"{name}: not an extension name (lower-case letters, digits, - and _)"
     p = vault / "extensions" / name / "extension.md"
     if not p.is_file():
         return None, f"{name}: listed in extensions but extensions/{name}/ does not exist"
