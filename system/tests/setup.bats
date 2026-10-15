@@ -255,6 +255,40 @@ failing_bats() { printf '#!/usr/bin/env bats\n@test "no" { false; }\n' > "$M/sys
   grep -qx 'PASS pytest system/tests/python' <<< "$output"
 }
 
+@test "verify_setup: GNU parallel runs the suites side by side, another parallel falls back to serial, each suite keeps its result" {
+  [[ "$(parallel --version 2>/dev/null || true)" == "GNU parallel"* ]] || skip "GNU parallel is not installed"
+  mini_vault
+  failing_bats b.bats
+  P="$BATS_TEST_TMPDIR/p"
+  mkdir -p "$P"
+  printf '#!/bin/bash\necho "$*" >> "%s/calls"\nexec %s "$@"\n' "$P" "$(command -v parallel)" > "$P/parallel"
+  chmod +x "$P/parallel"
+  run env PATH="$P:$PATH" "$VS"
+  [ "$status" -eq 1 ]
+  grep -q -- '--jobs' "$P/calls"
+  grep -qx 'PASS system/tests/a.bats' <<< "$output"
+  grep -qx 'FAIL system/tests/b.bats (exit 1)' <<< "$output"
+  printf '#!/bin/bash\necho "parallel: another program" >&2\nexit 1\n' > "$P/parallel"
+  run env PATH="$P:$PATH" "$VS"
+  [ "$status" -eq 1 ]
+  grep -qx 'PASS system/tests/a.bats' <<< "$output"
+  grep -qx 'FAIL system/tests/b.bats (exit 1)' <<< "$output"
+}
+
+@test "verify_setup: suites and pytest write Python bytecode outside the tree, so a parallel copy of system/scripts never races a cache write" {
+  mini_vault
+  printf '#!/usr/bin/env bats\n@test "env" { echo "${PYTHONPYCACHEPREFIX:-unset}" > "%s/bats.env"; }\n' "$BATS_TEST_TMPDIR" > "$M/system/tests/a.bats"
+  printf 'import os\ndef test_env():\n    open("%s/py.env", "w").write(os.environ.get("PYTHONPYCACHEPREFIX", "unset"))\n' "$BATS_TEST_TMPDIR" > "$M/system/tests/python/test_ok.py"
+  run "$VS"
+  [ "$status" -eq 0 ]
+  b="$(cat "$BATS_TEST_TMPDIR/bats.env")"
+  p="$(cat "$BATS_TEST_TMPDIR/py.env")"
+  [ "$b" != unset ]
+  [ "$b" = "$p" ]
+  [[ "$b" != "$M/system"* ]]
+  [ ! -e "$b" ]
+}
+
 @test "verify_setup: a failing pytest run fails the run" {
   mini_vault
   printf 'def test_no():\n    assert False\n' > "$M/system/tests/python/test_no.py"
