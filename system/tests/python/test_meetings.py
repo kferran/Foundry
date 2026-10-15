@@ -236,6 +236,19 @@ def test_srt_cues_become_turns():
     assert m.turns == [("00:00:01", "Avery Sample", "Hello there."), ("00:00:01", "Blake Sample", "Hi.")]
 
 
+def test_a_recorder_srt_with_leading_noise_keeps_every_cue_and_writes_no_summary_188():
+    # #188: a byte-order mark, CRLF, 75 repeated noise cues, multi-line cues and no speaker labels. Every cue is
+    # kept, nothing is cut or merged away; the sections stay empty because the import has no model step (§2.3).
+    noise = [f"{i}\r\n00:00:{i % 60:02d},000 --> 00:00:{i % 60:02d},900\r\nyou\r\n" for i in range(1, 76)]
+    talk = [f"{i}\r\n00:02:{i - 76:02d},000 --> 00:02:{i - 76:02d},900\r\nLine {i} of the talk,\r\nsecond half.\r\n"
+            for i in range(76, 116)]
+    data = b"\xef\xbb\xbf" + "\r\n".join(noise + talk).encode()
+    m = meetings.parse_drop("call.srt", data, TZ, datetime(2026, 10, 5, 15, 0, tzinfo=TZ))
+    assert len(m.turns) == 115 and m.turns[0] == ("00:00:01", "", "you")
+    assert m.turns[-1] == ("00:00:01", "", "Line 115 of the talk, second half.")
+    assert (m.attendees, m.summary, m.decisions, m.actions, m.details) == ([], "", "", [], "")
+
+
 def test_text_lines_are_turns_or_one_block():
     m = meetings.parse_drop("notes.txt", b"Avery Sample: Hello.\n**Blake Sample:** Hi.\nmore from Blake\n", TZ,
                             datetime(2026, 10, 5, 15, 0, tzinfo=TZ))
@@ -521,6 +534,32 @@ def test_an_empty_first_source_is_deprecated_by_a_fuller_later_source(iv):
     assert new["source"].startswith("drop:") and new.get("status", "canonical") == "canonical"
     assert (iv / f"raw/work/notes/{NAME}-2.meeting-input.md").is_file()
     assert "replaced an empty first source" in alerts(iv) and f"wiki/work/meetings/{NAME}.md" in alerts(iv)
+
+
+def test_a_recording_that_replaces_an_empty_note_keeps_its_attendees_188(iv):
+    # #188: a recorder's .srt names no speakers, so the new note would lose the attendees the retired note held.
+    config(iv, meetings_partition="work")
+    fetched(iv, body=NOT_PRODUCED + TRANSCRIPT + END)
+    tick(iv)
+    aged(iv, "work", NAME)
+    unnamed = long_cues(30, ".srt").replace("Avery Sample: ", "").replace("Blake Sample: ", "")
+    dropped(iv, "work/2026-10-05 1500 Weekly sync - Planning.srt", unnamed)
+    tick(iv)
+    new = frontmatter.parse((iv / f"wiki/work/meetings/{NAME}-2.md").read_text()).data
+    assert new["attendees"] == ["Avery Sample", "Blake Sample"]
+
+
+def test_a_populated_note_stays_canonical_when_a_later_recording_has_no_summary_188(iv):
+    # #188: a drop's sections are always None. (no model step); a first note with text is never retired for it.
+    config(iv, meetings_partition="work")
+    fetched(iv)
+    tick(iv)
+    aged(iv, "work", NAME)
+    dup = dropped(iv, "work/2026-10-05 1500 Weekly sync - Planning.srt", long_cues(30, ".srt"))
+    tick(iv)
+    assert len(meeting_runs(iv)) == 1 and (iv / "raw/archive" / dup.name).is_file()
+    assert frontmatter.parse((iv / f"wiki/work/meetings/{NAME}.md").read_text()).data.get("status", "canonical") == "canonical"
+    assert not (iv / f"wiki/work/meetings/{NAME}-2.md").exists()
 
 
 def test_an_empty_later_source_still_loses_to_an_empty_first_source(iv):

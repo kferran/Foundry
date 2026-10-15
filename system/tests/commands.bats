@@ -613,6 +613,10 @@ self_edit_contract() {
   grep -qF 'only when the summary and details leave a fact unclear' "$f"
 }
 
+@test "meetings: /ingest compiles a dropped recording's input from its transcript (#188)" {
+  grep -qF 'When every section reads `None.` (a dropped transcript has no notes), the transcript is the only source: read it and compile from it' .claude/commands/ingest.md
+}
+
 @test "units are installed only on an explicit yes: phase 5 after 2a wrote the feature keys, 6a and 6d after their own keys (#59, #122)" {
   sec="$(setup_section '5. Units')"
   [[ "$sec" == *'Ask before installing'* ]]
