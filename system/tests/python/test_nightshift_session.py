@@ -138,6 +138,12 @@ def test_plan_prompt_routes_protected_files():
     assert ".nightshift/protected/.claude" not in p
 
 
+def test_research_prompt_gives_the_tag_form():
+    # the publish gate refuses a findings note whose tags break the form (#158)
+    p = ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")
+    assert "tags in lowercase kebab-case (/ between nested parts), never now or rca" in p
+
+
 def test_research_prompt_asks_for_stale_claims():
     r = ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")
     assert "## Stale claims" in r

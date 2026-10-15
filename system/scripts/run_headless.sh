@@ -163,7 +163,7 @@ prompt="${body//\$ARGUMENTS/$argstr}"
 
 vi="system/scripts/vault_index.py"
 allow=("Edit(/wiki/.staging/$run_id/**)")
-for sub in query related show backlinks orphans issues validate field stage; do allow+=("Bash($vi $sub:*)"); done
+for sub in query related show backlinks orphans issues validate field stage tags; do allow+=("Bash($vi $sub:*)"); done
 
 out="system/logs/runs/$run_id/claude.json" stream="system/logs/runs/$run_id/stream.jsonl"
 printf '\n===== %s %s %s\n' "$(date -Iseconds)" "$run_id" "${inputs[*]:-}" >> "$LOG"

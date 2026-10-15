@@ -46,6 +46,60 @@ def test_issues_staged_lints_the_index_blob_not_the_working_copy(cli, vault):
     assert cli("issues").returncode == 1
 
 
+def test_tags_lists_one_partition_most_used_first(cli, vault):
+    write(vault, "wiki/work/concepts/Topic.md", concept("work", "Topic", tags="[streaming, api-gateway]"))
+    write(vault, "wiki/work/concepts/Other.md", concept("work", "Other", tags="[streaming, now]"))
+    write(vault, "wiki/work/concepts/Flat.md", concept("work", "Flat", tags="tooling"))
+    write(vault, "wiki/work/concepts/Gone.md", concept("work", "Gone", tags="[retired-tag]", status="deprecated"))
+    write(vault, "wiki/work/concepts/Legacy.md", concept("work", "Legacy", tags='["Legacy Stuff", "2026"]'))
+    res = cli("tags", "--partition", "work")
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.splitlines() == ["3\tstreaming", "1\tapi-gateway"]
+    assert cli("tags", "--partition", "shared").stdout.splitlines() == ["1\ttooling"]
+    assert cli("tags", "--partition", "personal").stdout.splitlines() == ["1\thobby"]
+    assert json.loads(cli("tags", "--partition", "personal", "--json").stdout) == [{"tag": "hobby", "count": 1}]
+
+
+def test_tags_needs_a_partition(cli):
+    assert cli("tags").returncode == 2
+
+
+def _tag_issues(cli):
+    return [(i["path"], i["severity"], i["code"]) for i in json.loads(cli("issues", "--json").stdout)["issues"]
+            if i["code"].startswith("tag-")]
+
+
+def test_tags_in_another_form_warn(cli, vault):
+    write(vault, "wiki/work/concepts/Bad.md", concept("work", "Bad", tags='[Tooling, "two words", "#tag", 2026]'))
+    write(vault, "wiki/work/concepts/Good.md", concept("work", "Good", tags="[project/alpha, api-gateway, v2]"))
+    write(vault, "wiki/work/meetings/2026-10-01-0900-sync.md", meeting("work", "2026-10-01-0900-sync"))
+    write(vault, "wiki/work/meetings/2026-10-01-0900-sync.transcript.md",
+          transcript("work", "2026-10-01-0900-sync", "Posted in #General and #Ops."))
+    write(vault, "briefings/2026-10-06.md", '---\ntype: briefing\ndate: "2026-10-06"\ntags: [Daily]\n---\n# Briefing\n')
+    assert _tag_issues(cli) == [("wiki/work/concepts/Bad.md", "warning", "tag-form")] * 4
+    assert cli("issues").returncode == 0
+    assert 'tag "2026" is only digits' in cli("issues").stdout
+
+
+def test_system_tags_warn_off_their_notes(cli, vault):
+    write(vault, "wiki/work/concepts/Topic.md", concept("work", "Topic", tags="[now, rca]"))
+    write(vault, "wiki/work/Now.md", concept("work", "Now", tags="[now]"))
+    write(vault, "wiki/work/rca/2026-10-11-orders.md",
+          '---\ntype: rca\ntitle: "Orders fail"\npartition: work\ncreated_at: "2026-10-11"\nsource: "raw/telemetry/a.md"\n'
+          'rc_confidence: 4\nfix_confidence: 4\nstatus: draft\ntags: [rca]\n---\n# Orders fail\n')
+    assert _tag_issues(cli) == [("wiki/work/concepts/Topic.md", "warning", "tag-reserved")] * 2
+
+
+def test_staged_tag_issues_never_block_a_commit(cli, vault):
+    # the sync commits unattended through the hook: a hand-written tag warns, the publish gate guards headless runs
+    subprocess.run(["git", "init", "-q", str(vault)], check=True)
+    write(vault, "wiki/work/concepts/New.md", concept("work", "New", tags="[Tooling]"))
+    subprocess.run(["git", "-C", str(vault), "add", "wiki/work/concepts/New.md"], check=True)
+    res = cli("issues", "--staged")
+    assert res.returncode == 0, res.stdout
+    assert 'wiki/work/concepts/New.md:3: warning: tag "Tooling"' in res.stdout
+
+
 def test_archived_briefings_stay_indexed_and_the_debrief_embed_resolves(cli, vault):
     write(vault, "briefings/archive/2026-10/2026-10-06.md",
           '---\ntype: briefing\ndate: "2026-10-06"\nstatus: active\n---\n# Briefing\n\n![[2026-10-06.debrief]]\n')

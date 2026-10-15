@@ -13,7 +13,7 @@ headless_allowlist() {
   subs="$(grep -ohE 'vault_index\.py [a-z]+' "$1" | awk '{print $2}' | sort -u)"
   [ -n "$subs" ]
   while IFS= read -r sub; do
-    [[ " query related show backlinks orphans issues validate field stage " == *" $sub "* ]]
+    [[ " query related show backlinks orphans issues validate field stage tags " == *" $sub "* ]]
   done <<< "$subs"
 }
 
@@ -61,6 +61,14 @@ headless_contract() {
   grep -qF 'never add a `work` or `personal` input to its `sources`' "$f"
   grep -qF 'refuse paths under `raw/inbox/` and `raw/<partition>/notes/`' "$f"
   grep -qF '(headless: the run id'"'"'s first 8 digits written as `YYYY-MM-DD`)' "$f"
+}
+
+@test "note tags: ingest reuses the partition's tags; FOUNDRY.md and the concept schema carry the form (#158)" {
+  grep -qF 'run `system/scripts/vault_index.py tags --partition <p>` and reuse a listed tag' .claude/commands/ingest.md
+  grep -qF 'invent one only when none fits' .claude/commands/ingest.md
+  grep -qF '**Tags.**' FOUNDRY.md
+  grep -qF 'so a tag you write by hand never stops a sync; the publish gate refuses either when a headless run' FOUNDRY.md
+  grep -qF '`tags` are lowercase kebab-case' system/schemas/concept.md
 }
 
 @test "ingest: retire a state heading by renaming it in place (#160)" {

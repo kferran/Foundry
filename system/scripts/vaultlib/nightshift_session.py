@@ -84,7 +84,7 @@ def research_prompt(fm: dict, body: str, code: str | None = None) -> str:
             "context/ (a read-only copy). " + (f"code/ is a read-only copy of {code}. " if code else "") +
             "Change nothing except files under out/. "
             f"Write the findings note to out/{name}, valid for its destination {fm['output']}: frontmatter with type "
-            "concept, tags, compiled_at (today), partition, provenance [\"headless\"] and sources (sources lists only vault "
+            "concept, tags in lowercase kebab-case (/ between nested parts), never now or rca, compiled_at (today), partition, provenance [\"headless\"] and sources (sources lists only vault "
             "notes, as wikilinks ([[Note]]); list web pages and code paths under a ## Web sources heading at the end of "
             "the body); then the findings, "
             "each with its source. When your sources contradict a vault note under context/, add a ## Stale claims "
