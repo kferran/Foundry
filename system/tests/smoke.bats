@@ -248,6 +248,25 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   grep -qx 'foundry-nightshift.timer: ok' <<< "$output"
 }
 
+@test "the next tick is read under either label systemd gives the second iteration (Iter. #2 to 254, Iteration #2 from 255) (#166)" {
+  # A systemd-analyze whose calendar verb prints ticks 15 and 30 minutes after --base-time under $STUB_LABEL; every
+  # other verb is the real one.
+  real="$(command -v systemd-analyze)"
+  cat > "$BATS_TEST_TMPDIR/bin/systemd-analyze" <<EOF
+#!/bin/bash
+[[ "\$1" == calendar ]] || exec "$real" "\$@"
+b="\$(sed -n 's/^--base-time=@//p' <<< "\$3")"
+printf '  Original form: %s\n    Next elapse: %s\n       From now: soon\n   %s: %s\n       From now: later\n' "\${*: -1}" \\
+  "\$(date -u -d "@\$(( b + 900 ))" '+%a %F %T UTC')" "\$STUB_LABEL" "\$(date -u -d "@\$(( b + 1800 ))" '+%a %F %T UTC')"
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/bin/systemd-analyze"
+  timer foundry-nightshift.timer 'OnCalendar=*:0/15' 600
+  STUB_LABEL='Iter. #2' run "$SC"
+  grep -qx 'foundry-nightshift.timer: ok' <<< "$output"
+  STUB_LABEL='Iteration #2' run "$SC"
+  grep -qx 'foundry-nightshift.timer: ok' <<< "$output"
+}
+
 @test "a timer never triggered reads unknown, one running its service reads ok, a disabled one reads off (#166)" {
   timer foundry-brief.timer 'OnCalendar=*-*-* 06:00:00 America/Denver' ""
   timer foundry-intake.timer 'OnUnitActiveSec=5min' $(( 2 * 3600 )) running

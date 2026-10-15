@@ -153,7 +153,8 @@ for f in "$UNIT_DIR"/foundry-*.timer; do
   if [[ -z "$last" ]]; then :
   elif [[ -n "$cal" ]]; then
     mapfile -t next < <(TZ=UTC LC_ALL=C systemd-analyze calendar --iterations=2 --base-time="@$last" "$cal" 2>/dev/null \
-                        | awk '/Next elapse:|Iter. #2:/ { print $3, $4, $5, $6 }')
+                        | sed -n 's/^[^:]*: \([A-Z][a-z][a-z] [0-9-]* [0-9:]* UTC\)$/\1/p')
+    # Only the timestamps, whatever the label: systemd 255 renamed "Iter. #2" to "Iteration #2".
     if (( ${#next[@]} == 2 )); then
       due="$(date -d "${next[0]}" +%s)" step=$(( $(date -d "${next[1]}" +%s) - due ))
     fi
