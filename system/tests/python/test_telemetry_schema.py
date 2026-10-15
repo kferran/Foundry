@@ -64,6 +64,14 @@ def test_extended_production_error_note_validates(vault):
     assert [i for i in issues(vault) if i[0].startswith("raw/telemetry/")] == []
 
 
+def test_production_error_without_a_trace_validates(vault):
+    # A background job has no trace, so the store writes an empty operation_id (telemetry_store.py).
+    write(vault, "raw/telemetry/prod-adx-a-0123456789ac.md", "\n".join([
+        "---", "type: production_error", 'service: "jobs"', 'exception: "Shop.Jobs#77"', 'operation_id: ""',
+        'detected_at: "2026-10-05T14:10:00+00:00"', 'kind: "log"', 'fingerprint: "a-0123456789ac"', "---", "# body", ""]))
+    assert [i for i in issues(vault) if i[0].startswith("raw/telemetry/")] == []
+
+
 def test_production_error_message_field_is_known(vault):
     write(vault, "raw/telemetry/prod-sentry-s-101.md", "\n".join([
         "---", "type: production_error", 'service: "api"', 'exception: "KeyError"',
