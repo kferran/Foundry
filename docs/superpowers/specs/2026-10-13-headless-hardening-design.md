@@ -1,7 +1,7 @@
 # Headless hardening: three gate and settings gaps from the audit
 
 **Date:** 2026-10-13
-**Status:** Approved for build (feature lane: it changes the publish gate and a settings file).
+**Status:** Built in PR #141 (2026-10-13).
 **Issue:** Part of #136 (audit S2, S4, S5; `docs/superpowers/2026-10-13-audit.md`).
 
 ## 1. Problem

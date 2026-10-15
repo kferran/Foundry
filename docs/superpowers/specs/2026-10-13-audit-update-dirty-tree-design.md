@@ -1,7 +1,7 @@
 # Unattended update: a standalone vault commits before it merges
 
 **Date:** 2026-10-13
-**Status:** Draft for the owner's review.
+**Status:** Accepted 2026-10-14 (owner: "accept all", #136). Built in PR #165 (plan `docs/superpowers/plans/2026-10-14-sync-update-commit.md`).
 **Issue:** #136 (C4). From the 2026-10-13 audit (`docs/superpowers/2026-10-13-audit.md` on the audit branch).
 
 ## 1. Problem
