@@ -26,6 +26,7 @@ triage_partition: "work"        # work | personal: the Now page triage writes to
 triage_watch_senders: []        # domains or addresses whose mail archived unread still reaches the Now page, e.g. ["@example.com"]
 slack_notify_channel: ""        # server and standalone: a Slack channel ID, or your user ID for a DM; empty is off
 slack_connector: "claude.ai Slack"  # the Slack connector a headless session loads (notify.sh --check names it)
+notify_links: "github"          # notice links: github (a GitHub file link) or obsidian (an obsidian:// link)
 orders_enabled: "false"         # server and standalone: the Work Orders tick every 15 minutes (/setup asks)
 update_enabled: "false"         # server and standalone: merge template updates every morning (/setup asks)
 superpowers: []
