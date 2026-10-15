@@ -33,7 +33,7 @@ SINCE = re.compile(r"\s*_\(open since (\d{4}-\d{2}-\d{2})(?:, \d+ days?)?\)_")
 # The Now clock (Now clock spec §3): two optional Dataview inline fields inside the statement, before the parenthesis.
 REC = re.compile(r"\[rec:: ([^\[\]\n]+)\]")
 DUE = re.compile(r"\[due:: (\d{4}-\d{2}-\d{2})\]")
-ISO_DATE = re.compile(r"(?<![\w-])\d{4}-\d{2}-\d{2}(?![\w-])")
+ISO_DATE = re.compile(r"(?<![\w-])(\d{4}-\d{2}-\d{2})(?=T\d{2}:\d{2}|(?![\w-]|\.\w))")
 SHORT_DAYS, LONG_DAYS = 3, 30
 OVERDUE_HEADINGS = ("**1 to 7 days over**", "**8 to 30 days over**", "**More than 30 days over**")
 
@@ -140,10 +140,13 @@ def is_date(text: str) -> bool:
 
 
 def default_due(statement: str, since: str, who: str) -> str:
-    """The decide-by date (Now clock spec §4): since + SHORT_DAYS when someone is named or the statement holds a date
-    of its own (a Work Order id does not count), else since + LONG_DAYS."""
-    days = SHORT_DAYS if who or ISO_DATE.search(statement) else LONG_DAYS
-    return (date.fromisoformat(since) + timedelta(days=days)).isoformat()
+    """The decide-by date (Now clock spec §4): since + SHORT_DAYS when someone is named or the statement names a date
+    of its own within LONG_DAYS of since, else since + LONG_DAYS. A Work Order id, a file name and a date inside a URL
+    or a path (a token holding "/") do not count; a date with a time (2026-10-20T09:00) does."""
+    start = date.fromisoformat(since)
+    named = [d for token in statement.split() if "/" not in token for d in ISO_DATE.findall(token) if is_date(d)]
+    soon = any(0 <= (date.fromisoformat(d) - start).days <= LONG_DAYS for d in named)
+    return (start + timedelta(days=SHORT_DAYS if who or soon else LONG_DAYS)).isoformat()
 
 
 def add(vault, partition: str, kind: str, statement: str, today: str, who: str = "", evidence: str = "",

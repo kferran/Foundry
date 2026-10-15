@@ -97,10 +97,22 @@ def test_add_writes_the_default_clock(vault):
         "- [ ] owed: Named [rec:: CSV: it loads] [due:: 2026-12-01] (vendor, since 2026-10-09)")
 
 
+def test_only_a_named_date_within_30_days_gives_the_short_clock():
+    # #166 clock spec §4, review ruling: a date gives since + 3 only when it falls within 30 days of since (a DTCC
+    # deadline months out keeps since + 30); a date inside a URL or a path does not count; a date with a time does.
+    short, long = "2026-10-18", "2026-11-14"
+    for statement, want in (("DTCC: Release notes ([[dtcc-r]]) — Production 2026-10-25 (a1)", short),
+                            ("DTCC: Release notes ([[dtcc-r]]) — Production 2027-01-13 (a1)", long),
+                            ("Follow up on 2026-10-01", long), ("Due 2026-11-14", short), ("on 2026-10-20.", short),
+                            ("Call at 2026-10-20T09:00", short), ("See https://x.example/blog/2026-10-20/post", long),
+                            ("Read briefings/2026-10-20.md", long), ("Open 2026-10-20.md", long),
+                            ("Merge 2026-10-20-export-fix", long), ("Release 2026-13-45", long)):
+        assert now.default_due(statement, "2026-10-15", "") == want, statement
+
+
 def test_add_refuses_a_field_in_the_statement_a_bracket_in_rec_and_a_bad_date(vault):
     prepare(vault)  # Now clock spec §3
-    for kwargs in ({"statement": "Pick [due:: 2026-10-10]"}, {"statement": "Pick [rec:: CSV]"},
-                   {"rec": "CSV] x"}, {"rec": "a\nb"}, {"due": "20261010"}, {"due": "2026-02-30"}):
+    for kwargs in ({"statement": "Pick [due:: 2026-10-10]"}, {"statement": "Pick [rec:: CSV]"},                   {"rec": "CSV] x"}, {"rec": "a\nb"}, {"due": "20261010"}, {"due": "2026-02-30"}):
         statement = kwargs.pop("statement", "Pick")
         try:
             now.add(vault, "work", "owed", statement, TODAY, **kwargs)
