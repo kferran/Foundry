@@ -1,0 +1,9 @@
+# Managed by vault: foundry-demo.timer
+[Unit]
+Description=Foundry demo extension timer
+
+[Timer]
+OnCalendar=daily
+
+[Install]
+WantedBy=timers.target

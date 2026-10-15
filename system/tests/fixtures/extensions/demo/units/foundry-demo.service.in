@@ -1,0 +1,7 @@
+# Managed by vault: foundry-demo.service
+[Unit]
+Description=Foundry demo extension
+
+[Service]
+Type=oneshot
+ExecStart=@VAULT_ROOT@/extensions/demo/scripts/demo_check.sh
