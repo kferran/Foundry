@@ -343,13 +343,14 @@ def test_review_groups_closed_stale_and_duplicate_lines_and_writes_nothing(vault
         "stale": ["- [ ] owed: Old one [due:: 2026-10-24] (since 2026-09-24)"],
         "duplicate": ["- [ ] owed: Send the  report [due:: 2026-10-31] (since 2026-10-01)",
                       "- [ ] draft: send the report [due:: 2026-11-08] (since 2026-10-09)"],
-        "unreadable": []}
+        "unreadable": [], "long": [], "page_bytes": len(before.encode())}
     assert now.review(vault, "work", TODAY, stale_days=13, gh=gh_stub(tmp_path, "OPEN"))["stale"] == [
         "- [ ] owed: Old one [due:: 2026-10-24] (since 2026-09-24)",
         "- [ ] owed: Fourteen days [due:: 2026-10-25] (since 2026-09-25)"]
     assert path.read_text() == before
     assert not (vault / "system/logs").exists()
-    assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": [], "unreadable": []}
+    assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": [], "unreadable": [],
+                                                    "long": [], "page_bytes": 0}
 
 
 HEAD = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: {p}\n---\n# Now\n\n## Needs you\n"
@@ -528,6 +529,47 @@ def test_cli_review_prints_only_grouped_findings_and_exits_0(vault):
                         "## Duplicates\n- [ ] owed: Same thing [due:: 2020-01-31] (since 2020-01-01)\n"
                         "- [ ] waiting: same  thing [due:: 2026-11-08] (since 2026-10-09)\n")
     assert cli(vault, "review", "--partition", "shared").returncode == 2
+
+
+def test_set_replaces_the_statement_and_keeps_every_other_field(vault):
+    # #211: rewrite a line instead of appending dated updates to it
+    prepare(vault)
+    now.add(vault, "work", "owed", "Send the deck 2026-10-01: drafted 2026-10-05: sent v1", TODAY, who="Ann",
+            evidence="EX-1", rec="v2: shorter", due="2026-10-20")
+    now.add(vault, "work", "waiting", "Other thing", TODAY)
+    line = now.set_statement(vault, "work", "send the DECK", "Send the deck v2", TODAY)
+    assert line == "- [ ] owed: Send the deck v2 [rec:: v2: shorter] [due:: 2026-10-20] (Ann, since 2026-10-09, EX-1)"
+    assert now.open_lines(page(vault)) == [line, "- [ ] waiting: Other thing [due:: 2026-11-08] (since 2026-10-09)"]
+
+
+def test_set_refuses_no_match_two_matches_and_a_clock_field_and_writes_nothing(vault):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Call Ann", TODAY)
+    now.add(vault, "work", "owed", "Call Ann's team", TODAY)
+    before = page(vault)
+    for match, statement in (("nobody", "x"), ("call ann", "x"), ("team", "x [due:: 2026-10-30]")):
+        try:
+            now.set_statement(vault, "work", match, statement, TODAY)
+        except ValueError:
+            continue
+        raise AssertionError(f"set accepted {match!r} -> {statement!r}")
+    assert page(vault) == before
+
+
+def test_cli_set_and_review_long_lines_and_page_size(vault):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Long " + "update " * 40, TODAY)
+    r = cli(vault, "review", "--partition", "work")
+    assert r.returncode == 0, r.stderr
+    assert "## Long lines (over 240 characters): rewrite with now.py set\n- [ ] owed: Long update" in r.stdout
+    r = cli(vault, "set", "--partition", "work", "--match", "long update", "--statement", "Short")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.startswith("set: - [ ] owed: Short [due:: ")
+    assert cli(vault, "review", "--partition", "work").stdout == ""
+    assert cli(vault, "set", "--partition", "work", "--match", "nothing", "--statement", "x").returncode == 2
+    for i in range(140):
+        now.add(vault, "work", "owed", f"Item {i} " + "word " * 40, TODAY)
+    assert "## Page size: " in cli(vault, "review", "--partition", "work").stdout
 
 
 def test_cli_waits_for_run_lock_and_exits_4_when_busy(vault):

@@ -17,6 +17,7 @@ KINDS = ("owed", "waiting", "draft")
 NEEDS, WAITING = "## Needs you", "## Waiting"
 KEEP_DAYS = 7
 STALE_DAYS = 14
+LONG_LINE, PAGE_BYTES = 240, 32 * 1024   # review limits (#211): recall cuts a line at 240
 LOOKBACK_DAYS = briefings.LOOKBACK_DAYS
 FAILURE_ALERT = 3
 GH_TIMEOUT = 10
@@ -184,6 +185,25 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
     return "added", line
 
 
+def set_statement(vault, partition: str, match: str, statement: str, today: str) -> str:
+    """Under run.lock: the one open line whose statement contains `match` (any case) gets `statement` as its bare
+    statement, keeping kind, who, since, evidence, rec and due (#211: rewrite a line instead of appending updates).
+    ValueError, writing nothing, on no match, several matches or an invalid statement."""
+    statement, text = statement.strip(), read(vault, partition)
+    found = [(line, m) for line in open_lines(text) if (m := LINE.match(line.rstrip()))
+             and match.strip().lower() in fields(m.group("statement"))[0].lower()]
+    if len(found) != 1:
+        raise ValueError(f"{len(found)} open lines match {match!r}; give text that names exactly one")
+    old, m = found[0]
+    _, rec, due = fields(m.group("statement"))
+    validate(partition, m.group("kind"), statement, m.group("who") or "", m.group("evidence") or "", rec, due)
+    line = render(m.group("kind"), statement, m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
+    lines = text.split("\n")
+    lines[[x.rstrip() for x in lines].index(old.rstrip())] = line
+    write(vault, partition, stamp_and_prune("\n".join(lines), today))
+    return line
+
+
 def evidence_state(vault, evidence: str, gh: str = "gh"):
     """The close reason ("PR merged", "Work Order done", …), None while still open, or CheckFailed."""
     if PR_URL.match(evidence):
@@ -281,7 +301,9 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
     return {"closed": [f"{line} _(closed: {found[line]})_" for line in lines if line in found],
             "stale": [line for line, m in parsed if m and not m.group("evidence") and m.group("since") < cutoff],
             "duplicate": [line for group in statements.values() if len(group) > 1 for line in group],
-            "unreadable": [line for line, m in parsed if not m and FIELD_KEY.search(line)]}
+            "unreadable": [line for line, m in parsed if not m and FIELD_KEY.search(line)],
+            "long": [line for line in lines if len(line) > LONG_LINE],
+            "page_bytes": page_path(vault, partition).stat().st_size if page_path(vault, partition).is_file() else 0}
 
 
 def overdue(vault, day: str) -> str:
