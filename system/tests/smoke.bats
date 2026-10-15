@@ -154,7 +154,8 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   printf 'partition: work\n' > system/dtcc/map.yaml
   STUB_SOURCES=$'prod-sentry\nprod-adx' run "$SC"
   [ "$status" -eq 0 ]
-  grep -qx 'telemetry: ok' <<< "$output"
+  grep -qx 'telemetry/prod-sentry: ok' <<< "$output"
+  grep -qx 'telemetry/prod-adx: ok' <<< "$output"
   grep -qx 'dtcc: ok' <<< "$output"
   [ "$(grep -c -x 'meetings_fetch.sh --check' "$CALLS")" -eq 1 ]
   [ "$(grep -c -x 'jira_fetch.sh --check' "$CALLS")" -eq 1 ]
@@ -172,11 +173,58 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   [ "$output" = 0 ]
 }
 
-@test "failing telemetry sources are each named; the Python scripts' reasons come from stdout" {
-  printf '#!/bin/bash\necho "telemetry_fetch.py $*" >> "$CALLS"\n[[ "$1" == --list ]] && { printf "prod-sentry\\nprod-adx\\n"; exit 0; }\necho "telemetry_fetch: $2: HTTP 401"\nexit 1\n' > system/scripts/telemetry_fetch.py
+@test "failing telemetry sources each get their own line; the Python scripts' reasons come from stdout" {
+  printf '#!/bin/bash\necho "telemetry_fetch.py $*" >> "$CALLS"\n[[ "$1" == --list ]] && { printf "prod-sentry\\nprod-adx\\n"; exit 0; }\necho "telemetry_fetch: $2: connector: HTTP 503"\nexit 1\n' > system/scripts/telemetry_fetch.py
   run "$SC"
   [ "$status" -eq 1 ]
-  grep -qx 'telemetry: failed: prod-sentry: HTTP 401; prod-adx: HTTP 401' <<< "$output"
+  grep -qx 'telemetry/prod-sentry: failed: connector: HTTP 503' <<< "$output"
+  grep -qx 'telemetry/prod-adx: failed: connector: HTTP 503' <<< "$output"
+}
+
+@test "an auth failure names the credential and its renewal, one alert a day per credential (connector health spec §2)" {
+  set_key meetings_enabled '"true"'
+  set_key handoffs_projects '["AB"]'
+  stub calendar_fetch.sh 3 "calendar_fetch: auth: no Google Calendar connector reachable"
+  stub meetings_fetch.sh 6 "meetings_fetch: auth: HTTP 401 from Drive"
+  stub jira_fetch.sh 6 "jira_fetch: auth: token expired"
+  run "$SC"
+  [ "$status" -eq 1 ]
+  grep -qx 'calendar: expired: Google connector; renew: reconnect it at claude.ai, Settings, Connectors' <<< "$output"
+  grep -qx 'handoffs: expired: Atlassian connector; renew: reconnect it at claude.ai, Settings, Connectors' <<< "$output"
+  [ "$(jq -r 'select(.source == "calendar") | .reason' "$LOG")" = "auth: no Google Calendar connector reachable" ]
+  # calendar and meetings share the Google connector: one alert for it, one for Atlassian
+  [ "$(alerts | grep -c '\[smoke\] expired Google connector:')" -eq 1 ]
+  [ "$(alerts | grep -c '\[smoke\] expired Atlassian connector:')" -eq 1 ]
+  [ "$(alerts | grep -c '\[smoke\] expired')" -eq 2 ]
+  run grep -c -e '\[smoke\] calendar' -e '\[smoke\] meetings' -e '\[smoke\] handoffs' <<< "$(alerts)"
+  [ "$output" = 0 ]
+  run "$SC"
+  [ "$(alerts | grep -c '\[smoke\] expired')" -eq 2 ]
+}
+
+@test "a telemetry auth failure names the credential of the source's kind" {
+  printf '#!/bin/bash\n[[ "$1" == --list ]] && { echo prod-adx; exit 0; }\necho "telemetry_fetch: $2: auth: run az login"\nexit 1\n' > system/scripts/telemetry_fetch.py
+  mkdir -p system/codebases system/telemetry
+  printf -- '---\ntype: codebase\nname: "shop"\npath: "~"\npartition: "work"\nsearch_globs: ["*"]\n---\n' > system/codebases/shop.md
+  printf -- '---\ntype: telemetry_source\nname: "prod-adx"\ncodebase: "shop"\nenvironment: "prod"\nkind: "adx"\nadx_cluster: "https://example.kusto.windows.net"\nadx_database: "prod"\nadx_signals: ["logs"]\n---\n' > system/telemetry/prod-adx.md
+  run "$SC"
+  [ "$status" -eq 1 ]
+  grep -qx 'telemetry/prod-adx: expired: Azure CLI; renew: az login on the server' <<< "$output"
+  alerts | grep -qF '[smoke] expired Azure CLI: renew: az login on the server (telemetry/prod-adx: auth: run az login)'
+}
+
+@test "a network failure reads unreachable and alerts only when the previous check failed the same way" {
+  printf '#!/bin/bash\n[[ "$1" == --list ]] && { echo prod-adx; exit 0; }\necho "telemetry_fetch: $2: network: example.kusto.windows.net (URLError)"\nexit 1\n' > system/scripts/telemetry_fetch.py
+  run "$SC"
+  [ "$status" -eq 1 ]
+  grep -qx 'telemetry/prod-adx: unreachable: example.kusto.windows.net' <<< "$output"
+  run grep -c 'unreachable' <<< "$(alerts)"
+  [ "$output" = 0 ]
+  run "$SC"
+  [ "$(alerts | grep -c '\[smoke\] unreachable example.kusto.windows.net:')" -eq 1 ]
+  alerts | grep -qF "since $(TZ=America/Denver date +%F); check the VPN or network route to example.kusto.windows.net"
+  run "$SC"
+  [ "$(alerts | grep -c 'unreachable')" -eq 1 ]
 }
 
 @test "a check that hits its timeout reads timed out, and the run goes on to the next source" {

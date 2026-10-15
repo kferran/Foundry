@@ -1,0 +1,140 @@
+"""Source health for the smoke check and the brief (connector health spec §2).
+
+Every fetch's failure reason starts with its class: auth, network, timeout, connector, claude or other. An auth
+failure names the credential to renew and how; a source's failed readings in system/logs/smoke-<YYYY-MM>.jsonl give
+the date it has been failing since.
+"""
+import json
+from pathlib import Path
+
+from . import frontmatter, telemetry
+
+CLASSES = ("auth", "network", "timeout", "connector", "claude", "other")
+CONNECT = "reconnect it at claude.ai, Settings, Connectors"
+# source -> (credential, renewal). telemetry/<name> is looked up by the source's kind.
+CREDENTIALS = {
+    "calendar": ("Google connector", CONNECT),
+    "meetings": ("Google connector", CONNECT),
+    "triage": ("Google connector", CONNECT),
+    "handoffs": ("Atlassian connector", CONNECT),
+    "rca": ("Atlassian connector", CONNECT),
+    "notify": ("Slack connector", CONNECT),
+    "adx": ("Azure CLI", "az login on the server"),
+    "sentry": ("Sentry token", "write a new token to ~/.config/foundry/sentry.token (mode 0600)"),
+}
+CLAUDE = ("claude login", "claude, then /login, on the server")
+
+
+def classed(reason: str) -> str:
+    """The reason with a class in front: one without a known class is other."""
+    reason = (reason or "").strip()
+    return reason if reason.split(":", 1)[0] in CLASSES and ":" in reason else f"other: {reason or 'no reason given'}"
+
+
+def _config(vault: Path) -> dict:
+    try:
+        return frontmatter.parse((vault / "system" / "config.md").read_text(encoding="utf-8")).data or {}
+    except (OSError, UnicodeDecodeError):
+        return {}
+
+
+def _telemetry(vault: Path) -> dict:
+    return {s.name: s for s in telemetry.load_sources(vault) if s.enabled}
+
+
+def credential(vault: Path, source: str, reason: str):
+    """(credential, renewal) for a failure that needs the owner's login, else None. A claude that is missing is
+    not a login to renew."""
+    cls = classed(reason).split(":", 1)[0]
+    if cls == "claude" and "not found" not in reason:
+        return CLAUDE
+    if cls != "auth":
+        return None
+    if source.startswith("telemetry/"):
+        src = _telemetry(vault).get(source.split("/", 1)[1])
+        return CREDENTIALS.get(src.kind) if src else None
+    return CREDENTIALS.get(source)
+
+
+def _records(paths):
+    for path in paths:
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(r, dict):
+                yield r
+
+
+def streak(vault: Path, source: str, cls: str = "", until: str = ""):
+    """(count, since date, last reason) of the source's trailing failed smoke readings up to the date `until`
+    (inclusive; all when empty), counting only reasons of class `cls` when given. A held reading is no reading."""
+    if source == "notify":
+        paths = sorted((vault / "system" / "logs").glob("notify-*.jsonl"))
+        rows = [r for r in _records(paths) if r.get("exit") != 4]   # 4 is a busy tick, no reading
+    else:
+        paths = sorted((vault / "system" / "logs").glob("smoke-*.jsonl"))
+        rows = [r for r in _records(paths) if r.get("source") == source
+                and not str(r.get("reason", "")).startswith("held: ")]
+    if until:
+        rows = [r for r in rows if str(r.get("time", ""))[:10] <= until]
+    n, since, last = 0, "", ""
+    for r in reversed(rows):
+        reason = classed(str(r.get("reason", "")))
+        if r.get("exit") in (0, None) or (cls and not reason.startswith(cls + ":")):
+            break
+        n, since, last = n + 1, str(r.get("time", ""))[:10], last or reason
+    return n, since, last
+
+
+def _reading(vault: Path, source: str, day: str):
+    """The source's last smoke reading on `day` as ("ok"|"failed", reason), or None."""
+    paths = sorted((vault / "system" / "logs").glob(f"smoke-{day[:7]}.jsonl"))
+    rows = [r for r in _records(paths) if r.get("source") == source and str(r.get("time", ""))[:10] == day
+            and not str(r.get("reason", "")).startswith("held: ")]
+    if not rows:
+        return None
+    return ("ok", "") if rows[-1].get("exit") == 0 else ("failed", str(rows[-1].get("reason", "")))
+
+
+def report(vault: Path, day: str, given: dict) -> list:
+    """sources.md lines: one per source, ok, off, unknown or failed with its class, since date and renewal.
+    `given` holds what the brief read itself (source -> (state, reason)); the rest come from that morning's smoke
+    check, and notify from its own log."""
+    vault, config = Path(vault), _config(Path(vault))
+    order = ["calendar", "meetings", "handoffs", "triage"]
+    order += [f"telemetry/{n}" for n in _telemetry(vault)] or ["telemetry"]
+    order += ["dtcc", "notify"]
+    off = {
+        "meetings": str(config.get("meetings_enabled", "false")).lower() != "true",
+        "handoffs": not config.get("handoffs_projects"),
+        "triage": str(config.get("triage_enabled", "false")).lower() != "true",
+        "telemetry": True,
+        "dtcc": not (vault / "system" / "dtcc" / "map.yaml").is_file(),
+        "notify": not config.get("slack_notify_channel"),
+    }
+    out = []
+    for s in order:
+        if s in given:
+            state, reason = given[s]
+        elif off.get(s):
+            state, reason = "off", ""
+        elif s == "notify":
+            n, _, last = streak(vault, s, until=day)
+            state, reason = ("failed", last) if n else ("ok", "")
+        else:
+            state, reason = _reading(vault, s, day) or ("unknown", "")
+        if state != "failed":
+            out.append(f"- {s}: {state}" + (" (no smoke check reading today)" if state == "unknown" else ""))
+            continue
+        reason = classed(reason)
+        _, since, _ = streak(vault, s, until=day)
+        line = f"- {s}: failed: {reason} (since {since or day})"
+        cred = credential(vault, s, reason)
+        out.append(line + (f"; expired: {cred[0]}; renew: {cred[1]}" if cred else ""))
+    return out

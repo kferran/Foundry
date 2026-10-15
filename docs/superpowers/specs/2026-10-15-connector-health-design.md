@@ -29,7 +29,7 @@ On master (merge of #202):
   - `lib_connector.sh` `connector_outcome` sets `CONNECTOR_CLASS` from the exit and the reason text. Exit 3 is `auth` (no connector reachable, which is how a disconnected connector shows). Exit 6 is `auth` when the connector's error text matches `401|403|unauthori[sz]ed|forbidden|expired|reconnect|invalid_grant|token`, else `connector`. Exit 4 is `timeout`. Exit 1 is `claude` when claude's error result says it is logged out or out of credit (`/login`, `invalid api key`, `credit`), else `other`. Exit 127 is `claude`.
   - Each connector fetch prints `<name>: <class>: <reason>` on failure. Exit codes do not change.
   - `telemetry_fetch.py --check` prints the class it already has: `telemetry_fetch: <src>: auth: run az login`.
-- **The smoke check names the credential and the renewal.** A failed source whose reason is `auth:` prints `<src>: expired: <credential>; renew: <command>` and alerts once a day per credential (key `expired <credential>`), so two expired credentials make two alerts. The credentials and commands are a table in `smoke_check.sh`:
+- **The smoke check names the credential and the renewal.** A failed source whose reason is `auth:` prints `<src>: expired: <credential>; renew: <command>` and alerts once a day per credential (key `expired <credential>`), so two expired credentials make two alerts. The credentials and commands are a table in `vaultlib/sources.py` (built there so the brief's Sources line and the smoke check share it; `sources.py credential` is the smoke check's lookup):
 
   | Credential | Sources | Renew |
   |---|---|---|
@@ -53,7 +53,8 @@ On master (merge of #202):
 - `system/scripts/lib_connector.sh`: `CONNECTOR_CLASS` in `connector_outcome`.
 - `calendar_fetch.sh`, `meetings_fetch.sh`, `jira_fetch.sh`, `triage_fetch.sh`, `notify.sh`, `rca_file.sh`: the class prefix on the printed reason and in their alert lines.
 - `system/scripts/vaultlib/telemetry_run.py`: `--check` prints the class.
-- `system/scripts/smoke_check.sh`: the credential table, the `expired` and `unreachable` lines, the per-credential alert key.
+- `system/scripts/smoke_check.sh`: the `expired` and `unreachable` lines, the per-credential alert key, one `telemetry/<name>` line per telemetry source.
+- `system/scripts/sources.py`, `vaultlib/sources.py` (new): the credential table, failure streaks from the smoke log, and the `sources.md` report. A source with no smoke reading that morning reads `unknown`.
 - `system/scripts/brief_prep.sh`, `lib_prep.sh`: `sources.md`; `prep_unavailable` callers keep working and feed it.
 - `.claude/commands/brief.md`: the Sources line in Morning Alignment, the Communication Debt and Pipeline sentences.
 - `FOUNDRY.md`: the smoke check paragraph and the brief's sections.

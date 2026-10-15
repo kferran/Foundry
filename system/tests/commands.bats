@@ -599,6 +599,19 @@ self_edit_contract() {
   grep -qF "today's \`retry\` ledger lines restored" .claude/commands/debrief.md
 }
 
+@test "brief: one Sources line from sources.md; mail and chat are a source, the skipped line is gone (connector health spec §2)" {
+  f=.claude/commands/brief.md
+  grep -qF '`system/logs/inputs/<date>/sources.md`' "$f"
+  grep -qF '`Sources: <n> ok`' "$f"
+  grep -qF '`Sources: all <n> ok.`' "$f"
+  grep -qF 'mail and chat: off (no connector in this session)' "$f"
+  grep -qF 'an alert about a source the Sources line already shows' "$f"
+  run grep -F 'Mail and chat skipped' "$f"
+  [ "$status" -eq 1 ]
+  run grep -F 'or the skipped line' "$f"
+  [ "$status" -eq 1 ]
+}
+
 @test "the one-screen brief: order, the people block, friction and Recurring as prep files give them, role-aware lines" {
   f=.claude/commands/brief.md
   grep -qF '`system/logs/inputs/<date>/friction.md`' "$f"

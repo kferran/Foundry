@@ -170,6 +170,23 @@ def test_dry_run_and_check_write_nothing(v, monkeypatch, capsys):
     assert not (v / "system/logs/telemetry_state.json").exists()
 
 
+@pytest.mark.parametrize("kind, reason, line", [
+    ("auth", "run az login", "auth: run az login"),
+    ("transient", "network: URLError", "network: example.kusto.windows.net (URLError)"),
+    ("transient", "az timed out", "timeout: az timed out"),
+    ("transient", "HTTP 503", "connector: HTTP 503"),
+    ("bad", "no primary result", "other: no primary result"),
+])
+def test_check_prints_the_failure_class(v, monkeypatch, capsys, kind, reason, line):
+    # connector health spec §2: the smoke check reads the class to name the credential or the host
+    write(v, "system/telemetry/prod-adx.md", ADX.format(covers=""))
+    def fail(*a, **k):
+        raise http.TelemetryError(kind, reason)
+    monkeypatch.setattr(kusto, "query", fail)
+    assert telemetry_run.main(["--check", "prod-adx"], v, NOW) == 1
+    assert capsys.readouterr().out.strip() == f"telemetry_fetch: prod-adx: {line}"
+
+
 OFF = ('---\ntype: telemetry_source\nname: "off"\ncodebase: "shop"\nenvironment: "prod"\nkind: "adx"\nenabled: "false"\n'
        'adx_cluster: "https://example.kusto.windows.net"\nadx_database: "prod"\nadx_signals: ["logs"]\n---\n')
 

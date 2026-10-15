@@ -1,6 +1,7 @@
 #!/bin/bash
 # Smoke check (smoke check spec §3.1): every configured fetch's check mode and the claude version, one line per
-# source (ok, failed: <reason>, held: <reading>, off), one [smoke] alert a day per failure, logged to
+# source (ok, failed: <reason>, expired: <credential>; renew: <how>, unreachable: <host>, held: <reading>, off), one
+# [smoke] alert a day per failure (per credential for an expired one), logged to
 # system/logs/smoke-<YYYY-MM>.jsonl. Runs daily from foundry-smoke.timer, 15 minutes before the brief, on a server
 # or standalone machine. At the usage ceiling the connector checks are held; the local checks still run.
 # Exit: 0 every configured source passed, 1 a source failed, 2 usage.
@@ -32,13 +33,29 @@ alert_once() {  # <key> <text>: at most one alert a day per key
   grep -qF -- "[smoke] $1" "$f" 2>/dev/null || printf -- '- %s [smoke] %s %s\n' "$(date +%H:%M:%S)" "$1" "$2" >> "$f"
 }
 report() {  # <source> <exit> <reason>: print the line, log it, alert a failure
+  local cred host since n
   logline "$1" "$2" "$3"
   if (( $2 == 0 )); then
     echo "$1: ok"
+    return 0
+  fi
+  failed=1
+  # Connector health spec §2: an expired credential is named with its renewal, one alert a day per credential; a
+  # network failure names the host and alerts once it failed the same way at the previous check too.
+  cred="$(system/scripts/sources.py credential "$1" "$3" 2>/dev/null || true)"
+  if [[ -n "$cred" ]]; then
+    echo "$1: expired: ${cred%%$'\t'*}; renew: ${cred#*$'\t'}"
+    alert_once "expired ${cred%%$'\t'*}:" "renew: ${cred#*$'\t'} ($1: $3)"
+  elif [[ "$3" == "network: "* ]]; then
+    host="${3#network: }" host="${host%% *}"
+    echo "$1: unreachable: $host"
+    since="$(system/scripts/sources.py streak "$1" --class network 2>/dev/null || true)"
+    n="${since%%$'\t'*}" since="${since#*$'\t'}"
+    [[ "$n" =~ ^[0-9]+$ ]] || n=0
+    (( n < 2 )) || alert_once "unreachable $host:" "since ${since%%$'\t'*}; check the VPN or network route to $host"
   else
     echo "$1: failed: $3"
     alert_once "$1" "failed: $3 (see $log)"
-    failed=1
   fi
 }
 # reason <script>: the script's own last "<name>: …" line from $out without that prefix, else the last non-empty
@@ -117,17 +134,16 @@ if (( lrc != 0 )); then
 elif [[ -z "$sources" ]]; then
   echo "telemetry: off"
 else
-  trc=0 treason=""
+  # One line per source (connector health spec §2): each has its own credential and host.
   while IFS= read -r name; do
     [[ -n "$name" ]] || continue
     rc=0
     timeout "$tt" system/scripts/telemetry_fetch.py --check "$name" > "$out" 2>&1 < /dev/null || rc=$?
-    (( rc != 0 )) || continue
-    trc=$rc
-    if (( rc == 124 )); then r="$name: timed out after ${tt}s"; else r="$(reason telemetry_fetch.py)"; fi
-    treason="${treason:+$treason; }$r"
+    if (( rc == 0 )); then r=""
+    elif (( rc == 124 )); then r="timeout: timed out after ${tt}s"
+    else r="$(reason telemetry_fetch.py)" r="${r#"$name: "}"; fi
+    report "telemetry/$name" "$rc" "$r"
   done <<< "$sources"
-  report telemetry "$trc" "$treason"
 fi
 if [[ -f system/dtcc/map.yaml ]]; then
   check dtcc "${SMOKE_DTCC_TIMEOUT:-60}" system/scripts/dtcc_watch.py --check
