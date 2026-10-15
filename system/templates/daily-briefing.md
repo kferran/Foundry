@@ -8,6 +8,8 @@ status: "{{status}}"
 
 ## 🌅 Morning Alignment ({{brief_time}})
 
+### Where yesterday landed
+
 ### 1. Active Objectives & Context Boundaries
 
 <!-- From Now lists the open lines of wiki/<partition>/Now.md: tick [x] when done or [-] to drop. The tick lands on the Now page. -->
