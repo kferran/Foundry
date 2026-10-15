@@ -30,6 +30,8 @@ slack_connector: "claude.ai Slack"  # the Slack connector a headless session loa
 notify_links: "github"          # notice links: github (a GitHub file link) or obsidian (an obsidian:// link)
 orders_enabled: "false"         # server and standalone: the Work Orders tick every 15 minutes (/setup asks)
 update_enabled: "false"         # server and standalone: merge template updates every morning (/setup asks)
+extensions: []                 # extensions turned on, by folder name under extensions/ (/setup phase 6e asks)
+extensions_remote: ""           # the extensions repository to clone into extensions/ (empty: none)
 superpowers: []
 ---
 # Config (example)

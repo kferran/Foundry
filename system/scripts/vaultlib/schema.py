@@ -117,33 +117,60 @@ def parse_fieldspec(raw, where: str) -> FieldSpec:
     return spec
 
 
+def _read_schema(path: Path, vault: Path):
+    """(rel, schema_for, folders, fields) of one schema note. Raises SchemaError."""
+    rel = path.relative_to(vault).as_posix()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError) as exc:
+        raise SchemaError(f"{rel}: cannot read: {exc}")
+    note = frontmatter.parse(text)
+    if note.data is None:
+        raise SchemaError(f"{rel}: {note.error or 'no frontmatter'}")
+    data = note.data
+    name = data.get("schema_for")
+    if not isinstance(name, str) or not IDENT.match(name):
+        raise SchemaError(f"{rel}: schema_for must be an identifier")
+    folders = data.get("folders")
+    # An extension's config fragment names no folders: it adds fields to core's config schema.
+    if folders is None and name == "config" and "/extensions/" in f"/{rel}":
+        folders = []
+    if not isinstance(folders, list) or not all(isinstance(f, str) for f in folders):
+        raise SchemaError(f"{rel}: folders must be a list of strings")
+    raw_fields = data.get("fields")
+    if not isinstance(raw_fields, dict):
+        raise SchemaError(f"{rel}: fields must be a mapping")
+    fields = {}
+    for key, raw in raw_fields.items():
+        if not IDENT.match(str(key)):
+            raise SchemaError(f"{rel}: field name {key!r} is not an identifier")
+        fields[key] = parse_fieldspec(raw, f"{rel}:{key}")
+    return rel, name, folders, fields
+
+
+def extension_schema_paths(vault: Path) -> list:
+    """The schema notes of every present extensions/<name>/ folder, so a key an owner turned off still validates."""
+    return sorted((Path(vault) / "extensions").glob("*/schemas/*.md"))
+
+
 def load_schemas(vault: Path) -> dict:
-    """Load every system/schemas/*.md. Raises SchemaError on an invalid schema note."""
+    """Load every system/schemas/*.md, then each present extension's schemas. Raises SchemaError on an invalid
+    schema note. An extension's `schema_for: config` note merges its fields into the core config schema."""
+    vault = Path(vault)
     schemas = {}
-    for path in sorted((Path(vault) / "system" / "schemas").glob("*.md")):
-        rel = path.relative_to(vault).as_posix()
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError) as exc:
-            raise SchemaError(f"{rel}: cannot read: {exc}")
-        note = frontmatter.parse(text)
-        if note.data is None:
-            raise SchemaError(f"{rel}: {note.error or 'no frontmatter'}")
-        data = note.data
-        name = data.get("schema_for")
-        if not isinstance(name, str) or not IDENT.match(name):
-            raise SchemaError(f"{rel}: schema_for must be an identifier")
-        folders = data.get("folders")
-        if not isinstance(folders, list) or not all(isinstance(f, str) for f in folders):
-            raise SchemaError(f"{rel}: folders must be a list of strings")
-        raw_fields = data.get("fields")
-        if not isinstance(raw_fields, dict):
-            raise SchemaError(f"{rel}: fields must be a mapping")
-        fields = {}
-        for key, raw in raw_fields.items():
-            if not IDENT.match(str(key)):
-                raise SchemaError(f"{rel}: field name {key!r} is not an identifier")
-            fields[key] = parse_fieldspec(raw, f"{rel}:{key}")
+    for path in sorted((vault / "system" / "schemas").glob("*.md")):
+        rel, name, folders, fields = _read_schema(path, vault)
+        if name in schemas:
+            raise SchemaError(f"{rel}: duplicate schema {name!r}")
+        schemas[name] = Schema(name, folders, fields, rel)
+    for path in extension_schema_paths(vault):
+        rel, name, folders, fields = _read_schema(path, vault)
+        if name == "config" and "config" in schemas:
+            for key, spec in fields.items():
+                if key in schemas["config"].fields:
+                    raise SchemaError(f"{rel}: config field {key!r} is already defined")
+                schemas["config"].fields[key] = spec
+            continue
         if name in schemas:
             raise SchemaError(f"{rel}: duplicate schema {name!r}")
         schemas[name] = Schema(name, folders, fields, rel)

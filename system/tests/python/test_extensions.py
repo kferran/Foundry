@@ -95,3 +95,52 @@ def test_no_extensions_folder_is_empty_everywhere(vault):
 def test_usage_error_exits_2(vault):
     assert run(vault).returncode == 2
     assert run(vault, "bogus").returncode == 2
+
+
+def config_with(vault, *lines):
+    write(vault, "system/config.md",
+          "---\ntype: config\ntimezone: UTC\nbrief_time: \"06:00\"\ndebrief_time: \"17:00\"\nremote_mode: none\n"
+          "default_partition: work\nextensions: [\"demo\"]\n" + "\n".join(lines) + "\n---\n")
+
+
+def test_extension_config_keys_validate_while_present(ext, cli):
+    config_with(ext, 'demo_site: "x"')
+    r = cli("validate", "system/config.md")
+    assert "unknown field" not in r.stdout
+    shutil.rmtree(ext / "extensions" / "demo")
+    r = cli("validate", "system/config.md")
+    assert "unknown field demo_site" in r.stdout
+
+
+def test_extension_note_schemas_load_from_present_extensions(ext, cli):
+    from vaultlib import schema
+    config_with(ext)
+    schemas = schema.load_schemas(ext)
+    assert "demo_thing" in schemas
+    assert schemas["demo_thing"].folders == ["wiki/work/things/"]
+    assert "demo_site" in schemas["config"].fields
+    assert list(schemas).count("config") == 1
+    write(ext, "wiki/work/things/Blue.md", "---\ntype: demo_thing\ncolour: blue\n---\n# Blue\n")
+    write(ext, "wiki/work/things/Bad.md", "---\ntype: demo_thing\n---\n# Bad\n")
+    assert cli("validate", "wiki/work/things/Blue.md").returncode == 0
+    assert cli("validate", "wiki/work/things/Bad.md").returncode == 1
+
+
+def test_config_fragment_that_redefines_a_core_key_is_a_schema_error(ext):
+    import pytest as _pytest
+    from vaultlib import schema
+    write(ext, "extensions/demo/schemas/config.md",
+          "---\ntype: schema\nschema_for: config\nfields:\n  timezone: {kind: string}\n---\n")
+    with _pytest.raises(schema.SchemaError, match="timezone"):
+        schema.load_schemas(ext)
+
+
+def test_index_skips_extensions_and_their_ignore_paths(ext, cli):
+    config_with(ext)
+    write(ext, "raw/demo/x.md", "---\ntype: concept\n---\n# X\n")
+    write(ext, "extensions/demo/notes/Inside.md", "---\ntype: concept\n---\n# Inside\n")
+    write(ext, "wiki/work/things/Blue.md", "---\ntype: demo_thing\ncolour: blue\n---\n# Blue\n")
+    r = cli("query", "SELECT path FROM files")
+    assert "wiki/work/things/Blue.md" in r.stdout
+    assert "extensions/" not in r.stdout
+    assert "raw/demo" not in r.stdout
