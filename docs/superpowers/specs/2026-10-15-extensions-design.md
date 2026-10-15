@@ -1,7 +1,7 @@
 # Extensions: features out of core, into one extensions repository
 
 **Date:** 2026-10-15
-**Status:** Grill done (owner, 2026-10-15). Draft spec for the owner's review. No build until it is approved.
+**Status:** Approved (owner, 2026-10-15), with the review decisions in §6. Next: the plan for the loader and the Jira handoffs move.
 **Plan:** phase 4 of `docs/superpowers/2026-10-15-next-phase-plan.md`; simplification step 3 of `2026-10-11-simplification-review.md` §4. Overlaps #62 (closed out below).
 
 ## 1. Facts (master after #209)
@@ -88,7 +88,7 @@ extensions/<name>/
   tests/             bats and pytest, run by the gate while the extension is present
 ```
 
-Manifest frontmatter (`type: extension`, a new schema):
+Manifest frontmatter (validated by the loader; the index skips `extensions/`, so there is no note schema for it):
 
 | Field | Meaning |
 |---|---|
@@ -137,12 +137,8 @@ Every shared file reads the loader in place of its per-feature `if` blocks:
 - **Loader:** a manifest with a missing `requires`, an unknown key, or a listed extension with no folder is reported by `extensions.py check`.
 - **Line budget:** a test counts core script lines and fails above the budget, set once at the end of phase 4.
 
-## 6. Open for the spec review
+## 6. Review decisions (owner, 2026-10-15)
 
-1. **Allow rules.** An extension's skills need Bash allow rules. Two options:
-   - `/setup` writes them into `.claude/settings.json` from the manifests.
-   - One generic rule, `Bash(extensions/*/scripts/*)`, which the allow-list lint must accept.
-
-   **Recommended:** `/setup` writes them, so every rule stays specific.
-2. **Visibility and CI access.** A private extensions repository needs a read-only token in the template's CI to check it out; a public one does not. **Recommended:** private, since DTCC is work-specific and was meant for a private repository, with a read-only deploy key for CI. Decide before the first move.
-3. **Sequencing with phases 2 and 3.** Phase 2 (brief section files) is not built. The first move builds the section-file mechanism for its own section only; phase 2 then moves the remaining core sections onto it.
+1. **Allow rules:** `/setup` writes each enabled extension's `allow` rules from its manifest into `.claude/settings.json` and removes the rules of an extension that is turned off. Every rule stays specific; there is no generic `extensions/*` rule.
+2. **Visibility:** the extensions repository is private. The template's CI checks it out with a read-only deploy key; without the key (a fork, or a pull request from outside), the "every extension on" job is skipped and says so, and the core-alone gate still runs.
+3. **Sequencing with phases 2 and 3:** phase 2 (brief section files) is not built. The first move builds the section-file mechanism for its own section only; phase 2 then moves the remaining core sections onto it.
