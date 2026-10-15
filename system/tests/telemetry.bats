@@ -52,6 +52,30 @@ EOF
   [ "$status" -ne 0 ]
 }
 
+@test "a non-prod span group seen over 24 hours escalates as persistent with no message (#171, telemetry escalation spec §3.2)" {
+  cat > "$V/system/telemetry/uat-adx.md" <<'EOF'
+---
+type: telemetry_source
+name: "uat-adx"
+codebase: "shop"
+environment: "uat"
+kind: "adx"
+adx_cluster: "https://example.kusto.windows.net"
+adx_database: "uat"
+adx_signals: ["spans"]
+---
+EOF
+  run "$V/system/scripts/telemetry_fetch.py" --source uat-adx
+  [ "$status" -eq 0 ]
+  note=$(find "$V/raw/telemetry" -name 'uat-adx-a-*.md')
+  [ "$(printf '%s\n' "$note" | wc -l)" -eq 1 ]
+  grep -qxF 'environment: "uat"' "$note"
+  grep -qxF 'escalate: "persistent"' "$note"
+  grep -qE '^escalated_at: "' "$note"
+  run grep -c '^message:' "$note"
+  [ "$output" = "0" ]
+}
+
 @test "the lock is held: a second run exits 4" {
   exec 9> "$V/system/telemetry.lock"
   flock 9
