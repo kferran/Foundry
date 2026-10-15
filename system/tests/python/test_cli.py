@@ -51,6 +51,7 @@ def test_tags_lists_one_partition_most_used_first(cli, vault):
     write(vault, "wiki/work/concepts/Other.md", concept("work", "Other", tags="[streaming, now]"))
     write(vault, "wiki/work/concepts/Flat.md", concept("work", "Flat", tags="tooling"))
     write(vault, "wiki/work/concepts/Gone.md", concept("work", "Gone", tags="[retired-tag]", status="deprecated"))
+    write(vault, "wiki/work/concepts/Legacy.md", concept("work", "Legacy", tags='["Legacy Stuff", "2026"]'))
     res = cli("tags", "--partition", "work")
     assert res.returncode == 0, res.stderr
     assert res.stdout.splitlines() == ["3\tstreaming", "1\tapi-gateway"]
