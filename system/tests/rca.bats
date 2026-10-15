@@ -18,7 +18,7 @@ setup() {
   printf '%s\n' 'handoffs_site: "example.atlassian.net"' 'rca_project: "EX"' '---' >> system/config.md
   printf -- '---\ntype: rca\ntitle: "Orders fail"\npartition: work\ncreated_at: "2026-10-11"\nsource: "raw/telemetry/a.md"\nrc_confidence: 4\nfix_confidence: 4\nstatus: draft\n---\n# Orders fail\n\n## Ticket draft\n\n**Summary:** Orders fail\n\n**Description:**\nRoot cause: `src/app/orders.py:42`.\n' \
     > "wiki/work/rca/$STEM.md"
-  printf -- '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-11"\npartition: work\n---\n# Now\n\n## Needs you\n- [x] owed: Review RCA draft: Orders fail (since 2026-10-11, rca:%s)\n\n## Waiting\n' "$STEM" \
+  printf -- '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-11"\npartition: work\n---\n# Now\n\n## Needs you\n- [x] owed: Review RCA draft: %s (since 2026-10-11, rca:%s)\n\n## Waiting\n' "$STEM" "$STEM" \
     > wiki/work/Now.md
   RF="$V/system/scripts/rca_file.sh"
   ALERTS="system/logs/alerts_$(TZ=America/Denver date +%F).md"
@@ -55,7 +55,7 @@ jira_errs() {
   [ "$status" -eq 6 ]
   [ ! -e "system/logs/rca/work-$STEM.attempt" ]
   grep -qx 'status: "draft"' "wiki/work/rca/$STEM.md"
-  grep -q '^- \[ \] owed: Review RCA draft: Orders fail: not filed .*Team is required.* (since 2026-10-11, rca:' wiki/work/Now.md
+  grep -q '^- \[ \] owed: Review RCA draft: '"$STEM"': not filed .*Team is required.* (since 2026-10-11, rca:' wiki/work/Now.md
   grep -qF 'Jira refused the ticket, nothing was created' "$ALERTS"
   sed -i '$d' system/config.md
   printf '%s\n' "rca_extra_fields: {customfield_10042: '{\"id\": \"10042\"}'}" '---' >> system/config.md
@@ -72,7 +72,7 @@ jira_errs() {
   run "$RF" work "$STEM"
   [ "$status" -eq 6 ]
   [ -e "system/logs/rca/work-$STEM.attempt" ]
-  grep -q '^- \[x\] owed: Review RCA draft: Orders fail (since' wiki/work/Now.md
+  grep -q '^- \[x\] owed: Review RCA draft: '"$STEM"' (since' wiki/work/Now.md
 }
 
 @test "an approved draft is filed once, and the key reaches the note, its Now line and the alerts" {
@@ -119,6 +119,25 @@ jira_errs() {
   run "$RF" work "$STEM"
   [ "$status" -eq 7 ]
   [ ! -e "system/logs/rca/work-$STEM.attempt" ]
+}
+
+@test "no connector exits 3, a timeout 4, a missing claude 127; none leaves a marker or files (#106)" {
+  printf '{"type":"result","subtype":"success","is_error":false}\n' > "$STUB_STREAM"
+  run "$RF" work "$STEM"
+  [ "$status" -eq 3 ]
+  [ "$output" = 'rca_file: auth: no Atlassian connector reachable' ]
+  [ ! -e "system/logs/rca/work-$STEM.attempt" ]
+  jira_says "$C" "$ARGS"
+  STUB_SLEEP=3 RCA_TIMEOUT=1 run "$RF" work "$STEM"
+  [ "$status" -eq 4 ]
+  [ "$output" = 'rca_file: timeout: timed out after 1s' ]
+  [ ! -e "system/logs/rca/work-$STEM.attempt" ]
+  rm -f "$STUB_ARGS"
+  CLAUDE_BIN="$BATS_TEST_TMPDIR/no-such-claude" run "$RF" work "$STEM"
+  [ "$status" -eq 127 ]
+  [ ! -e "$STUB_ARGS" ]
+  [ ! -e "system/logs/rca/work-$STEM.attempt" ]
+  grep -qx 'status: draft' "wiki/work/rca/$STEM.md"
 }
 
 @test "a refused allow rule runs no session and leaves no marker (connector runner spec §2)" {
