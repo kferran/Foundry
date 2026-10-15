@@ -64,6 +64,23 @@ def test_a_statement_with_parentheses_parses(vault):
     assert now.add(vault, "work", "owed", "Fix the 409 (export) bug", TODAY)[0] == "exists"
 
 
+AFTER = ("- [ ] owed: Pick the export format [rec:: CSV: the vendor's loader reads it] [due:: 2026-10-18] "
+         "(vendor contact, since 2026-10-15)")
+
+
+def test_the_fields_parse_inside_the_statement_in_either_order():
+    # Now clock spec §3: LINE is unchanged; fields() reads each field once, anywhere, and returns the bare statement.
+    m = now.LINE.match(AFTER)
+    assert (m.group("who"), m.group("since")) == ("vendor contact", "2026-10-15")
+    want = ("Pick the export format", "CSV: the vendor's loader reads it", "2026-10-18")
+    assert now.fields(m.group("statement")) == want
+    assert now.fields("Pick the export format [due:: 2026-10-18] [rec:: CSV: the vendor's loader reads it]") == want
+    assert now.fields("Pick [due:: 2026-10-18] the  export [rec:: CSV: the vendor's loader reads it] format") == want
+    assert now.fields("Fix the 409 (export) bug") == ("Fix the 409 (export) bug", "", "")
+    assert now.render("owed", "Pick the export format", "2026-10-15", "vendor contact",
+                      rec="CSV: the vendor's loader reads it", due="2026-10-18") == AFTER
+
+
 def test_invalid_lines_are_refused(vault):
     prepare(vault)
     for args in (("shared", "owed", "x", ""), ("work", "decision", "x", ""), ("work", "owed", "a\nb", ""),

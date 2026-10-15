@@ -30,6 +30,9 @@ PR_URL = re.compile(r"^https://github\.com/[^/\s]+/[^/\s]+/pull/\d+$")
 ORDER_ID = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$")
 ORDER_CLOSED = ("done", "failed", "cancelled")
 SINCE = re.compile(r"\s*_\(open since (\d{4}-\d{2}-\d{2})(?:, \d+ days?)?\)_")
+# The Now clock (Now clock spec §3): two optional Dataview inline fields inside the statement, before the parenthesis.
+REC = re.compile(r"\[rec:: ([^\[\]\n]+)\]")
+DUE = re.compile(r"\[due:: (\d{4}-\d{2}-\d{2})\]")
 
 
 class CheckFailed(Exception):
@@ -45,9 +48,18 @@ def new_page(vault, partition: str, today: str) -> str:
     return template.replace("{{date}}", today).replace("{{partition}}", partition)
 
 
-def render(kind: str, statement: str, since: str, who: str = "", evidence: str = "") -> str:
+def fields(statement: str) -> tuple:
+    """(bare statement, rec, due): the statement without its two fields, whitespace collapsed; "" for a missing field."""
+    rec, due = REC.search(statement), DUE.search(statement)
+    bare = " ".join(DUE.sub("", REC.sub("", statement)).split())
+    return bare, rec.group(1) if rec else "", due.group(1) if due else ""
+
+
+def render(kind: str, statement: str, since: str, who: str = "", evidence: str = "", rec: str = "",
+           due: str = "") -> str:
     meta = (f"{who}, " if who else "") + f"since {since}" + (f", {evidence}" if evidence else "")
-    return f"- [ ] {kind}: {statement} ({meta})"
+    clock = (f" [rec:: {rec}]" if rec else "") + (f" [due:: {due}]" if due else "")
+    return f"- [ ] {kind}: {statement}{clock} ({meta})"
 
 
 def read(vault, partition: str) -> str:
