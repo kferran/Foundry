@@ -4,7 +4,7 @@ description: Audits the vault (schemas, links, orphans) and suggests links, merg
 
 Audit the vault. The deterministic checks come first; your analysis only adds to them.
 
-1. Run `system/scripts/lint_vault.sh` and `system/scripts/vault_index.py orphans`. Present errors first, then warnings, grouped by file.
+1. Run `system/scripts/lint_vault.sh` and `system/scripts/vault_index.py orphans`. Present `secret shape:` lines first, as errors (each names a path, a line and a credential shape, never the value; propose removing it, or say it is a test fixture or an example), then the other errors, then warnings, grouped by file. A `secret shape: unscanned` line means the scan could not run: report it as an error.
 2. Then add analysis, each item with the notes involved and a proposed fix:
    - **Links:** for each orphan and each dead link, suggest a link or a target.
    - **Duplicates:** notes that cover the same topic (check with `system/scripts/vault_index.py related <note>`); propose a merge by superseding one.

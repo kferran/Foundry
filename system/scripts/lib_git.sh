@@ -48,12 +48,12 @@ git_sync_message() {
 # git_sync_commit <role>: commit_runs.py, then every remaining change as one sync(<role>) commit through the
 # pre-commit hook. Returns 0 (nothing staged included); on a refusal unstages, sets GIT_SYNC_ERROR, returns 1.
 # A run commit_runs.py reports as refused (exit 3 with "refused <run_id> <path>" lines, audit C7) is left out of
-# the sync commit, its paths listed one per line in GIT_SYNC_REFUSED, and the return is still 0. Runs from the
-# vault root.
+# the sync commit, its paths listed one per line in GIT_SYNC_REFUSED, and the return is still 0. A path that adds a
+# secret shape is left out too, its first scanner line per path in GIT_SYNC_SECRETS (#166). Runs from the vault root.
 git_sync_commit() {
   local role="$1" err out rc=0 tag rid p
   local -a exclude=()
-  GIT_SYNC_ERROR="" GIT_SYNC_REFUSED=""
+  GIT_SYNC_ERROR="" GIT_SYNC_REFUSED="" GIT_SYNC_SECRETS=""
   out="$(system/scripts/commit_runs.py 9>&-)" || rc=$?
   while read -r tag rid p; do
     [[ "$tag" == refused && -n "$p" ]] || continue
@@ -68,6 +68,22 @@ git_sync_commit() {
   if ! command git add -A -- . "${exclude[@]}" 9>&-; then
     GIT_SYNC_ERROR="git add -A failed"
     return 1
+  fi
+  # A path that adds a secret shape (#166) is left out the same way, its scanner lines in GIT_SYNC_SECRETS, so one
+  # pasted token never stops the cycle. An unscanned result is left to the hook, which refuses the commit.
+  rc=0
+  out="$(python3 system/scripts/secret_scan.py --staged 9>&-)" || rc=$?
+  if (( rc == 1 )); then
+    while IFS= read -r p; do
+      [[ "$p" =~ ^secret\ shape:\ (.*):[0-9]+:\ [a-z0-9_]+$ ]] || continue
+      [[ "$GIT_SYNC_SECRETS" == *"secret shape: ${BASH_REMATCH[1]}:"* ]] || GIT_SYNC_SECRETS+="$p"$'\n'
+      exclude+=(":(exclude,literal)${BASH_REMATCH[1]}")
+    done <<< "$out"
+    command git reset -q 9>&-
+    if ! command git add -A -- . "${exclude[@]}" 9>&-; then
+      GIT_SYNC_ERROR="git add -A failed"
+      return 1
+    fi
   fi
   if ! command git diff --cached --quiet 9>&-; then
     if ! err="$(git_sync_message "$role" | command git commit -q -F - 2>&1 9>&-)"; then

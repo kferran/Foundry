@@ -117,6 +117,21 @@ refused_run() {  # a published run whose note the hook refuses
   [ "$(alerts | grep -c '\[commit_runs\]')" -eq 1 ]
 }
 
+@test "a file that adds a secret shape is left out of the sync commit, alerted once a day, and the cycle goes on (#166)" {
+  note "$V" Leak "key AKIA""IOSFODNN7EXAMPLE"
+  printf 'more\n' >> wiki/work/concepts/Kafka.md
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ "$(git log -1 --format=%s)" = "sync(server): 1 file(s)" ]
+  [ "$(git -C "$O" rev-parse "$B")" = "$(git rev-parse HEAD)" ]
+  [ "$(git status --porcelain)" = '?? wiki/work/concepts/Leak.md' ]
+  [ "$(alerts | grep -c '\[sync\] left out of the sync commit: secret shape: wiki/work/concepts/Leak.md:8: aws_key')" -eq 1 ]
+  [ -z "$(alerts | grep 'IOSFODNN7EXAMPLE')" ]
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ "$(alerts | grep -c 'secret shape')" -eq 1 ]
+}
+
 @test "origin changing a refused note ends the next cycle in fail merge (audit C7 spec §4)" {
   refused_run
   run "$VS"
