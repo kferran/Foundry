@@ -20,6 +20,7 @@ NAME_EXCLUDED = ("system/tests/", "system/templates/", "system/schemas/", "syste
                  "system/quarantine/", "wiki/.staging/",  # run copies keep their note names
                  "system/codebases/", "system/telemetry/", "system/dtcc/", "system/nightshift/")  # named after what they configure
 SKIP_FILES = ("system/index.db", "system/index.lock")
+ROOT_DOCS = {"README.md", "README.local.md", "FOUNDRY.md", "CLAUDE.md"}   # the only Markdown files the root holds
 TABLES = ("files", "notes", "fields", "links", "tags", "issues", "notes_fts")
 ISSUE_ROWS = "SELECT path, line, severity, code, message FROM issues ORDER BY severity, path, line"
 
@@ -338,6 +339,9 @@ class Index:
                 "AND coalesce(n.type,'') != 'index' AND NOT EXISTS "
                 "(SELECT 1 FROM links l WHERE l.target_path=n.path AND l.src != n.path)").fetchall():
             add(path, 1, "warning", "orphan", "no other note links here")
+        for (path,) in conn.execute("SELECT path FROM notes WHERE path NOT LIKE '%/%' AND path LIKE '%.md'").fetchall():
+            if path not in ROOT_DOCS:   # an editor's new note lands here, where nothing ingests it
+                add(path, 1, "warning", "root-note", "a note at the vault root is never ingested; move it to raw/inbox/")
 
     SENTRY_FIELDS = ("sentry_url", "sentry_org", "sentry_projects", "sentry_query")
     ADX_FIELDS = ("adx_cluster", "adx_database", "adx_filter", "adx_signals", "adx_group_keys", "covers")
