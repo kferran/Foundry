@@ -275,6 +275,20 @@ failing_bats() { printf '#!/usr/bin/env bats\n@test "no" { false; }\n' > "$M/sys
   grep -qx 'FAIL system/tests/b.bats (exit 1)' <<< "$output"
 }
 
+@test "verify_setup: suites and pytest write Python bytecode outside the tree, so a parallel copy of system/scripts never races a cache write" {
+  mini_vault
+  printf '#!/usr/bin/env bats\n@test "env" { echo "${PYTHONPYCACHEPREFIX:-unset}" > "%s/bats.env"; }\n' "$BATS_TEST_TMPDIR" > "$M/system/tests/a.bats"
+  printf 'import os\ndef test_env():\n    open("%s/py.env", "w").write(os.environ.get("PYTHONPYCACHEPREFIX", "unset"))\n' "$BATS_TEST_TMPDIR" > "$M/system/tests/python/test_ok.py"
+  run "$VS"
+  [ "$status" -eq 0 ]
+  b="$(cat "$BATS_TEST_TMPDIR/bats.env")"
+  p="$(cat "$BATS_TEST_TMPDIR/py.env")"
+  [ "$b" != unset ]
+  [ "$b" = "$p" ]
+  [[ "$b" != "$M/system"* ]]
+  [ ! -e "$b" ]
+}
+
 @test "verify_setup: a failing pytest run fails the run" {
   mini_vault
   printf 'def test_no():\n    assert False\n' > "$M/system/tests/python/test_no.py"

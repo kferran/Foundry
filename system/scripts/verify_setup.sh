@@ -41,6 +41,12 @@ gate lint system/scripts/lint_vault.sh
 have_bats=0
 command -v bats >/dev/null 2>&1 && have_bats=1
 if (( have_bats )) && python3 -m pytest --version >/dev/null 2>&1; then
+  # Suites copy system/scripts into their fixture vaults while other suites run Python from it. Bytecode
+  # written into the tree (a __pycache__ temp file renamed into place) can vanish mid-copy and fail the
+  # copy, so every suite and pytest write their bytecode to one throwaway directory outside the tree.
+  PYTHONPYCACHEPREFIX="$(mktemp -d)"
+  export PYTHONPYCACHEPREFIX
+  trap 'rm -rf "$PYTHONPYCACHEPREFIX"' EXIT
   shopt -s nullglob
   suites=()
   for f in system/tests/*.bats; do
