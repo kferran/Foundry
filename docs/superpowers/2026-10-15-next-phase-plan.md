@@ -80,16 +80,16 @@ Trackers and docs that lag behind merged work, so the next reader is not misled.
 1. [x] Work Order timestamps: `finished_at` is read after the session (L5). PR #195.
 2. [x] The daily update merges past a refused run and its alert names the refused or left-out paths (owner, 2026-10-15, on #136). PR #193.
 3. [x] Audit C13: `check_deps.sh` fails clearly below Python 3.11. PR #196.
-4. [ ] The gate marks a suite "skipped: environment" when `bwrap` or a user systemd is missing (audit C16), so a container run is not read as red.
+4. [x] A test that needs a user systemd, `bwrap` or a non-root user skips with `environment:`, and `--require-suites` (CI) fails it (audit C16). PR #199.
 5. [x] #188: the replaced note was empty by #142's rule, so no restore was needed; the import now keeps its attendees and `/ingest` compiles a drop from its transcript. PR #190.
-6. [ ] #175: the RCA filer clears its `.attempt` marker on a rejected create, and reads required custom fields from `rca_extra_fields`. Feature lane: spec in PR #198, for the owner.
+6. [ ] #175: the RCA filer clears its `.attempt` marker on a rejected create, and reads required custom fields from `rca_extra_fields`. Feature lane: spec #198 (merged), build PR #200 for the owner.
 7. [x] #189: one corepack home per item, written by install and read-only in the sealed verify. PR #192.
 8. [x] Lint warns on any `.md` file at the vault root other than the four root documents (L8). PR #197.
 
 **Short specs** (features, because they touch the publish gate or alerting):
 
-9. **Connector health (L1).** #184 is merged (timer liveness and unit drift). Then each fetch reports an auth failure as its own reason (expired token or key), separate from a network error, and the smoke check sends one `now` alert per expired credential, naming the command that renews it. The brief shows one "Sources" line listing what was skipped and why, in place of a skipped line per section. Confirm #176 on the live calendar.
-10. **Quarantine you can recover from (L6).** `intake.py --retry` exists; the brief's Blockers section lists each poisoned input with that command, and the brief and debrief read quarantine from one function, so they always agree.
+9. **Connector health (L1).** Spec: `specs/2026-10-15-connector-health-design.md`. #184 is merged (timer liveness and unit drift). Then each fetch reports an auth failure as its own reason (expired token or key), separate from a network error, and the smoke check sends one `now` alert per expired credential, naming the command that renews it. The brief shows one "Sources" line listing what was skipped and why, in place of a skipped line per section. Confirm #176 on the live calendar.
+10. **Quarantine you can recover from (L6).** Spec: `specs/2026-10-15-quarantine-in-brief-design.md`. `intake.py --retry` exists; the brief's Blockers section lists each poisoned input with that command, and the brief and debrief read quarantine from one function, so they always agree.
 11. **Telemetry escalation (#171).** Build the merged spec. A source with zero activity for 7 days gets one alert asking whether to turn it off (L7).
 
 **Done when:** 5 weekdays of live briefs with no manual connector recovery that went unalerted, and no Work Order blocked at `verify` on an install step.
