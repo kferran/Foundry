@@ -1,0 +1,148 @@
+# Extensions: features out of core, into one extensions repository
+
+**Date:** 2026-10-15
+**Status:** Grill done (owner, 2026-10-15). Draft spec for the owner's review. No build until it is approved.
+**Plan:** phase 4 of `docs/superpowers/2026-10-15-next-phase-plan.md`; simplification step 3 of `2026-10-11-simplification-review.md` §4. Overlaps #62 (closed out below).
+
+## 1. Facts (master after #209)
+
+| | Lines |
+|---|---|
+| `system/scripts/**` (sh, py) | 13,858 |
+| Commands, skills, schemas, units | 1,568 |
+| Tests (bats and pytest) | 19,077 |
+
+There are 19 schemas.
+
+| Feature | Code | Tests | Schemas | Units | Claude-facing | Config keys |
+|---|---|---|---|---|---|---|
+| Jira handoffs | 231 | 235 | none | none (runs in `brief_prep.sh`) | none | `handoffs_site`, `handoffs_projects` |
+| DTCC watcher | 811 | 540 | `dtcc_change` | dtcc-watch | skill `dtcc-watch` | none (on when `system/dtcc/map.yaml` exists) |
+| Telemetry and RCA | 1,355 (with `http.py`) | 1,628 | `production_error`, `telemetry_source`, `rca` | telemetry | command `/rca` | `rca_*` |
+| Meetings | 1,063, plus 256 in `vaultlib/intake.py` | 1,673 | `meeting`, `meeting_input`, `meeting_transcript` | meetings | none | `meetings_enabled`, `meetings_partition`, `owner_names` |
+| Inbox triage | 401 | 280 | none | triage | none | `triage_*` |
+| Slack notices | 493 | 438 | none | notify | none | `slack_*`, `notify_links` |
+| Two-machine sync | 292 | 991 | none | sync, plus the sync drop-ins | none | `machine_role`, `sync_interval_minutes` |
+| Work Orders (stay in core) | 1,770 | 2,069 | `nightshift_item` | nightshift | skill `order` | `orders_enabled` and others |
+
+Core special-cases these features in about 20 shared files:
+- `install_units.sh`, `brief_prep.sh`, `debrief_prep.sh`, `lib_prep.sh`, `smoke_check.sh`
+- `vaultlib/index.py`, `intake.py`, `sources.py`, `quarantine.py`, `publish.py`, `commit_runs.py`
+- `check_deps.sh`, `run_headless.sh`
+- `.claude/settings.json`
+- `brief.md`, `debrief.md`, `setup.md`
+- `FOUNDRY.md`, `CLAUDE.md`
+
+Owner-specific names in core include `dtcc.com`, `atlassian.net` and `sentry.io`, the Sentry and ADX lint rules in `index.py`, and Gemini in `intake.py`.
+
+**Cross-feature coupling:**
+- The usage ceiling lives in `vaultlib/triage.py` and reads Work Orders' usage record. Intake, the smoke check and the meetings fetch call it.
+- `rca_file.sh` files to Jira through `handoffs_site`.
+
+## 2. Decisions (owner, 2026-10-15)
+
+1. **What moves:** seven extensions.
+   - Jira handoffs, DTCC, telemetry with RCA, meetings, inbox triage, Slack notices and two-machine sync.
+   - Work Orders stay in core, off by default.
+2. **Revised target.** The old target, core under 7,500 lines, is not reachable with Work Orders in core (about 8,600 remain). Phase 4 is done when:
+   - no feature-specific code or names are left in core, enforced by a test;
+   - core scripts are at about 8,800 lines or fewer;
+   - there are 12 schemas or fewer (11 projected);
+   - the gate is green with no extensions and with every extension on.
+3. **Home: one extensions repository** (working name `foundry-extensions`). It holds every extension.
+   - The template ships core only.
+   - A vault clones the extensions repository into `extensions/` and pins it, the same way the template remote is pinned. `update_template.sh` updates both.
+   - This replaces the 10-11 split (DTCC private, the rest in the template).
+4. **Packaging: skills plus a Foundry manifest.**
+   - An extension's Claude-facing parts are skills in its `skills/` folder, linked into `.claude/skills/` while the extension is on. `/rca` becomes a skill.
+   - What Claude Code cannot load is declared in `extension.md`, which Foundry's loader reads: units, scripts, schemas, the brief section, the smoke check, sources, config keys, dependencies and allow rules.
+5. **Switch: one `extensions:` list** in `system/config.md`, for example `extensions: ["handoffs", "meetings"]`.
+   - It replaces `meetings_enabled`, `triage_enabled` and DTCC's "map file exists" rule.
+   - The update migrates the old keys once.
+   - Each extension keeps its own settings keys, declared in its manifest and validated against its own schema fragment.
+6. **First move: Jira handoffs.** It is the smallest, has no units, and touches every mechanism point except units (brief prep, brief section, smoke check, sources, setup, config). The rest follow in this order:
+   1. DTCC
+   2. telemetry and RCA
+   3. meetings
+   4. inbox triage
+   5. Slack notices
+   6. sync
+7. **Leftovers:**
+   - Delete the debrief's **Agent Health** section, the metrics template and the coding Workcell's instruction to write `system/logs/metrics/`, since nothing writes that folder.
+   - Delete the `plan_gate` schema and the intent-shaper template.
+   - Keep the `workcell` schema: `CLAUDE.md` routing and the recall hooks read the three Workcell files.
+   - Close the #62 leftovers (the `vault/` move and the Nightshift renames) as won't-do.
+
+## 3. The extension contract
+
+```
+extensions/<name>/
+  extension.md       manifest (frontmatter, below) and a short description
+  scripts/           the extension's scripts; run as extensions/<name>/scripts/<script>
+  schemas/           note-type schemas and its config schema fragment (config.md)
+  units/*.in         systemd unit templates, rendered by install_units.sh like core's
+  skills/<skill>/    Claude Code skills, linked into .claude/skills/ while on
+  brief/prep.sh      optional: writes system/logs/inputs/<date>/sections/<name>.md, exits 0
+  brief/section.md   optional: the brief prompt text for that section, included only while on
+  debrief/…          optional, same shape as brief/
+  tests/             bats and pytest, run by the gate while the extension is present
+```
+
+Manifest frontmatter (`type: extension`, a new schema):
+
+| Field | Meaning |
+|---|---|
+| `name` | Folder name; the value in `extensions:` |
+| `requires` | Other extensions it needs, e.g. telemetry's RCA filing needs handoffs (it reads `jira_site`) |
+| `config_keys` | Its keys, with defaults; validated by `schemas/config.md` |
+| `units` | Unit names, and the roles (`standalone`, `server`) that install them |
+| `smoke` | The check command and its source name(s) for `smoke_check.sh` |
+| `sources` | Rows for the Sources line: name, credential, renewal (moves the table out of `vaultlib/sources.py`) |
+| `alert_tags` | Its alert tags (#158 alert tags land with the first extension) |
+| `deps` | Tools for `check_deps.sh` (e.g. `az`, `pdftotext`) |
+| `allow` | Bash allow rules its skills need |
+| `index_ignore` | Paths the index skips (e.g. `raw/meetings`) |
+| `importer` | Optional: the intake importer hook (meetings) |
+
+Core gets one loader, `system/scripts/extensions.py`, with these commands:
+- `list`: the enabled extensions, in dependency order.
+- `field <name> <key>`: one manifest field.
+- `check`: validates every manifest, reports missing `requires`, and flags a listed extension with no folder.
+- `link`: links skills in and out of `.claude/skills/`.
+
+Every shared file reads the loader in place of its per-feature `if` blocks:
+- `install_units.sh`, `brief_prep.sh`, `debrief_prep.sh`, `smoke_check.sh`, `sources.py`, `check_deps.sh`
+- the schema loader, `index.py`'s ignore list, intake's importer list
+- `setup.md` gets one generic "Extensions" phase that walks each enabled extension's manifest.
+
+**Core keeps, generic:**
+- the usage ceiling, which moves from `vaultlib/triage.py` to a core `vaultlib/usage.py` because Work Orders and intake need it;
+- the connector runner (`lib_connector.sh`, `lib_confine.sh`) and `connector_classify`;
+- `http.py`, the run ledger, the publish gate, quarantine, the Now page and Work Orders;
+- the standalone role (the sync extension adds `server` and `client`).
+
+## 4. Migration and the owner's vault
+
+- `update_template.sh` (and `/setup`) turns `meetings_enabled: true`, `triage_enabled: true`, a non-empty `handoffs_projects`, an existing `system/dtcc/map.yaml`, a set `slack_notify_channel`, a `machine_role` other than standalone and an existing telemetry source into `extensions:` entries, once.
+  - It then clones the extensions repository at the pinned ref and runs `extensions.py check`.
+  - Until the clone exists, a listed extension is reported (`[extensions] <name> is listed but extensions/ has no folder for it`) and skipped. Nothing fails.
+- Each move is one PR to the template, which deletes the code, and one PR to the extensions repository, which adds it with its tests. Both merge together. The update brings both, so the owner's features keep running across the move.
+- A live acceptance run follows each move that changes brief, debrief or ingest text or the settings.
+
+## 5. Tests
+
+- **Core alone:** the gate runs with `extensions/` absent, and every suite passes with no feature skipped for being absent.
+- **Everything on:** CI checks out the extensions repository at the pinned ref, enables every extension, and runs the core gate plus each extension's `tests/`.
+- **Core is clean:** a bats test fails when a core file (outside `extensions.py` and the docs) names DTCC, Sentry, ADX, Kusto, Jira, Atlassian, Gemini, Google Drive or Slack, or one of their domains. It extends the owner-leak test.
+- **Loader:** a manifest with a missing `requires`, an unknown key, or a listed extension with no folder is reported by `extensions.py check`.
+- **Line budget:** a test counts core script lines and fails above the budget, set once at the end of phase 4.
+
+## 6. Open for the spec review
+
+1. **Allow rules.** An extension's skills need Bash allow rules. Two options:
+   - `/setup` writes them into `.claude/settings.json` from the manifests.
+   - One generic rule, `Bash(extensions/*/scripts/*)`, which the allow-list lint must accept.
+
+   **Recommended:** `/setup` writes them, so every rule stays specific.
+2. **Visibility and CI access.** A private extensions repository needs a read-only token in the template's CI to check it out; a public one does not. **Recommended:** private, since DTCC is work-specific and was meant for a private repository, with a read-only deploy key for CI. Decide before the first move.
+3. **Sequencing with phases 2 and 3.** Phase 2 (brief section files) is not built. The first move builds the section-file mechanism for its own section only; phase 2 then moves the remaining core sections onto it.
