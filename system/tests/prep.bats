@@ -418,6 +418,44 @@ codebase() {  # <name> <path>
   grep -qx '# Work Orders: 2026-10-01' "$IN/nightshift.md"
 }
 
+@test "brief_prep: yesterday.md copies the newest debrief of the 7 days before, frontmatter dropped (#179)" {
+  mkdir -p briefings/archive/2026-09
+  printf -- '---\ntype: debrief\ndate: "2026-09-26"\n---\n# Old\n' > briefings/archive/2026-09/2026-09-26.debrief.md
+  printf -- '---\ntype: debrief\ndate: "2026-09-28"\n---\n\n# Evening Debrief: 2026-09-28\nClosed X.\n' \
+    > briefings/archive/2026-09/2026-09-28.debrief.md
+  printf -- '---\ntype: debrief\ndate: "2026-10-01"\n---\n# Today\n' > briefings/2026-10-01.debrief.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/yesterday.md")" = "$(printf 'debrief: [[2026-09-28.debrief]]\n\n# Evening Debrief: 2026-09-28\nClosed X.')" ]
+}
+
+@test "brief_prep: yesterday.md takes a debrief exactly 7 days back whole when it has no frontmatter (#179)" {
+  mkdir -p briefings
+  printf -- '# Evening Debrief\nClosed X.\n---\nMore.\n' > briefings/2026-09-24.debrief.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/yesterday.md")" = "$(printf 'debrief: [[2026-09-24.debrief]]\n\n# Evening Debrief\nClosed X.\n---\nMore.')" ]
+}
+
+@test "brief_prep: an unreadable debrief is an unavailable input and the prep still exits 0 (#179)" {
+  mkdir -p briefings
+  printf -- '---\ntype: debrief\n---\n# Evening Debrief\n' > briefings/2026-09-30.debrief.md
+  chmod 000 briefings/2026-09-30.debrief.md
+  run "$BP" 2026-10-01
+  chmod 644 briefings/2026-09-30.debrief.md
+  [ "$status" -eq 0 ]
+  [ ! -e "$IN/yesterday.md" ]
+  grep -qF 'yesterday: the debrief briefings/2026-09-30.debrief.md is unreadable' "$IN/unavailable.md"
+}
+
+@test "brief_prep: no debrief in the 7 days before writes the none line (#179)" {
+  mkdir -p briefings/archive/2026-09
+  printf -- '---\ntype: debrief\n---\n# Old\n' > briefings/archive/2026-09/2026-09-23.debrief.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/yesterday.md")" = 'none: no debrief found from 2026-09-24 to 2026-09-30' ]
+}
+
 @test "brief_prep: dtcc.md is written, empty without a map" {
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]

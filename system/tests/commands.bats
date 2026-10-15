@@ -622,6 +622,19 @@ self_edit_contract() {
   grep -qF 'An absent `unavailable.md` or alerts file means there is nothing to report' "$f"
 }
 
+@test "the brief opens with where yesterday landed: the last debrief's link and lines drawn from it (#179)" {
+  f=.claude/commands/brief.md
+  grep -qF '`system/logs/inputs/<date>/yesterday.md`' "$f"
+  grep -qF '**🌅 Morning Alignment → Where yesterday landed:**' "$f"
+  grep -qF 'three to five `- ` lines drawn from the debrief' "$f"
+  grep -qF 'leaving out what Blockers and From Now already print' "$f"
+  grep -qF 'print `No debrief input.`' "$f"
+  grep -qF '`No debrief found from <a> to <b>.`' "$f"
+  run grep -e '^### ' system/templates/daily-briefing.md
+  [ "${lines[0]}" = "### Where yesterday landed" ]
+  grep -qF 'It opens with **Where yesterday landed**' FOUNDRY.md
+}
+
 @test "the one-screen brief: order, the people block, friction and Recurring as prep files give them, role-aware lines" {
   f=.claude/commands/brief.md
   grep -qF '`system/logs/inputs/<date>/friction.md`' "$f"

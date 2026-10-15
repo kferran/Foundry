@@ -99,6 +99,21 @@ prep_write dtcc.md system/scripts/dtcc_watch.py --brief "$PREP_DATE" \
 # this morning's smoke check, each failure with its class, since date and renewal.
 prep_write sources.md system/scripts/sources.py report "$PREP_DATE" --given "$PREP_DIR/sources.given" \
   || prep_unavailable "sources: sources.py report failed (see $PREP_DIR/prep_errors.log)"
+# Where yesterday landed (#179): the newest debrief of the 7 days before, archived or not, for the brief to draw from.
+since="$(date -d "$PREP_DATE -7 days" +%F)" last="" last_date=""
+for f in briefings/*.debrief.md briefings/archive/*/*.debrief.md; do
+  d="$(basename "$f" .debrief.md)"
+  [[ "$d" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && "$d" < "$PREP_DATE" && ! "$d" < "$since" && "$d" > "$last_date" ]] || continue
+  last="$f" last_date="$d"
+done
+if [[ -n "$last" ]]; then
+  prep_write yesterday.md awk -v d="$last_date" 'BEGIN { printf "debrief: [[%s.debrief]]\n\n", d }
+    NR == 1 && /^---\r?$/ { fm = 1; next } fm && /^---\r?$/ { fm = 0; gap = 1; next } fm { next }
+    gap && /^\r?$/ { gap = 0; next } { gap = 0; print }' "$last" \
+    || prep_unavailable "yesterday: the debrief $last is unreadable (see $PREP_DIR/prep_errors.log)"
+else
+  printf 'none: no debrief found from %s to %s\n' "$since" "$(date -d "$PREP_DATE -1 day" +%F)" > "$PREP_DIR/yesterday.md"
+fi
 
 # Briefings and debriefs dated before today move to briefings/archive/<YYYY-MM>/, after the Now seed and
 # dtcc.md are written (now.py seed and dtcc_watch.py read the archive too). The sync commit records
