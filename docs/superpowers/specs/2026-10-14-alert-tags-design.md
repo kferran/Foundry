@@ -31,7 +31,7 @@ The simplification review (2026-10-11, item 9) counted the eleven writers and pr
 
 - **This supersedes the notices decision** of 2026-10-11 ("the owner asked for every alert") and that spec's deferred quiet-hours line: severity is the quiet hours.
 - **The Foreman push** is a line with the `foreman` tag, written by `system/scripts/alert.py foreman "<text>"` from an interactive session. It is for a message to the owner now; something the owner owes or waits on stays a Now line (`now.py add`). The headless brief, debrief and ingest cannot write it: their Bash is sandboxed and only `run_headless.sh` writes alerts.
-- **The dedupe and the cut stay.** The notifier's once-a-day rule (`_sans_time` against `sent`) and the 200-character cut apply to `now` lines as today. The brief's "N alerts today" count stays whole.
+- **The dedupe and the cut stay.** The notifier's once-a-day rule (`_sans_time` against `sent`) and the 300-character cut apply to `now` lines as today. The brief's "N alerts today" count stays whole.
 
 ## 3. Changes
 

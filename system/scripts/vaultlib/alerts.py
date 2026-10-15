@@ -21,8 +21,16 @@ TAGS = {
     "notify": ("the notifier itself", "never"),
 }
 LINE = re.compile(r"^- \d\d:\d\d:\d\d \[([a-z_]+)\] ")
+# Two tags decide by their text: triage reaches Slack only as its "N new:" count (a failed triage fetch is a fetch
+# failure like any other), and a stale timer from the smoke check goes now, since a stale brief timer means no brief
+# would ever show it (the owner's rule: now when the next brief is too late).
+NOW_WHEN = {"triage": re.compile(r"\d+ new: "), "smoke": re.compile(r"\S+\.timer stale: ")}
 
 
 def severity(line: str) -> str:
     m = LINE.match(line)
-    return TAGS[m.group(1)][1] if m and m.group(1) in TAGS else "brief"
+    if not m or m.group(1) not in TAGS:
+        return "brief"
+    if m.group(1) in NOW_WHEN:
+        return "now" if NOW_WHEN[m.group(1)].match(line, m.end()) else "brief"
+    return TAGS[m.group(1)][1]

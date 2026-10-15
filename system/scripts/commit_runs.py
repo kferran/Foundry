@@ -22,7 +22,7 @@ RUNS = LOGS / "runs"
 SINCE = LOGS / "commit_runs.since"
 RUN_ID = re.compile(r"^(\d{8}T\d{6})-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
 PARTITIONS = ("work", "personal", "shared")
-CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
+CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f  ]+")  # Unicode line breaks too: one alert, one line
 SUBJECT_MAX = 72
 
 
