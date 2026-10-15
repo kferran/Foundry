@@ -59,11 +59,37 @@ def _meetings(vault: Path, folder: Path):
         yield "meeting", item, "", _mtime(item), reason, "fix the source; the next fetch or drop imports it"
 
 
+def _ledger(vault: Path) -> list:
+    out = []
+    for path in sorted((Path(vault) / "system" / "logs").glob("runs-*.jsonl")):
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(record, dict):
+                out.append(record)
+    return out
+
+
+def _published_later(ledger: list, run_id: str) -> str:
+    """The run id of a later run that published an input of run_id's, or "" (a conflict-held run whose input
+    published on retry is resolved: live acceptance 2026-10-15)."""
+    shas = next((set(r.get("input_sha256") or []) for r in ledger if r.get("run_id") == run_id), set())
+    for r in ledger:
+        rid = str(r.get("run_id") or "")
+        publish = r.get("publish") if isinstance(r.get("publish"), dict) else {}
+        if (rid > run_id and shas & set(r.get("input_sha256") or [])
+                and publish.get("status") in ("published", "recovered")):
+            return rid
+    return ""
+
+
 def items(vault, today: date) -> list:
     root = Path(vault) / "system" / "quarantine"
     if not root.is_dir():
         return []
-    found = []
+    found, ledger = [], None
     for entry in sorted(root.iterdir()):
         if entry.name.startswith("."):
             continue
@@ -72,7 +98,10 @@ def items(vault, today: date) -> list:
         elif entry.is_dir() and entry.name == "meetings":
             found += _meetings(vault, entry)
         elif entry.is_dir():   # a held-back run's staging: its input is retried or poisoned on its own
-            found.append(("run", entry, "", _named(entry.name, entry), "", "safe to delete"))
+            ledger = _ledger(vault) if ledger is None else ledger
+            later = _published_later(ledger, entry.name)
+            found.append(("run", entry, "", _named(entry.name, entry),
+                          f"resolved: its input published in run {later}" if later else "", "safe to delete"))
         elif entry.name.startswith("telemetry_state-"):   # the store was rebuilt without it
             found.append(("telemetry_state", entry, "", _named(entry.name, entry), "", "safe to delete"))
     rows = [Row(kind, p.relative_to(vault).as_posix(), origin, since, max((today - since).days, 0),

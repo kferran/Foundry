@@ -595,6 +595,7 @@ self_edit_contract() {
     [ "$status" -eq 1 ]
   done
   grep -qF 'its retry command copied exactly' .claude/commands/brief.md
+  grep -qF 'except an alert about a run whose `quarantine.md` row says "resolved"' .claude/commands/brief.md
   grep -qF "today's \`retry\` ledger lines restored" .claude/commands/debrief.md
 }
 

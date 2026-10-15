@@ -39,6 +39,22 @@ def test_each_held_thing_is_one_row_oldest_first_and_sidecars_are_never_rows(vau
     assert not any(r.path.endswith((".origin.json", ".reason.txt")) for r in rows)
 
 
+def test_a_held_back_run_whose_input_a_later_run_published_says_so(vault):
+    # Live acceptance 2026-10-15: a conflict-held run published on retry, and the brief still said to fix it.
+    write(vault, "system/quarantine/20261015T055800-ingest-a1/staged/wiki/work/concepts/X.md", "x")
+    write(vault, "system/quarantine/20261015T055900-ingest-b2/staged/wiki/work/concepts/Y.md", "x")
+    runs = [{"run_id": "20261015T055800-ingest-a1", "command": "ingest", "input_sha256": ["s1"],
+             "publish": {"status": "conflict"}, "exit": 5},
+            {"run_id": "20261015T060100-ingest-c3", "command": "ingest", "input_sha256": ["s1"],
+             "publish": {"status": "published"}, "exit": 0},
+            {"run_id": "20261015T055900-ingest-b2", "command": "ingest", "input_sha256": ["s2"],
+             "publish": {"status": "rejected"}, "exit": 5}]
+    write(vault, "system/logs/runs-2026-10.jsonl", "".join(json.dumps(r) + "\n" for r in runs))
+    rows = {r.path.rsplit("/", 1)[1]: r for r in quarantine.items(vault, TODAY)}
+    assert rows["20261015T055800-ingest-a1"].reason == "resolved: its input published in run 20261015T060100-ingest-c3"
+    assert rows["20261015T055900-ingest-b2"].reason == ""
+
+
 def test_render_gives_one_line_per_row_and_none_when_empty(vault):
     assert quarantine.render([]) == "none\n"
     held(vault)
