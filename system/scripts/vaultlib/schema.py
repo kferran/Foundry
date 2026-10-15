@@ -18,7 +18,6 @@ TZ = re.compile(r"^[A-Za-z0-9_+\-]+(/[A-Za-z0-9_+\-]+)*$")
 WIKILINK = re.compile(r"\s*\[\[([^\[\]]+)\]\]\s*")
 RESERVED_TAGS = {"now": "the Now page", "rca": "RCA notes"}   # tags a script writes (note tags spec §2)
 TAG_FORM = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*")
-TAG_CODES = ("tag-form", "tag-reserved")
 
 
 @dataclass
@@ -270,9 +269,11 @@ def tag_issues(rel: str, ntype, note, values) -> list:
     system tags kept to the notes their scripts write (note tags spec §2)."""
     line, out = frontmatter.key_line(note, "tags"), []
     for tag in map(str, values):
-        if not TAG_FORM.fullmatch(tag) or tag.replace("/", "").isdigit():
+        if not TAG_FORM.fullmatch(tag):
             out.append(Issue(rel, line, "warning", "tag-form",
                              f'tag "{tag}" is not lowercase kebab-case (a-z, 0-9 and -, / between nested parts)'))
+        elif tag.replace("/", "").isdigit():
+            out.append(Issue(rel, line, "warning", "tag-form", f'tag "{tag}" is only digits, which Obsidian ignores'))
         elif (tag == "now" and not re.fullmatch(r"wiki/[^/]+/Now\.md", rel)) or (tag == "rca" and ntype != "rca"):
             out.append(Issue(rel, line, "warning", "tag-reserved",
                              f'tag "{tag}" is a system tag, written only on {RESERVED_TAGS[tag]}'))

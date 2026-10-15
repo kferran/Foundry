@@ -140,7 +140,7 @@ The hooks run in every Claude Code session on the machine but act only inside th
 
 **`/digest`** writes a digest of the work since the last one whenever you want, in any session in scope. The `Stop` hook captures it from the reply; no script or session id is needed.
 
-**Tags.** A note's `tags` are lowercase kebab-case (`api-gateway`), with `/` between the parts of a nested tag (`project/alpha`). `/ingest` lists the partition's tags with `system/scripts/vault_index.py tags --partition <work|personal|shared>` (count, then tag, most used first) and reuses one before inventing a new one. `now` (the Now page) and `rca` (RCA notes) are system tags. `/lint` warns on a tag in another form or a system tag on another note; the pre-commit hook and the publish gate refuse either on a new note.
+**Tags.** A note's `tags` are lowercase kebab-case (`api-gateway`), with `/` between the parts of a nested tag (`project/alpha`). `/ingest` lists the partition's tags with `system/scripts/vault_index.py tags --partition <work|personal|shared>` (count, then tag, most used first) and reuses one before inventing a new one. `now` (the Now page) and `rca` (RCA notes) are system tags. `/lint` and the pre-commit hook warn on a tag in another form or a system tag on another note, so a tag you write by hand never stops a sync; the publish gate refuses either when a headless run (`/ingest` or a research Work Order) adds it.
 
 ## Repository layout
 

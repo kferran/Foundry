@@ -231,7 +231,8 @@ class Index:
             conn.execute("INSERT INTO links VALUES(?,?,?,?,?,?,?)",
                          (rel, link.target_raw, link.target, None, link.line, link.kind, 0))
         fm_tags = fm.get("tags") if isinstance(fm.get("tags"), list) else []
-        issues = list(issues) + schemamod.tag_issues(rel, ntype, note, fm_tags)
+        if "tags" in getattr(schemas.get(ntype), "fields", {}):   # concept, index and rca carry tags
+            issues = list(issues) + schemamod.tag_issues(rel, ntype, note, fm_tags)
         for tag in {str(t) for t in fm_tags} | tags:
             conn.execute("INSERT INTO tags VALUES(?,?)", (rel, tag))
         aliases = fm.get("aliases") if isinstance(fm.get("aliases"), list) else []

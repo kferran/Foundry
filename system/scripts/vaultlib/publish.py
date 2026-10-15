@@ -339,13 +339,9 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
     if command == "ingest" and decision is None:
         out.append(Problem(target, "no decision recorded for this file"))
     existed = target in snap["files"]
-    if not existed:   # the hook refuses tag issues on an added note, so the gate refuses them first (#158)
-        tags = (new.data or {}).get("tags")
-        out += [Problem(target, i.message) for i in schemamod.tag_issues(
-            target, (new.data or {}).get("type"), new, tags if isinstance(tags, list) else [])]
     if existed and target not in snap["staged"]:
         out.append(Problem(target, "existing note was not staged with vault_index.py stage"))
-    target_path = vault / target
+    target_path, old = vault / target, None
     if existed and target_path.is_file():
         try:
             old = frontmatter.parse(target_path.read_text(encoding="utf-8"))
@@ -360,8 +356,16 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
         for key in PROTECTED:
             if key in (new.data or {}):
                 out.append(Problem(target, f"protected field {key} cannot be set by a headless run"))
+    # A tag the run adds keeps the form; a tag the note already had is the owner's to fix (#158).
+    added = [t for t in _tags(new) if old is None or t not in _tags(old)]
+    out += [Problem(target, i.message) for i in schemamod.tag_issues(target, (new.data or {}).get("type"), new, added)]
     out += _conflict(vault, target, snap, now)
     return out
+
+
+def _tags(note) -> list:
+    tags = (note.data or {}).get("tags")
+    return [str(t) for t in tags] if isinstance(tags, list) else []
 
 
 def validate_run(vault, run_id, now=None):

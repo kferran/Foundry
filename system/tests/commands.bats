@@ -67,7 +67,7 @@ headless_contract() {
   grep -qF 'run `system/scripts/vault_index.py tags --partition <p>` and reuse a listed tag' .claude/commands/ingest.md
   grep -qF 'invent one only when none fits' .claude/commands/ingest.md
   grep -qF '**Tags.**' FOUNDRY.md
-  grep -qF 'the pre-commit hook and the publish gate refuse either on a new note' FOUNDRY.md
+  grep -qF 'so a tag you write by hand never stops a sync; the publish gate refuses either when a headless run' FOUNDRY.md
   grep -qF '`tags` are lowercase kebab-case' system/schemas/concept.md
 }
 

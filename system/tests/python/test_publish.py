@@ -93,6 +93,14 @@ def test_a_patch_keeps_an_old_bad_tag(vault):
     assert publish.validate_run(vault, RID, now=LATER)[2] == []
 
 
+def test_a_patch_that_adds_a_bad_tag_is_rejected(run):
+    dst = publish.record_stage(run, RID, "wiki/work/concepts/Kafka.md")
+    dst.write_text(dst.read_text().replace("tags: [streaming]", "tags: [streaming, Tooling, now]"))
+    decide(run, rec("wiki/work/concepts/Kafka.md", "patch"))
+    found = [r for r in reasons(publish.validate_run(run, RID, now=LATER)[2]) if "tag" in r]
+    assert len(found) == 2 and 'tag "Tooling"' in found[0] and 'tag "now"' in found[1]
+
+
 def test_existing_target_must_be_staged_via_stage(run):
     stage_new(run, "wiki/work/concepts/Kafka.md", concept("work", "Kafka", "rewritten wholesale"))
     decide(run, rec("wiki/work/concepts/Kafka.md", "patch"))
