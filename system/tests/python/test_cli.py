@@ -31,6 +31,21 @@ def test_issues_staged(cli, vault):
     assert cli("issues", "--staged").returncode == 1
 
 
+def test_issues_staged_lints_the_index_blob_not_the_working_copy(cli, vault):
+    """Stage a bad note, fix it on disk only: refused, naming the staged problem; the reverse passes (#166)."""
+    subprocess.run(["git", "init", "-q", str(vault)], check=True)
+    write(vault, "wiki/work/concepts/Bad.md", "---\ntype: concept\n---\n# Bad")
+    subprocess.run(["git", "-C", str(vault), "add", "wiki/work/concepts/Bad.md"], check=True)
+    write(vault, "wiki/work/concepts/Bad.md", concept("work", "Bad"))
+    res = cli("issues", "--staged")
+    assert res.returncode == 1
+    assert "wiki/work/concepts/Bad.md:2: error: missing required field tags" in res.stdout
+    subprocess.run(["git", "-C", str(vault), "add", "wiki/work/concepts/Bad.md"], check=True)
+    write(vault, "wiki/work/concepts/Bad.md", "---\ntype: concept\n---\n# Bad")
+    assert cli("issues", "--staged").returncode == 0
+    assert cli("issues").returncode == 1
+
+
 def test_archived_briefings_stay_indexed_and_the_debrief_embed_resolves(cli, vault):
     write(vault, "briefings/archive/2026-10/2026-10-06.md",
           '---\ntype: briefing\ndate: "2026-10-06"\nstatus: active\n---\n# Briefing\n\n![[2026-10-06.debrief]]\n')

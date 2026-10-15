@@ -50,6 +50,24 @@ def test_edit_reparses_only_that_note(vault, monkeypatch):
     assert rows(idx, "SELECT path FROM notes_fts WHERE notes_fts MATCH 'rewritten'") == [("wiki/work/concepts/Kafka.md",)]
 
 
+def test_staged_issues_copies_the_index_and_rereads_only_the_blobs(vault, monkeypatch, tmp_path):
+    """The staged lint re-reads only the staged blobs; links resolve against the rest of the vault (#166)."""
+    write(vault, "wiki/work/concepts/Broken.md", "---\ntype: concept\n---\n# Broken")
+    write(vault, "wiki/work/concepts/New.md", "---\ntype: concept\n---\n# New")
+    idx = Index(vault)
+    idx.refresh()
+    calls = []
+    original = Index._index_note
+    monkeypatch.setattr(Index, "_index_note", lambda self, conn, schemas, rel, *a: calls.append(rel) or original(self, conn, schemas, rel, *a))
+    blob = concept("work", "New", "see [[Kafka]]").encode()
+    out = idx.staged_issues({"wiki/work/concepts/New.md": blob}, tmp_path / "copy.db")
+    assert calls == ["wiki/work/concepts/New.md"]
+    assert [r for r in out if r[0] == "wiki/work/concepts/New.md" and (r[2] == "error" or r[3] == "dead-link")] == []
+    assert any(r[0] == "wiki/work/concepts/Broken.md" and r[2] == "error" for r in out)
+    assert rows(Index(vault, db_path=tmp_path / "copy.db"), "SELECT target_path FROM links WHERE src='wiki/work/concepts/New.md'") == [("wiki/work/concepts/Kafka.md",)]
+    assert rows(idx, "SELECT valid FROM notes WHERE path='wiki/work/concepts/New.md'") == [(0,)]
+
+
 def test_refresh_detects_same_size_edit(vault):
     idx = Index(vault)
     path = write(vault, "wiki/work/concepts/Same.md", concept("work", "Same", "aaaa"))
