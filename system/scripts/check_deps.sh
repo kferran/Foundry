@@ -46,7 +46,13 @@ hint() {
     pdftotext) pkg_pacman=poppler pkg_apt=poppler-utils ;;
     bwrap) pkg_pacman=bubblewrap pkg_apt=bubblewrap ;;
     gh) pkg_pacman=github-cli pkg_apt=gh ;;
-    python3) pkg_pacman=python pkg_apt=python3 ;;
+    python3)
+      pkg_pacman=python pkg_apt=python3
+      if (( $(has python3) )); then   # present but too old (audit C13)
+        printf '%s is too old; 3.11 or newer is required (' "$(python3 --version 2>&1)"
+        case "$pm" in pacman) printf 'sudo pacman -S %s)\n' "$pkg_pacman" ;; apt) printf 'sudo apt install %s)\n' "$pkg_apt" ;; *) printf 'install python3)\n' ;; esac
+        return
+      fi ;;
     flock) pkg_pacman=util-linux pkg_apt=util-linux ;;
     timeout) pkg_pacman=coreutils pkg_apt=coreutils ;;
     pyyaml) pkg_pacman=python-yaml pkg_apt=python3-yaml ;;
@@ -74,6 +80,7 @@ report() {  # <item> <present 0|1> [optional|dev]
 }
 present() {  # <item>: 1 when the item is available
   case "$1" in
+    python3) py -c 'import sys; sys.exit(sys.version_info < (3, 11))' ;;   # tomllib, resource limits (audit C13)
     pyyaml) py -c 'import yaml' ;;
     pytest) py -m pytest --version ;;
     fts5) py -c 'import sqlite3; sqlite3.connect(":memory:").execute("CREATE VIRTUAL TABLE t USING fts5(x)")' ;;
