@@ -695,6 +695,29 @@ self_edit_contract() {
   ! grep -qF 'coalesce(mock' "$f"
 }
 
+@test "/brief prints persistent telemetry groups first, at most 3, and adds one owed line per group (#171, telemetry escalation spec §3.3, §3.4)" {
+  f=.claude/commands/brief.md
+  grep -qF 'mock, partition, escalate, escalated_at FROM v_production_error' "$f"
+  grep -qF '**Escalated**, across all environments: active groups with `escalate` set and `last_seen` in the last 24 hours, by `count`' "$f"
+  grep -qF 'At most 3 Escalated rows, then "and N more"' "$f"
+  grep -qF 'A printed Escalated row is not repeated under New or Recurring' "$f"
+  grep -qF 'each **Escalated** row whose `escalated_at` is in the last 24 hours, at most 3 per brief' "$f"
+  grep -qF 'Telemetry <environment>: persistent, <service> on <exception>; decide an owner (proposed: read-only analysis by the Workcell with telemetry)' "$f"
+  grep -qF -- '--evidence <note path>' "$f"
+  grep -qF 'an **Escalated** block' FOUNDRY.md
+  grep -qF 'seen over at least 24 hours and is still firing' FOUNDRY.md
+  grep -qF 'or a telemetry note path' CLAUDE.md
+}
+
+@test "dependency status is held: no template file names its fields or partner-auth (#171, telemetry escalation spec §9)" {
+  run git grep -n -E 'dep_host|dep_codes|adx_hosts|partner-auth|partner auth|kql_deps|kusto-deps' -- . \
+    ':!docs/superpowers/specs/2026-10-15-telemetry-escalation-design.md' ':!docs/superpowers/plans/2026-10-15-telemetry-escalation.md' \
+    ':!system/tests/commands.bats'
+  [ "$status" -eq 1 ]
+  grep -qxF '## 9. Dependency status: held' docs/superpowers/specs/2026-10-15-telemetry-escalation-design.md
+}
+
+
 @test "/debrief reads the telemetry run log" {
   grep -qF 'system/logs/telemetry-<YYYY-MM>.jsonl' ".claude/commands/debrief.md"
 }

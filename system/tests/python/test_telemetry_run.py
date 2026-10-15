@@ -418,3 +418,14 @@ def test_marker_groups_split_into_real_routes_and_type_names(v, monkeypatch):
         'exception: "api/orders/<guid>/credential-check 500"',
         'exception: "api/vendor/agent-credentials/<guid>/order-credential-check 500"']
     assert all("high_entropy" not in n and "message:" not in n for n in notes)
+
+
+def test_an_adx_source_runs_one_query_per_signal_and_nothing_else(v, monkeypatch):
+    """#171: dependency status is held (telemetry escalation spec §9), so a fetch sends only the logs and spans queries."""
+    _two_signal_source(v, "shop-uat-adx")
+    seen = []
+    span = dict(SPAN_ROW, route="api/orders")
+    monkeypatch.setattr(kusto, "query", lambda c, d, kql, n: seen.append(kql.split("\n")[0]) or (
+        [span] if kql.startswith("Traces") else []))
+    assert telemetry_run.main([], v, NOW) == 0
+    assert seen == ["Logs", "Traces"]
