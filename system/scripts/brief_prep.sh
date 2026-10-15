@@ -51,6 +51,12 @@ NOW_LOCK_WAIT="${ARCHIVE_LOCK_WAIT:-60}" system/scripts/now.py seed "$PREP_DATE"
   || prep_unavailable "now: the first Now page was not seeded (see $PREP_DIR/prep_errors.log)"
 prep_write now.md system/scripts/now.py list \
   || prep_unavailable "now: now.py list failed (see $PREP_DIR/prep_errors.log)"
+# The Now clock (Now clock spec §6, §7): the lines past their decide-by date, and the two dates the headless brief
+# copies onto the lines it adds (it does no date arithmetic).
+prep_write overdue.md system/scripts/now.py overdue --date "$PREP_DATE" \
+  || prep_unavailable "now: now.py overdue failed (see $PREP_DIR/prep_errors.log)"
+printf 'short: %s\nlong: %s\n' "$(date -d "$PREP_DATE +3 days" +%F)" "$(date -d "$PREP_DATE +30 days" +%F)" \
+  > "$PREP_DIR/clock.md"
 # Friction notes no earlier brief has listed, plus the count (one-screen brief spec §3.3).
 prep_write friction.md system/scripts/friction_notes.py "$PREP_DATE" \
   || prep_unavailable "friction: friction_notes.py failed (see $PREP_DIR/prep_errors.log)"

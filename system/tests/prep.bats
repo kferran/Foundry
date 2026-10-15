@@ -281,6 +281,15 @@ codebase() {  # <name> <path>
   [ "$status" -ne 0 ]  # no now line, or no unavailable.md at all
 }
 
+@test "brief_prep: overdue.md lists the lines past their clock and clock.md holds the two dates (Now clock spec §6, §7)" {
+  mkdir -p wiki/work
+  printf -- '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-09-01"\npartition: work\n---\n# Now\n\n## Needs you\n- [ ] owed: Pick it [due:: 2026-09-28] (since 2026-09-01)\n- [ ] owed: Later [due:: 2026-10-05] (since 2026-09-01)\n\n## Waiting\n' > wiki/work/Now.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/overdue.md")" = "$(printf '**1 to 7 days over**\n- owed: Pick it [due:: 2026-09-28] (since 2026-09-01)')" ]
+  [ "$(cat "$IN/clock.md")" = "$(printf 'short: 2026-10-04\nlong: 2026-10-31')" ]
+}
+
 @test "brief_prep: briefings and debriefs before yesterday move to briefings/archive/<YYYY-MM>/; a rerun changes nothing" {
   today="$(TZ=America/Denver date +%F)"
   yesterday="$(date -d "$today -1 day" +%F)"
