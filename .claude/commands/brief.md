@@ -32,7 +32,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - `system/logs/inputs/<date>/handoffs.md`: Jira tickets you reported that someone else holds, open with no status-category change for 7 days, one `- [ ] ` line each, oldest first (empty when handoffs are off, none are stalled, or the fetch failed).
 - `system/logs/alerts_<date>.md` and the previous day's alerts file: pipeline alerts.
 - Telemetry: `system/scripts/vault_index.py query "SELECT path, environment, source, service, exception, count, detected_at, last_seen, resolved_at, substatus, regressed, sentry_issue, covered, mock FROM v_production_error WHERE status = 'active' OR resolved_at >= '<now minus 24 hours, ISO 8601>'"`. Write the cutoff in UTC with a +00:00 offset, for example 2026-10-05T06:00:00+00:00, because notes store UTC +00:00 timestamps. Each is critical and routes to the Workcell with `telemetry`. Order environments by their source's `rank` (`SELECT name, environment, rank FROM v_telemetry_source`). Mock notes stay in the list: mark their rows "(mock)".
-- Quarantined inputs: Glob `system/quarantine/**/*` except `system/quarantine/meetings/` and list the file names only (the Notices in `actions.md` cover meeting sources).
+- `system/logs/inputs/<date>/quarantine.md`: what quarantine holds, one row each with its since date and way out, oldest first, or `none`. Read quarantine from this file only; never glob `system/quarantine/`.
 - Mail and chat: only if a Gmail or Slack tool is available in this session (never in a headless run). Otherwise write one line: "Mail and chat skipped: no connector in this session."
 
 ## Write the briefing
@@ -62,7 +62,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - **🛑 Blockers:** four parts, in this order, each a `- **Name**:` bullet of the template:
   - **Telemetry** (rules below).
   - **Friction**: print `friction.md` verbatim, the count line last. Note names only: the user opens a note to queue from it.
-  - **Pipeline**: pipeline alerts, quarantined inputs, a Health line in `nightshift.md` with FAILED; when `actions.md` has Notices, its Notices go under **Pipeline** too, and so do the lines under "## Notices" in `projects.md`.
+  - **Pipeline**: pipeline alerts; each `poisoned` row of `quarantine.md` as one line with its since date and its retry command copied exactly, at most 5 and then "and <n> more"; the `run` and `telemetry_state` rows as one line ("<n> held-back staging folders, <n> telemetry backups in system/quarantine/: safe to delete"), left out when there are none; `meeting` rows stay with the `actions.md` Notices; a Health line in `nightshift.md` with FAILED; when `actions.md` has Notices, its Notices go under **Pipeline** too, and so do the lines under "## Notices" in `projects.md`.
   - **Communication Debt**: mail and chat, or the skipped line.
   - When an existing briefing still has the old heading, replace the old `## 🛑 Real-Time Workflow Friction Matrix` heading with `## 🛑 Blockers` and rewrite its bullets as the four parts, once.
 - **🛠 Work Orders:** the `## Items` table from `nightshift.md` verbatim, or omit the section when the file is empty or says "Nothing ran." Copy its `> Held:` line verbatim when there is one, keeping the section for it.

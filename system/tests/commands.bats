@@ -582,9 +582,20 @@ self_edit_contract() {
   grep -qF '`system/logs/inputs/<date>/actions.md`' "$f"
   grep -qF '**Waiting on**' "$f"
   grep -qF 'its Notices go under **Pipeline**' "$f"
-  grep -qF 'except `system/quarantine/meetings/`' "$f"
+  grep -qF '`meeting` rows stay with the `actions.md` Notices' "$f"
   grep -qF "SELECT path, title, partition FROM v_meeting WHERE date = '<date>'" .claude/commands/debrief.md
   grep -qF -- '--include-transcripts' .claude/commands/query.md
+}
+
+@test "brief and debrief read quarantine from quarantine.md only, with each input's retry command (quarantine spec §2)" {
+  for f in .claude/commands/brief.md .claude/commands/debrief.md; do
+    grep -qF '`system/logs/inputs/<date>/quarantine.md`' "$f"
+    grep -qF 'Read quarantine from this file only' "$f"
+    run grep -F 'Glob `system/quarantine/' "$f"
+    [ "$status" -eq 1 ]
+  done
+  grep -qF 'its retry command copied exactly' .claude/commands/brief.md
+  grep -qF "today's \`retry\` ledger lines restored" .claude/commands/debrief.md
 }
 
 @test "the one-screen brief: order, the people block, friction and Recurring as prep files give them, role-aware lines" {

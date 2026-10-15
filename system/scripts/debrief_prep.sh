@@ -60,6 +60,9 @@ digests_md() {
   done < <(jq -r '.rows[] | @tsv' <<< "$rows")
 }
 prep_write digests.md digests_md || prep_unavailable "digests: index query failed (see $PREP_DIR/prep_errors.log)"
+# The same quarantine rows the brief reads, so the two never disagree (quarantine-in-brief spec §2).
+prep_write quarantine.md system/scripts/intake.py --quarantine --date "$PREP_DATE" \
+  || prep_unavailable "quarantine: intake.py --quarantine failed (see $PREP_DIR/prep_errors.log)"
 
 # The open Work Orders report (Foreman v1 §3.4): everything after this morning's brief lands in the next day's
 # report, so the debrief for a date reads the report dated one day later. Empty when nothing ran.

@@ -133,11 +133,14 @@ def test_a_poisoned_digest_names_the_digest_the_gate_reason_and_the_retry(vault)
     alert(vault, f"[intake] poisoned after 3 failed attempts: {DIGEST} → {dest}")
     alert(vault, f"[intake] poisoned immediately, rejected as invalid input (exit 2): raw/inbox/a b.md → "
                  "system/quarantine/poisoned/a b.md")
-    assert lines(vault)[0] == [
-        f"Alert 06:10:00 [intake] {DIGEST} was not published (MeetingImport: shrink guard: headings removed); "
-        f"quarantined after 3 failed attempts. Fix the cause, then run system/scripts/intake.py --retry {RUN}",
+    sent = lines(vault)[0]
+    # A long digest name leaves no room for the gate reason; the retry command stays whole (quarantine spec §2).
+    assert sent == [
+        f"Alert 06:10:00 [intake] {DIGEST} was not published; "
+        f"quarantined after 3 failed attempts. Fix the cause, then run system/scripts/intake.py --retry-input "
+        f"{DIGEST.rsplit('/', 1)[1]}",
         "Alert 06:10:00 [intake] raw/inbox/a b.md was not published; quarantined immediately, rejected as invalid "
-        "input (exit 2). Fix the cause, then run system/scripts/intake.py --retry-all (it restores every poisoned input)"]
+        "input (exit 2). Fix the cause, then run system/scripts/intake.py --retry-input 'a b.md'"]
 
 
 def test_a_crafted_note_name_and_a_dropped_file_name_come_out_inert(vault):
@@ -154,7 +157,7 @@ def test_a_crafted_note_name_and_a_dropped_file_name_come_out_inert(vault):
     alert(vault, f"[intake] poisoned after 3 failed attempts: raw/inbox/<!here>.md → {dest}")
     assert lines(vault)[0] == [
         "Alert 06:10:00 [intake] raw/inbox/&lt;!here&gt;.md was not published (partition wall); quarantined after 3 "
-        f"failed attempts. Fix the cause, then run system/scripts/intake.py --retry {RUN}"]
+        "failed attempts. Fix the cause, then run system/scripts/intake.py --retry-input '&lt;!here&gt;.md'"]
 
 
 @pytest.mark.parametrize("text", [

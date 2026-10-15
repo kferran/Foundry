@@ -3,6 +3,7 @@ confined session that posts it. Events come from files scripts write (the run le
 outcomes); no note text from wiki/ is sent."""
 import json
 import re
+import shlex
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -179,10 +180,15 @@ def _alert(vault, line: str):
     m = TRIAGE_TEXT.search(body)
     p = POISONED.search(body)
     if p:
-        run, why = _gate_reason(vault, p.group("dest"))
-        body = (body[:p.start()] + f"{p.group('origin')} was not published" + (f" ({why})" if why else "")
-                + f"; quarantined {p.group('when')}. Fix the cause, then run system/scripts/intake.py "
-                + (f"--retry {run}" if run else "--retry-all (it restores every poisoned input)"))
+        _, why = _gate_reason(vault, p.group("dest"))
+        name = shlex.quote(p.group("dest").rsplit("/", 1)[-1])   # one input, no run lookup (quarantine spec §2)
+        head = body[:p.start()] + f"{p.group('origin')} was not published"
+        tail = (f"; quarantined {p.group('when')}. Fix the cause, then run system/scripts/intake.py "
+                f"--retry-input {name}")
+        # The command must survive the line cap whole: the gate reason gives way first.
+        room = LINE_MAX - len("Alert ") - len(head) - len(tail) - len(" ()")
+        why = why if len(why) <= room else (why[:room - 1] + "…" if room >= 20 else "")
+        body = head + (f" ({why})" if why else "") + tail
     elif m:
         body = body[:m.start()] + f"{m.group(1)} new"
     return _cut("Alert " + body)

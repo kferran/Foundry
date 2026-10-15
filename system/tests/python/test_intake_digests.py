@@ -89,6 +89,21 @@ def test_retry_by_run_id(iv, monkeypatch):
     assert (iv / "system/quarantine/poisoned/b.md").is_file()
 
 
+def test_retry_input_restores_only_the_named_file(iv, monkeypatch):
+    # quarantine spec §2: one retry per input, no run id needed
+    write(iv, "raw/inbox/a.md", "a")
+    write(iv, "raw/inbox/b.md", "b")
+    monkeypatch.setenv("STUB_RC", "5")
+    for _ in range(3):
+        Intake(iv, now=later()).run()
+    assert Intake(iv, now=later()).retry(name="a.md") == ["raw/inbox/a.md"]
+    assert (iv / "system/quarantine/poisoned/b.md").is_file()
+    assert not (iv / "system/quarantine/poisoned/a.md.origin.json").exists()
+    ledger = (iv / "system/logs" / f"runs-{ledger_month()}.jsonl").read_text()
+    assert '"command": "retry"' in ledger and "raw/inbox/a.md" in ledger.splitlines()[-1]
+    assert Intake(iv, now=later()).retry(name="nope.md") == []
+
+
 # -- controller ruling X5 ---------------------------------------------------
 def test_rc2_on_batch_marks_solo_and_poisons_nothing(iv):
     for n in ("d1", "d2"):
