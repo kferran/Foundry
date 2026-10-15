@@ -34,6 +34,9 @@ prep_write actions.md system/scripts/meeting_actions.py "$PREP_DATE" \
 # Active projects with their next actions and decisions waiting (active projects spec §4, issue #65).
 prep_write projects.md system/scripts/active_projects.py "$PREP_DATE" \
   || prep_unavailable "projects: active_projects.py failed (see $PREP_DIR/prep_errors.log)"
+# Quarantine, one line per held input with its way out; the debrief reads the same rows (quarantine-in-brief spec §2).
+prep_write quarantine.md system/scripts/intake.py --quarantine --date "$PREP_DATE" \
+  || prep_unavailable "quarantine: intake.py --quarantine failed (see $PREP_DIR/prep_errors.log)"
 prep_meetings
 # Error telemetry (Plan 11 spec §6): a last fetch before the brief. Notes land in raw/telemetry/.
 rc=0

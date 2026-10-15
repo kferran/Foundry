@@ -177,6 +177,23 @@ codebase() {  # <name> <path>
   [ "$(grep -n 'p1.md' "$IN/digests.md" | cut -d: -f1)" -lt "$(grep -n 'w1.md' "$IN/digests.md" | cut -d: -f1)" ]
 }
 
+@test "prep scripts: brief and debrief write the same quarantine.md, and an input poisoned days earlier is in both (quarantine spec §2)" {
+  mkdir -p system/quarantine/poisoned
+  printf 'x\n' > system/quarantine/poisoned/d1.md
+  printf '{"origin":"raw/work/notes/d1.md","sha256":"ab","poisoned_at":"2026-09-26T05:00:00-06:00"}' \
+    > system/quarantine/poisoned/d1.md.origin.json
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qx -- '- poisoned raw/work/notes/d1.md, since 2026-09-26 (5 days). system/scripts/intake.py --retry-input d1.md' \
+    "$IN/quarantine.md"
+  [ "$(wc -l < "$IN/quarantine.md")" -eq 1 ]
+  rm system/quarantine/poisoned/d1.md system/quarantine/poisoned/d1.md.origin.json
+  run "$DP" 2026-10-01
+  grep -qx 'none' "$IN/quarantine.md"
+}
+
 @test "debrief_prep: no digests are stated, not left blank" {
   run "$DP" 2026-10-01
   [ "$status" -eq 0 ]

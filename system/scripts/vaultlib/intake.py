@@ -740,7 +740,8 @@ class Intake:
             self._save_solo(solo | shas)
 
     # -- retry -----------------------------------------------------------
-    def retry(self, run_id=None) -> list:
+    def retry(self, run_id=None, name=None) -> list:
+        """Restore poisoned inputs: those of one run (run_id), one by its file name in poisoned/ (name), or all."""
         poisoned = self.vault / "system" / "quarantine" / "poisoned"
         if not poisoned.is_dir():
             return []
@@ -759,6 +760,8 @@ class Intake:
             if not isinstance(info, dict) or (wanted is not None and info.get("sha256") not in wanted):
                 continue
             item = poisoned / sidecar.name[: -len(".origin.json")]
+            if name is not None and item.name != name:
+                continue
             origin = info.get("origin", "")
             if (not item.is_file() or not isinstance(origin, str)
                     or not re.match(r"^raw/(inbox|work/notes|personal/notes|shared/notes)/[^/]+$", origin)):
