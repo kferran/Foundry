@@ -214,3 +214,35 @@ def test_bytes_outside_the_inserted_lines_are_unchanged(ext):
     assert len(after) == len(original) + 1
     after.remove(f'      "{RULE}",')
     assert after == original
+
+
+def test_link_links_enabled_skills_and_unlinks_disabled_ones_and_never_touches_a_real_folder(ext):
+    subprocess.run(["git", "init", "-q", str(ext)], check=True)
+    config(ext, "demo")
+    skills = ext / ".claude" / "skills"
+    (skills / "mine").mkdir(parents=True)
+    (skills / "mine" / "SKILL.md").write_text("mine\n")
+    r = run(ext, "link")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == "linked demo-skill\n"
+    link = skills / "demo-skill"
+    assert link.is_symlink()
+    assert str(link.readlink()) == "../../extensions/demo/skills/demo-skill"
+    assert (link / "SKILL.md").is_file()
+    exclude = (ext / ".git" / "info" / "exclude").read_text()
+    assert "/.claude/skills/demo-skill" in exclude.split("\n")
+    assert run(ext, "link").stdout == ""
+    config(ext)
+    assert run(ext, "link").stdout == "unlinked demo-skill\n"
+    assert not link.exists() and not link.is_symlink()
+    assert (skills / "mine" / "SKILL.md").read_text() == "mine\n"
+
+
+def test_link_leaves_a_real_folder_of_the_same_name_alone(ext):
+    config(ext, "demo")
+    real = ext / ".claude" / "skills" / "demo-skill"
+    real.mkdir(parents=True)
+    (real / "SKILL.md").write_text("owner's\n")
+    assert run(ext, "link").stdout == ""
+    assert not real.is_symlink()
+    assert (real / "SKILL.md").read_text() == "owner's\n"

@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 
 from . import frontmatter
@@ -202,3 +203,63 @@ def remove_allow(vault: Path, name: str):
         log.pop(r, None)
     _save(vault / ALLOW_LOG, json.dumps(log, indent=2, sort_keys=True) + "\n")
     return gone, None
+
+
+# Skills (extensions spec §3): each enabled extension's skills/<skill>/ is linked into .claude/skills/. The links
+# are machine state: they are added to .git/info/exclude, so the tracked .gitignore stays template-owned.
+SKILLS = Path(".claude") / "skills"
+LINK_PREFIX = "../../extensions/"
+
+
+def _exclude_file(vault: Path):
+    try:
+        out = subprocess.run(["git", "-C", str(vault), "rev-parse", "--git-path", "info/exclude"],
+                             capture_output=True, text=True)
+    except OSError:
+        return None
+    if out.returncode != 0 or not out.stdout.strip():
+        return None
+    p = Path(out.stdout.strip())
+    return p if p.is_absolute() else vault / p
+
+
+def link(vault: Path) -> list:
+    """Make .claude/skills/ match the enabled extensions. Returns "linked <skill>" / "unlinked <skill>" lines.
+    A real file or folder, or a link that points anywhere but into extensions/, is never touched."""
+    vault = Path(vault)
+    skills = vault / SKILLS
+    want = {}
+    for name, _ in enabled(vault):
+        for d in sorted((vault / "extensions" / name / "skills").glob("*/")):
+            if d.is_dir() and not d.name.startswith("."):
+                want.setdefault(d.name, f"{LINK_PREFIX}{name}/skills/{d.name}")
+    out = []
+    if skills.is_dir():
+        for p in sorted(skills.iterdir()):
+            if p.is_symlink() and os.readlink(p).startswith(LINK_PREFIX) and want.get(p.name) != os.readlink(p):
+                p.unlink()
+                out.append(f"unlinked {p.name}")
+    added = []
+    for skill, target in want.items():
+        p = skills / skill
+        if p.is_symlink():
+            if os.readlink(p) == target:
+                added.append(skill)
+            continue
+        if p.exists():
+            continue
+        skills.mkdir(parents=True, exist_ok=True)
+        os.symlink(target, p)
+        added.append(skill)
+        out.append(f"linked {skill}")
+    exclude = _exclude_file(vault)
+    if exclude is not None and added:
+        have = exclude.read_text(encoding="utf-8").split("\n") if exclude.is_file() else []
+        new = [f"/{(SKILLS / s).as_posix()}" for s in added if f"/{(SKILLS / s).as_posix()}" not in have]
+        if new:
+            exclude.parent.mkdir(parents=True, exist_ok=True)
+            with exclude.open("a", encoding="utf-8") as f:
+                if have and have[-1] != "":
+                    f.write("\n")
+                f.write("\n".join(new) + "\n")
+    return out

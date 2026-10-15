@@ -1143,3 +1143,12 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'sections/<name>.md' "$f"
   grep -qF 'Omit a section whose data file is missing or empty.' "$f"
 }
+
+@test "/setup phase 6e turns extensions on: clone, show, ask, write, allow rules, links, units, smoke; a failure never blocks" {
+  f=.claude/commands/setup.md
+  grep -qF '## 6e. Extensions' "$f"
+  grep -qF 'git clone <extensions_remote> extensions' "$f"
+  grep -qF 'extensions.py allow --write' "$f"
+  grep -qF 'extensions.py link' "$f"
+  grep -qF 'A failure here never blocks setup' "$f"
+}
