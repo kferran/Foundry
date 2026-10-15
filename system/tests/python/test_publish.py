@@ -101,6 +101,105 @@ def test_shrink_guard(run):
     assert not any(r.startswith("shrink guard") for r in reasons(publish.validate_run(run, RID, now=LATER)[2]))
 
 
+PIPELINE = ("## Pipeline\nBuilds run on every push to the main branch and on every pull request.\n"
+            "The gate runs before each publish and refuses a red build.\n")
+TRAIN = "Release tags follow the build date.\nEach tag is signed.\n"
+ROLLBACK = ("## Rollback\nRollback restores the last good tag and restarts the service.\n"
+            "The logs of the failed build are kept for thirty days.\n")
+STATE_HEADING = "## Release train (merged, not yet in the vault)\n"
+
+
+@pytest.fixture
+def sectioned(vault):
+    """A note with three sections, the middle heading encoding a pending state, staged for a patch."""
+    write(vault, "wiki/work/concepts/Deploys.md",
+          concept("work", "Deploys", PIPELINE + "\n" + STATE_HEADING + TRAIN + "\n" + ROLLBACK))
+    publish.snapshot(vault, RID, ["wiki/work/**"])
+    decide(vault, rec("wiki/work/concepts/Deploys.md", "patch"))
+    return publish.record_stage(vault, RID, "wiki/work/concepts/Deploys.md")
+
+
+def test_shrink_guard_accepts_a_heading_renamed_in_place(vault, sectioned):
+    """(#160) spec 2026-10-14 shrink-guard-rename rule 3"""
+    sectioned.write_text(sectioned.read_text().replace(STATE_HEADING, "## Release train\n")
+                         .replace(TRAIN, TRAIN + "It reached the vault on 2026-10-14.\n"))
+    assert publish.validate_run(vault, RID, now=LATER)[2] == []
+
+
+def test_shrink_guard_refuses_a_rename_that_drops_section_lines(vault, sectioned):
+    """(#160) the section must keep every non-blank line"""
+    sectioned.write_text(sectioned.read_text().replace(STATE_HEADING + TRAIN,
+                                                       "## Release train\nRelease tags follow the build date.\n"))
+    rs = reasons(publish.validate_run(vault, RID, now=LATER)[2])
+    assert any("headings removed: " + STATE_HEADING.strip() in r for r in rs)
+    assert not any("below 60%" in r for r in rs)
+
+
+def test_shrink_guard_refuses_a_heading_removed_with_its_section(vault, sectioned):
+    """(#160) removal stays refused while the body keeps 60%"""
+    sectioned.write_text(sectioned.read_text().replace(STATE_HEADING + TRAIN, ""))
+    rs = reasons(publish.validate_run(vault, RID, now=LATER)[2])
+    assert any("headings removed: " + STATE_HEADING.strip() in r for r in rs)
+    assert not any("below 60%" in r for r in rs)
+
+
+def test_shrink_guard_refuses_a_renamed_heading_moved_elsewhere(vault, sectioned):
+    """(#160) the heading at the old position is judged, and it is an existing one"""
+    text = sectioned.read_text().replace(STATE_HEADING + TRAIN + "\n", "")
+    sectioned.write_text(text + "\n## Release train\n" + TRAIN)
+    rs = reasons(publish.validate_run(vault, RID, now=LATER)[2])
+    assert any("headings removed: " + STATE_HEADING.strip() in r for r in rs)
+
+
+def patch_note(vault, old_body, new_body):
+    """Write a note with old_body, snapshot, stage it as a patch and rewrite the staged copy with new_body."""
+    write(vault, "wiki/work/concepts/Deploys.md", concept("work", "Deploys", old_body))
+    publish.snapshot(vault, RID, ["wiki/work/**"])
+    decide(vault, rec("wiki/work/concepts/Deploys.md", "patch"))
+    publish.record_stage(vault, RID, "wiki/work/concepts/Deploys.md").write_text(concept("work", "Deploys", new_body))
+    return reasons(publish.validate_run(vault, RID, now=LATER)[2])
+
+
+S1 = "The first release shipped on time and the vendor contract was signed for one year.\n"
+S2 = "- [ ] owner task: pay the vendor\n"
+A_, B_, C_ = ("Alpha section line one.\n", "Beta section line one.\n", "Gamma section line one.\n")
+
+
+def test_shrink_guard_refuses_a_duplicate_heading_deleted_beside_a_rename(vault):
+    """(#160) a rename consumes one occurrence of a repeated heading, never all of them"""
+    rs = patch_note(vault, "## Alpha\n### Status\n" + S1 + "## Beta\n### Status\n" + S2,
+                    "## Alpha\n### Status (done)\n" + S1 + "## Beta\n")
+    assert any("headings removed: ### Status" in r for r in rs)
+    assert not any("below 60%" in r for r in rs)
+
+
+def test_shrink_guard_refuses_deleting_one_of_two_duplicate_headings(vault):
+    """(#160) headings are counted, so one surviving copy does not cover a deleted one"""
+    rs = patch_note(vault, "## Alpha\n### Status\n" + S1 + "## Beta\n### Status\n" + S2,
+                    "## Alpha\n### Status\n" + S1 + "## Beta\n")
+    assert any("headings removed: ### Status" in r for r in rs)
+    assert not any("below 60%" in r for r in rs)
+
+
+def test_shrink_guard_accepts_renaming_one_of_two_duplicate_headings(vault):
+    """(#160) one copy renamed in place with its section kept, the other untouched"""
+    old = "## Alpha\n### Status\n" + S1 + "## Beta\n### Status\n" + S2
+    assert patch_note(vault, old, old.replace("### Status\n" + S1, "### Status (done)\n" + S1)) == []
+
+
+def test_shrink_guard_refuses_a_rename_onto_a_title_the_note_has(vault):
+    """(#160) the heading at the old position must carry a title new to the note"""
+    rs = patch_note(vault, "## A\n" + A_ + "## B\n" + B_ + "## C\n" + C_, "## A\n" + A_ + "## C\n" + B_)
+    assert any("headings removed: ## B" in r for r in rs)
+
+
+def test_shrink_guard_refuses_a_rename_that_changes_level(vault):
+    """(#160) a rename keeps the heading's level"""
+    rs = patch_note(vault, "## A\n" + A_ + "## B\n" + B_ + "## C\n" + C_,
+                    "## A\n" + A_ + "### X\n" + B_ + "## C\n" + C_)
+    assert any("headings removed: ## B" in r for r in rs)
+
+
 def test_protected_fields(run):
     stage_new(run, "wiki/work/preferences/P.md",
               '---\ntype: preference\nstatement: "x"\npartition: work\naccepted_at: "2026-10-01"\n---\n# P\n')

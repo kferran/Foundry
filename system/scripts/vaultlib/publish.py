@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -216,8 +217,30 @@ def read_decisions(vault, run_id):
     return decisions, problems
 
 
-def _headings(body: str) -> set:
-    return {text.strip() for _, text in linkmod.code_free_lines(body, 1) if HEADING.match(text)}
+def _headings(body: str) -> Counter:
+    """Each heading line (its `#`s carry the level) with how often it occurs: a repeated heading counts per copy."""
+    return Counter(text.strip() for _, text in linkmod.code_free_lines(body, 1) if HEADING.match(text))
+
+
+def _sections(body: str) -> list:
+    """(heading, its non-blank lines up to the next heading of any level), in body order."""
+    lines = body.split("\n")
+    marks = [(i, text.strip()) for i, text in linkmod.code_free_lines(body, 0) if HEADING.match(text)]
+    ends = [i for i, _ in marks[1:]] + [len(lines)]
+    return [(h, {ln.strip() for ln in lines[i + 1:end] if ln.strip()}) for (i, h), end in zip(marks, ends)]
+
+
+def _renamed(old_body: str, new_body: str) -> Counter:
+    """Old headings renamed in place, one count per renamed copy: the same-level heading at the same ordinal
+    has a title new to the note and keeps every line of the old section (spec 2026-10-14 shrink-guard-rename)."""
+    old, new = _sections(old_body), _sections(new_body)
+    titles = {h for h, _ in old}
+    level = lambda h: len(h) - len(h.lstrip("#"))  # noqa: E731
+    out = Counter()
+    for n in range(1, 7):
+        pairs = zip([s for s in old if level(s[0]) == n], [s for s in new if level(s[0]) == n])
+        out.update(oh for (oh, ob), (nh, nb) in pairs if nh not in titles and ob <= nb)
+    return out
 
 
 def _protected(old, new, target) -> list:
@@ -237,7 +260,7 @@ def _shrink(old, new, target) -> list:
     missing = set(map(str, (old.data or {}).keys())) - set(map(str, (new.data or {}).keys()))
     if missing:
         out.append(Problem(target, f"shrink guard: frontmatter keys removed: {', '.join(sorted(missing))}"))
-    lost = _headings(old.body) - _headings(new.body)
+    lost = _headings(old.body) - _headings(new.body) - _renamed(old.body, new.body)
     if lost:
         out.append(Problem(target, f"shrink guard: headings removed: {', '.join(sorted(lost))}"))
     old_len, new_len = len(old.body.strip()), len(new.body.strip())
