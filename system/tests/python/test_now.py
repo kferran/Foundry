@@ -435,8 +435,18 @@ def test_review_lists_a_line_with_a_field_after_the_parenthesis_as_unreadable(va
     before = page(vault)
     assert now.review(vault, "work", TODAY)["unreadable"] == [bad]
     r = cli(vault, "review", "--partition", "work")
-    assert r.stdout == f"## Unreadable lines (1): move the [rec::] or [due::] field before the parenthesis\n{bad}\n"
+    assert r.stdout == (f"## Unreadable lines (1): move the text or the [rec::] or [due::] field after the parenthesis "
+                        f"back before it\n{bad}\n")
     assert page(vault) == before
+
+
+def test_review_lists_a_line_with_an_update_appended_after_the_parenthesis(vault):
+    # #211: a live page had 48 of 95 lines like this; review and check skipped them without a word
+    prepare(vault)
+    bad = "- [ ] owed: Send it (Ann, since 2026-10-01) *Update 2026-10-05:* sent the draft"
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n"
+          f"---\n# Now\n\n## Needs you\n{bad}\n- [ ] call the bank back\n\n## Waiting\n")
+    assert now.review(vault, "work", TODAY)["unreadable"] == [bad]
 
 
 def test_a_line_with_trailing_space_or_a_crlf_end_still_parses(vault, tmp_path):

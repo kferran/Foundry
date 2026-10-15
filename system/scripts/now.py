@@ -80,8 +80,8 @@ if args.cmd == "review":  # read-only, so no run.lock
         if found[key]:
             print("\n".join([heading, *found[key]]))
     if found["unreadable"]:
-        print("\n".join([f"## Unreadable lines ({len(found['unreadable'])}): move the [rec::] or [due::] field before "
-                         "the parenthesis", *found["unreadable"]]))
+        print("\n".join([f"## Unreadable lines ({len(found['unreadable'])}): move the text or the [rec::] or [due::] "
+                         "field after the parenthesis back before it", *found["unreadable"]]))
     if found["long"]:
         print("\n".join([f"## Long lines (over {now.LONG_LINE} characters): rewrite with now.py set", *found["long"]]))
     if found["page_bytes"] > now.PAGE_BYTES:

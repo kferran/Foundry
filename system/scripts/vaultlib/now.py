@@ -36,6 +36,8 @@ SINCE = re.compile(r"\s*_\(open since (\d{4}-\d{2}-\d{2})(?:, \d+ days?)?\)_")
 REC = re.compile(r"\[rec::\s*([^\[\]\n]*[^\[\]\s])\s*\]", re.IGNORECASE)
 DUE = re.compile(r"\[due::\s*(\d{4}-\d{2}-\d{2})\s*\]", re.IGNORECASE)
 FIELD_KEY = re.compile(r"\[(?:rec|due)::", re.IGNORECASE)
+# A line now.py wrote, with text appended after its parenthesis by hand (#211): it no longer parses.
+SCRIPT_META = re.compile(r"\((?:[^(),]+, )?since \d{4}-\d{2}-\d{2}[^()]*\)\s*\S")
 ISO_DATE = re.compile(r"(?<![\w-])(\d{4}-\d{2}-\d{2})(?=T\d{2}:\d{2}|(?![\w-]|\.\w))")
 SHORT_DAYS, LONG_DAYS = 3, 30
 OVERDUE_HEADINGS = ("**1 to 7 days over**", "**8 to 30 days over**", "**More than 30 days over**")
@@ -301,7 +303,7 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
     return {"closed": [f"{line} _(closed: {found[line]})_" for line in lines if line in found],
             "stale": [line for line, m in parsed if m and not m.group("evidence") and m.group("since") < cutoff],
             "duplicate": [line for group in statements.values() if len(group) > 1 for line in group],
-            "unreadable": [line for line, m in parsed if not m and FIELD_KEY.search(line)],
+            "unreadable": [line for line, m in parsed if not m and (FIELD_KEY.search(line) or SCRIPT_META.search(line))],
             "long": [line for line in lines if len(line) > LONG_LINE],
             "page_bytes": page_path(vault, partition).stat().st_size if page_path(vault, partition).is_file() else 0}
 
