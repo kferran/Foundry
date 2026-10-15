@@ -617,6 +617,8 @@ self_edit_contract() {
   grep -qF '`system/logs/inputs/<date>/yesterday.md`' "$f"
   grep -qF '**🌅 Morning Alignment → Where yesterday landed:**' "$f"
   grep -qF 'three to five `- ` lines drawn from the debrief' "$f"
+  grep -qF 'leaving out what Blockers and From Now already print' "$f"
+  grep -qF 'print `No debrief input.`' "$f"
   grep -qF '`No debrief found from <a> to <b>.`' "$f"
   run grep -e '^### ' system/templates/daily-briefing.md
   [ "${lines[0]}" = "### Where yesterday landed" ]

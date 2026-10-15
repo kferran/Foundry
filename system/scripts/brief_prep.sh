@@ -107,8 +107,10 @@ for f in briefings/*.debrief.md briefings/archive/*/*.debrief.md; do
   last="$f" last_date="$d"
 done
 if [[ -n "$last" ]]; then
-  { printf 'debrief: [[%s.debrief]]\n\n' "$last_date"
-    awk 'NR == 1 && /^---$/ { fm = 1; next } fm && /^---$/ { fm = 0; next } !fm' "$last"; } > "$PREP_DIR/yesterday.md"
+  prep_write yesterday.md awk -v d="$last_date" 'BEGIN { printf "debrief: [[%s.debrief]]\n\n", d }
+    NR == 1 && /^---\r?$/ { fm = 1; next } fm && /^---\r?$/ { fm = 0; gap = 1; next } fm { next }
+    gap && /^\r?$/ { gap = 0; next } { gap = 0; print }' "$last" \
+    || prep_unavailable "yesterday: the debrief $last is unreadable (see $PREP_DIR/prep_errors.log)"
 else
   printf 'none: no debrief found from %s to %s\n' "$since" "$(date -d "$PREP_DATE -1 day" +%F)" > "$PREP_DIR/yesterday.md"
 fi
