@@ -104,12 +104,12 @@ Each alert line names the part that raised it in brackets. The tag decides where
 
 | Tags | Where it goes |
 |---|---|
-| `foreman`, `orders`, `sync`, `update`, `rca`, `intake` | Slack at the next tick |
+| `foreman`, `incident`, `orders`, `sync`, `update`, `rca`, `intake` | Slack at the next tick |
 | `triage` | Slack at the next tick, as a count |
 | `commit_runs`, `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `dtcc`, `memory` | the next brief |
 | `notify` | nowhere (the notifier's own lines) |
 
-Two tags decide by their text: a `triage` line that is not the new-mail count (a failed triage fetch) waits for the brief, and a `smoke` line about a stale timer goes to Slack at once, since a stale brief timer means no brief would show it. Every line also stays in the day's alerts file, and the brief lists them under Pipeline, grouped by tag. To tell you something now, outside the brief, a session runs `system/scripts/alert.py foreman "<one line>"`; something you owe or wait on stays a Now line. On a client, which runs no notifier and no brief, `alert.py` refuses (exit 3).
+An `incident` line is a new production error group, or a resolved one that came back, found by the hourly telemetry fetch in a source whose `environment` starts with `prod`: the source, the service, the error, its event count and its note in `raw/telemetry/`, at most 3 per source per run and once a day per group; a source's first run pushes none. Two tags decide by their text: a `triage` line that is not the new-mail count (a failed triage fetch) waits for the brief, and a `smoke` line about a stale timer goes to Slack at once, since a stale brief timer means no brief would show it. Every line also stays in the day's alerts file, and the brief lists them under Pipeline, grouped by tag. To tell you something now, outside the brief, a session runs `system/scripts/alert.py foreman "<one line>"`; something you owe or wait on stays a Now line. On a client, which runs no notifier and no brief, `alert.py` refuses (exit 3).
 
 **Active Projects.** An optional `wiki/<partition>/ActiveProjects.md` lists your project pages in priority order under `## Active`. Each morning, `active_projects.py` reads those pages, and the brief shows each project's next 3 open checkboxes and the open items under its "Decisions…" heading, as plain bullets. You tick items on the project page, so nothing is tracked twice.
 
