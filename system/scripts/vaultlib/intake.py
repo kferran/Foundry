@@ -610,7 +610,10 @@ class Intake:
                 if time.time() - twin.stat().st_mtime < publish.RECENT_SECONDS:
                     return  # the gate refuses a target modified in the last 60 s: the next tick retires it
                 retire = twin
-            report = self._publish_meeting(m, name, partition, rel, retire)
+                listed = dict(known)[twin].get("attendees")
+                if not m.attendees and isinstance(listed, list):  # a recorder's cues name no speakers (#188)
+                    m.attendees = [str(a) for a in listed]
+            report =self._publish_meeting(m, name, partition, rel, retire)
             if report["status"] == "conflict":  # held back at apply time (#37): the next tick finishes or retries
                 self.alert(f"meeting import of {rel} held back {', '.join(report['conflicts'])} "
                            "(changed during the publish); will retry")
