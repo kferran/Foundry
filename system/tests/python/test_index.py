@@ -139,7 +139,7 @@ def test_vanished_file_does_not_crash(vault, monkeypatch):
 def test_meta_version_stored(vault):
     idx = Index(vault)
     idx.refresh()
-    assert rows(idx, "SELECT value FROM meta WHERE key='version'") == [("1",)]
+    assert rows(idx, "SELECT value FROM meta WHERE key='version'") == [("2",)]
 
 
 def test_corrupt_db_is_rebuilt(vault):

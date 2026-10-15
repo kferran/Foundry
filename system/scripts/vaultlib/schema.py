@@ -17,6 +17,8 @@ INT = re.compile(r"^-?\d+$")
 TZ = re.compile(r"^[A-Za-z0-9_+\-]+(/[A-Za-z0-9_+\-]+)*$")
 WIKILINK = re.compile(r"\s*\[\[([^\[\]]+)\]\]\s*")
 RESERVED_TAGS = {"now": "the Now page", "rca": "RCA notes"}   # tags a script writes (note tags spec §2)
+TAG_FORM = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*")
+TAG_CODES = ("tag-form", "tag-reserved")
 
 
 @dataclass
@@ -261,6 +263,20 @@ def check_value(spec: FieldSpec, value, ctx: Context, where: str) -> list:
             return [(severity, f"{where}: path does not exist: {value}")]
         return []
     return err(f"unsupported kind {kind}")
+
+
+def tag_issues(rel: str, ntype, note, values) -> list:
+    """Warnings on frontmatter tags: one form (lowercase kebab-case, / between nested parts, not digits only) and the
+    system tags kept to the notes their scripts write (note tags spec §2)."""
+    line, out = frontmatter.key_line(note, "tags"), []
+    for tag in map(str, values):
+        if not TAG_FORM.fullmatch(tag) or tag.replace("/", "").isdigit():
+            out.append(Issue(rel, line, "warning", "tag-form",
+                             f'tag "{tag}" is not lowercase kebab-case (a-z, 0-9 and -, / between nested parts)'))
+        elif (tag == "now" and not re.fullmatch(r"wiki/[^/]+/Now\.md", rel)) or (tag == "rca" and ntype != "rca"):
+            out.append(Issue(rel, line, "warning", "tag-reserved",
+                             f'tag "{tag}" is a system tag, written only on {RESERVED_TAGS[tag]}'))
+    return out
 
 
 def validate_note(schemas: dict, rel: str, note, ctx: Context) -> tuple:

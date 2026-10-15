@@ -150,8 +150,8 @@ def _git(vault: Path, *argv, what: str) -> subprocess.CompletedProcess:
     return out
 
 
-def staged_paths(vault: Path) -> set:
-    out = _git(vault, "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR", what="git diff --cached")
+def staged_paths(vault: Path, diff_filter="ACMR") -> set:
+    out = _git(vault, "diff", "--cached", "--name-only", "-z", f"--diff-filter={diff_filter}", what="git diff --cached")
     return set(p for p in out.stdout.decode("utf-8", errors="surrogateescape").split("\0") if p)
 
 
@@ -168,7 +168,10 @@ def cmd_issues(args, vault, sc):
         keep = staged_paths(vault)
         with tempfile.TemporaryDirectory(prefix="staged-lint-") as tmp:
             rows = idx.staged_issues(staged_blobs(vault, keep), Path(tmp) / "index.db")
-        return print_issues([r for r in rows if r[0] in keep], args.json)
+        added = staged_paths(vault, "A")
+        # ponytail: a bad tag added to an existing note only warns; compare with HEAD's tags if that slips through
+        return print_issues([(p, ln, "error" if c in schemamod.TAG_CODES and p in added else s, c, m)
+                             for p, ln, s, c, m in rows if p in keep], args.json)
     idx.refresh()
     conn = sqlite3.connect(idx.db_path)
     rows = conn.execute(ISSUE_ROWS).fetchall()

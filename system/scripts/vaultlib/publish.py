@@ -339,6 +339,10 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
     if command == "ingest" and decision is None:
         out.append(Problem(target, "no decision recorded for this file"))
     existed = target in snap["files"]
+    if not existed:   # the hook refuses tag issues on an added note, so the gate refuses them first (#158)
+        tags = (new.data or {}).get("tags")
+        out += [Problem(target, i.message) for i in schemamod.tag_issues(
+            target, (new.data or {}).get("type"), new, tags if isinstance(tags, list) else [])]
     if existed and target not in snap["staged"]:
         out.append(Problem(target, "existing note was not staged with vault_index.py stage"))
     target_path = vault / target

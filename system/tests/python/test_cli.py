@@ -62,6 +62,45 @@ def test_tags_needs_a_partition(cli):
     assert cli("tags").returncode == 2
 
 
+def _tag_issues(cli):
+    return [(i["path"], i["severity"], i["code"]) for i in json.loads(cli("issues", "--json").stdout)["issues"]
+            if i["code"].startswith("tag-")]
+
+
+def test_tags_in_another_form_warn(cli, vault):
+    write(vault, "wiki/work/concepts/Bad.md", concept("work", "Bad", tags='[Tooling, "two words", "#tag", 2026]'))
+    write(vault, "wiki/work/concepts/Good.md", concept("work", "Good", tags="[project/alpha, api-gateway, v2]"))
+    write(vault, "wiki/work/meetings/2026-10-01-0900-sync.md", meeting("work", "2026-10-01-0900-sync"))
+    write(vault, "wiki/work/meetings/2026-10-01-0900-sync.transcript.md",
+          transcript("work", "2026-10-01-0900-sync", "Posted in #General and #Ops."))
+    assert _tag_issues(cli) == [("wiki/work/concepts/Bad.md", "warning", "tag-form")] * 4
+    assert cli("issues").returncode == 0
+
+
+def test_system_tags_warn_off_their_notes(cli, vault):
+    write(vault, "wiki/work/concepts/Topic.md", concept("work", "Topic", tags="[now, rca]"))
+    write(vault, "wiki/work/Now.md", concept("work", "Now", tags="[now]"))
+    assert _tag_issues(cli) == [("wiki/work/concepts/Topic.md", "warning", "tag-reserved")] * 2
+
+
+def test_staged_tag_issues_fail_a_new_note_only(cli, vault):
+    git = ["git", "-C", str(vault), "-c", "user.name=t", "-c", "user.email=t@example.com"]
+    subprocess.run(["git", "init", "-q", str(vault)], check=True)
+    write(vault, "wiki/work/concepts/Old.md", concept("work", "Old", tags="[Tooling]"))
+    subprocess.run(git + ["add", "wiki/work/concepts/Old.md"], check=True)
+    subprocess.run(git + ["commit", "-q", "--no-verify", "-m", "old"], check=True)
+    write(vault, "wiki/work/concepts/Old.md", concept("work", "Old", body="patched", tags="[Tooling]"))
+    subprocess.run(git + ["add", "wiki/work/concepts/Old.md"], check=True)
+    res = cli("issues", "--staged")
+    assert res.returncode == 0, res.stdout
+    assert "Old.md:3: warning: tag" in res.stdout
+    write(vault, "wiki/work/concepts/New.md", concept("work", "New", tags="[Tooling]"))
+    subprocess.run(git + ["add", "wiki/work/concepts/New.md"], check=True)
+    res = cli("issues", "--staged")
+    assert res.returncode == 1
+    assert 'wiki/work/concepts/New.md:3: error: tag "Tooling"' in res.stdout
+
+
 def test_archived_briefings_stay_indexed_and_the_debrief_embed_resolves(cli, vault):
     write(vault, "briefings/archive/2026-10/2026-10-06.md",
           '---\ntype: briefing\ndate: "2026-10-06"\nstatus: active\n---\n# Briefing\n\n![[2026-10-06.debrief]]\n')

@@ -78,6 +78,21 @@ def test_partition_wall_rejected(run):
     assert any("partition wall" in r for r in reasons(publish.validate_run(run, RID, now=LATER)[2]))
 
 
+def test_a_created_note_with_a_bad_tag_is_rejected(run):
+    stage_new(run, "wiki/work/concepts/New.md", concept("work", "New", "[[Index]]", tags="[Tooling]"))
+    decide(run, rec("wiki/work/concepts/New.md"))
+    assert any('tag "Tooling"' in r for r in reasons(publish.validate_run(run, RID, now=LATER)[2]))
+
+
+def test_a_patch_keeps_an_old_bad_tag(vault):
+    write(vault, "wiki/work/concepts/Kafka.md", concept("work", "Kafka", "event streaming", tags="[Streaming]"))
+    publish.snapshot(vault, RID, ["wiki/work/**"])
+    dst = publish.record_stage(vault, RID, "wiki/work/concepts/Kafka.md")
+    dst.write_text(dst.read_text().replace("event streaming", "event streaming at scale"))
+    decide(vault, rec("wiki/work/concepts/Kafka.md", "patch"))
+    assert publish.validate_run(vault, RID, now=LATER)[2] == []
+
+
 def test_existing_target_must_be_staged_via_stage(run):
     stage_new(run, "wiki/work/concepts/Kafka.md", concept("work", "Kafka", "rewritten wholesale"))
     decide(run, rec("wiki/work/concepts/Kafka.md", "patch"))
