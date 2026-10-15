@@ -22,11 +22,11 @@ A Now line says what is open and since when, and nothing else. It does not say w
 Each line becomes `- [ ] <kind>: <statement>[ [rec:: <option>: <why>]][ [due:: YYYY-MM-DD]] (<who>, since <date>[, <evidence>])`. Before and after:
 
 ```
-- [ ] owed: Pick the export format (Blake Sample, since 2026-10-15)
-- [ ] owed: Pick the export format [rec:: CSV: the vendor's loader reads it] [due:: 2026-10-18] (Blake Sample, since 2026-10-15)
+- [ ] owed: Pick the export format (vendor contact, since 2026-10-15)
+- [ ] owed: Pick the export format [rec:: CSV: the vendor's loader reads it] [due:: 2026-10-18] (vendor contact, since 2026-10-15)
 ```
 
-The fields sit before the parenthesis because the current `LINE` pattern ends at `(<who>, since <date>[, <evidence>])` plus an optional close stamp: anything after or inside that parenthesis stops the line from parsing. Inside the statement they parse today: on the second line above `LINE` gives the statement `Pick the export format [rec:: …] [due:: 2026-10-18]`, who `Blake Sample`, since `2026-10-15` (checked against the current regex on 2026-10-15). Dataview's `[key:: value]` form is its documented inline-field syntax, so the brief's `TASK` query should list the line as before and show the two fields; the manual check in §11 confirms it. A tick, a drop, the close stamp and the 7-day prune are unchanged.
+The fields sit before the parenthesis because the current `LINE` pattern ends at `(<who>, since <date>[, <evidence>])` plus an optional close stamp: anything after or inside that parenthesis stops the line from parsing. Inside the statement they parse today: on the second line above `LINE` gives the statement `Pick the export format [rec:: …] [due:: 2026-10-18]`, who `vendor contact`, since `2026-10-15` (checked against the current regex on 2026-10-15). Dataview's `[key:: value]` form is its documented inline-field syntax, so the brief's `TASK` query should list the line as before and show the two fields; the manual check in §11 confirms it. A tick, a drop, the close stamp and the 7-day prune are unchanged.
 
 `LINE` stays as it is. A new helper reads each field once, anywhere in the statement (`\[rec:: ([^\[\]\n]+)\]`, `\[due:: (\d{4}-\d{2}-\d{2})\]`), and returns the **bare statement**: the statement with both fields removed and whitespace collapsed. `rec` holds no `[`, `]` or newline; `due` is an ISO date. `add` refuses a `--statement` that already holds `[rec::` or `[due::`.
 
@@ -57,7 +57,7 @@ Interactive, the brief already runs `now.py add` per line, which applies §4. He
 
   ```
   **1 to 7 days over**
-  - owed: Pick the export format [rec:: CSV: the vendor's loader reads it] [due:: 2026-10-18] (Blake Sample, since 2026-10-15)
+  - owed: Pick the export format [rec:: CSV: the vendor's loader reads it] [due:: 2026-10-18] (vendor contact, since 2026-10-15)
   **8 to 30 days over**
   **More than 30 days over**
   ```
