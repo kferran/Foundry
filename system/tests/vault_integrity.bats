@@ -328,3 +328,23 @@ sealed_problems() {
   [ "$output" = "$(printf '%s\n' 'sandbox.allowUnsandboxedCommands is not false' 'sandbox.excludedCommands is not empty' \
     'sandbox.network.allowedDomains holds a wildcard' 'Bash(claude -p:*)')" ]
 }
+
+@test "the gate runs an extension's suites: its bats files and its python folder" {
+  d="$BATS_TEST_TMPDIR/gate"
+  mkdir -p "$d/system/scripts" "$d/system/tests/python" "$d/extensions/demo/tests/python" "$d/bin"
+  cp "$VAULT_ROOT/system/scripts/verify_setup.sh" "$d/system/scripts/"
+  printf '#!/bin/bash\nexit 0\n' > "$d/system/scripts/lint_vault.sh"
+  chmod +x "$d/system/scripts/lint_vault.sh"
+  : > "$d/system/tests/core.bats"
+  : > "$d/extensions/demo/tests/demo.bats"
+  printf 'def test_core():\n    pass\n' > "$d/system/tests/python/test_core.py"
+  printf 'def test_demo():\n    pass\n' > "$d/extensions/demo/tests/python/test_demo.py"
+  # A bats that records what it was asked to run, and passes.
+  printf '#!/bin/bash\n[[ "${1:-}" == --version ]] || echo "$1" >> "%s/bats.calls"\necho "1..0"\n' "$d" > "$d/bin/bats"
+  chmod +x "$d/bin/bats"
+  run env PATH="$d/bin:$PATH" "$d/system/scripts/verify_setup.sh" --require-suites
+  [ "$status" -eq 0 ]
+  grep -qx 'PASS system/tests/core.bats' <<< "$output"
+  grep -qx 'PASS extensions/demo/tests/demo.bats' <<< "$output"
+  grep -qx 'extensions/demo/tests/demo.bats' "$d/bats.calls"
+}
