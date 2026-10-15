@@ -20,7 +20,7 @@
 - `system/scripts/vault_sync.sh`: captures `commit_runs.py`'s stdout, the exclusion pathspec, the exit mapping.
 - `.claude/commands/backup.md` step 3: "If it exits 1, stop" becomes "If it prints `refused` lines, report them; the other runs are committed", and step 5's hook still stops the manual commit as now.
 - `FOUNDRY.md`, the sync paragraph: one sentence on a refused run.
-- Cross-reference: the C4 spec's pre-update commit runs the same step, so a refused run also blocks the daily update until it is fixed. As built (2026-10-14): the other runs and the sync commit land, the update stops before fetching, and its `[update]` line lists the commits made, names the refused paths and points at the `[commit_runs]` alert in the same day's alerts file, which carries the hook's line.
+- Cross-reference: the C4 spec's pre-update commit runs the same step. Owner decision (#136, 2026-10-15): a refused run does not block the daily update. The other runs and the sync commit land, the refused paths stay uncommitted, the update fetches and merges, and its `[update]` line lists the commits made, names the refused paths, points at the `[commit_runs]` alert in the same day's alerts file (which carries the hook's line) and gives the merge result. A merge that would overwrite a refused file is refused by git and the update fails with the file named, as the sync's `fail merge` does.
 
 **Existing vault:** no config or unit change. A vault stuck on a refused run today syncs again on the next cycle, with the refused note still waiting.
 
