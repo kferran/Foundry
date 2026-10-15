@@ -14,6 +14,26 @@ sys.path.insert(0, str(REPO / "system" / "scripts"))
 FIXTURE = REPO / "system" / "tests" / "fixtures" / "vault"
 
 
+def need_env(ok: bool, reason: str) -> None:
+    """A test that needs what this machine lacks skips with "environment: <reason>"; under the gate's
+    --require-suites (FOUNDRY_REQUIRE_ENV=1, as CI runs it) it fails instead (audit C16)."""
+    if ok:
+        return
+    if os.environ.get("FOUNDRY_REQUIRE_ENV") == "1":
+        pytest.fail(f"environment required: {reason}")
+    pytest.skip(f"environment: {reason}")
+
+
+def bwrap_works() -> bool:
+    return shutil.which("bwrap") is not None and subprocess.run(
+        ["bwrap", "--ro-bind", "/", "/", "true"], capture_output=True).returncode == 0
+
+
+@pytest.fixture
+def needs_bwrap():
+    need_env(bwrap_works(), "bwrap cannot start a sandbox here")
+
+
 @pytest.fixture
 def vault(tmp_path: Path) -> Path:
     root = tmp_path / "vault"

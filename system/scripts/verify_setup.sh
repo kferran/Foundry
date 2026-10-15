@@ -21,6 +21,9 @@ done
 export TMPDIR="$VAULT_ROOT/.scratch/tmp" GIT_CEILING_DIRECTORIES="$VAULT_ROOT/.scratch"
 mkdir -p "$TMPDIR"
 
+# A test that needs what this machine lacks (a user systemd, bwrap, a non-root user) skips with "environment:";
+# under --require-suites it fails instead (audit C16).
+(( ! require_suites )) || export FOUNDRY_REQUIRE_ENV=1
 results=() failed=0
 # Each suite's exit status is read directly, never through a pipe, so a failing suite cannot report green.
 record() {  # <label> <exit status>

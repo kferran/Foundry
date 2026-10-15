@@ -66,6 +66,7 @@ set_key() { sed -i "s/^$1:.*/$1: $2/;t;\$i $1: $2" system/config.md; }
 alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
 
 @test "every configured source reads ok and the rest off; the version is recorded, nothing is alerted" {
+  need_user_systemd
   run "$SC"
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "version: ok" ]
@@ -85,6 +86,7 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
 }
 
 @test "a failing source reads failed with the script's reason, exits 1 and alerts once a day" {
+  need_user_systemd
   stub calendar_fetch.sh 6 "calendar_fetch: no Google Calendar connector"
   run "$SC"
   [ "$status" -eq 1 ]
@@ -115,6 +117,7 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
 }
 
 @test "at the usage ceiling the connector checks are held, not failed, with one alert a day; the local checks still run" {
+  need_user_systemd
   printf '#!/bin/bash\n[[ "$1" == hold ]] || exit 2\necho "five-hour usage 0.7 is at or above 0.6"\n' > system/scripts/triage.py
   chmod +x system/scripts/triage.py
   set_key meetings_enabled '"true"'
@@ -132,6 +135,7 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
 }
 
 @test "two failing sources give two alert lines" {
+  need_user_systemd
   set_key meetings_enabled '"true"'
   stub calendar_fetch.sh 6 "calendar_fetch: no Google Calendar connector"
   stub meetings_fetch.sh 3 "meetings_fetch: no Google Drive connector"
@@ -142,6 +146,7 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
 }
 
 @test "enabled features are each checked once; the telemetry sources come from --list" {
+  need_user_systemd
   set_key meetings_enabled '"true"'
   set_key triage_enabled '"true"'
   set_key handoffs_projects '["AB"]'
@@ -184,6 +189,7 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
 }
 
 @test "a claude version change is reported once with the acceptance steps, and the file follows" {
+  need_user_systemd
   mkdir -p system/logs
   printf '0.9.0 (Claude Code)\n' > system/logs/claude.version
   run "$SC"
@@ -217,6 +223,7 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
 }
 
 @test "the version is the first stdout line only, so a stderr notice never changes the recorded reading" {
+  need_user_systemd
   printf '#!/bin/bash\necho "update available" >&2\necho "1.0.0 (Claude Code)"\necho "more"\n' > "$BATS_TEST_TMPDIR/bin/claude"
   run "$SC"
   [ "$status" -eq 0 ]
@@ -284,6 +291,7 @@ EOF
 }
 
 @test "installed units that match the render read ok; a unit never installed is left out, never differs (#166)" {
+  need_user_systemd
   run "$SC"
   grep -qx 'units: off' <<< "$output"
   run system/scripts/install_units.sh
@@ -297,6 +305,7 @@ EOF
 }
 
 @test "an edited unit and an edited drop-in each read differs and alert once a day, naming the fix (#166)" {
+  need_user_systemd
   set_key machine_role '"server"'
   run system/scripts/install_units.sh
   [ "$status" -eq 0 ]

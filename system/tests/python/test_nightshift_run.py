@@ -151,7 +151,7 @@ def test_profile_mismatch_kills_and_fails(env, monkeypatch):
     assert fm["state"] == "failed" and fm["reason"] == "profile"
 
 
-def test_the_session_gets_only_the_allowlisted_environment(env, monkeypatch):
+def test_the_session_gets_only_the_allowlisted_environment(needs_bwrap, env, monkeypatch):
     # audit S3/S7 spec §2: session_env() is the session's whole environment; a planted agent socket never reaches it
     vault, tmp = env
     stub(tmp, ENV=str(tmp / "env.txt"))
@@ -471,7 +471,7 @@ def test_vault_master_moving_during_a_run_is_not_a_containment_failure(env, monk
     assert only_item(vault)[1]["state"] == "done"
 
 
-def test_resume_stops_a_session_left_running(env):
+def test_resume_stops_a_session_left_running(needs_bwrap, env):
     vault, tmp = env
     assert add(vault, "--now") == 0
     path, fm = only_item(vault)
@@ -619,7 +619,7 @@ def test_research_reads_a_pinned_copy_of_its_codebase(env, tmp_path):
     assert str(clone) in nr._deny(ctx, fm)   # the live checkout stays denied
 
 
-def test_a_run_denies_the_vault_root_and_not_only_its_four_folders(env):
+def test_a_run_denies_the_vault_root_and_not_only_its_four_folders(needs_bwrap, env):
     # audit S3/S7 spec §2: the clone, context/ and out/ live under order_workspace, so a session needs nothing from the vault
     vault, tmp = env
     assert add(vault, "--now") == 0

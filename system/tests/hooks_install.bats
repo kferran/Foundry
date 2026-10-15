@@ -361,6 +361,7 @@ record() { jq -c --arg k "$SET" '.[$k]' "$V/system/logs/memory/install_hooks.jso
 }
 
 @test "--uninstall completes and restores settings even when the install record cannot be updated" {
+  need_non_root
   jq -S . "$SET" > "$BATS_TEST_TMPDIR/fixture.json"
   run "$IH"
   [ "$status" -eq 0 ]
@@ -375,6 +376,7 @@ record() { jq -c --arg k "$SET" '.[$k]' "$V/system/logs/memory/install_hooks.jso
 }
 
 @test "install refuses before writing anything when the install record cannot be kept" {
+  need_non_root
   mkdir -p "$V/system/logs/memory"
   chmod a-w "$V/system/logs/memory"
   before="$(sha256sum < "$SET")"

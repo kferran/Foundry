@@ -86,6 +86,7 @@ deny_list() { awk '$0 == "--disallowedTools" { p = 1; next } p' "$STUB_ARGS"; }
 }
 
 @test "connector_run runs nothing when no session directory can be made" {
+  need_non_root
   prepare
   chmod a-w "$work"
   run_rc=0

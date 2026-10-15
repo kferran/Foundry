@@ -200,6 +200,20 @@ no_bats_path() {
 
 failing_bats() { printf '#!/usr/bin/env bats\n@test "no" { false; }\n' > "$M/system/tests/$1"; }
 
+@test "verify_setup: a test whose environment is missing skips, and fails under --require-suites (audit C16)" {
+  mini_vault
+  cp "$REPO/system/tests/helpers.bash" "$M/system/tests/"
+  printf '#!/usr/bin/env bats\nload helpers\n@test "needs" { need_env "no such tool" false; true; }\n' > "$M/system/tests/env.bats"
+  run env -u FOUNDRY_REQUIRE_ENV "$VS"   # this gate may itself run under --require-suites (CI)
+  [ "$status" -eq 0 ]
+  grep -q '^ok 1 needs # skip.*environment: no such tool' <<< "$output"
+  grep -qx 'PASS system/tests/env.bats' <<< "$output"
+  run "$VS" --require-suites
+  [ "$status" -eq 1 ]
+  grep -q 'environment required: no such tool' <<< "$output"
+  grep -qx 'FAIL system/tests/env.bats (exit 1)' <<< "$output"
+}
+
 @test "verify_setup: passing suites exit 0 and are listed" {
   mini_vault
   run "$VS"

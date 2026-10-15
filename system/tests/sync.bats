@@ -155,6 +155,7 @@ refused_run() {  # a published run whose note the hook refuses
 }
 
 @test "an unreachable origin is alerted once a day and its recovery once" {
+  need_non_root
   chmod 000 "$O"
   run "$VS"
   [ "$status" -eq 1 ]
