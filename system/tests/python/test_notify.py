@@ -73,13 +73,24 @@ def test_alerts_arrive_in_order_without_notify_lines_redacted_and_cut(vault):
     prepare(vault)
     alert(vault, "[intake] first")
     alert(vault, "[notify] Notices failed (exit 6): x")
-    alert(vault, "[telemetry] key sk-ant-api03-" + "A" * 40)
-    alert(vault, "[dtcc] " + "y" * 300)
+    alert(vault, "[sync] key sk-ant-api03-" + "A" * 40)
+    alert(vault, "[update] " + "y" * 300)
     got, _ = lines(vault)
     assert got[0] == "Alert 06:10:00 [intake] first"
     assert len(got) == 3
     assert "sk-ant-api03" not in got[1]
     assert len(got[2]) == notify.LINE_MAX
+
+
+def test_only_the_now_tags_reach_slack(vault):
+    # alert tags spec §2: diagnostics wait for the brief; an untagged line or an unknown tag waits too
+    prepare(vault)
+    for tag in ("foreman", "orders", "sync", "update", "rca", "intake", "commit_runs", "smoke", "calendar",
+                "meetings", "handoffs", "telemetry", "dtcc", "memory", "Sync", "nosuch"):
+        alert(vault, f"[{tag}] x")
+    alert(vault, "no tag at all")
+    got, _ = lines(vault)
+    assert got == [f"Alert 06:10:00 [{t}] x" for t in ("foreman", "orders", "sync", "update", "rca", "intake")]
 
 
 DIGEST = "raw/work/notes/2026-10-14-0626-3f2a9c1e-sent-a-slack-dm-foundry-up-to-date.md"
