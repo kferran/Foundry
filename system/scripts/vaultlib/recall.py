@@ -11,7 +11,9 @@ HARD_CAP = 9500
 DEFAULT_BUDGET = 9000
 MAX_DIGESTS = 3
 LOCK_TIMEOUT = 2.0
-SECTION = re.compile(r"^\s*(?:#{1,6}\s*|\*\*)?\s*(outcome|follow[- ]?ups?)\b", re.I)
+LINE_CAP = 240   # one Now line in recall (#211): a line with chained updates must not take the budget
+KIND_ORDER = {"owed": 0, "waiting": 1, "draft": 2}
+SECTION = re.compile(r"^\s*(?:#{1,6}\s*|\*\*)?\s*(outcome|open questions|follow[- ]?ups?)\b", re.I)
 HEADING = re.compile(r"^\s*(?:#{1,6}\s+\S|\*\*[^*]+\*\*\s*:?\s*$)")
 
 
@@ -50,6 +52,40 @@ def digest_sections(body: str) -> str:
     return text if text else body.strip()[:400]
 
 
+def _rank_key(line: str) -> tuple:
+    """(unparsed, has no due, due, newest date, kind): a hand-written line that does not parse sorts last."""
+    m = now.LINE.match(line.rstrip())
+    if not m:
+        return 1, 1, "", "", 9
+    bare, _, due = now.fields(m.group("statement"))
+    newest = max(now.ISO_DATE.findall(bare) + [m.group("since")])
+    return 0, 0 if due else 1, due, newest, KIND_ORDER[m.group("kind")]
+
+
+def rank(lines: list) -> list:
+    """Open Now lines by priority (#211): a due date first, soonest first; then the newest date in the line, newest
+    first; then owed, waiting, draft; page order breaks ties (stable sorts, last key first)."""
+    keyed = [(_rank_key(line), line) for line in lines]
+    keyed.sort(key=lambda x: x[0][4])
+    keyed.sort(key=lambda x: x[0][3], reverse=True)
+    keyed.sort(key=lambda x: x[0][:3])
+    return [line for _, line in keyed]
+
+
+def cap(line: str) -> str:
+    """A Now line cut to LINE_CAP: the statement gives way, the [due::] field and the parenthesis stay."""
+    if len(line) <= LINE_CAP:
+        return line
+    m = now.LINE.match(line.rstrip())
+    if m:
+        bare, _, due = now.fields(m.group("statement"))
+        head, tail = line[:m.start("statement")], (f" [due:: {due}]" if due else "") + line.rstrip()[m.end("statement"):]
+        room = LINE_CAP - len(head) - len(tail) - 1
+        if room >= 20:
+            return head + bare[:room].rstrip() + "…" + tail
+    return line[:LINE_CAP - 1] + "…"
+
+
 def _open_index(vault):
     """Refresh under a 2 s lock; when the lock is busy, read the existing index unrefreshed."""
     idx = Index(vault)
@@ -86,38 +122,54 @@ def build(vault, scope, budget, workcell_session=False) -> str:
             f"Query the vault: `{vi} related \"<terms>\"`, then `{vi} show <note>`.\n")
     if len(head) > budget:
         return ""
-    out = head
-    # The partition's open Now lines come first and whole; digests take what is left (Now page spec §3.3).
+    # The Now block comes first; the digests keep the last third of the room when there are open lines, and the
+    # Now block takes what they leave (#211, Now page spec §3.3).
     lines = now.open_lines(now.read(vault, partition)) if partition in now.PARTITIONS else []
-    if lines:
-        block = "\n### Now (open loops)\n" + "\n".join(lines) + "\n"
-        marker = "\n…[truncated]\n"
-        room = budget - len(out)
-        out += block if len(block) <= room else (block[: room - len(marker)] + marker if room > len(marker) else "")
+    room = budget - len(head)
+    digests = _digests(vault, partition, name, room // 3 if lines else room)
+    return (head + _now_block(lines, partition, room - len(digests)) + digests)[:budget]
+
+
+def _now_block(lines: list, partition: str, room: int) -> str:
+    if not lines:
+        return ""
+    ranked = [cap(line) for line in rank(lines)]
+    block, shown = "\n### Now (open loops)\n", 0
+    more = f"…and {len(ranked)} more open lines (system/scripts/now.py list --partition {partition})\n"
+    for line in ranked:
+        if len(block) + len(line) + 1 + (len(more) if shown + 1 < len(ranked) else 0) > room:
+            break
+        block, shown = block + line + "\n", shown + 1
+    if shown < len(ranked):
+        block += more.replace(str(len(ranked)), str(len(ranked) - shown), 1)
+    return block if len(block) <= room else ""
+
+
+def _digests(vault, partition, name, room: int) -> str:
+    """The latest digests' kept sections, newest first, within room; the last one cut with a marker."""
     conn = _open_index(vault)
     if conn is None:
-        return out[:budget]
+        return ""
     try:
         rows = recent_digests(conn, partition, name)
     finally:
         conn.close()
-    if rows:
-        out += "\n### Recent session digests\n"
+    out = "\n### Recent session digests\n" if rows else ""
     for path, codebase, created in rows:
         try:
             body = frontmatter.parse((vault / path).read_text(encoding="utf-8")).body
         except (OSError, UnicodeDecodeError):
             continue
         block = f"\n#### {created} — {codebase} ({Path(path).stem})\n{digest_sections(body)}\n"
-        room = budget - len(out)
-        if len(block) <= room:
+        left = room - len(out)
+        if len(block) <= left:
             out += block
         else:
             marker = "\n…[truncated]\n"
-            if room > 200 + len(marker):
-                out += block[: room - len(marker)] + marker
+            if left > 200 + len(marker):
+                out += block[: left - len(marker)] + marker
             break
-    return out[:budget]
+    return out if len(out) <= room else ""
 
 
 def workcell_session_env() -> bool:

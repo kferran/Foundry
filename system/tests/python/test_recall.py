@@ -180,23 +180,64 @@ def test_now_lines_come_first_and_only_the_session_partitions(cli, vault):
     assert "Work only" not in out
 
 
-def test_digests_are_cut_before_now_lines(cli, vault):
+def test_a_long_digest_is_cut_to_its_third_and_the_now_lines_keep_the_rest(cli, vault):
+    # #211 replaced "Now lines whole first": the digests keep the last third of the room
     config(vault)
     lines = [f"- [ ] owed: Item {i} with some words to fill the line (since 2026-10-09)" for i in range(20)]
     now_page(vault, "personal", lines)
     digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00", body="## Outcome\n" + "word " * 1500)
     out = cli("recall", "--cwd", str(vault), "--budget-chars", "2500").stdout
     assert len(out) <= 2500
-    assert lines[-1] in out
+    assert lines[0] in out
     assert "…[truncated]" in out
+    now_part = out.split("### Recent session digests")[0]
+    assert len(out) - len(now_part) <= 2500 // 3
 
 
-def test_now_alone_over_budget_is_truncated_with_a_marker(cli, vault):
+def test_now_alone_over_budget_ends_with_how_many_more(cli, vault):
     config(vault)
     now_page(vault, "personal", [f"- [ ] owed: Item {i} (since 2026-10-09)" for i in range(200)])
     out = cli("recall", "--cwd", str(vault), "--budget-chars", "1500").stdout
     assert len(out) <= 1500
-    assert out.endswith("…[truncated]\n")
+    shown = out.count("- [ ] owed: Item ")
+    assert out.endswith(f"…and {200 - shown} more open lines (system/scripts/now.py list --partition personal)\n")
+
+
+def test_now_lines_are_ranked_due_first_then_newest_then_kind(cli, vault):
+    # #211: page order put the oldest lines first and left no room for anything else
+    config(vault)
+    now_page(vault, "personal", [
+        "- [ ] owed: A old (since 2026-10-01)",
+        "- [ ] owed: B due later [due:: 2026-10-20] (since 2026-10-01)",
+        "- [ ] owed: C due soon [due:: 2026-10-18] (since 2026-10-01)",
+        "- [ ] waiting: E new (Ann, since 2026-10-12)",
+        "- [ ] owed: D updated 2026-10-12: still open (since 2026-10-01)",
+        "- [ ] hand-written line",
+    ])
+    out = cli("recall", "--cwd", str(vault)).stdout
+    order = [out.index(s) for s in ("C due soon", "B due later", "D updated", "E new", "A old", "hand-written")]
+    assert order == sorted(order)
+
+
+def test_a_long_now_line_is_cut_keeping_its_due_and_parenthesis(cli, vault):
+    config(vault)
+    now_page(vault, "personal", ["- [ ] owed: " + "update " * 60 + "[due:: 2026-10-20] (Ann, since 2026-10-09, EX-1)"])
+    out = cli("recall", "--cwd", str(vault)).stdout
+    line = next(x for x in out.splitlines() if x.startswith("- [ ] owed: update"))
+    assert len(line) <= recall.LINE_CAP
+    assert line.endswith("… [due:: 2026-10-20] (Ann, since 2026-10-09, EX-1)")
+
+
+def test_digests_keep_a_third_of_the_room_under_a_long_now_page(cli, vault):
+    config(vault)
+    now_page(vault, "personal", [f"- [ ] owed: Item {i} " + "word " * 50 + "(since 2026-10-09)" for i in range(95)])
+    digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00")
+    digest(vault, "personal", "p2", "2026-10-02T09:00:00-06:00",
+           body="## Outcome\nOutcome of p2.\n## Open questions / friction\n- Asked p2.\n## Follow-ups\n- Follow up p2.\n")
+    out = cli("recall", "--cwd", str(vault)).stdout
+    assert len(out) <= 9000
+    for text in ("Follow up p1.", "Follow up p2.", "Asked p2.", "more open lines (system/scripts/now.py list"):
+        assert text in out
 
 
 def test_a_budget_smaller_than_the_marker_never_overflows(cli, vault):
