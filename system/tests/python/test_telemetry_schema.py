@@ -72,6 +72,23 @@ def test_production_error_without_a_trace_validates(vault):
     assert [i for i in issues(vault) if i[0].startswith("raw/telemetry/")] == []
 
 
+def test_escalation_fields_validate(vault):
+    """Telemetry escalation spec §3.1, §3.2: persistent is the only escalate value (#171)."""
+    def note(escalate):
+        return "\n".join([
+            "---", "type: production_error", 'service: "api"', 'exception: "api/orders 500"', 'operation_id: "0af7651916cd43dd8448eb211c80319c"',
+            'detected_at: "2026-10-05T14:10:00+00:00"', 'kind: "span"', 'fingerprint: "a-0123456789ab"',
+            f'escalate: "{escalate}"',
+            'escalated_at: "2026-10-05T15:00:00+00:00"', "---", "# body", ""])
+    write(vault, "raw/telemetry/uat-adx-a-1123456789ab.md", note("persistent"))
+    write(vault, "raw/telemetry/uat-adx-a-2123456789ab.md", note("loud"))
+    idx = Index(vault)
+    idx.refresh(full=True)
+    rows = idx.connect().execute("SELECT path, code FROM issues WHERE path LIKE 'raw/telemetry/%'").fetchall()
+    assert not [r for r in rows if r[1] == "unknown-field"], rows
+    assert [r[0] for r in issues(vault) if r[0].startswith("raw/telemetry/")] == ["raw/telemetry/uat-adx-a-2123456789ab.md"]
+
+
 def test_production_error_message_field_is_known(vault):
     write(vault, "raw/telemetry/prod-sentry-s-101.md", "\n".join([
         "---", "type: production_error", 'service: "api"', 'exception: "KeyError"',

@@ -219,3 +219,40 @@ def test_the_stored_reopen_query_keeps_an_empty_filter_value(vault):
     st = Store(vault); st.load()
     st.upsert(group(reopen=None, filters=[want]), NOW)
     assert want in (vault / NOTE).read_text().splitlines()
+
+
+# Telemetry escalation spec §3.2, §5: the escalation rule (dependency status is held, §9).
+def test_a_sentry_group_seen_on_two_days_never_escalates(vault):
+    st = Store(vault); st.load()
+    st.upsert(group(fingerprint="s-101", kind="sentry", source="prod-sentry", detected_at=(NOW - timedelta(days=3)).isoformat()), NOW)
+    st.upsert(group(fingerprint="s-101", kind="sentry", source="prod-sentry", detected_at=(NOW - timedelta(days=3)).isoformat()), NOW)
+    assert "escalate" not in read(vault, "raw/telemetry/prod-sentry-s-101.md")
+    st.upsert(group(detected_at=(NOW - timedelta(days=3)).isoformat()), NOW)
+    assert read(vault, NOTE)["escalate"] == "persistent"
+
+
+def test_persistent_only_after_24_hours_still_firing(vault):
+    """#171 review: a group seen 23:30Z and again 00:30Z has fired for one hour, not on two days."""
+    st = Store(vault); st.load()
+    st.upsert(group(detected_at="2026-10-04T23:30:00+00:00", last_seen="2026-10-05T00:30:00+00:00"), NOW)
+    assert "escalate" not in read(vault, NOTE)
+    # 23 hours: still short
+    st.upsert(group(detected_at="2026-10-04T23:30:00+00:00", last_seen="2026-10-05T22:30:00+00:00"), NOW)
+    assert "escalate" not in read(vault, NOTE)
+    st.upsert(group(detected_at="2026-10-04T23:30:00+00:00", last_seen="2026-10-05T23:30:00+00:00"), NOW)
+    assert read(vault, NOTE)["escalate"] == "persistent"
+    st.upsert(group(fingerprint="a-1", kind="span", exception="api/orders 500", detected_at="2026-10-04T10:00:00+00:00",
+                    keys={"service": "api", "route": "api/orders", "status": "500"}), NOW)
+    assert read(vault, "raw/telemetry/prod-adx-a-1.md")["escalate"] == "persistent"
+
+
+def test_escalated_at_is_set_once_and_kept(vault):
+    st = Store(vault); st.load()
+    st.upsert(group(detected_at=(NOW - timedelta(days=1)).isoformat()), NOW)
+    assert read(vault, NOTE)["escalated_at"] == NOW.isoformat()
+    later = NOW + timedelta(hours=5)
+    st.upsert(group(detected_at=(NOW - timedelta(days=1)).isoformat(), last_seen=later.isoformat()), later)
+    assert read(vault, NOTE)["escalated_at"] == NOW.isoformat()
+    st.set_status("prod-adx/a-0123456789ab", "resolved", later)
+    fm = read(vault, NOTE)
+    assert fm["escalate"] == "persistent" and fm["escalated_at"] == NOW.isoformat()

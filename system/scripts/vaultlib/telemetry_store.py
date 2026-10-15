@@ -14,7 +14,8 @@ STATE = "system/logs/telemetry_state.json"
 QUIET = timedelta(days=7)
 NOTE_FIELDS = ("type", "service", "exception", "message", "operation_id", "detected_at", "codebase", "partition",
                "environment", "source", "kind", "fingerprint", "count", "last_seen", "status", "resolved_at", "substatus",
-               "regressed", "sentry_issue", "covered", "culprit", "link")
+               "regressed", "sentry_issue", "covered", "culprit", "link", "escalate", "escalated_at")
+PERSISTENT = timedelta(hours=24)
 
 
 def _aware(v: str) -> datetime:
@@ -140,6 +141,13 @@ class Store:
             g["covered"], g["sentry_issue"] = True, g.get("sentry_issue") or prev.get("sentry_issue")
         status = "deprecated" if "deprecated" in (note_status, old and old.get("status")) else "active"
         regressed = regressed or g.get("substatus") == "regressed"
+        # telemetry escalation spec §3.4: an active log or span group seen over at least 24 hours (never sentry);
+        # escalated_at is set once
+        escalate = prev.get("escalate")
+        if status == "active":
+            escalate = "persistent" if (g["kind"] in ("log", "span")
+                                        and _aware(g["last_seen"]) - _aware(first) >= PERSISTENT) else None
+        escalated_at = prev.get("escalated_at") or (now.isoformat() if escalate else None)
         fm = {"type": "production_error", "service": g["service"], "exception": g["exception"],
               "message": g.get("message") or prev.get("message"),
               "operation_id": g["operation_id"], "detected_at": first, "codebase": g["codebase"],
@@ -147,7 +155,7 @@ class Store:
               "fingerprint": g["fingerprint"], "count": count, "last_seen": g["last_seen"], "status": status,
               "substatus": g.get("substatus"), "regressed": "true" if regressed or g.get("substatus") == "regressed" else "false",
               "sentry_issue": g.get("sentry_issue"), "covered": "true" if g.get("covered") else "false",
-              "culprit": g.get("culprit"), "link": g.get("link")}
+              "culprit": g.get("culprit"), "link": g.get("link"), "escalate": escalate, "escalated_at": escalated_at}
         self._write_note(rel, fm, self._body(g, fm))
         self.state["groups"][key] = {"note": rel, "first_seen": first, "last_seen": g["last_seen"], "count": count,
                                      "status": status, "kind": g["kind"], "regressed": regressed,

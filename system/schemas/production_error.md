@@ -27,6 +27,8 @@ fields:
   covered: {kind: bool, default: "false"}
   culprit: {kind: string}
   link: {kind: string}
+  escalate: {kind: enum, values: [persistent]}
+  escalated_at: {kind: datetime}
 ---
 # Production error
-A production error group in raw/telemetry/, written by telemetry_fetch.py (Plan 11) or dropped by hand (mock). Routed to the Workcell with telemetry; never ingested. Holds group keys, counts, times, opaque IDs, links and one message (the Sentry issue title or a sample log message) with ticket identifiers; credentials and emails are masked. `operation_id` is absent when the error has no trace, as with background jobs such as Quartz.
+A production error group in raw/telemetry/, written by telemetry_fetch.py (Plan 11) or dropped by hand (mock). Routed to the Workcell with telemetry; never ingested. Holds group keys, counts, times, opaque IDs, links and one message (the Sentry issue title or a sample log message) with ticket identifiers; credentials and emails are masked. `operation_id` is absent when the error has no trace, as with background jobs such as Quartz. `escalate` is set by the fetch: `persistent` when the group has been seen over at least 24 hours and is still firing; `escalated_at` is the first time it was set (telemetry escalation spec §3.4).

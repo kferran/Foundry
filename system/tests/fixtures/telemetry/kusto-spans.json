@@ -1,0 +1,5 @@
+[{"FrameType":"DataSetHeader"},
+ {"FrameType":"DataTable","TableKind":"PrimaryResult",
+  "Columns":[{"ColumnName":"service"},{"ColumnName":"route"},{"ColumnName":"status"},{"ColumnName":"n"},{"ColumnName":"first_ts"},{"ColumnName":"last_ts"},{"ColumnName":"traces"},{"ColumnName":"sample_trace"}],
+  "Rows":[["api","api/orders/credential-check",500,11,"2026-10-04T10:00:00Z","2026-10-05T11:00:00Z",11,"0af7651916cd43dd8448eb211c80319c"]]},
+ {"FrameType":"DataSetCompletion","HasErrors":false}]
