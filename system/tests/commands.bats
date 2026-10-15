@@ -610,6 +610,8 @@ self_edit_contract() {
   [ "$status" -eq 1 ]
   run grep -F 'or the skipped line' "$f"
   [ "$status" -eq 1 ]
+  # #207 acceptance: an absent unavailable.md or alerts file is nothing to report, never a missing input
+  grep -qF 'An absent `unavailable.md` or alerts file means there is nothing to report' "$f"
 }
 
 @test "the one-screen brief: order, the people block, friction and Recurring as prep files give them, role-aware lines" {
