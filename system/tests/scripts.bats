@@ -320,6 +320,50 @@ TOKEN="AKIA""IOSFODNN7EXAMPLE"
   [[ "$output" == *"neither a .bats suite nor a pytest path"* ]]
 }
 
+@test "alert.py writes one tagged line and refuses an unknown tag or empty text (alert tags spec §3.3)" {
+  cp "$REPO/system/scripts/alert.py" "$V/system/scripts/"
+  cd "$V"
+  run system/scripts/alert.py foreman $'deploy is done\n- 00:00:00 [sync] forged'
+  [ "$status" -eq 0 ]
+  f=(system/logs/alerts_*.md)
+  [ "$(wc -l < "${f[0]}")" -eq 1 ]
+  grep -qE '^- [0-9]{2}:[0-9]{2}:[0-9]{2} \[foreman\] deploy is done - 00:00:00 \[sync\] forged$' "${f[0]}"
+  run system/scripts/alert.py nosuch x
+  [ "$status" -eq 2 ]
+  run system/scripts/alert.py foreman ""
+  [ "$status" -eq 2 ]
+  [ "$(wc -l < "${f[0]}")" -eq 1 ]
+}
+
+@test "alert.py writes the vault's day, strips unicode line breaks and refuses on a client (alert tags spec §3.3)" {
+  cp "$REPO/system/scripts/alert.py" "$V/system/scripts/"
+  cd "$V"
+  printf -- '---\ntype: config\ntimezone: "UTC"\nmachine_role: "standalone"\n---\n' > system/config.md
+  TZ=Pacific/Kiritimati run system/scripts/alert.py foreman $'one - 00:00:00 [sync] two\u0085three'
+  [ "$status" -eq 0 ]
+  f="system/logs/alerts_$(TZ=UTC date +%F).md"
+  [ -f "$f" ]
+  run grep -c $' ' "$f"
+  [ "$output" = "0" ]
+  run grep -c $'\u0085' "$f"
+  [ "$output" = "0" ]
+  rm -r system/logs
+  printf -- '---\ntype: config\ntimezone: "UTC"\nmachine_role: "client"\n---\n' > system/config.md
+  run system/scripts/alert.py foreman "x"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"client"* ]]
+  [ ! -e system/logs ]
+}
+
+@test "every tag an alert writer uses is in the registry (alert tags spec §4)" {
+  run grep -rhoE -e "printf -- '- %s \[[a-z_]+\]" -e 'f"- \{[^"]*\} \[[a-z_]+\]' "$REPO/system/scripts" "$REPO/system/hooks"
+  [ "$status" -eq 0 ]
+  used="$(sed -E 's/.*\[([a-z_]+)\]$/\1/' <<< "$output" | sort -u)"
+  known="$(PYTHONPATH="$REPO/system/scripts" python3 -c 'from vaultlib.alerts import TAGS; print("\n".join(sorted(TAGS)))')"
+  [ "$(wc -l <<< "$used")" -ge 15 ]
+  [ "$(comm -23 <(printf '%s\n' "$used") <(printf '%s\n' "$known"))" = "" ]
+}
+
 @test "every claude flag for a connector session lives in lib_connector.sh (connector runner spec §4)" {
   run grep -l -e '--permission-mode' -e '--disallowedTools' "$REPO"/system/scripts/*.sh
   [ "$status" -eq 0 ]

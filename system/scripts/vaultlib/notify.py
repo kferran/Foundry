@@ -9,14 +9,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
-from . import frontmatter, now as nowmod
+from . import alerts as alertsmod, frontmatter, now as nowmod
 from .redact import redact
 from .stream import blocks
 
 STATE = Path("system/logs/notify/state.json")
 LINE_MAX = 300
 MESSAGE_MAX = 4000
-TAG = "[notify]"
 TRIAGE_TEXT = re.compile(r"(?<=\[triage\] )(\d+) new: .*$")
 # Retries of an inbox file, a digest or a meeting file, which end poisoned or quarantined: that outcome goes out,
 # the retries stay in the alerts file (#162). Every other "will retry" line goes out once a day.
@@ -230,7 +229,7 @@ def collect(vault, now: datetime) -> tuple:
         cursor["alerts"][path.name] = end
         sent = cursor["sent"].setdefault(day, [])
         for x in [] if first else new:
-            if not x.startswith("- ") or TAG in x:
+            if alertsmod.severity(x) != "now":   # the rest waits for the brief; [notify] never (alert tags spec §2)
                 continue
             event = _alert(vault, x)
             if event is None or _sans_time(event) in sent:  # an alert repeated each tick while a problem lasts goes out once a day

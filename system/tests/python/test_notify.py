@@ -1,11 +1,14 @@
 """Slack notices (Slack notices spec §3.1): the collector, the message, the link and the session check."""
 import json
+import shutil
 import subprocess
+import sys
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from helpers import write
+from helpers import REPO, write
 from vaultlib import notify
 
 NOW = datetime(2026, 10, 12, 6, 30)
@@ -73,13 +76,36 @@ def test_alerts_arrive_in_order_without_notify_lines_redacted_and_cut(vault):
     prepare(vault)
     alert(vault, "[intake] first")
     alert(vault, "[notify] Notices failed (exit 6): x")
-    alert(vault, "[telemetry] key sk-ant-api03-" + "A" * 40)
-    alert(vault, "[dtcc] " + "y" * 300)
+    alert(vault, "[sync] key sk-ant-api03-" + "A" * 40)
+    alert(vault, "[update] " + "y" * 300)
     got, _ = lines(vault)
     assert got[0] == "Alert 06:10:00 [intake] first"
     assert len(got) == 3
     assert "sk-ant-api03" not in got[1]
     assert len(got[2]) == notify.LINE_MAX
+
+
+def test_a_foreman_push_from_alert_py_goes_out_at_the_next_tick(vault):
+    # alert tags spec §4: the push end to end, alert.py to the collector
+    prepare(vault)
+    shutil.copytree(REPO / "system" / "scripts", vault / "system" / "scripts", dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    r = subprocess.run([sys.executable, str(vault / "system/scripts/alert.py"), "foreman", "The deploy is done"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    events, _ = notify.collect(vault, datetime.now(ZoneInfo("America/Denver")).replace(tzinfo=None))
+    assert [e.split(" ", 2)[2] for e in events] == ["[foreman] The deploy is done"]
+
+
+def test_only_the_now_tags_reach_slack(vault):
+    # alert tags spec §2: diagnostics wait for the brief; an untagged line or an unknown tag waits too
+    prepare(vault)
+    for tag in ("foreman", "orders", "sync", "update", "rca", "intake", "commit_runs", "smoke", "calendar",
+                "meetings", "handoffs", "telemetry", "dtcc", "memory", "Sync", "nosuch"):
+        alert(vault, f"[{tag}] x")
+    alert(vault, "no tag at all")
+    got, _ = lines(vault)
+    assert got == [f"Alert 06:10:00 [{t}] x" for t in ("foreman", "orders", "sync", "update", "rca", "intake")]
 
 
 DIGEST = "raw/work/notes/2026-10-14-0626-3f2a9c1e-sent-a-slack-dm-foundry-up-to-date.md"

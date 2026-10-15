@@ -113,7 +113,13 @@ The roadmap puts this before step 3 because step 3 moves ingest's neighbours and
 
 ### Phase 4: simplify step 3, extensions
 
-Grill first, as the roadmap says. The questions the grill must answer:
+**Grilled 2026-10-15.** Decisions and the contract are in `specs/2026-10-15-extensions-design.md`. In short:
+- Seven extensions go to one extensions repository, and Work Orders stay in core.
+- Jira handoffs move first.
+- One `extensions:` list turns them on.
+- The "done when" below is revised there: no feature code in core, about 8,800 lines, 12 schemas or fewer.
+
+The questions the grill answered:
 
 - The `extensions/<name>/` contract: units, scripts, schemas, a brief section file (from phase 2), skills, and an alert tag.
 - Order: DTCC (to a private repository), telemetry, Jira handoffs, meetings, then sync. Work Orders stay in core, off by default. Meetings carries the most core code: about 250 lines of meeting import inside `vaultlib/intake.py` and the `telemetry_source` lint rules inside `index.py`.
@@ -140,7 +146,7 @@ L3 is the largest gap between what the owner needs and what the system does: the
 2. ~~Audit S1~~: decided 2026-10-14 (opt-in, no signing until a second user exists).
 3. ~~#184~~: merged 2026-10-15.
 4. **Side projects in the vault (L9):** register `docs/gmail-cleanup` and similar as codebases with their own repositories, or accept the vault as their home. Recommended: own repositories.
-5. **Unfed features (L7):** delete the Fail-Fast Loop Breaker rule and the Agent Health section, or build the metrics writer. Recommended: delete in phase 4.
+5. ~~Unfed features (L7)~~: decided 2026-10-15 in the extensions grill. Delete the Agent Health section and the metrics writer instruction in phase 4. The Fail-Fast rule had already left `CLAUDE.md`.
 6. **The work-data boundary (#28):** all partitions push to one private origin on a personal host. Still undecided; no phase depends on it.
 7. **The empty personal partition:** keep investing in partition walls for a partition with no notes, or simplify. Recommended: keep the walls (they are built and tested) and build nothing new for `personal` until it has content.
 
