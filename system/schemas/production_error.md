@@ -7,7 +7,7 @@ fields:
   service: {kind: string, required: true}
   exception: {kind: string, required: true}
   message: {kind: string}
-  operation_id: {kind: string, required: true}
+  operation_id: {kind: string}
   detected_at: {kind: datetime, required: true}
   is_friction: {kind: bool, default: "false"}
   codebase: {kind: string}
@@ -29,4 +29,4 @@ fields:
   link: {kind: string}
 ---
 # Production error
-A production error group in raw/telemetry/, written by telemetry_fetch.py (Plan 11) or dropped by hand (mock). Routed to the Workcell with telemetry; never ingested. Holds group keys, counts, times, opaque IDs, links and one message (the Sentry issue title or a sample log message) with ticket identifiers; credentials and emails are masked.
+A production error group in raw/telemetry/, written by telemetry_fetch.py (Plan 11) or dropped by hand (mock). Routed to the Workcell with telemetry; never ingested. Holds group keys, counts, times, opaque IDs, links and one message (the Sentry issue title or a sample log message) with ticket identifiers; credentials and emails are masked. `operation_id` is absent when the error has no trace, as with background jobs such as Quartz.
