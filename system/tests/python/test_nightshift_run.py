@@ -574,6 +574,29 @@ def test_research_runs_on_a_context_copy_and_publishes(env, monkeypatch, tmp_pat
     assert out["output"] == "wiki/work/concepts/Answer.md"  # the notice links the item's own note (#157)
 
 
+def test_an_item_finishes_after_it_starts(env, tmp_path):
+    # Both stamps came from the tick's one clock reading, so every report row read "07:00–07:00" (live vault, 31 of 31).
+    vault, tmp = env
+    note = __import__("helpers").concept("work", "Answer", "Found it.", provenance='["headless"]').replace("\n", "\\n")
+    writes = tmp_path / "rw.txt"
+    writes.write_text(f'out/Answer.md={note}\nout/result.json={{"status": "done", "summary": "ok", "questions": []}}\n')
+    stub(tmp, WRITE=str(writes), SHELL="sleep 0.2")
+    (tmp_path / "r.jsonl").write_text((FX / "ok.jsonl").read_text().replace(
+        '"tools":["Read","Glob","Grep","Edit","Write","Bash","Skill","Agent","TodoWrite"]', '"tools":["Read","Write"]'))
+    stub(tmp, STREAM=str(tmp_path / "r.jsonl"))
+    brief = tmp_path / "brief.md"
+    brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
+    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+                    "--output", "wiki/work/concepts/Answer.md", "--now"], vault, NOW) == 0
+    assert nr.main(["tick"], vault, NOW) == 0
+    fm = only_item(vault)[1]
+    assert fm["state"] == "done"
+    assert datetime.fromisoformat(fm["finished_at"]) > datetime.fromisoformat(fm["started_at"])
+    out = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
+    assert out["started_at"] == fm["started_at"]
+    assert datetime.fromisoformat(out["finished_at"]) > datetime.fromisoformat(out["started_at"])
+
+
 def test_research_reads_a_pinned_copy_of_its_codebase(env, tmp_path):
     vault, tmp = env
     from test_nightshift_check import registered
