@@ -33,6 +33,8 @@ SINCE = re.compile(r"\s*_\(open since (\d{4}-\d{2}-\d{2})(?:, \d+ days?)?\)_")
 # The Now clock (Now clock spec §3): two optional Dataview inline fields inside the statement, before the parenthesis.
 REC = re.compile(r"\[rec:: ([^\[\]\n]+)\]")
 DUE = re.compile(r"\[due:: (\d{4}-\d{2}-\d{2})\]")
+ISO_DATE = re.compile(r"(?<![\w-])\d{4}-\d{2}-\d{2}(?![\w-])")
+SHORT_DAYS, LONG_DAYS = 3, 30
 
 
 class CheckFailed(Exception):
@@ -110,7 +112,7 @@ def _insert(text: str, heading: str, line: str) -> str:
     return "\n".join(lines[:end] + [line] + lines[end:]) + "\n"
 
 
-def validate(partition: str, kind: str, statement: str, who: str, evidence: str) -> None:
+def validate(partition: str, kind: str, statement: str, who: str, evidence: str, rec: str = "", due: str = "") -> None:
     if partition not in PARTITIONS:
         raise ValueError(f"partition must be one of {', '.join(PARTITIONS)}; shared holds no Now page")
     if kind not in KINDS:
@@ -121,18 +123,55 @@ def validate(partition: str, kind: str, statement: str, who: str, evidence: str)
         raise ValueError("who must not hold a comma, a parenthesis or a newline")
     if evidence and not re.fullmatch(r"[^\s(),]+", evidence):
         raise ValueError("evidence must be one URL or key without spaces, commas or parentheses")
+    if "[rec::" in statement or "[due::" in statement:
+        raise ValueError("the statement must not hold [rec:: or [due::; pass --rec and --due")
+    if any(c in rec for c in "[]\n\r"):
+        raise ValueError("rec must not hold a bracket or a newline")
+    if due and not is_date(due):
+        raise ValueError("due must be a date, YYYY-MM-DD")
 
 
-def add(vault, partition: str, kind: str, statement: str, today: str, who: str = "", evidence: str = "") -> tuple:
-    """("added"|"exists", line). The same kind and statement already open is not added twice."""
-    statement, who = statement.strip(), who.strip()
-    validate(partition, kind, statement, who, evidence)
+def is_date(text: str) -> bool:
+    try:
+        return bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", text)) and bool(date.fromisoformat(text))
+    except ValueError:
+        return False
+
+
+def default_due(statement: str, since: str, who: str) -> str:
+    """The decide-by date (Now clock spec §4): since + SHORT_DAYS when someone is named or the statement holds a date
+    of its own (a Work Order id does not count), else since + LONG_DAYS."""
+    days = SHORT_DAYS if who or ISO_DATE.search(statement) else LONG_DAYS
+    return (date.fromisoformat(since) + timedelta(days=days)).isoformat()
+
+
+def add(vault, partition: str, kind: str, statement: str, today: str, who: str = "", evidence: str = "",
+        rec: str = "", due: str = "") -> tuple:
+    """("added"|"exists"|"tightened"|"updated", line). An open line with the same kind and bare statement is not
+    added twice: a repeat add moves its clock earlier ("tightened"), sets or replaces rec and sets missing evidence
+    ("updated"), writes nothing when nothing is new, and raises ValueError when it would move the clock later."""
+    statement, who, rec = statement.strip(), who.strip(), rec.strip()
+    validate(partition, kind, statement, who, evidence, rec, due)
     text = read(vault, partition) or new_page(vault, partition, today)
     for existing in open_lines(text):
         m = LINE.match(existing)
-        if m and m.group("kind") == kind and m.group("statement") == statement:
+        if not (m and m.group("kind") == kind):
+            continue
+        bare, old_rec, old_due = fields(m.group("statement"))
+        if bare != fields(statement)[0]:
+            continue
+        if due and old_due and due > old_due:
+            raise ValueError(f"would loosen the clock (due {old_due})")
+        new_due = due if due and (not old_due or due < old_due) else old_due
+        new_rec, new_evidence = rec or old_rec, m.group("evidence") or evidence
+        if (new_due, new_rec, new_evidence) == (old_due, old_rec, m.group("evidence") or ""):
             return "exists", existing
-    line = render(kind, statement, today, who, evidence)
+        line = render(kind, bare, m.group("since"), m.group("who") or "", new_evidence, new_rec, new_due)
+        lines = text.split("\n")
+        lines[[x.rstrip() for x in lines].index(existing.rstrip())] = line
+        write(vault, partition, stamp_and_prune("\n".join(lines), today))
+        return "tightened" if new_due != old_due else "updated", line
+    line = render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who))
     text = _insert(stamp_and_prune(text, today), WAITING if kind == "waiting" else NEEDS, line)
     write(vault, partition, text)
     return "added", line
@@ -220,8 +259,8 @@ def check(vault, today: str, alert, gh: str = "gh") -> int:
 def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: str = "gh",
            on_fail=lambda line, reason: None) -> dict:
     """The lull review (#145), read-only: "closed" (open lines whose evidence shows them finished, each with its
-    close reason), "stale" (open more than stale_days with no evidence) and "duplicate" (the same statement after
-    lowercasing and collapsing whitespace, whatever the kind), in page order. A hand-written line that does not
+    close reason), "stale" (open more than stale_days with no evidence) and "duplicate" (the same bare statement after
+    lowercasing, whatever the kind and clock), in page order. A hand-written line that does not
     parse has no date or evidence and is left out of every group."""
     lines = [line.rstrip() for line in open_lines(read(vault, partition))]  # an editor's trailing space (C12)
     cutoff = (date.fromisoformat(today) - timedelta(days=stale_days)).isoformat()
@@ -230,7 +269,7 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
     statements = {}
     for line, m in parsed:
         if m:
-            statements.setdefault(" ".join(m.group("statement").lower().split()), []).append(line)
+            statements.setdefault(fields(m.group("statement"))[0].lower(), []).append(line)
     return {"closed": [f"{line} _(closed: {found[line]})_" for line in lines if line in found],
             "stale": [line for line, m in parsed if m and not m.group("evidence") and m.group("since") < cutoff],
             "duplicate": [line for group in statements.values() if len(group) > 1 for line in group]}

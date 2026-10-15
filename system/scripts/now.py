@@ -2,7 +2,10 @@
 """The Now page (Now page spec §3.2). Exit 0 ok, 2 usage or an invalid line, 4 run.lock busy.
 
   now.py add --partition <work|personal> --kind <owed|waiting|draft> --statement "<text>" [--who <name>]
-             [--evidence <PR URL, Work Order id or key>]
+             [--evidence <PR URL, Work Order id or key>] [--rec "<option>: <why>"] [--due YYYY-MM-DD]
+                                  a new line gets [due::] (--due, else since + 3 days with --who or a date in the
+                                  statement, else + 30); a repeat add may move it earlier (exit 2 if later), set
+                                  --rec, or set missing evidence, and writes nothing when nothing is new
   now.py list [--partition <p>]   the open lines; without --partition, both pages under "## <partition>"
   now.py check                    close lines on checked evidence, stamp hand ticks, prune (the intake timer runs it)
   now.py review --partition <p> [--stale-days N]
@@ -30,6 +33,8 @@ a.add_argument("--kind", required=True)
 a.add_argument("--statement", required=True)
 a.add_argument("--who", default="")
 a.add_argument("--evidence", default="")
+a.add_argument("--rec", default="")
+a.add_argument("--due", default="")
 sub.add_parser("list").add_argument("--partition", choices=now.PARTITIONS)
 sub.add_parser("check")
 r = sub.add_parser("review")
@@ -68,7 +73,7 @@ try:
             if args.partition == default_partition(VAULT):
                 now.seed(VAULT, args.partition, intake.today())
             status, line = now.add(VAULT, args.partition, args.kind, args.statement, intake.today(),
-                                   args.who, args.evidence)
+                                   args.who, args.evidence, args.rec, args.due)
             print(f"{status}: {line}")
         elif args.cmd == "check":
             print(f"closed: {now.check(VAULT, intake.today(), intake.alert)}")

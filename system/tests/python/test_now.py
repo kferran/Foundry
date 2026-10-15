@@ -44,17 +44,18 @@ def test_add_creates_the_page_and_files_each_kind_under_its_section(vault):
     assert text.startswith('---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-09"\npartition: work\n---\n')
     needs, waiting = text.split("## Needs you\n")[1].split("## Waiting\n")
     assert needs.strip().splitlines() == [
-        "- [ ] owed: Review the export PR (Blake Sample, since 2026-10-09, https://github.com/acme/shop/pull/7)",
-        "- [ ] draft: Reply to the vendor about the delay (vendor, since 2026-10-09)"]
+        "- [ ] owed: Review the export PR [due:: 2026-10-12] (Blake Sample, since 2026-10-09, "
+        "https://github.com/acme/shop/pull/7)",
+        "- [ ] draft: Reply to the vendor about the delay [due:: 2026-10-12] (vendor, since 2026-10-09)"]
     assert waiting.strip().splitlines() == [
-        "- [ ] waiting: Access to the staging logs (Blake Sample, since 2026-10-09, EX-12)"]
+        "- [ ] waiting: Access to the staging logs [due:: 2026-10-12] (Blake Sample, since 2026-10-09, EX-12)"]
 
 
 def test_the_same_open_statement_is_not_added_twice(vault):
     prepare(vault)
     now.add(vault, "work", "owed", "Send the report", TODAY)
     assert now.add(vault, "work", "owed", "Send the report", "2026-10-10") == (
-        "exists", "- [ ] owed: Send the report (since 2026-10-09)")
+        "exists", "- [ ] owed: Send the report [due:: 2026-11-08] (since 2026-10-09)")
     assert page(vault).count("Send the report") == 1
 
 
@@ -81,6 +82,84 @@ def test_the_fields_parse_inside_the_statement_in_either_order():
                       rec="CSV: the vendor's loader reads it", due="2026-10-18") == AFTER
 
 
+def test_add_writes_the_default_clock(vault):
+    # Now clock spec §4: 3 days with who or a standalone ISO date (a Work Order id does not count), else 30.
+    prepare(vault)
+    assert now.add(vault, "work", "owed", "Pick it", TODAY, "vendor")[1] == (
+        "- [ ] owed: Pick it [due:: 2026-10-12] (vendor, since 2026-10-09)")
+    assert now.add(vault, "work", "owed", "Ship by 2026-10-20", TODAY)[1] == (
+        "- [ ] owed: Ship by 2026-10-20 [due:: 2026-10-12] (since 2026-10-09)")
+    assert now.add(vault, "work", "waiting", "Decide 2026-10-08-export-fix", TODAY)[1] == (
+        "- [ ] waiting: Decide 2026-10-08-export-fix [due:: 2026-11-08] (since 2026-10-09)")
+    assert now.add(vault, "work", "draft", "Reply to the vendor", TODAY)[1] == (
+        "- [ ] draft: Reply to the vendor [due:: 2026-11-08] (since 2026-10-09)")
+    assert now.add(vault, "work", "owed", "Named", TODAY, "vendor", rec="CSV: it loads", due="2026-12-01")[1] == (
+        "- [ ] owed: Named [rec:: CSV: it loads] [due:: 2026-12-01] (vendor, since 2026-10-09)")
+
+
+def test_add_refuses_a_field_in_the_statement_a_bracket_in_rec_and_a_bad_date(vault):
+    prepare(vault)  # Now clock spec §3
+    for kwargs in ({"statement": "Pick [due:: 2026-10-10]"}, {"statement": "Pick [rec:: CSV]"},
+                   {"rec": "CSV] x"}, {"rec": "a\nb"}, {"due": "20261010"}, {"due": "2026-02-30"}):
+        statement = kwargs.pop("statement", "Pick")
+        try:
+            now.add(vault, "work", "owed", statement, TODAY, **kwargs)
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted {statement!r} {kwargs}")
+    assert not (vault / "wiki/work/Now.md").exists()
+
+
+def test_a_repeat_add_with_nothing_new_writes_nothing(vault):
+    # Now clock spec §5: triage, the brief and sessions re-add every day; that path stays write-free, and a
+    # clockless line (written before the clock) gets no clock from it.
+    prepare(vault)
+    now.add(vault, "work", "owed", "Pick it", TODAY, "vendor", "EX-1", rec="CSV: it loads")
+    path = vault / "wiki/work/Now.md"
+    path.write_text(path.read_text().replace("## Waiting\n", "## Waiting\n- [ ] waiting: Old one (since 2026-09-01)\n"))
+    before = path.read_bytes()
+    assert now.add(vault, "work", "owed", "Pick  it", "2026-10-10")[0] == "exists"
+    assert now.add(vault, "work", "owed", "Pick it", TODAY, "vendor", "EX-1", rec="CSV: it loads",
+                   due="2026-10-12")[0] == "exists"
+    assert now.add(vault, "work", "owed", "Pick it", TODAY, evidence="EX-2") == (
+        "exists", "- [ ] owed: Pick it [rec:: CSV: it loads] [due:: 2026-10-12] (vendor, since 2026-10-09, EX-1)")
+    assert now.add(vault, "work", "waiting", "Old one", TODAY, "someone")[0] == "exists"
+    assert path.read_bytes() == before
+
+
+def test_a_repeat_add_tightens_the_clock_and_refuses_to_loosen_it(vault):
+    prepare(vault)  # Now clock spec §5
+    now.add(vault, "work", "owed", "Pick it", TODAY, "vendor")
+    now.add(vault, "work", "owed", "Other", TODAY)
+    path = vault / "wiki/work/Now.md"
+    path.write_text(path.read_text().replace("## Waiting\n", "## Waiting\n- [ ] waiting: Old one (since 2026-09-01)\n"))
+    assert now.add(vault, "work", "owed", "Pick it", TODAY, due="2026-10-11") == (
+        "tightened", "- [ ] owed: Pick it [due:: 2026-10-11] (vendor, since 2026-10-09)")
+    assert now.add(vault, "work", "waiting", "Old one", TODAY, due="2026-12-01")[0] == "tightened"
+    before = path.read_bytes()
+    try:
+        now.add(vault, "work", "owed", "Pick it", TODAY, rec="CSV: it loads", due="2026-10-12")
+        raise AssertionError("loosened")
+    except ValueError as exc:
+        assert str(exc) == "would loosen the clock (due 2026-10-11)"
+    assert path.read_bytes() == before
+    assert now.open_lines(page(vault)) == ["- [ ] owed: Pick it [due:: 2026-10-11] (vendor, since 2026-10-09)",
+                                           "- [ ] owed: Other [due:: 2026-11-08] (since 2026-10-09)",
+                                           "- [ ] waiting: Old one [due:: 2026-12-01] (since 2026-09-01)"]
+
+
+def test_a_repeat_add_sets_or_replaces_rec_and_sets_evidence_once(vault):
+    prepare(vault)  # Now clock spec §5
+    now.add(vault, "work", "owed", "Pick it", TODAY)
+    assert now.add(vault, "work", "owed", "Pick it", TODAY, rec="CSV: it loads") == (
+        "updated", "- [ ] owed: Pick it [rec:: CSV: it loads] [due:: 2026-11-08] (since 2026-10-09)")
+    assert now.add(vault, "work", "owed", "Pick it", TODAY, rec="JSON: smaller", evidence="EX-1")[1] == (
+        "- [ ] owed: Pick it [rec:: JSON: smaller] [due:: 2026-11-08] (since 2026-10-09, EX-1)")
+    assert now.add(vault, "work", "owed", "Pick it", TODAY, evidence="EX-2")[0] == "exists"
+    assert now.open_lines(page(vault)) == [
+        "- [ ] owed: Pick it [rec:: JSON: smaller] [due:: 2026-11-08] (since 2026-10-09, EX-1)"]
+
+
 def test_invalid_lines_are_refused(vault):
     prepare(vault)
     for args in (("shared", "owed", "x", ""), ("work", "decision", "x", ""), ("work", "owed", "a\nb", ""),
@@ -99,7 +178,7 @@ def test_a_missing_section_heading_is_added_back(vault):
           "---\n# Now\n\n## Needs you\n- [ ] owed: A (since 2026-10-01)\n")
     now.add(vault, "work", "waiting", "B", TODAY)
     assert page(vault).endswith("## Needs you\n- [ ] owed: A (since 2026-10-01)\n\n## Waiting\n"
-                                "- [ ] waiting: B (since 2026-10-09)\n")
+                                "- [ ] waiting: B [due:: 2026-11-08] (since 2026-10-09)\n")
 
 
 def test_hand_ticks_are_stamped_and_closed_lines_pruned_after_seven_days():
@@ -117,7 +196,7 @@ def test_check_closes_a_merged_or_closed_pr_and_leaves_an_open_one(vault, tmp_pa
     now.add(vault, "work", "owed", "Merged one", "2026-10-08", evidence="https://github.com/acme/shop/pull/7")
     alerts = []
     assert now.check(vault, TODAY, alerts.append, gh_stub(tmp_path, "MERGED")) == 1
-    assert ("- [x] owed: Merged one (since 2026-10-08, https://github.com/acme/shop/pull/7) "
+    assert ("- [x] owed: Merged one [due:: 2026-11-07] (since 2026-10-08, https://github.com/acme/shop/pull/7) "
             "_(closed: PR merged 2026-10-09)_") in page(vault)
     now.add(vault, "work", "owed", "Closed one", TODAY, evidence="https://github.com/acme/shop/pull/8")
     now.check(vault, TODAY, alerts.append, gh_stub(tmp_path, "CLOSED"))
@@ -137,7 +216,7 @@ def test_check_closes_a_finished_work_order_only(vault, tmp_path):
     now.add(vault, "work", "waiting", "A ticket", TODAY, evidence="EX-12")
     assert now.check(vault, TODAY, [].append, gh_stub(tmp_path)) == 1
     text = page(vault)
-    assert "- [x] waiting: The done item (since 2026-10-09, 2026-10-08-done-item) _(closed: Work Order done 2026-10-09)_" in text
+    assert "- [x] waiting: The done item [due:: 2026-11-08] (since 2026-10-09, 2026-10-08-done-item) _(closed: Work Order done 2026-10-09)_" in text
     assert "- [ ] waiting: The running item" in text
     assert "- [ ] waiting: A ticket" in text
     assert not (tmp_path / "gh.args").exists()
@@ -165,7 +244,7 @@ def test_check_writes_only_when_it_closes_a_line_and_the_next_write_stamps_hand_
     now.check(vault, TODAY, [].append, gh_stub(tmp_path))
     assert path.read_text() == before  # fewer server rewrites of a page the client edits
     now.add(vault, "work", "owed", "B", TODAY, evidence="https://github.com/acme/shop/pull/7")
-    assert "- [x] owed: A (since 2026-10-09) _(closed: ticked 2026-10-09)_" in page(vault)
+    assert "- [x] owed: A [due:: 2026-11-08] (since 2026-10-09) _(closed: ticked 2026-10-09)_" in page(vault)
 
 
 def test_check_keeps_a_tick_made_while_gh_runs(vault, tmp_path):
@@ -178,8 +257,23 @@ def test_check_keeps_a_tick_made_while_gh_runs(vault, tmp_path):
     stub.chmod(0o755)
     assert now.check(vault, TODAY, [].append, str(stub)) == 1
     text = page(vault)
-    assert "- [x] owed: Call vendor (since 2026-10-09)" in text
+    assert "- [x] owed: Call vendor [due:: 2026-11-08] (since 2026-10-09)" in text
     assert "_(closed: PR merged 2026-10-09)_" in text
+
+
+def test_check_and_the_prune_keep_both_fields(vault, tmp_path):
+    prepare(vault)  # Now clock spec §5: check rewrites a line by prefix, so the fields survive a close
+    now.add(vault, "work", "owed", "Pick it", TODAY, "vendor", "https://github.com/acme/shop/pull/7", rec="CSV: it loads")
+    now.add(vault, "work", "owed", "Ticked", TODAY, rec="Yes: fine")
+    path = vault / "wiki/work/Now.md"
+    path.write_text(path.read_text().replace("- [ ] owed: Ticked", "- [x] owed: Ticked"))
+    assert now.check(vault, TODAY, [].append, gh_stub(tmp_path, "MERGED")) == 1
+    closed = [line for line in page(vault).splitlines() if line.startswith("- [x] ")]
+    assert closed == ["- [x] owed: Pick it [rec:: CSV: it loads] [due:: 2026-10-12] (vendor, since 2026-10-09, "
+                      "https://github.com/acme/shop/pull/7) _(closed: PR merged 2026-10-09)_",
+                      "- [x] owed: Ticked [rec:: Yes: fine] [due:: 2026-11-08] (since 2026-10-09) "
+                      "_(closed: ticked 2026-10-09)_"]
+    assert now.stamp_and_prune(page(vault), "2026-10-16") == page(vault)  # kept until 7 days after the stamp
 
 
 def test_a_failed_pr_check_skips_the_other_prs_this_tick(vault, tmp_path):
@@ -194,7 +288,8 @@ def test_a_failed_pr_check_skips_the_other_prs_this_tick(vault, tmp_path):
 
 def test_review_groups_closed_stale_and_duplicate_lines_and_writes_nothing(vault, tmp_path):
     # Lull review (#145): stale is open more than stale_days with no evidence; a duplicate is the same statement
-    # after lowercasing and collapsing whitespace, whatever the kind.
+    # after lowercasing and collapsing whitespace, whatever the kind, and without its [rec::] and [due::] fields
+    # (Now clock spec §5: the two duplicates below carry different clocks).
     prepare(vault)
     now.add(vault, "work", "owed", "Merged one", "2026-09-01", evidence="https://github.com/acme/shop/pull/7")
     now.add(vault, "work", "owed", "Old one", "2026-09-24")
@@ -205,11 +300,14 @@ def test_review_groups_closed_stale_and_duplicate_lines_and_writes_nothing(vault
     path.write_text(path.read_text().replace("## Waiting\n", "## Waiting\n- [ ] call the bank back\n"))
     before = path.read_text()
     assert now.review(vault, "work", TODAY, gh=gh_stub(tmp_path, "MERGED")) == {
-        "closed": ["- [ ] owed: Merged one (since 2026-09-01, https://github.com/acme/shop/pull/7) _(closed: PR merged)_"],
-        "stale": ["- [ ] owed: Old one (since 2026-09-24)"],
-        "duplicate": ["- [ ] owed: Send the  report (since 2026-10-01)", "- [ ] draft: send the report (since 2026-10-09)"]}
+        "closed": ["- [ ] owed: Merged one [due:: 2026-10-01] (since 2026-09-01, https://github.com/acme/shop/pull/7) "
+                   "_(closed: PR merged)_"],
+        "stale": ["- [ ] owed: Old one [due:: 2026-10-24] (since 2026-09-24)"],
+        "duplicate": ["- [ ] owed: Send the  report [due:: 2026-10-31] (since 2026-10-01)",
+                      "- [ ] draft: send the report [due:: 2026-11-08] (since 2026-10-09)"]}
     assert now.review(vault, "work", TODAY, stale_days=13, gh=gh_stub(tmp_path, "OPEN"))["stale"] == [
-        "- [ ] owed: Old one (since 2026-09-24)", "- [ ] owed: Fourteen days (since 2026-09-25)"]
+        "- [ ] owed: Old one [due:: 2026-10-24] (since 2026-09-24)",
+        "- [ ] owed: Fourteen days [due:: 2026-10-25] (since 2026-09-25)"]
     assert path.read_text() == before
     assert not (vault / "system/logs").exists()
     assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": []}
@@ -279,13 +377,26 @@ def test_cli_add_list_and_usage(vault):
     prepare(vault)
     r = cli(vault, "add", "--partition", "work", "--kind", "owed", "--statement", "Send it", "--who", "Blake")
     assert r.returncode == 0, r.stderr
-    assert r.stdout.startswith("added: - [ ] owed: Send it (Blake, since ")
+    assert r.stdout.startswith("added: - [ ] owed: Send it [due:: ")
     cli(vault, "add", "--partition", "personal", "--kind", "draft", "--statement", "Reply to Sam")
     out = cli(vault, "list").stdout.splitlines()
     assert out[0] == "## work" and out[1].startswith("- [ ] owed: Send it") and out[2] == "## personal"
     assert cli(vault, "list", "--partition", "personal").stdout.startswith("- [ ] draft: Reply to Sam")
     assert cli(vault, "add", "--partition", "shared", "--kind", "owed", "--statement", "x").returncode == 2
     assert cli(vault, "seed", "yesterday").returncode == 2
+
+
+def test_cli_add_takes_rec_and_due_and_exits_2_on_a_later_due(vault):
+    prepare(vault)  # Now clock spec §4, §5
+    r = cli(vault, "add", "--partition", "work", "--kind", "owed", "--statement", "Pick it", "--who", "vendor",
+            "--rec", "CSV: it loads", "--due", "2030-01-02")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.startswith("added: - [ ] owed: Pick it [rec:: CSV: it loads] [due:: 2030-01-02] (vendor, since ")
+    before = page(vault)
+    r = cli(vault, "add", "--partition", "work", "--kind", "owed", "--statement", "Pick it", "--due", "2030-01-03")
+    assert r.returncode == 2
+    assert "would loosen the clock (due 2030-01-02)" in r.stderr
+    assert page(vault) == before
 
 
 def test_cli_review_prints_only_grouped_findings_and_exits_0(vault):
@@ -296,10 +407,11 @@ def test_cli_review_prints_only_grouped_findings_and_exits_0(vault):
     now.add(vault, "work", "waiting", "same  thing", TODAY)
     r = cli(vault, "review", "--partition", "work")
     assert r.returncode == 0, r.stderr
-    assert r.stdout == ("## Stale: open more than 14 days with no evidence\n- [ ] owed: Old one (since 2020-01-01)\n"
-                        "- [ ] owed: Same thing (since 2020-01-01)\n"
-                        "## Duplicates\n- [ ] owed: Same thing (since 2020-01-01)\n"
-                        "- [ ] waiting: same  thing (since 2026-10-09)\n")
+    assert r.stdout == ("## Stale: open more than 14 days with no evidence\n"
+                        "- [ ] owed: Old one [due:: 2020-01-31] (since 2020-01-01)\n"
+                        "- [ ] owed: Same thing [due:: 2020-01-31] (since 2020-01-01)\n"
+                        "## Duplicates\n- [ ] owed: Same thing [due:: 2020-01-31] (since 2020-01-01)\n"
+                        "- [ ] waiting: same  thing [due:: 2026-11-08] (since 2026-10-09)\n")
     assert cli(vault, "review", "--partition", "shared").returncode == 2
 
 
@@ -320,7 +432,7 @@ def test_a_hand_written_line_is_listed_and_left_alone(vault, tmp_path):
     path = vault / "wiki/work/Now.md"
     path.write_text(path.read_text().replace("## Waiting\n", "## Waiting\n- [ ] call the bank back\n"))
     assert now.check(vault, TODAY, [].append, gh_stub(tmp_path)) == 0
-    assert now.open_lines(page(vault)) == ["- [ ] owed: A (since 2026-10-09)", "- [ ] call the bank back"]
+    assert now.open_lines(page(vault)) == ["- [ ] owed: A [due:: 2026-11-08] (since 2026-10-09)", "- [ ] call the bank back"]
 
 
 def test_cli_add_seeds_the_missing_default_page_first(vault):
@@ -330,7 +442,7 @@ def test_cli_add_seeds_the_missing_default_page_first(vault):
     assert r.returncode == 0, r.stderr
     lines = now.open_lines(page(vault))
     assert lines[0] == "- [ ] owed: **Old objective** (since 2026-10-01)"
-    assert lines[1].startswith("- [ ] owed: New (since ")
+    assert lines[1].startswith("- [ ] owed: New [due:: ")
 
 
 def test_cli_list_refuses_an_unknown_partition(vault):
