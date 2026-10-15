@@ -294,7 +294,7 @@ def overdue(vault, day: str) -> str:
         if lines:
             out += [heading] + [line for _, line in sorted(lines, key=lambda t: t[0])]
     if clockless:
-        out.append(f"{clockless} open line carries no clock." if clockless == 1 else f"{clockless} open lines carry no clock.")
+        out.append(f"{clockless} open lines carry no clock.")
     return "\n".join(out)
 
 
