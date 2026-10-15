@@ -102,7 +102,7 @@ def test_record_adds_one_owed_line_per_new_message_and_records_the_tick(vault):
     assert tr.record(vault, "work", found, TODAY, "t", 5_000) == ["Blake: asks how to proceed with a rejected case"]
     lines = now.open_lines(now.read(vault, "work"))
     assert lines == ["- [ ] owed: Blake: asks how to proceed with a rejected case. Next: reply with the fix plan "
-                     "(blake@example.com, since 2026-10-09, https://mail.google.com/mail/#all/a1)"]
+                     "[due:: 2026-10-12] (blake@example.com, since 2026-10-09, https://mail.google.com/mail/#all/a1)"]
     assert tr.record(vault, "work", found, TODAY, "t", 6_000) == []  # a rerun adds nothing
     newer = tr.extract(stream([thread(date="2026-10-09T22:00:00Z")], items=[item(ask="asks again")]), Q)
     assert tr.record(vault, "work", newer, TODAY, "t", 7_000) == ["Blake: asks again"]

@@ -1,7 +1,7 @@
 # The Now clock: a recommendation and a decide-by date on Now lines, and an Overdue block in the brief
 
 **Date:** 2026-10-15
-**Status:** Draft for the owner's review.
+**Status:** Accepted by the owner (PR #187 merged 2026-10-15, with the recommended decisions in §13).
 **Issue:** #166, line "`due` and `rec` on Now lines, and an Overdue block in the brief" (accepted as the first #166 spec on 2026-10-15). Related: #98 (session continuity), #107 (Now page known limits), #145 (`now.py review`, merged).
 
 ## 1. Problem
@@ -28,12 +28,12 @@ Each line becomes `- [ ] <kind>: <statement>[ [rec:: <option>: <why>]][ [due:: Y
 
 The fields sit before the parenthesis because the current `LINE` pattern ends at `(<who>, since <date>[, <evidence>])` plus an optional close stamp: anything after or inside that parenthesis stops the line from parsing. Inside the statement they parse today: on the second line above `LINE` gives the statement `Pick the export format [rec:: …] [due:: 2026-10-18]`, who `vendor contact`, since `2026-10-15` (checked against the current regex on 2026-10-15). Dataview's `[key:: value]` form is its documented inline-field syntax, so the brief's `TASK` query should list the line as before and show the two fields; the manual check in §11 confirms it. A tick, a drop, the close stamp and the 7-day prune are unchanged.
 
-`LINE` stays as it is. A new helper reads each field once, anywhere in the statement (`\[rec:: ([^\[\]\n]+)\]`, `\[due:: (\d{4}-\d{2}-\d{2})\]`), and returns the **bare statement**: the statement with both fields removed and whitespace collapsed. `rec` holds no `[`, `]` or newline; `due` is an ISO date. `add` refuses a `--statement` that already holds `[rec::` or `[due::`.
+`LINE` stays as it is. A new helper reads each field once, anywhere in the statement, with the key in any case and `::` with or without spaces as Dataview reads them (`[due::2026-10-20]`, `[Due:: …]`; a due that is not a real date counts as none), and returns the **bare statement**: the statement with both fields removed and whitespace collapsed. `rec` holds no `[`, `]` or newline; `due` is an ISO date. `add` refuses a `--statement` that already holds `[rec::` or `[due::` in any case. A field typed after the parenthesis stops the line from parsing; `now.py review` lists such a line under "Unreadable lines" and nothing repairs it (added at review).
 
 ## 4. Writing the clock: `now.py add`
 
 - New flags: `--rec "<option>: <why>"` and `--due YYYY-MM-DD`. Both optional.
-- **Default clock**, when `--due` is absent, in calendar days from `since`: **3** when `--who` is not empty, or when the bare statement holds an ISO date that is not part of a longer token (`(?<![\w-])\d{4}-\d{2}-\d{2}(?![\w-])`, so a Work Order id such as `2026-10-08-export-fix` does not count); otherwise **30**. The test reads only the arguments, so `now.py` makes no judgement. Triage passes the sender as `who`, so every inbox line gets 3 days.
+- **Default clock**, when `--due` is absent, in calendar days from `since`: **3** when `--who` is not empty, or when the bare statement holds an ISO date that is not part of a longer token and falls within 30 days of `since` (a Work Order id such as `2026-10-08-export-fix`, a file name such as `2026-10-08.md` and a date inside a URL or a path do not count; a date with a time, `2026-10-20T09:00`, does; a date in the past or more than 30 days out, such as a DTCC deadline months away, gives 30, refining owner decision 2 at review); otherwise **30**. The test reads only the arguments, so `now.py` makes no judgement. Triage passes the sender as `who`, so every inbox line gets 3 days.
 - `--due` replaces the default on a new line. It may be any valid date; a writer that knows a deadline names it.
 - `add` always writes `[due:: …]` on a new line, so the page shows the clock and every reader reads one value.
 
@@ -61,7 +61,7 @@ Interactive, the brief already runs `now.py add` per line, which applies §4. He
   **8 to 30 days over**
   **More than 30 days over**
   ```
-  then one line `N open lines carry no clock.` when N > 0. Nothing at all when no line is overdue and every line has a clock.
+  then one line `N open lines carry no clock.` (`1 open line carries no clock.` for one) when N > 0. A blank line separates each group and the count, so Markdown keeps each label on its own line. Nothing at all when no line is overdue and every line has a clock.
 - `brief_prep.sh` writes `overdue.md` with `now.py overdue --date "$PREP_DATE"`, after `now.md`. `brief.md` prints it verbatim under the bold label **Overdue**, immediately before **From Now**, or nothing when it is empty. The lines are plain `- ` bullets: the owner ticks in From Now, which still lists every open line (the Dataview block is unchanged). **Owner decision 3.**
 - A line never leaves Overdue on its own: only a tick, a drop or checked evidence closes it.
 

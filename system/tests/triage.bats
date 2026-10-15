@@ -45,7 +45,8 @@ ITEM='{"items": [{"thread_id": "a1", "who": "Blake", "ask": "asks how to proceed
   gmail_says "$G" "$Q" "$ITEM"
   run "$TF"
   [ "$status" -eq 0 ]
-  grep -qF -- '- [ ] owed: Blake: asks how to proceed. Next: reply today (blake@example.com, since ' wiki/work/Now.md
+  grep -qF -- '- [ ] owed: Blake: asks how to proceed. Next: reply today [due:: ' wiki/work/Now.md  # since + 3 with a sender (Now clock spec §4)
+  grep -qF -- '] (blake@example.com, since ' wiki/work/Now.md
   grep -qF '[triage] 1 new: Blake: asks how to proceed' "$ALERTS"
   gmail_says "$G" "$(system/scripts/triage.py query)" "$ITEM"   # the next tick searches from this one
   run "$TF"
