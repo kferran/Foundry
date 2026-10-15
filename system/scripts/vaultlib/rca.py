@@ -90,14 +90,27 @@ def arguments(vault, partition: str, stem: str) -> dict:
     if not PROJECT.match(project):
         raise Fail(2, "rca_project is not set to a Jira project key")
     labels = cfg.get("rca_labels") if isinstance(cfg.get("rca_labels"), list) else []
+    extra = cfg.get("rca_extra_fields") if isinstance(cfg.get("rca_extra_fields"), dict) else {}
+    if "labels" in extra:
+        raise Fail(2, "rca_extra_fields may not set labels: use rca_labels")
     summary, description = draft(note_path(vault, partition, stem).read_text(encoding="utf-8"))
     args = {"cloudId": site, "projectKey": project, "issueTypeName": str(cfg.get("rca_issue_type") or "Bug"),
             "summary": summary, "description": description, "contentFormat": "markdown"}
-    if labels:
-        args["additional_fields"] = {"labels": [str(x) for x in labels]}
+    fields = {"labels": [str(x) for x in labels]} if labels else {}
+    fields.update({str(k): _field_value(v) for k, v in extra.items()})   # #175: a project's required fields
+    if fields:
+        args["additional_fields"] = fields
     if cfg.get("rca_assignee"):
         args["assignee_account_id"] = str(cfg["rca_assignee"])
     return args
+
+
+def _field_value(value):
+    """A value written as JSON (a select's '{"id": "10042"}') is sent as that JSON; any other is sent as text."""
+    try:
+        return json.loads(value) if isinstance(value, str) else value
+    except ValueError:
+        return value
 
 
 def _find_key(value):
@@ -157,6 +170,48 @@ def extract(stream, args: dict) -> str:
     if not key:
         raise Fail(1, "the create call returned no issue key")
     return key
+
+
+REJECTED = re.compile(r"\b(400|401|403|404|422)\b|Bad Request|is required|is not valid|does not exist")
+
+
+def _text(content) -> str:
+    """A tool result's text: a string as it is, a list of blocks as their text joined."""
+    if isinstance(content, list):
+        return " ".join(c.get("text", "") if isinstance(c, dict) else str(c) for c in content)
+    return content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+
+
+def rejected_create(stream):
+    """The first error line when every create call came back as a client rejection, which proves Jira created
+    nothing (#175); None after any other outcome, since a ticket may exist."""
+    calls, results = set(), []
+    for m in stream:
+        if m.get("type") == "assistant":
+            calls |= {b.get("id") for b in blocks(m, "tool_use") if b.get("name") == TOOL}
+        if m.get("type") == "user":
+            results += [b for b in blocks(m, "tool_result") if b.get("tool_use_id") in calls]
+    texts = [_text(b.get("content")) for b in results]
+    if not calls or len(results) != len(calls) or not all(b.get("is_error") for b in results):
+        return None
+    if not all(REJECTED.search(t) for t in texts):
+        return None
+    return " ".join(texts[0].split())[:200]
+
+
+def reopen(vault, partition: str, stem: str, reason: str, today: str) -> None:
+    """Under run.lock, after a rejected create: the note goes back to draft and its Now line is unticked with the
+    reason in its statement, so nothing retries until you tick it again (#175)."""
+    set_scalar(note_path(vault, partition, stem), "status", "draft")
+    why = " ".join(re.sub(r"[()]", "", reason).split())[:160]
+    lines = nowmod.read(vault, partition).split("\n")
+    for i, line in enumerate(lines):
+        m = nowmod.LINE.match(line)
+        if m and m.group("evidence") == f"rca:{stem}":
+            statement = re.sub(r": not filed \d{4}-\d{2}-\d{2}, .*$", "", m.group("statement"))
+            rest = line[m.end("statement"):]
+            lines[i] = f"- [ ] {m.group('kind')}: {statement}: not filed {today}, {why}{nowmod.STAMP.sub('', rest).rstrip()}"
+    nowmod.write(vault, partition, "\n".join(lines))
 
 
 def filed(vault, partition: str, stem: str, key: str, today: str) -> None:

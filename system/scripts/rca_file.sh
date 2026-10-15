@@ -99,6 +99,15 @@ key="$(system/scripts/rca.py extract "$partition" "$stem" < "$work/out.jsonl" 2>
 connector_outcome "$prc" "$work"
 if (( CONNECTOR_EXIT != 0 )); then
   reason="$CONNECTOR_REASON"
+  # Jira refused every create call with a client error, so nothing exists: clear the marker and hand the draft
+  # back to you with the reason on its Now line, so no tick retries it until you tick it again (#175).
+  if rejection="$(system/scripts/rca.py rejected < "$work/out.jsonl")"; then
+    rm -f -- "$attempt"
+    msg="Jira refused the ticket, nothing was created; fix the setting and tick the line again: $rejection"
+    system/scripts/rca.py reopen "$partition" "$stem" "$rejection" 2> "$work/reopen.err" \
+      || msg="$msg; the Now line was not reopened: $(sed 's/^rca: //' "$work/reopen.err" | head -n 1)"
+    fail 6 "$msg"
+  fi
   if system/scripts/rca.py called < "$work/out.jsonl"; then
     reason="$reason; the create tool was called, so check Jira before deleting $attempt"
   else
