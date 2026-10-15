@@ -77,18 +77,18 @@ Trackers and docs that lag behind merged work, so the next reader is not misled.
 
 **Fast lane** (one failing test, one PR each):
 
-1. Work Order timestamps: record `started_at` when the session starts (L5).
-2. The daily update merges past a refused run and its alert names the refused or left-out paths (owner, 2026-10-15, on #136). #136 closes with it.
-3. Audit C13: `check_deps.sh` fails clearly below Python 3.11.
-4. The gate marks a suite "skipped: environment" when `bwrap` or a user systemd is missing (audit C16), so a container run is not read as red.
-5. #188: a meeting import never replaces or deprecates a note with an empty summary. This is data loss, so it goes first among the fixes. The vault's damaged note gets a manual fix.
-6. #175: the RCA filer clears its `.attempt` marker on a 4xx create, and reads required custom fields from an `rca_extra_fields` setting.
-7. #189: the Work Order install phase runs with network and pins the package manager, so the sealed verify has nothing to download.
-8. Lint flags any `.md` file at the vault root (L8), and `/lint` offers to move it to `raw/inbox/`.
+1. [x] Work Order timestamps: `finished_at` is read after the session (L5). PR #195.
+2. [x] The daily update merges past a refused run and its alert names the refused or left-out paths (owner, 2026-10-15, on #136). PR #193.
+3. [x] Audit C13: `check_deps.sh` fails clearly below Python 3.11. PR #196.
+4. [ ] The gate marks a suite "skipped: environment" when `bwrap` or a user systemd is missing (audit C16), so a container run is not read as red.
+5. [x] #188: the replaced note was empty by #142's rule, so no restore was needed; the import now keeps its attendees and `/ingest` compiles a drop from its transcript. PR #190.
+6. [ ] #175: the RCA filer clears its `.attempt` marker on a rejected create, and reads required custom fields from `rca_extra_fields`. Feature lane: spec in PR #198, for the owner.
+7. [x] #189: one corepack home per item, written by install and read-only in the sealed verify. PR #192.
+8. [x] Lint warns on any `.md` file at the vault root other than the four root documents (L8). PR #197.
 
 **Short specs** (features, because they touch the publish gate or alerting):
 
-9. **Connector health (L1).** Merge #184 first (owner). Then each fetch reports an auth failure as its own reason (expired token or key), separate from a network error, and the smoke check sends one `now` alert per expired credential, naming the command that renews it. The brief shows one "Sources" line listing what was skipped and why, in place of a skipped line per section. Confirm #176 on the live calendar.
+9. **Connector health (L1).** #184 is merged (timer liveness and unit drift). Then each fetch reports an auth failure as its own reason (expired token or key), separate from a network error, and the smoke check sends one `now` alert per expired credential, naming the command that renews it. The brief shows one "Sources" line listing what was skipped and why, in place of a skipped line per section. Confirm #176 on the live calendar.
 10. **Quarantine you can recover from (L6).** `intake.py --retry` exists; the brief's Blockers section lists each poisoned input with that command, and the brief and debrief read quarantine from one function, so they always agree.
 11. **Telemetry escalation (#171).** Build the merged spec. A source with zero activity for 7 days gets one alert asking whether to turn it off (L7).
 
@@ -138,7 +138,7 @@ L3 is the largest gap between what the owner needs and what the system does: the
 
 1. ~~Order~~: decided 2026-10-15 (phases 1 and 2 before step 3).
 2. ~~Audit S1~~: decided 2026-10-14 (opt-in, no signing until a second user exists).
-3. **#184:** review and merge (it touches `install_units.sh` and `update_template.sh`).
+3. ~~#184~~: merged 2026-10-15.
 4. **Side projects in the vault (L9):** register `docs/gmail-cleanup` and similar as codebases with their own repositories, or accept the vault as their home. Recommended: own repositories.
 5. **Unfed features (L7):** delete the Fail-Fast Loop Breaker rule and the Agent Health section, or build the metrics writer. Recommended: delete in phase 4.
 6. **The work-data boundary (#28):** all partitions push to one private origin on a personal host. Still undecided; no phase depends on it.
