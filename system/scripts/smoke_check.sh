@@ -145,6 +145,19 @@ else
     report "telemetry/$name" "$rc" "$r"
   done <<< "$sources"
 fi
+# Extensions (extensions spec §3): each enabled extension's smoke entries, as source, timeout, connector flag and
+# command. A loader failure is one failed source, never "no extensions".
+erc=0
+ext_rows="$(timeout 30 system/scripts/extensions.py smoke 2> "$out" < /dev/null)" || erc=$?
+if (( erc != 0 )); then
+  report extensions "$erc" "extensions.py smoke failed (exit $erc): $(reason extensions.py)"
+else
+  while IFS=$'\t' read -r src t conn cmd; do
+    [[ -n "$src" ]] || continue
+    read -ra words <<< "$cmd"
+    if [[ "$conn" == 1 ]]; then connector "$src" "$t" "${words[@]}"; else check "$src" "$t" "${words[@]}"; fi
+  done <<< "$ext_rows"
+fi
 if [[ -f system/dtcc/map.yaml ]]; then
   check dtcc "${SMOKE_DTCC_TIMEOUT:-60}" system/scripts/dtcc_watch.py --check
 else echo "dtcc: off"; fi

@@ -46,7 +46,7 @@ def main(argv: list) -> int:
     elif cmd == "smoke" and not args:
         for name, d in loaded:
             for s in d.get("smoke") or []:
-                out.append("\t".join([name, str(s.get("timeout", "")), "1" if _truthy(s.get("connector")) else "0",
+                out.append("\t".join([str(s.get("source") or name), str(s.get("timeout", "")), "1" if _truthy(s.get("connector")) else "0",
                                       f"extensions/{name}/{s.get('run', '')}"]))
     elif cmd == "brief" and not args:
         out = [n for n, d in loaded if _truthy(d.get("brief"))]
