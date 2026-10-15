@@ -131,10 +131,81 @@ TOKEN="AKIA""IOSFODNN7EXAMPLE"
   [ "$status" -ne 0 ]
   [[ "$output" == *"secret shape: notes.txt:2: aws_key"* ]]
   [[ "$output" == *"secret shape: docs/superpowers/pasted.md:1: aws_key"* ]]
-  [[ "$output" == *"pre-commit: a staged file holds a secret shape"* ]]
+  [ "${lines[0]}" = "pre-commit: a staged file adds a secret shape; remove it, or commit with --no-verify if it is not a secret" ]
   [[ "$output" != *"$TOKEN"* ]]
   run git -C "$V" rev-parse -q --verify HEAD
   [ "$status" -ne 0 ]
+}
+
+@test "hook scans only added lines: a moved or edited file keeps its old secret shape, a new one is refused (#166)" {
+  mkdir -p "$V/notes/archive"
+  printf 'old %s\nnotes\n' "$TOKEN" > "$V/notes/2026-10-01.md"
+  git -C "$V" add notes/2026-10-01.md
+  git -C "$V" commit -q --no-verify -m base
+  git -C "$V" mv notes/2026-10-01.md notes/archive/2026-10-01.md
+  printf 'more notes\n' >> "$V/notes/archive/2026-10-01.md"
+  git -C "$V" add notes/archive/2026-10-01.md
+  run git -C "$V" commit -qm archive
+  [ "$status" -eq 0 ]
+  printf 'new %s\n' "$TOKEN" >> "$V/notes/archive/2026-10-01.md"
+  git -C "$V" add notes/archive/2026-10-01.md
+  run git -C "$V" commit -qm added
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"secret shape: notes/archive/2026-10-01.md:4: aws_key"* ]]
+  [[ "$output" != *"2026-10-01.md:1:"* ]]
+}
+
+@test "hook commits a hand-resolved merge that brings fixture tokens, and refuses a token typed during resolution (#166)" {
+  printf 'base\n' > "$V/notes.txt"
+  git -C "$V" add notes.txt
+  git -C "$V" commit -q --no-verify -m base
+  git -C "$V" checkout -q -b other
+  mkdir -p "$V/system/tests"
+  printf 'fixture %s\n' "$TOKEN" > "$V/system/tests/fixture.txt"
+  printf 'theirs\n' > "$V/notes.txt"
+  git -C "$V" add -A
+  git -C "$V" commit -q --no-verify -m other
+  git -C "$V" checkout -q -
+  printf 'ours\n' > "$V/notes.txt"
+  git -C "$V" commit -q --no-verify -am ours
+  run git -C "$V" merge -q other
+  [ "$status" -ne 0 ]
+  printf 'ours and theirs %s\n' "$TOKEN" > "$V/notes.txt"
+  git -C "$V" add notes.txt
+  run git -C "$V" commit -q --no-edit
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"secret shape: notes.txt:1: aws_key"* ]]
+  [[ "$output" != *"fixture.txt"* ]]
+  printf 'ours and theirs\n' > "$V/notes.txt"
+  git -C "$V" add notes.txt
+  run git -C "$V" commit -q --no-edit
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$V" show HEAD:system/tests/fixture.txt)" = "fixture $TOKEN" ]
+}
+
+@test "hook skips a staged nested repository and scans a symlink turned file and a UTF-16 file (#166)" {
+  ln -s target "$V/link.txt"
+  git -C "$V" add link.txt
+  git -C "$V" commit -q --no-verify -m link
+  git -C "$V" update-index --add --cacheinfo 160000,1234567890123456789012345678901234567890,nested
+  run git -C "$V" commit -qm gitlink
+  [ "$status" -eq 0 ]
+  rm "$V/link.txt"
+  printf 'key %s\n' "$TOKEN" > "$V/link.txt"
+  printf 'key %s\n' "$TOKEN" | iconv -f UTF-8 -t UTF-16 > "$V/wide.txt"
+  git -C "$V" add link.txt wide.txt
+  run git -C "$V" commit -qm typechange
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"secret shape: link.txt:1: aws_key"* ]]
+  [[ "$output" == *"secret shape: wide.txt:1: aws_key"* ]]
+}
+
+@test "hook quotes a path that holds a newline (#166)" {
+  printf 'key %s\n' "$TOKEN" > "$V/two"$'\n'"lines.txt"
+  git -C "$V" add -A
+  run git -C "$V" commit -qm newline
+  [ "$status" -ne 0 ]
+  [[ "$output" == *'secret shape: "two\nlines.txt":1: aws_key'* ]]
 }
 
 @test "hook passes a clean commit, and a secret only in the working tree does not block it (#166)" {

@@ -400,6 +400,18 @@ token = [REDACTED:assignment]'
   [[ "$output" != *"hunter2"* ]]
 }
 
+@test "pre-commit: a secret-shape refusal is the first line, before the drop's redacted line (#166)" {
+  cp -r "$REPO/.githooks" .githooks
+  git config core.hooksPath .githooks
+  printf 'key %s\n' "AKIA""IOSFODNN7EXAMPLE" > leak.txt
+  git add leak.txt
+  hook_commit meetings/drop/work/call.txt 'token = hunter2\n'
+  [ "$status" -eq 1 ]
+  [ "${lines[0]}" = "pre-commit: a staged file adds a secret shape; remove it, or commit with --no-verify if it is not a secret" ]
+  [ "${lines[1]}" = "secret shape: leak.txt:1: aws_key" ]
+  [ "${lines[2]}" = "pre-commit: redacted 1 in meetings/drop/work/call.txt" ]
+}
+
 @test "pre-commit: a Teams-style VTT commits with its cue ID redacted and intake imports it; .gitkeep commits untouched (audit S6 spec §2)" {
   cp -r "$REPO/.githooks" .githooks
   git config core.hooksPath .githooks
