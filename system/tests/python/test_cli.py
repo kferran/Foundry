@@ -46,6 +46,22 @@ def test_issues_staged_lints_the_index_blob_not_the_working_copy(cli, vault):
     assert cli("issues").returncode == 1
 
 
+def test_tags_lists_one_partition_most_used_first(cli, vault):
+    write(vault, "wiki/work/concepts/Topic.md", concept("work", "Topic", tags="[streaming, api-gateway]"))
+    write(vault, "wiki/work/concepts/Other.md", concept("work", "Other", tags="[streaming, now]"))
+    write(vault, "wiki/work/concepts/Flat.md", concept("work", "Flat", tags="tooling"))
+    res = cli("tags", "--partition", "work")
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.splitlines() == ["3\tstreaming", "1\tapi-gateway"]
+    assert cli("tags", "--partition", "shared").stdout.splitlines() == ["1\ttooling"]
+    assert cli("tags", "--partition", "personal").stdout.splitlines() == ["1\thobby"]
+    assert json.loads(cli("tags", "--partition", "personal", "--json").stdout) == [{"tag": "hobby", "count": 1}]
+
+
+def test_tags_needs_a_partition(cli):
+    assert cli("tags").returncode == 2
+
+
 def test_archived_briefings_stay_indexed_and_the_debrief_embed_resolves(cli, vault):
     write(vault, "briefings/archive/2026-10/2026-10-06.md",
           '---\ntype: briefing\ndate: "2026-10-06"\nstatus: active\n---\n# Briefing\n\n![[2026-10-06.debrief]]\n')

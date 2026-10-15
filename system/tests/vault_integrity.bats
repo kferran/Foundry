@@ -93,6 +93,7 @@ setup() {
   f=.claude/settings.json
   jq -e '.permissions.allow | index("Edit(/wiki/**)")' "$f" >/dev/null
   jq -e '.permissions.allow | index("Edit(/briefings/**)")' "$f" >/dev/null
+  jq -e '.permissions.allow | index("Bash(system/scripts/vault_index.py tags:*)")' "$f" >/dev/null
   [ "$(jq '[.permissions.allow[] | select(test("vault_index.py set"))] | length' "$f")" = "0" ]
   [ "$(jq '.hooks // {} | length' "$f")" = "0" ]
 }

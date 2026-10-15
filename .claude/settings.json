@@ -16,6 +16,7 @@
       "Bash(system/scripts/vault_index.py issues:*)",
       "Bash(system/scripts/vault_index.py validate:*)",
       "Bash(system/scripts/vault_index.py field:*)",
+      "Bash(system/scripts/vault_index.py tags:*)",
       "Bash(system/scripts/vault_index.py rebuild:*)",
       "Bash(system/scripts/vault_index.py recall:*)",
       "Bash(system/scripts/verify_setup.sh)",

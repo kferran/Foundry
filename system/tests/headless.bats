@@ -83,6 +83,7 @@ teardown() {
   grep -qx -- 'Read,Glob,Grep,Edit,Write,Bash' "$STUB_ARGS"
   grep -qE -- '^Edit\(/wiki/\.staging/[0-9]{8}T[0-9]{6}-ingest-[0-9a-f]{4}/\*\*\)$' "$STUB_ARGS"
   grep -qxF -- 'Bash(system/scripts/vault_index.py stage:*)' "$STUB_ARGS"
+  grep -qxF -- 'Bash(system/scripts/vault_index.py tags:*)' "$STUB_ARGS"
   run grep -q -- '--setting-sources' "$STUB_ARGS"; [ "$status" -ne 0 ]
   run grep -q -- 'vault_index.py set' "$STUB_ARGS"; [ "$status" -ne 0 ]
   run grep -qF -- '$ARGUMENTS' "$STUB_ARGS"; [ "$status" -ne 0 ]

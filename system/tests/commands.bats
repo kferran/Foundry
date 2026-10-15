@@ -13,7 +13,7 @@ headless_allowlist() {
   subs="$(grep -ohE 'vault_index\.py [a-z]+' "$1" | awk '{print $2}' | sort -u)"
   [ -n "$subs" ]
   while IFS= read -r sub; do
-    [[ " query related show backlinks orphans issues validate field stage " == *" $sub "* ]]
+    [[ " query related show backlinks orphans issues validate field stage tags " == *" $sub "* ]]
   done <<< "$subs"
 }
 

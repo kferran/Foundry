@@ -340,6 +340,21 @@ def cmd_field(args, vault, sc):
     return EXIT_OK
 
 
+def cmd_tags(args, vault, sc):
+    """Frontmatter tags in one partition with their note counts, most used first (note tags spec §3)."""
+    require_vault_scope(sc)
+    conn = _open(vault)
+    rows = conn.execute(
+        "SELECT j.value, COUNT(DISTINCT f.path) AS c FROM fields f JOIN notes n ON n.path = f.path, json_each(f.value) j"
+        " WHERE f.key = 'tags' AND json_valid(f.value) AND json_type(f.value) = 'array' AND n.partition = ?"
+        " GROUP BY j.value ORDER BY c DESC, j.value", (args.partition,)).fetchall()
+    conn.close()
+    rows = [(str(t), c) for t, c in rows if str(t) not in schemamod.RESERVED_TAGS]
+    print(json.dumps([{"tag": t, "count": c} for t, c in rows]) if args.json
+          else "\n".join(f"{c}\t{t}" for t, c in rows))
+    return EXIT_OK
+
+
 def cmd_set(args, vault, sc):
     require_vault_scope(sc)
     path = inside_vault(vault, args.file)
@@ -419,6 +434,8 @@ def build_parser():
     p = add("field", cmd_field, "print one frontmatter value")
     p.add_argument("file")
     p.add_argument("key")
+    p = add("tags", cmd_tags, "frontmatter tags in one partition, most used first")
+    p.add_argument("--partition", required=True, choices=schemamod.PARTITIONS)
     p = add("set", cmd_set, "set a top-level scalar (scripts only)")
     p.add_argument("file")
     p.add_argument("key")

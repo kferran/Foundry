@@ -16,6 +16,7 @@ TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 INT = re.compile(r"^-?\d+$")
 TZ = re.compile(r"^[A-Za-z0-9_+\-]+(/[A-Za-z0-9_+\-]+)*$")
 WIKILINK = re.compile(r"\s*\[\[([^\[\]]+)\]\]\s*")
+RESERVED_TAGS = {"now": "the Now page", "rca": "RCA notes"}   # tags a script writes (note tags spec §2)
 
 
 @dataclass
