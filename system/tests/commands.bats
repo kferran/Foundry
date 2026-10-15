@@ -301,16 +301,17 @@ writing_section() { awk '$0 == "## ✍️ Writing" { on = 1; next } /^## / { on 
   grep -qF '**No approval bottleneck**' system/agents/foreman.md
 }
 
-# self_edit_contract <command file>: the headless self-edit pass (communication spec §4).
+# self_edit_contract <command file>: the headless self-edit pass (communication spec §4) edits against CLAUDE.md's
+# Writing rules, which every run loads, and never reads the 4,600-word humanizer skill (simplification step 4).
 self_edit_contract() {
-  grep -qF 'Read `.claude/skills/humanizer/SKILL.md`' "$1"
-  grep -qF 'against its sections A, B, C and E (wording)' "$1"
-  grep -qF 'Skip section D (formatting)' "$1"
+  grep -qF 'against the Writing rules in `CLAUDE.md`' "$1"
+  run grep -F '.claude/skills/humanizer/SKILL.md' "$1"
+  [ "$status" -eq 1 ]
   grep -qF 'Keep every fact, name, number, date and link' "$1"
   grep -qF 'only the text this run wrote' "$1"
   grep -qE 'leave frontmatter[ ,]' "$1"
   grep -qF 'Headless, edit only' "$1"
-  grep -qF 'Where the skill says to cut a sentence, keep any fact it carries.' "$1"
+  grep -qF 'Where a rule says to cut a sentence, keep any fact it carries.' "$1"
 }
 
 @test "ingest: digest Corrections become preference notes (spec §6.21)" {
@@ -342,7 +343,7 @@ self_edit_contract() {
   [ "$pref" -lt "$edit" ]
 }
 
-@test "ingest self-edits its notes with humanizer before the summary" {
+@test "ingest self-edits its notes against the Writing rules before the summary" {
   f=.claude/commands/ingest.md
   self_edit_contract "$f"
   grep -qF '`_decisions.jsonl`' <(grep -F '**Self-edit.**' "$f")
@@ -354,7 +355,7 @@ self_edit_contract() {
   [ "$edit" -lt "$fin" ]
 }
 
-@test "brief and debrief end with the humanizer self-edit pass" {
+@test "brief and debrief end with the self-edit pass against the Writing rules" {
   for f in .claude/commands/brief.md .claude/commands/debrief.md; do
     self_edit_contract "$f"
     [ "$(grep -E '^## ' "$f" | tail -n 1)" = '## Self-edit' ]

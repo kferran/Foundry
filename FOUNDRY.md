@@ -10,7 +10,7 @@ The Foundry is a template repository that becomes your vault. You clone it, run 
 
 The vault compiles itself. Raw inputs (files you drop in, plus short digests of your Claude Code sessions) are compiled in batches into a wiki of concepts, entities, summaries and preferences. The wiki is split into `work`, `personal` and `shared` partitions, and links are not allowed to cross between `work` and `personal`. A derived SQLite FTS5 index lets agents ask the index for the notes they need before reading anything, so a lookup reads only the notes that answer it rather than the whole wiki.
 
-Agents follow the writing rules in `CLAUDE.md`: chat replies are sized by type (quick answer, one-screen task report, or a linked document), and notes avoid common AI writing tells. The headless intake, brief and debrief runs edit their own prose against the vendored [humanizer](#acknowledgements) skill before they publish, and `/humanizer` runs it interactively.
+Agents follow the writing rules in `CLAUDE.md`: chat replies are sized by type (quick answer, one-screen task report, or a linked document), and notes avoid common AI writing tells. The headless intake, brief and debrief runs edit their own prose against those rules before they publish; `/humanizer` runs the full vendored [humanizer](#acknowledgements) skill interactively.
 
 Automation runs on systemd user timers: isolated headless `claude -p` jobs for intake, a morning brief and an evening debrief, plus a scripted git sync on a server. Headless jobs never write to the vault directly. They write to a staging area, and a deterministic gate validates and publishes their output. Anything that has to be exact (parsing, validation, indexing, unit rendering, git remote handling) is done by a script. The model handles conversation and synthesis.
 
@@ -148,7 +148,7 @@ FOUNDRY.md                    this manual
 CLAUDE.md                     generic rules; imports @system/config.md
 .claude/settings.json         interactive permissions
 .claude/commands/             setup brief debrief ingest query lint backup impact
-.claude/skills/humanizer/     vendored humanizer v3.0.0 (MIT): /humanizer, headless self-edit
+.claude/skills/humanizer/     vendored humanizer v3.0.0 (MIT): /humanizer and /rca
 .claude/skills/order/         /order: queue plans and research briefs as Work Orders
 .claude/skills/dtcc-watch/    /dtcc-watch: the DTCC change watcher by hand
 .githooks/pre-commit          deterministic linter (lint_vault.sh --staged); redacts staged drops (redact.py --drop); refuses secret shapes (secret_scan.py --staged)

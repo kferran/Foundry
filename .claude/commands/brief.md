@@ -76,4 +76,4 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 
 ## Self-edit
 
-Read `.claude/skills/humanizer/SKILL.md` once, then edit the briefing against its sections A, B, C and E (wording). Skip section D (formatting): keep the template's headings, emoji and bullets. Keep every fact, name, number, date and link, and leave frontmatter unchanged. Where the skill says to cut a sentence, keep any fact it carries. Edit only the text this run wrote and keep everything the user wrote. Headless, edit only `wiki/.staging/<run_id>/briefings/<date>.md`.
+Edit the briefing against the Writing rules in `CLAUDE.md` (wording rules 1 to 10, already in this session). Keep the template's headings, emoji and bullets. Keep every fact, name, number, date and link, and leave frontmatter unchanged. Where a rule says to cut a sentence, keep any fact it carries. Edit only the text this run wrote and keep everything the user wrote. Headless, edit only `wiki/.staging/<run_id>/briefings/<date>.md`.
