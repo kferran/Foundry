@@ -225,7 +225,48 @@ def test_a_long_now_line_is_cut_keeping_its_due_and_parenthesis(cli, vault):
     out = cli("recall", "--cwd", str(vault)).stdout
     line = next(x for x in out.splitlines() if x.startswith("- [ ] owed: update"))
     assert len(line) <= recall.LINE_CAP
-    assert line.endswith("… [due:: 2026-10-20] (Ann, since 2026-10-09, EX-1)")
+    assert "…" in line and line.endswith(" [due:: 2026-10-20] (Ann, since 2026-10-09, EX-1)")
+
+
+def test_a_cut_line_keeps_what_it_is_and_its_newest_update(cli, vault):
+    # live acceptance: the cut kept the oldest update notes and dropped the newest
+    config(vault)
+    now_page(vault, "personal", ["- [ ] owed: Deck for the review: " + "older note, " * 40 + "sent v3 (Ann, since 2026-10-09)"])
+    line = next(x for x in cli("recall", "--cwd", str(vault)).stdout.splitlines() if x.startswith("- [ ] owed: Deck"))
+    assert line.startswith("- [ ] owed: Deck for the review:")
+    assert line.endswith("sent v3 (Ann, since 2026-10-09)") and "…" in line and len(line) <= recall.LINE_CAP
+
+
+def test_a_short_now_page_leaves_the_rest_to_the_digests(cli, vault):
+    # review: with one Now line the digests were held to a third and the rest of the budget went unused
+    config(vault)
+    now_page(vault, "personal", ["- [ ] owed: One thing (since 2026-10-09)"])
+    for i in range(1, 4):
+        digest(vault, "personal", f"p{i}", f"2026-10-0{i}T09:00:00-06:00", body="## Outcome\n" + f"word{i} " * 400)
+    out = cli("recall", "--cwd", str(vault)).stdout
+    assert "One thing" in out
+    assert len(out.split("### Recent session digests")[1]) > 9000 // 2
+
+
+def test_ranking_reads_only_real_dates_outside_links(cli, vault):
+    config(vault)
+    now_page(vault, "personal", [
+        "- [ ] owed: C bad date 9999-99-99 (since 2026-01-01)",
+        "- [ ] owed: B see https://x.example/2027-01-01/notes (since 2026-01-01)",
+        "- [ ] owed: A plain (since 2026-10-10)",
+    ])
+    out = cli("recall", "--cwd", str(vault)).stdout
+    assert out.index("A plain") < out.index("B see") and out.index("A plain") < out.index("C bad")
+
+
+def test_a_line_with_text_after_its_parenthesis_ranks_by_its_own_fields(cli, vault):
+    config(vault)
+    now_page(vault, "personal", [
+        "- [ ] owed: Old (since 2026-01-01)",
+        "- [ ] owed: Due soon [due:: 2026-10-12] (Ann, since 2026-01-01) *Update 2026-10-05:* sent",
+    ])
+    out = cli("recall", "--cwd", str(vault)).stdout
+    assert out.index("Due soon") < out.index("Old")
 
 
 def test_digests_keep_a_third_of_the_room_under_a_long_now_page(cli, vault):

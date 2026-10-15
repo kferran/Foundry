@@ -566,6 +566,37 @@ def test_set_refuses_no_match_two_matches_and_a_clock_field_and_writes_nothing(v
     assert page(vault) == before
 
 
+def test_set_rewrites_a_line_with_text_after_its_parenthesis(vault):
+    # review: the live case (update notes typed after the parenthesis) was a dead end for set
+    prepare(vault)
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n"
+          "---\n# Now\n\n## Needs you\n- [ ] owed: Send it [due:: 2026-10-20] (Ann, since 2026-10-01) *Update:* sent\n"
+          "\n## Waiting\n")
+    assert now.set_statement(vault, "work", "send it", "Send it, v2 sent", TODAY) == (
+        "- [ ] owed: Send it, v2 sent [due:: 2026-10-20] (Ann, since 2026-10-01)")
+
+
+def test_set_refuses_an_empty_match_and_a_duplicate_statement(vault):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Alpha", TODAY)
+    now.add(vault, "work", "owed", "Beta", TODAY)
+    before = page(vault)
+    for match, statement in (("  ", "x"), ("beta", "Alpha")):
+        try:
+            now.set_statement(vault, "work", match, statement, TODAY)
+        except ValueError:
+            continue
+        raise AssertionError(f"set accepted {match!r} -> {statement!r}")
+    assert page(vault) == before
+
+
+def test_a_hand_written_line_with_since_text_is_not_unreadable(vault):
+    prepare(vault)
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n"
+          "---\n# Now\n\n## Needs you\n- [ ] call Bob (since 2026-10-01) about invoice\n\n## Waiting\n")
+    assert now.review(vault, "work", TODAY)["unreadable"] == []
+
+
 def test_cli_set_and_review_long_lines_and_page_size(vault):
     prepare(vault)
     now.add(vault, "work", "owed", "Long " + "update " * 40, TODAY)

@@ -13,8 +13,9 @@
   now.py check                    close lines on checked evidence, stamp hand ticks, prune (the intake timer runs it)
   now.py review --partition <p> [--stale-days N]
                                   read-only: lines closed by their evidence, open more than N days (14) with no
-                                  evidence, duplicated, or holding a [rec::]/[due::] field after the parenthesis
-                                  (unreadable); nothing printed when there is nothing to review
+                                  evidence, duplicated, holding text or a [rec::]/[due::] field after the parenthesis
+                                  (unreadable), over 240 characters, and a page over 32 KB; nothing printed when there
+                                  is nothing to review
   now.py overdue [--date YYYY-MM-DD]
                                   read-only: open lines past their [due::] (before the date, today by default) in
                                   groups of 1 to 7, 8 to 30 and more than 30 days over, then the clockless count

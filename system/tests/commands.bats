@@ -794,7 +794,7 @@ self_edit_contract() {
   grep -qF 'Rewrite a line with `system/scripts/now.py set --partition <p> --match "<text>" --statement "<new>"` instead of appending updates to it.' CLAUDE.md
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py set:*)")' .claude/settings.json >/dev/null
   grep -qF 'long lines (over 240 characters, which recall cuts), and a page over 32 KB' FOUNDRY.md
-  grep -qF 'keeps the last third of its budget for the latest digests' FOUNDRY.md
+  grep -qF 'keeps at least a third of its budget (and whatever the Now lines leave) for the latest digests' FOUNDRY.md
   grep -qF 'long lines and an oversized page, which you rewrite with `system/scripts/now.py set`' system/agents/foreman.md
   grep -qF '**The Now page.**' FOUNDRY.md
   grep -qF 'Never stage or edit `wiki/<p>/Now.md` either' .claude/commands/ingest.md

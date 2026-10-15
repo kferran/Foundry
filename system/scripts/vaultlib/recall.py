@@ -54,11 +54,11 @@ def digest_sections(body: str) -> str:
 
 def _rank_key(line: str) -> tuple:
     """(unparsed, has no due, due, newest date, kind): a hand-written line that does not parse sorts last."""
-    m = now.LINE.match(line.rstrip())
+    m = now.parse(line)
     if not m:
         return 1, 1, "", "", 9
     bare, _, due = now.fields(m.group("statement"))
-    newest = max(now.ISO_DATE.findall(bare) + [m.group("since")])
+    newest = max(now.named_dates(bare) + [m.group("since")])
     return 0, 0 if due else 1, due, newest, KIND_ORDER[m.group("kind")]
 
 
@@ -73,16 +73,18 @@ def rank(lines: list) -> list:
 
 
 def cap(line: str) -> str:
-    """A Now line cut to LINE_CAP: the statement gives way, the [due::] field and the parenthesis stay."""
+    """A Now line cut to LINE_CAP: the statement gives way (a [rec::] field and text typed after the parenthesis go
+    first), the [due::] field and the parenthesis stay."""
     if len(line) <= LINE_CAP:
         return line
-    m = now.LINE.match(line.rstrip())
+    m = now.parse(line)
     if m:
         bare, _, due = now.fields(m.group("statement"))
-        head, tail = line[:m.start("statement")], (f" [due:: {due}]" if due else "") + line.rstrip()[m.end("statement"):]
-        room = LINE_CAP - len(head) - len(tail) - 1
-        if room >= 20:
-            return head + bare[:room].rstrip() + "…" + tail
+        head, tail = m.string[:m.start("statement")], (f" [due:: {due}]" if due else "") + m.string[m.end("statement"):]
+        room = LINE_CAP - len(head) - len(tail) - 3
+        if room >= 20:   # the start says what the line is; the end holds its newest update
+            first = min(60, room // 3)
+            return head + bare[:first].rstrip() + " … " + bare[len(bare) - (room - first):].lstrip() + tail
     return line[:LINE_CAP - 1] + "…"
 
 
@@ -126,8 +128,10 @@ def build(vault, scope, budget, workcell_session=False) -> str:
     # Now block takes what they leave (#211, Now page spec §3.3).
     lines = now.open_lines(now.read(vault, partition)) if partition in now.PARTITIONS else []
     room = budget - len(head)
-    digests = _digests(vault, partition, name, room // 3 if lines else room)
-    return (head + _now_block(lines, partition, room - len(digests)) + digests)[:budget]
+    rows = _digest_rows(vault, partition, name)   # one index open: two lock waits could pass the hook's timeout
+    reserve = min(len(_digests(vault, rows, room)), room // 3) if lines else room
+    block = _now_block(lines, partition, room - reserve)
+    return (head + block + _digests(vault, rows, room - len(block)))[:budget]
 
 
 def _now_block(lines: list, partition: str, room: int) -> str:
@@ -145,15 +149,18 @@ def _now_block(lines: list, partition: str, room: int) -> str:
     return block if len(block) <= room else ""
 
 
-def _digests(vault, partition, name, room: int) -> str:
-    """The latest digests' kept sections, newest first, within room; the last one cut with a marker."""
+def _digest_rows(vault, partition, name) -> list:
     conn = _open_index(vault)
     if conn is None:
-        return ""
+        return []
     try:
-        rows = recent_digests(conn, partition, name)
+        return recent_digests(conn, partition, name)
     finally:
         conn.close()
+
+
+def _digests(vault, rows, room: int) -> str:
+    """The latest digests' kept sections, newest first, within room; the last one cut with a marker."""
     out = "\n### Recent session digests\n" if rows else ""
     for path, codebase, created in rows:
         try:

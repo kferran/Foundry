@@ -37,7 +37,22 @@ REC = re.compile(r"\[rec::\s*([^\[\]\n]*[^\[\]\s])\s*\]", re.IGNORECASE)
 DUE = re.compile(r"\[due::\s*(\d{4}-\d{2}-\d{2})\s*\]", re.IGNORECASE)
 FIELD_KEY = re.compile(r"\[(?:rec|due)::", re.IGNORECASE)
 # A line now.py wrote, with text appended after its parenthesis by hand (#211): it no longer parses.
-SCRIPT_META = re.compile(r"\((?:[^(),]+, )?since \d{4}-\d{2}-\d{2}[^()]*\)\s*\S")
+SCRIPT_META = re.compile(r"^- \[.\] (?:owed|waiting|draft): .*?\((?:[^(),]+, )?since \d{4}-\d{2}-\d{2}[^()]*\)(?=\s*\S)")
+
+
+def parse(line: str):
+    """LINE's match for an open line, also for one with text typed after its parenthesis (matched without that text,
+    so recall can rank it and set can rewrite it); None for a hand-written line."""
+    line = line.rstrip()
+    m = LINE.match(line)
+    if m is None and (s := SCRIPT_META.match(line)):
+        m = LINE.match(line[:s.end()])
+    return m
+
+
+def named_dates(statement: str) -> list:
+    """The real dates a statement names: not inside a URL or a path (a token holding "/"), not 2026-02-30."""
+    return [d for token in statement.split() if "/" not in token for d in ISO_DATE.findall(token) if is_date(d)]
 ISO_DATE = re.compile(r"(?<![\w-])(\d{4}-\d{2}-\d{2})(?=T\d{2}:\d{2}|(?![\w-]|\.\w))")
 SHORT_DAYS, LONG_DAYS = 3, 30
 OVERDUE_HEADINGS = ("**1 to 7 days over**", "**8 to 30 days over**", "**More than 30 days over**")
@@ -150,7 +165,7 @@ def default_due(statement: str, since: str, who: str) -> str:
     of its own within LONG_DAYS of since, else since + LONG_DAYS. A Work Order id, a file name and a date inside a URL
     or a path (a token holding "/") do not count; a date with a time (2026-10-20T09:00) does."""
     start = date.fromisoformat(since)
-    named = [d for token in statement.split() if "/" not in token for d in ISO_DATE.findall(token) if is_date(d)]
+    named = named_dates(statement)
     soon = any(0 <= (date.fromisoformat(d) - start).days <= LONG_DAYS for d in named)
     return (start + timedelta(days=SHORT_DAYS if who or soon else LONG_DAYS)).isoformat()
 
@@ -191,13 +206,20 @@ def set_statement(vault, partition: str, match: str, statement: str, today: str)
     """Under run.lock: the one open line whose statement contains `match` (any case) gets `statement` as its bare
     statement, keeping kind, who, since, evidence, rec and due (#211: rewrite a line instead of appending updates).
     ValueError, writing nothing, on no match, several matches or an invalid statement."""
-    statement, text = statement.strip(), read(vault, partition)
-    found = [(line, m) for line in open_lines(text) if (m := LINE.match(line.rstrip()))
-             and match.strip().lower() in fields(m.group("statement"))[0].lower()]
+    statement, text, match = statement.strip(), read(vault, partition), match.strip().lower()
+    if not match:
+        raise ValueError("--match needs text from the line's statement")
+    if FIELD_KEY.search(statement):
+        raise ValueError("the new statement holds a [rec::] or [due::] field; set keeps the line's own")
+    parsed = [(line, m) for line in open_lines(text) if (m := parse(line))]
+    found = [(line, m) for line, m in parsed if match in fields(m.group("statement"))[0].lower()]
     if len(found) != 1:
         raise ValueError(f"{len(found)} open lines match {match!r}; give text that names exactly one")
     old, m = found[0]
     _, rec, due = fields(m.group("statement"))
+    if any(o != old and p.group("kind") == m.group("kind") and fields(p.group("statement"))[0] == statement
+           for o, p in parsed):
+        raise ValueError("another open line of the same kind already has that statement")
     validate(partition, m.group("kind"), statement, m.group("who") or "", m.group("evidence") or "", rec, due)
     line = render(m.group("kind"), statement, m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
     lines = text.split("\n")
@@ -304,7 +326,7 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
             "stale": [line for line, m in parsed if m and not m.group("evidence") and m.group("since") < cutoff],
             "duplicate": [line for group in statements.values() if len(group) > 1 for line in group],
             "unreadable": [line for line, m in parsed if not m and (FIELD_KEY.search(line) or SCRIPT_META.search(line))],
-            "long": [line for line in lines if len(line) > LONG_LINE],
+            "long": [line for line in lines if len(line) > LONG_LINE and parse(line)],   # set can rewrite each
             "page_bytes": page_path(vault, partition).stat().st_size if page_path(vault, partition).is_file() else 0}
 
 
