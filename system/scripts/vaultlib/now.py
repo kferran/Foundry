@@ -297,13 +297,15 @@ def overdue(vault, day: str) -> str:
             over = (date.fromisoformat(day) - date.fromisoformat(due.group(1))).days
             if over > 0:
                 groups[0 if over <= 7 else 1 if over <= 30 else 2].append((due.group(1), f"- {line.rstrip()[6:]}"))
-    out = []
+    # One block per group and one for the count, joined by a blank line, so Markdown keeps each bold label on its own
+    # line and the count out of the last bullet.
+    blocks = []
     for heading, lines in zip(OVERDUE_HEADINGS, groups):
         if lines:
-            out += [heading] + [line for _, line in sorted(lines, key=lambda t: t[0])]
+            blocks.append("\n".join([heading] + [line for _, line in sorted(lines, key=lambda t: t[0])]))
     if clockless:
-        out.append(f"{clockless} open lines carry no clock.")
-    return "\n".join(out)
+        blocks.append("1 open line carries no clock." if clockless == 1 else f"{clockless} open lines carry no clock.")
+    return "\n\n".join(blocks)
 
 
 def latest_open_objectives(vault, day: str) -> list:

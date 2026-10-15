@@ -61,7 +61,7 @@ Interactive, the brief already runs `now.py add` per line, which applies §4. He
   **8 to 30 days over**
   **More than 30 days over**
   ```
-  then one line `N open lines carry no clock.` when N > 0. Nothing at all when no line is overdue and every line has a clock.
+  then one line `N open lines carry no clock.` (`1 open line carries no clock.` for one) when N > 0. A blank line separates each group and the count, so Markdown keeps each label on its own line. Nothing at all when no line is overdue and every line has a clock.
 - `brief_prep.sh` writes `overdue.md` with `now.py overdue --date "$PREP_DATE"`, after `now.md`. `brief.md` prints it verbatim under the bold label **Overdue**, immediately before **From Now**, or nothing when it is empty. The lines are plain `- ` bullets: the owner ticks in From Now, which still lists every open line (the Dataview block is unchanged). **Owner decision 3.**
 - A line never leaves Overdue on its own: only a tick, a drop or checked evidence closes it.
 

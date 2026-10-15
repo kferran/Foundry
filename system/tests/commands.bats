@@ -752,7 +752,7 @@ self_edit_contract() {
   f=.claude/commands/brief.md
   grep -qF 'system/logs/inputs/<date>/overdue.md' "$f"
   grep -qF 'system/logs/inputs/<date>/clock.md' "$f"
-  grep -qF 'print `overdue.md` verbatim under the bold label **Overdue**' "$f"
+  grep -qF 'print the bold label **Overdue**, a blank line, and `overdue.md` verbatim (its blank lines included)' "$f"
   line="$(grep -F '**Overdue**' "$f")"
   [[ "$line" == *'**Before today'*'**Overdue**'*'**From Now**'* ]]
   grep -qF '[due:: <long>]' "$f"

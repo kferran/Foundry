@@ -101,7 +101,7 @@ def test_an_invalid_due_on_the_page_counts_as_no_clock(vault):
     prepare(vault)  # #166 clock spec §5, review finding 1: --due sets a clock on it, never "would loosen"
     write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-02-01\"\npartition: work\n"
           "---\n# Now\n\n## Needs you\n- [ ] owed: Pick format [due:: 2026-02-30] (since 2026-02-01)\n\n## Waiting\n")
-    assert now.overdue(vault, "2026-03-05") == "1 open lines carry no clock."
+    assert now.overdue(vault, "2026-03-05") == "1 open line carries no clock."
     assert now.add(vault, "work", "owed", "Pick format", "2026-02-01", due="2026-03-01") == (
         "tightened", "- [ ] owed: Pick format [due:: 2026-03-01] (since 2026-02-01)")
 
@@ -353,14 +353,19 @@ def test_review_groups_closed_stale_and_duplicate_lines_and_writes_nothing(vault
 
 
 HEAD = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: {p}\n---\n# Now\n\n## Needs you\n"
+# Blank lines between the groups and before the count, so Markdown renders each bold label on its own line and the
+# count never folds into the last bullet (live acceptance, 2026-10-15).
 OVERDUE = ("**1 to 7 days over**\n"
            "- owed: Seven days [due:: 2026-10-13] (since 2026-10-01)\n"
            "- owed: One day [rec:: Yes: cheap] [due:: 2026-10-19] (since 2026-10-01)\n"
+           "\n"
            "**8 to 30 days over**\n"
            "- draft: Thirty days [due:: 2026-09-20] (since 2026-09-01)\n"
            "- waiting: Eight days [due:: 2026-10-12] (Avery Sample, since 2026-10-01, EX-1)\n"
+           "\n"
            "**More than 30 days over**\n"
            "- owed: Thirty-one days [due:: 2026-09-19] (since 2026-09-01)\n"
+           "\n"
            "2 open lines carry no clock.")
 
 
