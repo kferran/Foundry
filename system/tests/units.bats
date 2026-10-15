@@ -550,3 +550,48 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   [ ! -e "$UD/foundry-focus.service" ]
   grep -qx -- '--user disable --now foundry-focus.service' "$STUB_SYSTEMCTL_LOG"
 }
+
+@test "an enabled extension's units render and install, with the ownership header" {
+  use_extension demo
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx "new foundry-demo.service" <<< "$output"
+  grep -qx "new foundry-demo.timer" <<< "$output"
+  [ "$(head -n 1 "$UD/foundry-demo.service")" = "# Managed by vault: $VP" ]
+  grep -qxF "ExecStart=\"$VP/extensions/demo/scripts/demo_check.sh\"" "$UD/foundry-demo.service"
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-smoke.timer foundry-nightshift.timer foundry-update.timer foundry-demo.timer' "$STUB_SYSTEMCTL_LOG"
+  run grep -l '{{' "$UD"/*
+  [ "$status" -eq 1 ]
+}
+
+@test "turning an extension off removes its units" {
+  use_extension demo
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ -f "$UD/foundry-demo.timer" ]
+  sed -i '/^extensions:/d' system/config.md
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx "removed foundry-demo.service" <<< "$output"
+  grep -qx "removed foundry-demo.timer" <<< "$output"
+  [ ! -e "$UD/foundry-demo.service" ]
+  [ ! -e "$UD/foundry-demo.timer" ]
+}
+
+@test "--dry-run lists an extension's units under ===== headers and installs nothing" {
+  use_extension demo
+  run "$IU" --dry-run
+  [ "$status" -eq 0 ]
+  grep -qx "===== foundry-demo.service" <<< "$output"
+  grep -qx "===== foundry-demo.timer" <<< "$output"
+  [ ! -e "$UD/foundry-demo.service" ]
+}
+
+@test "a client machine gets no extension units" {
+  use_extension demo
+  sed -i '$d' system/config.md
+  printf 'machine_role: "client"\n---\n' >> system/config.md
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ ! -e "$UD/foundry-demo.timer" ]
+}
