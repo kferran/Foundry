@@ -31,8 +31,10 @@ ORDER_ID = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$")
 ORDER_CLOSED = ("done", "failed", "cancelled")
 SINCE = re.compile(r"\s*_\(open since (\d{4}-\d{2}-\d{2})(?:, \d+ days?)?\)_")
 # The Now clock (Now clock spec §3): two optional Dataview inline fields inside the statement, before the parenthesis.
-REC = re.compile(r"\[rec:: ([^\[\]\n]+)\]")
-DUE = re.compile(r"\[due:: (\d{4}-\d{2}-\d{2})\]")
+# Dataview reads the key in any case and "::" with or without spaces, so a hand edit may write either.
+REC = re.compile(r"\[rec::\s*([^\[\]\n]*[^\[\]\s])\s*\]", re.IGNORECASE)
+DUE = re.compile(r"\[due::\s*(\d{4}-\d{2}-\d{2})\s*\]", re.IGNORECASE)
+FIELD_KEY = re.compile(r"\[(?:rec|due)::", re.IGNORECASE)
 ISO_DATE = re.compile(r"(?<![\w-])(\d{4}-\d{2}-\d{2})(?=T\d{2}:\d{2}|(?![\w-]|\.\w))")
 SHORT_DAYS, LONG_DAYS = 3, 30
 OVERDUE_HEADINGS = ("**1 to 7 days over**", "**8 to 30 days over**", "**More than 30 days over**")
@@ -52,10 +54,11 @@ def new_page(vault, partition: str, today: str) -> str:
 
 
 def fields(statement: str) -> tuple:
-    """(bare statement, rec, due): the statement without its two fields, whitespace collapsed; "" for a missing field."""
+    """(bare statement, rec, due): the statement without its two fields, whitespace collapsed; "" for a missing field
+    and for a due that is not a real date (a hand edit such as 2026-02-30)."""
     rec, due = REC.search(statement), DUE.search(statement)
     bare = " ".join(DUE.sub("", REC.sub("", statement)).split())
-    return bare, rec.group(1) if rec else "", due.group(1) if due else ""
+    return bare, rec.group(1) if rec else "", due.group(1) if due and is_date(due.group(1)) else ""
 
 
 def render(kind: str, statement: str, since: str, who: str = "", evidence: str = "", rec: str = "",
@@ -124,7 +127,7 @@ def validate(partition: str, kind: str, statement: str, who: str, evidence: str,
         raise ValueError("who must not hold a comma, a parenthesis or a newline")
     if evidence and not re.fullmatch(r"[^\s(),]+", evidence):
         raise ValueError("evidence must be one URL or key without spaces, commas or parentheses")
-    if "[rec::" in statement or "[due::" in statement:
+    if FIELD_KEY.search(statement):
         raise ValueError("the statement must not hold [rec:: or [due::; pass --rec and --due")
     if any(c in rec for c in "[]\n\r"):
         raise ValueError("rec must not hold a bracket or a newline")
@@ -264,8 +267,9 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
            on_fail=lambda line, reason: None) -> dict:
     """The lull review (#145), read-only: "closed" (open lines whose evidence shows them finished, each with its
     close reason), "stale" (open more than stale_days with no evidence) and "duplicate" (the same bare statement after
-    lowercasing, whatever the kind and clock), in page order. A hand-written line that does not
-    parse has no date or evidence and is left out of every group."""
+    lowercasing, whatever the kind and clock), in page order. A hand-written line that does not parse has no date or
+    evidence and is left out of those groups; one that holds a [rec::] or [due::] field it cannot read (written after
+    the parenthesis) is listed under "unreadable" for the Foreman to fix by hand."""
     lines = [line.rstrip() for line in open_lines(read(vault, partition))]  # an editor's trailing space (C12)
     cutoff = (date.fromisoformat(today) - timedelta(days=stale_days)).isoformat()
     parsed = [(line, LINE.match(line)) for line in lines]
@@ -276,7 +280,8 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
             statements.setdefault(fields(m.group("statement"))[0].lower(), []).append(line)
     return {"closed": [f"{line} _(closed: {found[line]})_" for line in lines if line in found],
             "stale": [line for line, m in parsed if m and not m.group("evidence") and m.group("since") < cutoff],
-            "duplicate": [line for group in statements.values() if len(group) > 1 for line in group]}
+            "duplicate": [line for group in statements.values() if len(group) > 1 for line in group],
+            "unreadable": [line for line, m in parsed if not m and FIELD_KEY.search(line)]}
 
 
 def overdue(vault, day: str) -> str:

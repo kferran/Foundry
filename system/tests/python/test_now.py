@@ -82,6 +82,30 @@ def test_the_fields_parse_inside_the_statement_in_either_order():
                       rec="CSV: the vendor's loader reads it", due="2026-10-18") == AFTER
 
 
+def test_hand_typed_field_variants_are_read_as_the_fields(vault):
+    # #166 clock spec §3, review finding 1: Dataview reads `[due::2026-10-20]` and any case of the key, so a hand
+    # edit in that form still counts as the clock and a repeat add finds the line.
+    assert now.fields("Pick [due::2026-10-20] x") == ("Pick x", "", "2026-10-20")
+    assert now.fields("Pick [Due:: 2026-10-20] [REC::CSV: it loads ] x") == ("Pick x", "CSV: it loads", "2026-10-20")
+    prepare(vault)
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n"
+          "---\n# Now\n\n## Needs you\n- [ ] owed: Pick format [DUE::2026-10-20] (since 2026-10-01)\n\n## Waiting\n")
+    before = page(vault)
+    assert now.add(vault, "work", "owed", "Pick format", TODAY)[0] == "exists"
+    assert page(vault) == before
+    assert now.overdue(vault, "2026-10-25") == (
+        "**1 to 7 days over**\n- owed: Pick format [DUE::2026-10-20] (since 2026-10-01)")
+
+
+def test_an_invalid_due_on_the_page_counts_as_no_clock(vault):
+    prepare(vault)  # #166 clock spec §5, review finding 1: --due sets a clock on it, never "would loosen"
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-02-01\"\npartition: work\n"
+          "---\n# Now\n\n## Needs you\n- [ ] owed: Pick format [due:: 2026-02-30] (since 2026-02-01)\n\n## Waiting\n")
+    assert now.overdue(vault, "2026-03-05") == "1 open lines carry no clock."
+    assert now.add(vault, "work", "owed", "Pick format", "2026-02-01", due="2026-03-01") == (
+        "tightened", "- [ ] owed: Pick format [due:: 2026-03-01] (since 2026-02-01)")
+
+
 def test_add_writes_the_default_clock(vault):
     # Now clock spec §4: 3 days with who or a standalone ISO date (a Work Order id does not count), else 30.
     prepare(vault)
@@ -112,7 +136,9 @@ def test_only_a_named_date_within_30_days_gives_the_short_clock():
 
 def test_add_refuses_a_field_in_the_statement_a_bracket_in_rec_and_a_bad_date(vault):
     prepare(vault)  # Now clock spec §3
-    for kwargs in ({"statement": "Pick [due:: 2026-10-10]"}, {"statement": "Pick [rec:: CSV]"},                   {"rec": "CSV] x"}, {"rec": "a\nb"}, {"due": "20261010"}, {"due": "2026-02-30"}):
+    for kwargs in ({"statement": "Pick [due:: 2026-10-10]"}, {"statement": "Pick [rec:: CSV]"},
+                   {"statement": "Pick [Due::2026-10-10]"}, {"statement": "Pick [REC:: CSV]"},
+                   {"rec": "CSV] x"}, {"rec": "a\nb"}, {"due": "20261010"}, {"due": "2026-02-30"}):
         statement = kwargs.pop("statement", "Pick")
         try:
             now.add(vault, "work", "owed", statement, TODAY, **kwargs)
@@ -316,13 +342,14 @@ def test_review_groups_closed_stale_and_duplicate_lines_and_writes_nothing(vault
                    "_(closed: PR merged)_"],
         "stale": ["- [ ] owed: Old one [due:: 2026-10-24] (since 2026-09-24)"],
         "duplicate": ["- [ ] owed: Send the  report [due:: 2026-10-31] (since 2026-10-01)",
-                      "- [ ] draft: send the report [due:: 2026-11-08] (since 2026-10-09)"]}
+                      "- [ ] draft: send the report [due:: 2026-11-08] (since 2026-10-09)"],
+        "unreadable": []}
     assert now.review(vault, "work", TODAY, stale_days=13, gh=gh_stub(tmp_path, "OPEN"))["stale"] == [
         "- [ ] owed: Old one [due:: 2026-10-24] (since 2026-09-24)",
         "- [ ] owed: Fourteen days [due:: 2026-10-25] (since 2026-09-25)"]
     assert path.read_text() == before
     assert not (vault / "system/logs").exists()
-    assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": []}
+    assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": [], "unreadable": []}
 
 
 HEAD = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: {p}\n---\n# Now\n\n## Needs you\n"
@@ -390,6 +417,20 @@ def test_review_reports_a_failed_pr_check_and_skips_the_other_prs(vault, tmp_pat
     found = now.review(vault, "work", TODAY, gh=str(tmp_path / "no-such-gh"), on_fail=lambda l, r: fails.append(r))
     assert found["closed"] == []
     assert fails == ["gh is not installed"]
+
+
+def test_review_lists_a_line_with_a_field_after_the_parenthesis_as_unreadable(vault):
+    # #166 clock spec §3, review finding 1: the line no longer parses; review lists it and repairs nothing. A plain
+    # hand-written line is not listed.
+    prepare(vault)
+    bad = "- [ ] owed: Pick format (since 2026-10-01) [due:: 2026-10-20]"
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n"
+          f"---\n# Now\n\n## Needs you\n{bad}\n- [ ] call the bank back\n\n## Waiting\n")
+    before = page(vault)
+    assert now.review(vault, "work", TODAY)["unreadable"] == [bad]
+    r = cli(vault, "review", "--partition", "work")
+    assert r.stdout == f"## Unreadable lines (1): move the [rec::] or [due::] field before the parenthesis\n{bad}\n"
+    assert page(vault) == before
 
 
 def test_a_line_with_trailing_space_or_a_crlf_end_still_parses(vault, tmp_path):

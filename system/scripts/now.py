@@ -10,7 +10,8 @@
   now.py check                    close lines on checked evidence, stamp hand ticks, prune (the intake timer runs it)
   now.py review --partition <p> [--stale-days N]
                                   read-only: lines closed by their evidence, open more than N days (14) with no
-                                  evidence, or duplicated; nothing printed when there is nothing to review
+                                  evidence, duplicated, or holding a [rec::]/[due::] field after the parenthesis
+                                  (unreadable); nothing printed when there is nothing to review
   now.py overdue [--date YYYY-MM-DD]
                                   read-only: open lines past their [due::] (before the date, today by default) in
                                   groups of 1 to 7, 8 to 30 and more than 30 days over, then the clockless count
@@ -71,6 +72,9 @@ if args.cmd == "review":  # read-only, so no run.lock
                          ("## Duplicates", "duplicate")):
         if found[key]:
             print("\n".join([heading, *found[key]]))
+    if found["unreadable"]:
+        print("\n".join([f"## Unreadable lines ({len(found['unreadable'])}): move the [rec::] or [due::] field before "
+                         "the parenthesis", *found["unreadable"]]))
     sys.exit(0)
 if args.cmd == "seed":
     try:
