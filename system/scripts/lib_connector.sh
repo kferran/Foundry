@@ -61,3 +61,30 @@ connector_outcome() {
     CONNECTOR_REASON="$CONNECTOR_REASON; claude exited $CONNECTOR_RC: $(head -c 200 "$work/claude.err" 2>/dev/null)"
   fi
 }
+
+# connector_classify <exit> <reason> [work dir]: set CONNECTOR_CLASS to the failure's class (connector health spec §2):
+# auth (no connector reachable, or the connector refused the credential: renew it), timeout, claude (no claude, or it
+# is logged out or out of credit), connector (the connector failed otherwise), other, or "" on success. Callers print
+# "<name>: <class>: <reason>" so the smoke check and the brief can name the credential to renew.
+connector_classify() {
+  local rc="$1" reason="$2" work="${3:-}" err=""
+  [[ -z "$work" ]] || err="$(head -c 2000 "$work/claude.err" 2>/dev/null || true)"
+  shopt -s nocasematch
+  case "$rc" in
+    0|2) CONNECTOR_CLASS="" ;;   # 2 is a usage or settings error: the reason already says what to change
+    3) CONNECTOR_CLASS=auth ;;
+    4) if [[ "$reason" == *"timed out"* ]]; then CONNECTOR_CLASS=timeout; else CONNECTOR_CLASS=other; fi ;;   # 4 is also a busy lock
+    6) if [[ "$reason" =~ (401|403|unauthori[sz]ed|forbidden|expired|reconnect|invalid_grant|token) ]]; then
+         CONNECTOR_CLASS=auth
+       else
+         CONNECTOR_CLASS=connector
+       fi ;;
+    127) CONNECTOR_CLASS=claude ;;
+    *) if [[ "$reason $err" =~ (/login|invalid\ api\ key|not\ logged\ in|credit\ balance) ]]; then
+         CONNECTOR_CLASS=claude
+       else
+         CONNECTOR_CLASS=other
+       fi ;;
+  esac
+  shopt -u nocasematch
+}

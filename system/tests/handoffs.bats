@@ -87,7 +87,7 @@ session_deny() { awk '$0 == "--end--" { exit } p { print } $0 == "--disallowedTo
   jira_says "$J" 'project = EX' "$(ticket EX-1)"
   run "$JF"
   [ "$status" -eq 7 ]
-  [ "$output" = 'jira_fetch: the session searched with other arguments than the ones built from the settings' ]
+  [ "$output" = 'jira_fetch: other: the session searched with other arguments than the ones built from the settings' ]
   jira_says mcp__claude_ai_Atlassian__createJiraIssue "$JQL" "$(ticket EX-1)"
   run "$JF"
   [ "$status" -eq 7 ]
@@ -98,10 +98,11 @@ session_deny() { awk '$0 == "--end--" { exit } p { print } $0 == "--disallowedTo
   printf '{"type":"result","subtype":"success","is_error":false}\n' > "$STUB_STREAMS/search.jsonl"
   run "$JF"
   [ "$status" -eq 3 ]
+  [[ "$output" == 'jira_fetch: auth: '* ]]   # no connector reachable is a credential to renew (connector health spec)
   jira_says "$J" "$JQL" "$(ticket EX-1)"
   STUB_SLEEP=3 JIRA_TIMEOUT=1 run "$JF"
   [ "$status" -eq 4 ]
-  [ "$output" = 'jira_fetch: timed out after 1s' ]
+  [ "$output" = 'jira_fetch: timeout: timed out after 1s' ]
 }
 
 @test "fetch: an allow rule for the whole Atlassian server stops the fetch before claude runs" {

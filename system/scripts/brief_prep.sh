@@ -22,7 +22,7 @@ case "$rc" in
   3) prep_unavailable "calendar: no Google Calendar connector reachable (connect it at claude.ai with the account this machine's claude is logged in with, then re-run /setup phase 6)" ;;
   4) prep_unavailable "calendar: the connector timed out" ;;
   5) prep_unavailable "calendar: the connector returned an unreadable event list (see system/logs/calendar_fetch-${PREP_DATE:0:7}.jsonl)" ;;
-  6) prep_unavailable "calendar: the connector returned an error: $(sed -n 's/^calendar_fetch: the connector returned an error: //p' "$PREP_DIR/prep_errors.log" | tail -n 1) (if it persists, reconnect Google Calendar at claude.ai)" ;;
+  6) prep_unavailable "calendar: the connector returned an error: $(sed -nE 's/^calendar_fetch: ([a-z]+: )?the connector returned an error: //p' "$PREP_DIR/prep_errors.log" | tail -n 1) (if it persists, reconnect Google Calendar at claude.ai)" ;;
   7) prep_unavailable "calendar: the fetch session used an unexpected tool; nothing was written (see system/logs/alerts_$(date +%F).md)" ;;
   8) prep_unavailable "calendar: more than 100 events that day; not listed" ;;
   127) prep_unavailable "calendar: claude is not on PATH" ;;

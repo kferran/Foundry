@@ -120,7 +120,7 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
     rm -f "$STUB_ARGS"
     run "$CF" "$DAY"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"calendar_fetch: allow rule '$r'"* ]]
+    [[ "$output" == *"calendar_fetch: other: allow rule '$r'"* ]]
     [ ! -e "$STUB_ARGS" ]
   done
 }

@@ -38,6 +38,8 @@ summary="$work/summary.json"
 
 # finish <exit> <reason>: append the log line, report the reason, exit.
 finish() {
+  connector_classify "$1" "$2" "${work:-}"   # connector health spec §2: the class leads the reason
+  set -- "$1" "${CONNECTOR_CLASS:+$CONNECTOR_CLASS: }$2"
   local s='{}'
   [[ -s "$summary" ]] && s="$(cat "$summary")"
   jq -cn --arg date "$day" --arg time "$(date -Iseconds)" --argjson exit "$1" --argjson s "$s" \

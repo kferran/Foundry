@@ -48,6 +48,8 @@ alert_once() {  # <key> <text>: at most one alert a day per key; [notify] lines 
   grep -qF -- "[notify] $1" "$f" 2>/dev/null || printf -- '- %s [notify] %s %s\n' "$(date +%H:%M:%S)" "$1" "$2" >> "$f"
 }
 fail() {  # <exit> <reason>
+  connector_classify "$1" "$2" "${work:-}"   # connector health spec §2: the class leads the reason
+  set -- "$1" "${CONNECTOR_CLASS:+$CONNECTOR_CLASS: }$2"
   logline "$1" "$2"
   case "$1" in 1|2|3|4|5|6|7|127) alert_once "Notices failed (exit $1):" "$2" ;; esac
   echo "notify: $2" >&2
