@@ -2,11 +2,11 @@
 
 **Date:** 2026-10-15
 **Inputs:** `roadmap.md` (owner's order of 2026-10-11 and 2026-10-13), `2026-10-11-simplification-review.md`, `docs/reviews/2026-10-11-system-assessment.md`, the 2026-10-13 audit (PR #130, tracker #136), open issues and PRs on this repository, and ten days of the live vault (briefs and debriefs 10-05 to 10-14, the Now page, 31 Work Order notes).
-**Status:** proposal for the owner. Nothing here is approved, so no spec or plan below is written yet. Each phase follows the usual process (fast lane for fixes, grill, spec and plan for features).
+**Status:** order approved by the owner (2026-10-15: live-use fixes first, start phase 0). Each phase follows the usual process (fast lane for fixes, grill, spec and plan for features).
 
 ## 1. Where things stand
 
-**Built since the 2026-10-11 review:** the express install (#128), Slack notices (#125), RCA (#120), the usage ceiling (#134), the connector runner (#144), the smoke check (#146, #147), the research Workcell (#172), `now.py review` (#174), the CI gate on every PR (#177), and every audit finding except S1, S8–S10, C3, C9, C13 and C14 (PRs #139, #141, #153–#155, #165).
+**Built since the 2026-10-11 review:** the express install (#128), Slack notices (#125), RCA (#120), the usage ceiling (#134), the connector runner (#144), the smoke check (#146, #147), the research Workcell (#172), `now.py review` (#174), the CI gate on every PR (#177), and the audit's fixes (PRs #139, #141, #153–#155, #165). The owner ruled on the rest in #136: S1 stays opt-in with no signing until a second user exists, C3 is documented (the check writes only when evidence closes a line, on purpose), C9 is declined (three timeouts then quarantine is the safer failure). Open: S8–S11, C13, C14, and the follow-up that lets the daily update merge past a refused run (owner, 2026-10-15).
 
 **The simplification targets have moved the wrong way.** Steps 1 and 2 are merged. Steps 3 and 4 have not started, and the features added since the review grew the code.
 
@@ -36,7 +36,7 @@ The live vault runs almost every feature: Work Orders, meetings, triage, prefere
 | L3 | **The owner keeps the day current by hand.** | 11 hand-added "inbound sweep" and "review HH:MM" annotations in the 10-14 brief; in-session crons stand in for #135; a day-ahead pack ran as a Work Order. |
 | L4 | **The Now page outgrew its form.** | 53 open lines in 93.6 KB (about 1.8 KB a line), 173 `since` stamps, update paragraphs appended to lines. Lines for #157 and #162 stay open after both merged. |
 | L5 | **Work Orders do not deliver on outside codebases.** | 15 done, 5 failed, 3 blocked, 6 cancelled. All 3 blocked orders stopped at `verify` (`pnpm install`, exit 127, then corepack downloading inside the sealed verify, #189); one plan took 4 orders and a hand run. No order has targeted the main work codebase, whose PRs are on Bitbucket. Every order has `started_at` equal to `finished_at`, so the brief shows "07:00–07:00". |
-| L6 | **Failures need a human to unstick them.** | A digest poisoned on 10-14 after 3 shrink-guard rejections was patched by hand and never requeued. Quarantine read "empty" on 10-11 and listed two inputs on 10-12. The RCA filer hit a required Jira field (exit 6) and then its own `.attempt` marker (exit 5) (#175). An empty `.srt` summary replaced and deprecated a populated meeting note (#188). |
+| L6 | **Failures need a human to unstick them.** | A digest poisoned on 10-14 after 3 shrink-guard rejections was patched by hand and never requeued (`intake.py --retry` exists, and since #183 the alert names it). Quarantine read "empty" on 10-11 and listed two inputs on 10-12. The RCA filer hit a required Jira field (exit 6) and then its own `.attempt` marker (exit 5) (#175). An empty `.srt` summary replaced and deprecated a populated meeting note (#188). |
 | L7 | **Some features never get input.** | `system/logs/metrics/` never had a file, so the Fail-Fast Loop Breaker in `CLAUDE.md` has never fired. One telemetry source reported 0/0/0 every day. The focus tracker printed "no focus log" until #128 removed it. |
 | L8 | **Notes typed on the client get lost.** | `Untitled.md` and `Untitled 1.md` sit at the vault root 4+ days after the review flagged them. |
 | L9 | **The vault holds side projects.** | `docs/` in the vault carries 9 work plans and specs and a Python tool with tests (`docs/gmail-cleanup/`), none of them registered codebases. |
@@ -64,22 +64,23 @@ The two research briefs (semantic recall, chat gateway) cost no attended time. Q
 
 Trackers and docs that lag behind merged work, so the next reader is not misled.
 
-- Close #157, #106 and #138 (their PRs merged), or say what is left on each.
-- Tick the merged lines on #136 (S3+S7, S6, C1+C2, C4, C7), #122 (step 1, step 2's connector runner) and #166.
-- Set the status lines of `specs/2026-10-13-audit-sync-refused-commit-design.md` and `specs/2026-10-13-audit-update-dirty-tree-design.md` to built (PR #165).
-- Correct the roadmap: standalone enables 4 units (smoke included), and add a row for this plan.
-- Take the vault's `production_error` change upstream: `operation_id` optional (L10). Fast lane, one schema test.
-- Delete stale remote branches (old plan branches, `feat/slack-bridge`, `docs/findings-specs`) once the owner agrees. `feat/intraday-brief-94` holds unmerged specs for #94: merge them as docs or close them in phase 5.
-- In the vault: close the Now lines for #157 and #162.
+- [x] Close #138: the toolchain and install phase shipped in #151 and #156; what is left is #189.
+- [ ] #157 stays open until the owner's Slack tap test of an `obsidian://` link (PR #183's last done-when). #106 stays open: it holds the deferred RCA entries, phase 2 and the review minors from #120.
+- [x] Tick the merged lines on #136 (S3+S7, S6, C1+C2, C4, C7), #122 (the fast lane, step 1, step 2's connector runner) and #166 (staged-blob lint, git environment strip, secret-shape lint, owner-leak test, refusal list, allow-list lint, `.gitattributes`).
+- [x] Set the status lines of the sync-refused-commit and update-dirty-tree specs to built (PR #165), and the headless-hardening spec to built (PR #141).
+- [x] Correct the roadmap: standalone enables 4 units (smoke included), the usage ceiling is complete (#134), and the order above is recorded.
+- [x] Take the vault's `production_error` change upstream: `operation_id` optional (L10). Fast lane, PR #194.
+- [ ] Delete stale remote branches (old plan branches, `feat/slack-bridge`, `docs/findings-specs`) once the owner agrees. `feat/intraday-brief-94` holds unmerged specs for #94: merge them as docs or close them in phase 5.
+- [ ] In the vault: close the Now line for #162 (merged in #183). The #157 line waits for the tap test.
 
 ### Phase 1: reliability from live use
 
 **Fast lane** (one failing test, one PR each):
 
 1. Work Order timestamps: record `started_at` when the session starts (L5).
-2. Audit C9: treat exit 124 (timeout) as not the input's fault in `vaultlib/intake.py` `NOT_INPUT_FAULT`.
-3. Audit C3: `now.py check` writes the page when `stamp_and_prune` changes it, so a hand tick is stamped on the day it was ticked.
-4. Audit C13: `check_deps.sh` fails clearly below Python 3.11.
+2. The daily update merges past a refused run and its alert names the refused or left-out paths (owner, 2026-10-15, on #136). #136 closes with it.
+3. Audit C13: `check_deps.sh` fails clearly below Python 3.11.
+4. The gate marks a suite "skipped: environment" when `bwrap` or a user systemd is missing (audit C16), so a container run is not read as red.
 5. #188: a meeting import never replaces or deprecates a note with an empty summary. This is data loss, so it goes first among the fixes. The vault's damaged note gets a manual fix.
 6. #175: the RCA filer clears its `.attempt` marker on a 4xx create, and reads required custom fields from an `rca_extra_fields` setting.
 7. #189: the Work Order install phase runs with network and pins the package manager, so the sealed verify has nothing to download.
@@ -88,7 +89,7 @@ Trackers and docs that lag behind merged work, so the next reader is not misled.
 **Short specs** (features, because they touch the publish gate or alerting):
 
 9. **Connector health (L1).** Merge #184 first (owner). Then each fetch reports an auth failure as its own reason (expired token or key), separate from a network error, and the smoke check sends one `now` alert per expired credential, naming the command that renews it. The brief shows one "Sources" line listing what was skipped and why, in place of a skipped line per section. Confirm #176 on the live calendar.
-10. **Quarantine you can recover from (L6).** `vault_index.py requeue <input>` moves a poisoned input back to the intake after a fix, and the brief and debrief read quarantine from one function, so they always agree.
+10. **Quarantine you can recover from (L6).** `intake.py --retry` exists; the brief's Blockers section lists each poisoned input with that command, and the brief and debrief read quarantine from one function, so they always agree.
 11. **Telemetry escalation (#171).** Build the merged spec. A source with zero activity for 7 days gets one alert asking whether to turn it off (L7).
 
 **Done when:** 5 weekdays of live briefs with no manual connector recovery that went unalerted, and no Work Order blocked at `verify` on an install step.
@@ -135,8 +136,8 @@ L3 is the largest gap between what the owner needs and what the system does: the
 
 ## 5. Decisions for the owner
 
-1. **Order.** Phases 1 and 2 before step 3, as above? Recommended. The alternative is the roadmap as written (evals, then extensions), with the live fixes as fast-lane PRs in between.
-2. **Audit S1, the unsigned unattended update.** The live vault has the daily update on. Recommended: keep it opt-in (as it is for new vaults) and merge only tags signed with a pinned key; until that is built, the update stays on in the owner's vault, with the risk accepted.
+1. ~~Order~~: decided 2026-10-15 (phases 1 and 2 before step 3).
+2. ~~Audit S1~~: decided 2026-10-14 (opt-in, no signing until a second user exists).
 3. **#184:** review and merge (it touches `install_units.sh` and `update_template.sh`).
 4. **Side projects in the vault (L9):** register `docs/gmail-cleanup` and similar as codebases with their own repositories, or accept the vault as their home. Recommended: own repositories.
 5. **Unfed features (L7):** delete the Fail-Fast Loop Breaker rule and the Agent Health section, or build the metrics writer. Recommended: delete in phase 4.
