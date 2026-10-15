@@ -80,9 +80,9 @@ Trackers and docs that lag behind merged work, so the next reader is not misled.
 1. [x] Work Order timestamps: `finished_at` is read after the session (L5). PR #195.
 2. [x] The daily update merges past a refused run and its alert names the refused or left-out paths (owner, 2026-10-15, on #136). PR #193.
 3. [x] Audit C13: `check_deps.sh` fails clearly below Python 3.11. PR #196.
-4. [ ] The gate marks a suite "skipped: environment" when `bwrap` or a user systemd is missing (audit C16), so a container run is not read as red.
+4. [x] A test that needs a user systemd, `bwrap` or a non-root user skips with `environment:`, and `--require-suites` (CI) fails it (audit C16). PR #199.
 5. [x] #188: the replaced note was empty by #142's rule, so no restore was needed; the import now keeps its attendees and `/ingest` compiles a drop from its transcript. PR #190.
-6. [ ] #175: the RCA filer clears its `.attempt` marker on a rejected create, and reads required custom fields from `rca_extra_fields`. Feature lane: spec in PR #198, for the owner.
+6. [ ] #175: the RCA filer clears its `.attempt` marker on a rejected create, and reads required custom fields from `rca_extra_fields`. Feature lane: spec #198 (merged), build PR #200 for the owner.
 7. [x] #189: one corepack home per item, written by install and read-only in the sealed verify. PR #192.
 8. [x] Lint warns on any `.md` file at the vault root other than the four root documents (L8). PR #197.
 
