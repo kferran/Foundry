@@ -21,7 +21,7 @@ A live Work Order on a pnpm codebase blocked at verify. `order_install` ran with
 ## 3. What stays sealed
 
 - Verify still has no network (`--unshare-net`); the install is still the only sandboxed step with it.
-- The corepack home is read-only in verify, so a verify command cannot change the package manager the next command runs.
+- The corepack home is read-only against verify's own writes, so a verify command cannot replace the package manager the next command runs. The install step can still leave links in it that point into the writable checkout, as it can leave anything in `node_modules`; verify already runs the branch's code and the install's output, so this adds no new reach.
 - Nothing in the corepack home reaches the pushed commit: it lives outside the checkout, in the throwaway verify directory of the runner's own repository.
 - `$HOME` and the environment stay empty apart from the toolchain binds, the checkout and the corepack home.
 
