@@ -7,7 +7,7 @@ cd "$VAULT_ROOT"
 source system/scripts/lib_config.sh
 
 SYSTEMCTL="${SYSTEMCTL:-systemctl}"
-UNIT_DIR="${SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
+UNIT_DIR="${SYSTEMD_USER_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
 HEADER_PREFIX="# Managed by vault: "
 HEADER="$HEADER_PREFIX$VAULT_ROOT"
 

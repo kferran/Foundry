@@ -133,4 +133,78 @@ if [[ -f system/dtcc/map.yaml ]]; then
   check dtcc "${SMOKE_DTCC_TIMEOUT:-60}" system/scripts/dtcc_watch.py --check
 else echo "dtcc: off"; fi
 
+# Timers (#166): each enabled timer this vault installed fired by its next tick after systemd's LastTrigger plus a
+# grace of one interval, at most 2 hours (every template timer runs at most 15 minutes, hourly or daily apart, so
+# this is one interval or 2 hours for the daily ones). A failed run is the run ledger's business, not this check's.
+SYSTEMCTL="${SYSTEMCTL:-systemctl}"
+UNIT_DIR="${SYSTEMD_USER_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
+shopt -s nullglob
+for f in "$UNIT_DIR"/foundry-*.timer; do
+  [[ "$(head -n 1 -- "$f")" == "# Managed by vault: $VAULT_ROOT" ]] || continue
+  t="${f##*/}"
+  if ! "$SYSTEMCTL" --user is-enabled --quiet "$t"; then echo "$t: off"; continue; fi
+  props="$(TZ=UTC "$SYSTEMCTL" --user show -p LastTriggerUSec -p SubState "$t" 2>/dev/null || true)"
+  last="$(sed -n 's/^LastTriggerUSec=//p' <<< "$props")"
+  # A timer waiting on its own still-running service fired (a long intake run outlasts the 5-minute interval).
+  if grep -qx SubState=running <<< "$props"; then logline "$t" 0 ""; echo "$t: ok"; continue; fi
+  [[ -z "$last" ]] || last="$(date -d "$last" +%s 2>/dev/null || true)"
+  cal="$(sed -n 's/^OnCalendar=//p' "$f" | head -n 1)" span="$(sed -n 's/^OnUnitActiveSec=//p' "$f" | head -n 1)"
+  due="" step=""
+  if [[ -z "$last" ]]; then :
+  elif [[ -n "$cal" ]]; then
+    mapfile -t next < <(TZ=UTC LC_ALL=C systemd-analyze calendar --iterations=2 --base-time="@$last" "$cal" 2>/dev/null \
+                        | sed -n 's/^[^:]*: \([A-Z][a-z][a-z] [0-9-]* [0-9:]* UTC\)$/\1/p')
+    # Only the timestamps, whatever the label: systemd 255 renamed "Iter. #2" to "Iteration #2".
+    if (( ${#next[@]} == 2 )); then
+      due="$(date -d "${next[0]}" +%s)" step=$(( $(date -d "${next[1]}" +%s) - due ))
+    fi
+  elif [[ -n "$span" ]]; then
+    step="$(LC_ALL=C systemd-analyze timespan "$span" 2>/dev/null | awk '$1 == "us:" { print int($2 / 1000000) }')"
+    [[ -z "$step" ]] || due=$(( last + step ))
+  fi
+  if [[ -z "$due" ]]; then
+    logline "$t" 0 unknown
+    echo "$t: unknown"
+    continue
+  fi
+  (( step < 7200 )) || step=7200
+  if (( $(date +%s) > due + step )); then
+    r="stale: no run since $(date -d "@$last" '+%F %H:%M')"
+    logline "$t" 1 "$r"
+    echo "$t: $r"
+    alert_once "$t stale:" "${r#stale: }"
+    failed=1
+  else
+    logline "$t" 0 ""
+    echo "$t: ok"
+  fi
+done
+
+# Unit drift (#166): each unit and drop-in install_units.sh --dry-run renders against its installed copy. A unit not
+# installed (one the owner never installed, or removed) is left out; with none installed the line reads off.
+rdir="$(mktemp -d)"
+trap 'rm -rf -- "$out" "$rdir"' EXIT
+urc=0
+timeout "${SMOKE_UNITS_TIMEOUT:-60}" system/scripts/install_units.sh --dry-run > "$rdir/all" 2> "$out" < /dev/null || urc=$?
+if (( urc != 0 )); then
+  report units "$urc" "install_units.sh --dry-run failed (exit $urc): $(reason install_units.sh)"
+else
+  # "===== <name>" opens each file; a drop-in's "/" is stored as "%".
+  awk -v d="$rdir" '/^===== / { f = substr($0, 7); gsub("/", "%", f); f = d "/" f; next } { print > f }' "$rdir/all"
+  installed=0 differs=0
+  for r in "$rdir"/foundry-*; do
+    n="${r##*/}" n="${n//%//}"
+    [[ -f "$UNIT_DIR/$n" ]] || continue
+    installed=1
+    cmp -s -- "$r" "$UNIT_DIR/$n" && continue
+    differs=1
+    logline units 1 "differs: $n"
+    echo "units: differs: $n"
+    alert_once "$n differs:" "run system/scripts/install_units.sh --update"
+  done
+  if (( differs )); then failed=1
+  elif (( installed )); then report units 0 ""
+  else echo "units: off"; fi
+fi
+
 exit "$failed"
