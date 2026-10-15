@@ -149,9 +149,9 @@ def test_verify_sha_runs_the_install_first_with_network_and_keeps_it_out_of_the_
     assert nd.fetch_branch(runner, src, "master") == (True, sha)
     seen, real = [], nd.bwrap
 
-    def spy(workdir, cmd, toolchain=(), net=False):
+    def spy(workdir, cmd, toolchain=(), net=False, **kw):
         seen.append((cmd, list(toolchain), net))
-        return real(workdir, cmd, toolchain, net)
+        return real(workdir, cmd, toolchain, net, **kw)
     monkeypatch.setattr(nd, "bwrap", spy)
     install, verify = 'echo "$PATH" | tee installed', "test -f installed"
     ok, out = nd.verify_sha(runner, sha, tmp_path / "vdir", [verify], tmp_path / "v.log", "", install, [str(tool)])
@@ -174,6 +174,66 @@ def test_a_failing_install_blocks_before_verify_with_the_exit_127_wording(tmp_pa
     assert not ok
     assert out.splitlines()[0] == "order_install: no-such-tool-xyz install: exit 127 (command not found in the sealed verify sandbox)"
     assert "$ touch" not in (tmp_path / "v.log").read_text()
+
+
+def corepack_tool(d: Path) -> Path:
+    """A made-up corepack-like tool: `install` stores a package manager under $COREPACK_HOME, `run` reads it back."""
+    d.mkdir(parents=True)
+    (d / "corepack-pm").write_text('#!/bin/sh\nset -e\nd="$COREPACK_HOME/v1/pm/1.0"\ncase "$1" in\n'
+                                   '  install) mkdir -p "$d"; echo \'{"bin": "pm"}\' > "$d/.corepack" ;;\n'
+                                   '  run) cat "$d/.corepack" ;;\nesac\n')
+    (d / "corepack-pm").chmod(0o755)
+    return d
+
+
+def test_install_and_verify_share_one_corepack_home_outside_the_checkout(tmp_path, monkeypatch):
+    """#189 (orders corepack home spec §2): both steps get the same COREPACK_HOME, bound after the $HOME tmpfs,
+    writable for the install and read-only for verify, in the verify directory but outside the checkout."""
+    src = repo_with_commit(tmp_path / "src")
+    sha = git(src, "rev-parse", "HEAD").strip()
+    runner = tmp_path / "runner.git"
+    assert nd.fetch_branch(runner, src, "master") == (True, sha)
+    seen, real = [], nd.bwrap
+
+    def spy(*a, **kw):
+        seen.append(real(*a, **kw))
+        return ["true"]
+    monkeypatch.setattr(nd, "bwrap", spy)
+    vdir = tmp_path / "vdir"
+    assert nd.verify_sha(runner, sha, vdir, ["true"], tmp_path / "v.log", "", "true", []) == (True, "")
+    homes = [argv[argv.index("COREPACK_HOME") + 1] for argv in seen if "COREPACK_HOME" in argv]
+    assert len(homes) == 2 and homes[0] == homes[1], seen
+    home = homes[0]
+    assert Path(home).parent == vdir
+    workdir = seen[0][seen[0].index("--chdir") + 1]
+    assert not (home + "/").startswith(workdir + "/")
+    for argv, mode in zip(seen, ("--bind", "--ro-bind")):
+        at = [i for i, a in enumerate(argv) if a == home and argv[i - 1] in ("--bind", "--ro-bind")]
+        assert len(at) == 1 and argv[at[0] - 1] == mode and argv[at[0] + 1] == home, argv
+        assert argv.index("--tmpfs", argv.index("--tmpfs") + 1) < at[0]
+        assert argv[argv.index("COREPACK_ENABLE_DOWNLOAD_PROMPT") + 1] == "0"
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_the_install_download_is_readable_in_verify_and_read_only_there(tmp_path, monkeypatch):
+    """#189: a package manager the install step stores under COREPACK_HOME runs in the offline verify, even with the
+    workspace under the $HOME the sandbox empties; a verify command cannot write there."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    tool = corepack_tool(tmp_path / "tools")
+    src = repo_with_commit(tmp_path / "src")
+    sha = git(src, "rev-parse", "HEAD").strip()
+    runner = tmp_path / "runner.git"
+    assert nd.fetch_branch(runner, src, "master") == (True, sha)
+    vdir = home / "ws" / "nightshift-x-verify"
+    ok, out = nd.verify_sha(runner, sha, vdir, ["corepack-pm run"], tmp_path / "v.log", "", "corepack-pm install", [str(tool)])
+    assert ok, out
+    assert '$ corepack-pm run\n{"bin": "pm"}\n\n[exit 0]' in (tmp_path / "v.log").read_text()
+    write_home = 'touch "$COREPACK_HOME/w"'
+    ok, out = nd.verify_sha(runner, sha, vdir, [write_home], tmp_path / "v.log", "", "corepack-pm install", [str(tool)])
+    assert not ok
+    assert out.splitlines()[0] == f"{write_home}: exit 1"
 
 
 def test_fetch_push_and_github_pr(tmp_path, monkeypatch):

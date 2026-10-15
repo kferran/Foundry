@@ -27,26 +27,33 @@ def code_status(vault) -> str:
     return nc.git(vault, "status", "--porcelain", "--", *CODE_PATHS).stdout
 
 
-def bwrap(workdir, cmd: str, toolchain=(), net=False) -> list:
+def bwrap(workdir, cmd: str, toolchain=(), net=False, corepack_home=None) -> list:
     """Run cmd with the host read-only, $HOME and /tmp empty, an empty environment, and only workdir writable.
     The toolchain directories (a codebase's order_toolchain) are bound read-only after the $HOME tmpfs, so they
-    alone show through it, and lead PATH. The network is unshared unless net (the order_install step)."""
+    alone show through it, and lead PATH. The network is unshared unless net (the order_install step).
+    corepack_home becomes COREPACK_HOME, writable only with net, so the install's corepack download is what the
+    offline verify runs (#189)."""
     home = str(Path.home())
     dirs = [str(d) for d in toolchain]
     argv = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--tmpfs", home]
     for d in dirs:
         argv += ["--ro-bind", d, d]
     argv += ["--bind", str(workdir), str(workdir)] + ([] if net else ["--unshare-net"])
+    env = []
+    if corepack_home:
+        argv += ["--bind" if net else "--ro-bind", str(corepack_home), str(corepack_home)]
+        env = ["--setenv", "COREPACK_HOME", str(corepack_home), "--setenv", "COREPACK_ENABLE_DOWNLOAD_PROMPT", "0"]
     return argv + ["--die-with-parent", "--clearenv", "--setenv", "PATH", ":".join(dirs + ["/usr/local/bin", "/usr/bin", "/bin"]),
-                   "--setenv", "HOME", home, "--setenv", "LANG", "C.UTF-8", "--setenv", "TMPDIR", "/tmp",
+                   "--setenv", "HOME", home, "--setenv", "LANG", "C.UTF-8", "--setenv", "TMPDIR", "/tmp", *env,
                    "--chdir", str(workdir), "bash", "-c", cmd]
 
 
-def run_verify(clone, cmds, log_path, timeout=1800, toolchain=(), net=False, label="") -> tuple:
+def run_verify(clone, cmds, log_path, timeout=1800, toolchain=(), net=False, label="", corepack_home=None) -> tuple:
     with open(log_path, "a", encoding="utf-8") as log:
         for cmd in cmds:
             try:
-                r = subprocess.run(bwrap(clone, cmd, toolchain, net), capture_output=True, text=True, timeout=timeout)
+                r = subprocess.run(bwrap(clone, cmd, toolchain, net, corepack_home=corepack_home), capture_output=True,
+                                   text=True, timeout=timeout)
                 code, text = r.returncode, r.stdout + r.stderr
             except subprocess.TimeoutExpired:
                 code, text = 124, f"timed out after {timeout}s"
@@ -59,9 +66,10 @@ def run_verify(clone, cmds, log_path, timeout=1800, toolchain=(), net=False, lab
     return True, ""
 
 
-def run_install(clone, cmd: str, toolchain, log_path) -> tuple:
+def run_install(clone, cmd: str, toolchain, log_path, corepack_home=None) -> tuple:
     """A codebase's order_install, once, with the host network: the only sandboxed step that has it."""
-    return run_verify(clone, [cmd], log_path, toolchain=toolchain, net=True, label="order_install: ")
+    return run_verify(clone, [cmd], log_path, toolchain=toolchain, net=True, label="order_install: ",
+                      corepack_home=corepack_home)
 
 
 def push_target(vault, fm: dict) -> tuple:
@@ -157,20 +165,23 @@ def apply_protected(runner_repo, sha: str, branch: str, files, workdir) -> tuple
 def verify_sha(runner_repo, sha: str, vdir, cmds, log_path, lfs_store: str = "", install: str = "", toolchain=()) -> tuple:
     """Run the verify commands on a private checkout of sha, so nothing they do reaches the commit that is pushed.
     LFS files come from lfs_store, the live clone's store (#83): the runner's repository holds none. The codebase's
-    order_install runs first when set, then the verify commands offline (orders toolchain spec)."""
+    order_install runs first when set, then the verify commands offline (orders toolchain spec). vdir holds the
+    checkout and, outside it, the corepack home both steps share (orders corepack home spec, #189)."""
     vdir = Path(vdir)
     shutil.rmtree(vdir, ignore_errors=True)
+    checkout, corepack = vdir / "checkout", vdir / "corepack"
     lfs = ["-c", f"lfs.storage={lfs_store}"] if lfs_store else []
     try:
-        subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", str(runner_repo), str(vdir)], check=True,
+        corepack.mkdir(parents=True)
+        subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", str(runner_repo), str(checkout)], check=True,
                        capture_output=True, env=_git_env())
-        subprocess.run(["git", "-C", str(vdir), "-c", "advice.detachedHead=false", *lfs, "checkout", "-q", "--detach", sha],
+        subprocess.run(["git", "-C", str(checkout), "-c", "advice.detachedHead=false", *lfs, "checkout", "-q", "--detach", sha],
                        check=True, capture_output=True, env=_git_env())
         if install:
-            ok, out = run_install(vdir, install, toolchain, log_path)
+            ok, out = run_install(checkout, install, toolchain, log_path, corepack_home=corepack)
             if not ok:
                 return ok, out
-        return run_verify(vdir, cmds, log_path, toolchain=toolchain)
+        return run_verify(checkout, cmds, log_path, toolchain=toolchain, corepack_home=corepack)
     finally:
         shutil.rmtree(vdir, ignore_errors=True)
 

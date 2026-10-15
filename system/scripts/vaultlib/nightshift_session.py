@@ -27,8 +27,8 @@ CREDENTIALS = ["~/.npmrc", "~/.netrc", "~/.pypirc", "~/.aws", "~/.docker", "~/.c
 # CLAUDE_CONFIG_DIR reaches the session, so a custom config dir's files are denied beside the ~/.claude set above
 # (~/.claude.json stays where it is).
 CONFIG_DIR_FILES = (".credentials.json", "projects", "settings.json", "settings.local.json")
-# The session's whole environment (audit S3/S7 spec §2): what nightshift_deliver.bwrap() gives the verify step, plus
-# the variables the runner itself reads. An allowlist, since the next token variable is on no denylist.
+# The session's whole environment (audit S3/S7 spec §2): what nightshift_deliver.bwrap() gives the verify step, less
+# its corepack pair (COREPACK_HOME, COREPACK_ENABLE_DOWNLOAD_PROMPT; #189 spec), plus the variables the runner reads. An allowlist, since the next token variable is on no denylist.
 ENV = ("PATH", "HOME", "USER", "LANG", "TZ", "TMPDIR", "FOUNDRY_CLAUDE_BIN", "CLAUDE_CONFIG_DIR")
 
 

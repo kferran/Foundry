@@ -800,6 +800,7 @@ self_edit_contract() {
   grep -qF 'and its `lib` sibling' FOUNDRY.md
   grep -qF 'Each sandboxed step starts with a fresh, empty `$HOME`' FOUNDRY.md
   grep -qF 'from an empty cache every run' FOUNDRY.md
+  grep -qF '`COREPACK_HOME`, writable during the install and read-only during verify' FOUNDRY.md   # #189
   grep -qF 'without `--ignore-scripts`' FOUNDRY.md
   grep -qF '`Fix the failing check: order_install: <command>: exit <code>`' FOUNDRY.md
   grep -q '^  order_toolchain: {kind: list, of: string}$' system/schemas/codebase.md

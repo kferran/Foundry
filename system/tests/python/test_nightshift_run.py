@@ -729,6 +729,20 @@ def test_a_codebase_item_runs_its_install_before_verify_and_the_session_sees_the
     assert (tmp_path / "path.txt").read_text().startswith(f"{tools}:")
 
 
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
+def test_a_corepack_download_from_the_install_reaches_the_sealed_verify(env, monkeypatch, tmp_path):
+    """#189 (orders corepack home spec §2): the package manager order_install stores under COREPACK_HOME is the one
+    the offline verify runs, so the item is delivered."""
+    from test_nightshift_deliver import corepack_tool
+    vault, tmp = env
+    tools = corepack_tool(tmp_path / "tools")
+    codebase_item(vault, tmp_path, ["test -f done.txt", "corepack-pm run"], order_toolchain=[str(tools)],
+                  order_install="corepack-pm install")
+    assert nr.main(["tick"], vault, NOW) == 0
+    _, fm = only_item(vault)
+    assert fm["state"] == "done", fm
+
+
 def test_a_research_session_on_the_same_codebase_keeps_its_own_path(env, monkeypatch, tmp_path):
     """Orders toolchain spec §2: the toolchain leads the plan session's PATH; a research item has no verify to match."""
     vault, tmp = env
