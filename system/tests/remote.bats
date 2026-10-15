@@ -418,37 +418,58 @@ note() {  # <name> <frontmatter>: a work concept with the given frontmatter line
   alerts | grep -q 'Bad.md'
 }
 
-@test "--unattended stops on a published run the hook refused, before fetching (audit C7 spec §3)" {
-  template_setup
-  hooks_on
-  upstream_commit new.txt hello
+# refused_run: a published run whose note Bad.md the hook refuses, beside an ordinary new note (audit C7).
+refused_run() {
   pending_run 20261004T060000-brief-cd34
   printf '{"run_id": "20261004T060000-brief-cd34", "status": "published", "published": ["wiki/work/concepts/Bad.md"], "conflicts": [], "problems": []}\n' > system/logs/runs/20261004T060000-brief-cd34/publish.json
   rm briefings/2026-10-04.md
   note Bad 'type: concept'
   note Fresh $'type: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work'
+}
+
+@test "--unattended leaves a published run the hook refused uncommitted, merges and names it (audit C7 spec §3, #136 2026-10-15)" {
+  template_setup
+  hooks_on
+  upstream_commit new.txt hello
+  refused_run
   run "$UT" --unattended
-  [ "$status" -eq 1 ]
-  [ -z "$(git for-each-ref refs/remotes/template)" ]
-  [ ! -e new.txt ]
+  [ "$status" -eq 0 ]
+  [ "$(cat new.txt)" = hello ]
   [ "$(git status --porcelain)" = '?? wiki/work/concepts/Bad.md' ]
-  [ "$(git log -1 --format=%s)" = "sync(standalone): 1 file(s)" ]
-  alerts | grep -qF '[update] template update failed: committed first: sync(standalone): 1 file(s); a published run was refused by the pre-commit hook: wiki/work/concepts/Bad.md (the hook'"'"'s line is in today'"'"'s [commit_runs] alert)'
+  [ "$(git log --first-parent --format=%s -2 | tr '\n' '|')" = "Merge remote-tracking branch 'template/$(git -C "$W" rev-parse --abbrev-ref HEAD)'|sync(standalone): 1 file(s)|" ]
+  [ "$(alerts | grep -c '\[update\]')" -eq 1 ]
+  alerts | grep -qF '[update] template updated: committed first: sync(standalone): 1 file(s); a published run was refused by the pre-commit hook and left uncommitted: wiki/work/concepts/Bad.md (the hook'"'"'s line is in today'"'"'s [commit_runs] alert); merged 1 change(s): upstream: new.txt'
   [ "$(alerts | grep -c ' \[commit_runs\] run ')" -eq 1 ]
 }
 
-@test "--unattended stops on a file left out for a secret shape, before fetching, naming it without the value (#166)" {
+@test "--unattended ends in a failed merge naming a refused note the template also changes (audit C7 spec §2, #136 2026-10-15)" {
+  template_setup
+  hooks_on
+  mkdir -p "$W/wiki/work/concepts"
+  upstream_commit wiki/work/concepts/Bad.md theirs
+  refused_run
+  run "$UT" --unattended
+  [ "$status" -eq 1 ]
+  [ ! -e .git/MERGE_HEAD ]
+  [ "$(git log -1 --format=%s)" = "sync(standalone): 1 file(s)" ]
+  [ "$(git status --porcelain)" = '?? wiki/work/concepts/Bad.md' ]
+  alerts | grep -qF '[update] template update failed: committed first: sync(standalone): 1 file(s); a published run was refused by the pre-commit hook and left uncommitted: wiki/work/concepts/Bad.md'
+  alerts | grep '\[update\]' | grep -qE "git merge template/[^ ]+ was refused: .* wiki/work/concepts/Bad.md$"
+}
+
+@test "--unattended leaves a file with a secret shape uncommitted, merges and names it without the value (#166, #136 2026-10-15)" {
   template_setup
   hooks_on
   upstream_commit new.txt hello
   note Leak $'type: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work\nsource: AKIA''IOSFODNN7EXAMPLE'
   note Fresh $'type: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work'
   run "$UT" --unattended
-  [ "$status" -eq 1 ]
-  [ -z "$(git for-each-ref refs/remotes/template)" ]
+  [ "$status" -eq 0 ]
+  [ "$(cat new.txt)" = hello ]
   [ "$(git status --porcelain)" = '?? wiki/work/concepts/Leak.md' ]
-  [ "$(git log -1 --format=%s)" = "sync(standalone): 1 file(s)" ]
-  alerts | grep -qF '[update] template update failed: committed first: sync(standalone): 1 file(s); a file adds a secret shape and was left out of the commit: secret shape: wiki/work/concepts/Leak.md:6: aws_key'
+  [ "$(git log --first-parent --format=%s -2 | tail -n 1)" = "sync(standalone): 1 file(s)" ]
+  [ "$(alerts | grep -c '\[update\]')" -eq 1 ]
+  alerts | grep -qF '[update] template updated: committed first: sync(standalone): 1 file(s); a file adds a secret shape and was left out of the commit: secret shape: wiki/work/concepts/Leak.md:6: aws_key; merged 1 change(s): upstream: new.txt'
   [ -z "$(alerts | grep 'IOSFODNN7EXAMPLE')" ]
 }
 

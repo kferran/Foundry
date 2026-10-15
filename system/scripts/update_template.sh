@@ -17,8 +17,9 @@ export TZ GIT_TERMINAL_PROMPT=0
 
 unattended=0
 alert() { mkdir -p system/logs; printf -- '- %s [update] %s\n' "$(date +%H:%M:%S)" "$1" >> "system/logs/alerts_$(date +%F).md"; }
+committed=""
 die() {
-  (( ! unattended )) || alert "template update failed: $2"
+  (( ! unattended )) || alert "template update failed: $committed$2"
   echo "update_template: $2" >&2
   exit "$1"
 }
@@ -48,7 +49,6 @@ list10() {
   (( $# <= 10 )) || s+="; and $(( $# - 10 )) more"
   printf '%s' "$s"
 }
-committed=""
 if (( unattended )); then
   # A dirty tree is committed the way the sync does it (audit C4): on a server the --pre sync already did; on a
   # standalone machine nothing else commits between /backup runs. Every outcome names the commits made first.
@@ -57,11 +57,11 @@ if (( unattended )); then
   git_sync_commit "$(config_get machine_role standalone)" || rc=$?
   mapfile -t subjects < <(g log --reverse --format=%s "$before..HEAD")
   (( ${#subjects[@]} == 0 )) || committed="committed first: $(list10 "${subjects[@]}"); "
-  (( rc == 0 )) || die 1 "$committed$GIT_SYNC_ERROR"
-  # A run the hook refused stays pending until it is fixed (audit C7 §3): the update waits for it too.
-  # So does a file left out for a secret shape (#166); the line names path, line and shape, never the value.
-  [[ -z "$GIT_SYNC_SECRETS" ]] || die 1 "${committed}a file adds a secret shape and was left out of the commit: $(paste -sd ' ' <<< "${GIT_SYNC_SECRETS%$'\n'}")"
-  [[ -z "$GIT_SYNC_REFUSED" ]] || die 1 "${committed}a published run was refused by the pre-commit hook: $(paste -sd ' ' <<< "${GIT_SYNC_REFUSED%$'\n'}") (the hook's line is in today's [commit_runs] alert)"
+  # A run the hook refused (audit C7 §3) and a file left out for a secret shape (#166) stay uncommitted and the
+  # update goes on (owner, #136 2026-10-15); every later alert names them, a secret by path, line and shape only.
+  [[ -z "$GIT_SYNC_REFUSED" ]] || committed+="a published run was refused by the pre-commit hook and left uncommitted: $(paste -sd ' ' <<< "${GIT_SYNC_REFUSED%$'\n'}") (the hook's line is in today's [commit_runs] alert); "
+  [[ -z "$GIT_SYNC_SECRETS" ]] || committed+="a file adds a secret shape and was left out of the commit: $(paste -sd ' ' <<< "${GIT_SYNC_SECRETS%$'\n'}"); "
+  (( rc == 0 )) || die 1 "$GIT_SYNC_ERROR"
 else
   [[ -z "$(g status --porcelain)" ]] || die 1 "working tree is not clean; commit or stash first"
 fi
@@ -83,12 +83,15 @@ fi
 attrs="$(mktemp)"
 trap 'rm -f -- "$attrs"' EXIT
 printf 'README.md merge=ours\n' > "$attrs"
-if ! g -c core.attributesFile="$attrs" -c merge.ours.driver=true merge --no-ff --no-edit "$ref"; then
+if ! out="$(g -c core.attributesFile="$attrs" -c merge.ours.driver=true merge --no-ff --no-edit "$ref" 2>&1)"; then
+  printf '%s\n' "$out" >&2
   conflicted="$(g diff --name-only --diff-filter=U)"
-  [[ -n "$conflicted" ]] || die 1 "git merge $ref failed"
+  # Git refuses before it starts when the merge would overwrite a file left uncommitted, and names the files on
+  # tab-indented lines after its first line (audit C7 §2).
+  [[ -n "$conflicted" ]] || die 1 "git merge $ref was refused: $(head -n 1 <<< "$out") $(grep -P '^\t' <<< "$out" | sed 's/^\t//' | paste -sd ' ')"
   if (( unattended )); then
     g merge --abort || die 1 "merge stopped on a conflict and git merge --abort failed; resolve it by hand"
-    alert "template update stopped on a conflict in $(paste -sd ' ' <<< "$conflicted"); the vault is unchanged. Run system/scripts/update_template.sh by hand and resolve it."
+    alert "template update stopped on a conflict in $(paste -sd ' ' <<< "$conflicted"); the vault is unchanged${committed:+ apart from: ${committed%; }}. Run system/scripts/update_template.sh by hand and resolve it."
     exit 1
   fi
   echo "update_template: merge stopped on conflicts in:" >&2
@@ -96,6 +99,7 @@ if ! g -c core.attributesFile="$attrs" -c merge.ours.driver=true merge --no-ff -
   echo "Resolve each file, then 'git add' it and 'git commit'; or run 'git merge --abort' to undo." >&2
   exit 1
 fi
+printf '%s\n' "$out"
 
 list=""
 if (( unattended )); then
