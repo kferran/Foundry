@@ -59,6 +59,8 @@ if (( unattended )); then
   (( ${#subjects[@]} == 0 )) || committed="committed first: $(list10 "${subjects[@]}"); "
   (( rc == 0 )) || die 1 "$committed$GIT_SYNC_ERROR"
   # A run the hook refused stays pending until it is fixed (audit C7 §3): the update waits for it too.
+  # So does a file left out for a secret shape (#166); the line names path, line and shape, never the value.
+  [[ -z "$GIT_SYNC_SECRETS" ]] || die 1 "${committed}a file adds a secret shape and was left out of the commit: $(paste -sd ' ' <<< "${GIT_SYNC_SECRETS%$'\n'}")"
   [[ -z "$GIT_SYNC_REFUSED" ]] || die 1 "${committed}a published run was refused by the pre-commit hook: $(paste -sd ' ' <<< "${GIT_SYNC_REFUSED%$'\n'}") (the hook's line is in today's [commit_runs] alert)"
 else
   [[ -z "$(g status --porcelain)" ]] || die 1 "working tree is not clean; commit or stash first"

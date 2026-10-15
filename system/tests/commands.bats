@@ -139,6 +139,12 @@ headless_contract() {
   grep -qF 'system/scripts/lint_vault.sh' .claude/commands/lint.md
 }
 
+@test "/lint lists secret-shape lines first, as errors, and the manual says what the hook and the sync do with them (#166)" {
+  grep -qF 'Present `secret shape:` lines first, as errors' .claude/commands/lint.md
+  grep -qF 'left out of the sync commit' FOUNDRY.md
+  grep -qF 'only the lines a commit adds' FOUNDRY.md
+}
+
 @test "the committed example config and codebase validate, and a vault's own codebase files are trackable" {
   system/scripts/vault_index.py validate system/config.example.md system/codebases/example.md
   [ "$(system/scripts/vault_index.py field system/config.example.md remote_mode)" = none ]

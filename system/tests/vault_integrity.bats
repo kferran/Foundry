@@ -21,7 +21,7 @@ setup() {
   for s in vault_index.py lint_vault.sh check_deps.sh verify_setup.sh \
            brief_prep.sh debrief_prep.sh install_units.sh setup_remote.sh update_template.sh \
            discover_codebases.sh inspect_codebase.sh inspect_codebase.py now.py triage.py triage_fetch.sh rca.py rca_file.sh \
-           notify.py notify.sh; do
+           notify.py notify.sh secret_scan.py; do
     [ -x "system/scripts/$s" ]
   done
   [ -x .githooks/pre-commit ]

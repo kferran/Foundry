@@ -21,7 +21,7 @@ done
 # in the working file and the index, so the pushed blob holds nothing the published transcript does not. A drop that
 # does not decode (NULs in the text) is refused with the import's reason, and so is a symlink or a partly staged file
 # (the rewrite would follow the link or drop the unstaged text); a file is only ever overwritten with a successful result.
-drops=0
+drops=0 redacted=""
 tmp="$(mktemp)" err="$(mktemp)"
 trap 'rm -f "$tmp" "$err"' EXIT
 for f in "${staged[@]}"; do
@@ -55,10 +55,24 @@ for f in "${staged[@]}"; do
   cat "$tmp" > "$root/$f"
   git add -- "$root/$f"
   n="$(sed -n 's/^redactions: //p' "$err")"
-  (( ${n:-0} == 0 )) || echo "pre-commit: redacted $n in $f"
+  (( ${n:-0} == 0 )) || redacted+="pre-commit: redacted $n in $f"$'\n'
 done
 rm -f "$tmp" "$err"
 (( drops == 0 )) || exit 1
+# Secret shapes never land (secret-shape lint spec §2, #166): the lines the staged blobs add, after the drop rewrite
+# above, scanned with redact.py's shape list. The lines name path, line and shape, never the value. Any other non-zero
+# exit (an unreadable or empty shape list, a git failure, a missing scanner) refuses too: unscanned is never clean.
+# The refusal is the first line, which is what a sync or update alert quotes; the drop lines come after it.
+rc=0
+scan="$(python3 "$root/system/scripts/secret_scan.py" --staged)" || rc=$?
+if (( rc == 1 )); then
+  echo "pre-commit: a staged file adds a secret shape; remove it, or commit with --no-verify if it is not a secret" >&2
+elif (( rc != 0 )); then
+  echo "pre-commit: the secret scan could not run, so nothing was committed" >&2
+fi
+[[ -z "$scan" ]] || printf '%s\n' "$scan" >&2
+printf '%s' "${redacted:-}"
+(( rc == 0 )) || exit 1
 found=0
 for f in "${staged[@]}"; do
   if [[ $f =~ $pattern ]]; then

@@ -437,6 +437,21 @@ note() {  # <name> <frontmatter>: a work concept with the given frontmatter line
   [ "$(alerts | grep -c ' \[commit_runs\] run ')" -eq 1 ]
 }
 
+@test "--unattended stops on a file left out for a secret shape, before fetching, naming it without the value (#166)" {
+  template_setup
+  hooks_on
+  upstream_commit new.txt hello
+  note Leak $'type: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work\nsource: AKIA''IOSFODNN7EXAMPLE'
+  note Fresh $'type: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work'
+  run "$UT" --unattended
+  [ "$status" -eq 1 ]
+  [ -z "$(git for-each-ref refs/remotes/template)" ]
+  [ "$(git status --porcelain)" = '?? wiki/work/concepts/Leak.md' ]
+  [ "$(git log -1 --format=%s)" = "sync(standalone): 1 file(s)" ]
+  alerts | grep -qF '[update] template update failed: committed first: sync(standalone): 1 file(s); a file adds a secret shape and was left out of the commit: secret shape: wiki/work/concepts/Leak.md:6: aws_key'
+  [ -z "$(alerts | grep 'IOSFODNN7EXAMPLE')" ]
+}
+
 @test "--unattended with nothing new to merge still reports the commits it made (audit C4 review)" {
   template_setup
   hooks_on

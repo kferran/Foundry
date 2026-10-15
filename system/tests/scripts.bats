@@ -7,7 +7,8 @@ setup() {
   cp -r "$REPO/system/tests/fixtures/vault" "$V"
   mkdir -p "$V/system/scripts" "$V/.githooks"
   cp -r "$REPO/system/schemas" "$V/system/schemas"
-  cp -r "$REPO/system/scripts/vault_index.py" "$REPO/system/scripts/vaultlib" "$REPO/system/scripts/lint_vault.sh" "$V/system/scripts/"
+  cp -r "$REPO/system/scripts/vault_index.py" "$REPO/system/scripts/vaultlib" "$REPO/system/scripts/lint_vault.sh" \
+    "$REPO/system/scripts/secret_scan.py" "$V/system/scripts/"
   cp "$REPO/.githooks/pre-commit" "$V/.githooks/pre-commit"
   git -C "$V" init -q
   git -C "$V" config user.email test@example.com
@@ -116,6 +117,130 @@ bad_note() {
   [ "$status" -eq 0 ]
 }
 
+# A fixture token built by concatenation, so this file never holds the shape itself.
+TOKEN="AKIA""IOSFODNN7EXAMPLE"
+
+@test "hook refuses a staged secret shape, naming path, line and shape but never the value (#166)" {
+  printf 'first\nkey %s here\n' "$TOKEN" > "$V/notes.txt"
+  git -C "$V" add notes.txt
+  printf 'fixed on disk only\n' > "$V/notes.txt"
+  mkdir -p "$V/docs/superpowers"
+  printf 'key %s\n' "$TOKEN" > "$V/docs/superpowers/pasted.md"
+  git -C "$V" add docs/superpowers/pasted.md
+  run git -C "$V" commit -qm secret
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"secret shape: notes.txt:2: aws_key"* ]]
+  [[ "$output" == *"secret shape: docs/superpowers/pasted.md:1: aws_key"* ]]
+  [ "${lines[0]}" = "pre-commit: a staged file adds a secret shape; remove it, or commit with --no-verify if it is not a secret" ]
+  [[ "$output" != *"$TOKEN"* ]]
+  run git -C "$V" rev-parse -q --verify HEAD
+  [ "$status" -ne 0 ]
+}
+
+@test "hook scans only added lines: a moved or edited file keeps its old secret shape, a new one is refused (#166)" {
+  mkdir -p "$V/notes/archive"
+  printf 'old %s\nnotes\n' "$TOKEN" > "$V/notes/2026-10-01.md"
+  git -C "$V" add notes/2026-10-01.md
+  git -C "$V" commit -q --no-verify -m base
+  git -C "$V" mv notes/2026-10-01.md notes/archive/2026-10-01.md
+  printf 'more notes\n' >> "$V/notes/archive/2026-10-01.md"
+  git -C "$V" add notes/archive/2026-10-01.md
+  run git -C "$V" commit -qm archive
+  [ "$status" -eq 0 ]
+  printf 'new %s\n' "$TOKEN" >> "$V/notes/archive/2026-10-01.md"
+  git -C "$V" add notes/archive/2026-10-01.md
+  run git -C "$V" commit -qm added
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"secret shape: notes/archive/2026-10-01.md:4: aws_key"* ]]
+  [[ "$output" != *"2026-10-01.md:1:"* ]]
+}
+
+@test "hook commits a hand-resolved merge that brings fixture tokens, and refuses a token typed during resolution (#166)" {
+  printf 'base\n' > "$V/notes.txt"
+  git -C "$V" add notes.txt
+  git -C "$V" commit -q --no-verify -m base
+  git -C "$V" checkout -q -b other
+  mkdir -p "$V/system/tests"
+  printf 'fixture %s\n' "$TOKEN" > "$V/system/tests/fixture.txt"
+  printf 'theirs\n' > "$V/notes.txt"
+  git -C "$V" add -A
+  git -C "$V" commit -q --no-verify -m other
+  git -C "$V" checkout -q -
+  printf 'ours\n' > "$V/notes.txt"
+  git -C "$V" commit -q --no-verify -am ours
+  run git -C "$V" merge -q other
+  [ "$status" -ne 0 ]
+  printf 'ours and theirs %s\n' "$TOKEN" > "$V/notes.txt"
+  git -C "$V" add notes.txt
+  run git -C "$V" commit -q --no-edit
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"secret shape: notes.txt:1: aws_key"* ]]
+  [[ "$output" != *"fixture.txt"* ]]
+  printf 'ours and theirs\n' > "$V/notes.txt"
+  git -C "$V" add notes.txt
+  run git -C "$V" commit -q --no-edit
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$V" show HEAD:system/tests/fixture.txt)" = "fixture $TOKEN" ]
+}
+
+@test "hook skips a staged nested repository and scans a symlink turned file and a UTF-16 file (#166)" {
+  ln -s target "$V/link.txt"
+  git -C "$V" add link.txt
+  git -C "$V" commit -q --no-verify -m link
+  git -C "$V" update-index --add --cacheinfo 160000,1234567890123456789012345678901234567890,nested
+  run git -C "$V" commit -qm gitlink
+  [ "$status" -eq 0 ]
+  rm "$V/link.txt"
+  printf 'key %s\n' "$TOKEN" > "$V/link.txt"
+  printf 'key %s\n' "$TOKEN" | iconv -f UTF-8 -t UTF-16 > "$V/wide.txt"
+  git -C "$V" add link.txt wide.txt
+  run git -C "$V" commit -qm typechange
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"secret shape: link.txt:1: aws_key"* ]]
+  [[ "$output" == *"secret shape: wide.txt:1: aws_key"* ]]
+}
+
+@test "hook quotes a path that holds a newline (#166)" {
+  printf 'key %s\n' "$TOKEN" > "$V/two"$'\n'"lines.txt"
+  git -C "$V" add -A
+  run git -C "$V" commit -qm newline
+  [ "$status" -ne 0 ]
+  [[ "$output" == *'secret shape: "two\nlines.txt":1: aws_key'* ]]
+}
+
+@test "hook passes a clean commit, and a secret only in the working tree does not block it (#166)" {
+  printf 'clean\n' > "$V/notes.txt"
+  git -C "$V" add notes.txt
+  printf 'key %s\n' "$TOKEN" > "$V/notes.txt"
+  printf 'key %s\n' "$TOKEN" > "$V/untracked.txt"
+  run git -C "$V" commit -qm clean
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$V" show HEAD:notes.txt)" = clean ]
+}
+
+@test "hook refuses as unscanned when the shape list is empty or unreadable, or the scanner is missing (#166)" {
+  echo hi > "$V/README.txt"
+  git -C "$V" add README.txt
+  cp "$V/system/scripts/vaultlib/redact.py" "$BATS_TEST_TMPDIR/redact.py"
+  printf 'import re\nPATTERNS = []\nPEM_BEGIN = re.compile("x^")\n' > "$V/system/scripts/vaultlib/redact.py"
+  run git -C "$V" commit -qm empty
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"secret shape: unscanned (empty shape list)"* ]]
+  [[ "$output" == *"pre-commit: the secret scan could not run"* ]]
+  cp "$BATS_TEST_TMPDIR/redact.py" "$V/system/scripts/vaultlib/redact.py"
+  chmod 000 "$V/system/scripts/vaultlib/redact.py"
+  run git -C "$V" commit -qm unreadable
+  chmod 644 "$V/system/scripts/vaultlib/redact.py"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"secret shape: unscanned (shape list unreadable"* ]]
+  rm "$V/system/scripts/secret_scan.py"
+  run git -C "$V" commit -qm missing
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pre-commit: the secret scan could not run"* ]]
+  run git -C "$V" rev-parse -q --verify HEAD
+  [ "$status" -ne 0 ]
+}
+
 @test "hook allows setext underlines and a start marker without an end marker" {
   mkdir -p "$V/wiki/work/concepts"
   printf -- '---\ntype: concept\ntags: []\ncompiled_at: "2026-09-01"\npartition: work\n---\nTitle\n=======\n\n<<<<<<< not a conflict\n[[Index]]\n' > "$V/wiki/work/concepts/Setext.md"
@@ -139,6 +264,28 @@ bad_note() {
   printf -- '---\ntype: config\ntimezone: "UTC"\nbrief_time: "06:00"\ndebrief_time: "17:00"\nremote_mode: "none"\ndefault_partition: "work"\nmachine_role: "standalone"\n---\n' > "$V/system/config.md"
   run "$V/system/scripts/lint_vault.sh"
   [[ "$output" != *"raw/inbox/ holds"* ]]
+}
+
+@test "lint reports a secret shape in tracked and untracked files without failing, and never with --staged (#166)" {
+  printf 'key %s\n' "$TOKEN" > "$V/untracked.txt"
+  mkdir -p "$V/.scratch" "$V/system/tests"
+  printf 'key %s\n' "$TOKEN" > "$V/.scratch/clone.txt"
+  printf 'key %s\n' "$TOKEN" > "$V/system/tests/fixture.txt"
+  printf '\0key %s\n' "$TOKEN" > "$V/blob.bin"
+  run "$V/system/scripts/lint_vault.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"secret shape: untracked.txt:1: aws_key"* ]]
+  [[ "$output" != *"$TOKEN"* ]]
+  [[ "$output" != *"clone.txt"* ]]
+  [[ "$output" != *"fixture.txt"* ]]
+  [[ "$output" != *"blob.bin"* ]]
+  run "$V/system/scripts/lint_vault.sh" --staged
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"secret shape"* ]]
+  printf 'PATTERNS = []\nPEM_BEGIN = None\n' > "$V/system/scripts/vaultlib/redact.py"
+  run "$V/system/scripts/lint_vault.sh"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"secret shape: unscanned (empty shape list)"* ]]
 }
 
 @test "hook blocks a Workcell file with invalid frontmatter" {

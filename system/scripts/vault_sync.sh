@@ -124,6 +124,13 @@ reason="$(in_progress)" && block "$reason"
 
 # Cycle (§5.1). The commit step is git_sync_commit (lib_git.sh), shared with the unattended update.
 git_sync_commit "$role" || fail commit "$GIT_SYNC_ERROR"
+# A path left out for a secret shape (#166): one alert a day per path, naming path, line and shape, never the value.
+while IFS= read -r line; do
+  [[ -n "$line" ]] || continue
+  path_key="${line%:*:*}:"
+  grep -qsF "left out of the sync commit: $path_key" "$LOGS/alerts_$(date +%F).md" \
+    || alert "left out of the sync commit: $line; remove it, or commit it by hand with --no-verify if it is not a secret"
+done <<< "$GIT_SYNC_SECRETS"
 for attempt in 1 2; do
   net fetch -q --prune origin || fail fetch "git fetch origin failed"
   if ! git merge-base --is-ancestor "origin/$branch" HEAD; then
