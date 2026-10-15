@@ -68,6 +68,23 @@ def test_arguments_come_from_the_settings_and_the_draft_only(vault):
         "contentFormat": "markdown", "additional_fields": {"labels": ["production-finding"]}}
 
 
+def test_extra_fields_go_beside_the_labels_and_json_values_are_sent_as_json(vault):
+    # #175: a project whose Bug type has a required custom field
+    prepare(vault, CONFIG.replace(
+        "\n---\n", '\nrca_extra_fields: {customfield_10042: \'{"id": "10042"}\', customfield_10050: "Payments"}\n---\n'))
+    note(vault)
+    assert rca.arguments(vault, "work", "2026-10-11-orders")["additional_fields"] == {
+        "labels": ["production-finding"], "customfield_10042": {"id": "10042"}, "customfield_10050": "Payments"}
+
+
+def test_extra_fields_may_not_name_the_labels(vault):
+    prepare(vault, CONFIG.replace("\n---\n", '\nrca_extra_fields: {labels: "x"}\n---\n'))
+    note(vault)
+    with pytest.raises(rca.Fail) as e:
+        rca.arguments(vault, "work", "2026-10-11-orders")
+    assert e.value.code == 2 and "rca_labels" in e.value.reason
+
+
 @pytest.mark.parametrize("config,body,reason", [
     (CONFIG.replace('rca_project: "EX"', 'rca_project: ""'), DRAFT, "rca_project"),
     (CONFIG.replace('"example.atlassian.net"', '"https://x"'), DRAFT, "handoffs_site"),
@@ -82,14 +99,14 @@ def test_incomplete_settings_or_drafts_are_a_usage_error(vault, config, body, re
     assert e.value.code == 2 and reason in e.value.reason
 
 
-def stream(args, tool=rca.TOOL, calls=1, error=False, result=None):
+def stream(args, tool=rca.TOOL, calls=1, error=False, result=None, content="…"):
     s = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t0", "name": "ToolSearch", "input": {}}]}},
          {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t0",
                                                    "content": [{"type": "tool_reference", "tool_name": rca.TOOL}]}]}}]
     for n in range(1, calls + 1):
         s.append({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": f"t{n}", "name": tool, "input": args}]}})
         s.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": f"t{n}", "is_error": error,
-                                                           "content": "…"}]},
+                                                           "content": content}]},
                   "tool_use_result": {"structuredContent": result if result is not None else {"key": "EX-7", "id": "1"}}})
     s.append({"type": "result", "subtype": "success", "is_error": False})
     return s
@@ -117,6 +134,45 @@ def test_called_says_whether_the_session_called_the_create_tool(vault):
     args = rca.arguments(vault, "work", "2026-10-11-orders")
     assert rca.called(stream({**args, "summary": "something else"})) is True
     assert rca.called(stream(args, tool="mcp__claude_ai_Atlassian__editJiraIssue")) is False
+
+
+REQUIRED = [{"type": "text", "text": 'Error: 400 Bad Request: {"errors":{"customfield_10042":"Team is required."}}'}]
+
+
+def test_a_client_rejection_proves_nothing_was_created(vault):
+    # #175: the 2026-10-14 required-field 400 left a marker that blocked every later tick
+    prepare(vault)
+    note(vault)
+    args = rca.arguments(vault, "work", "2026-10-11-orders")
+    assert rca.rejected_create(stream(args, error=True, content=REQUIRED)) == (
+        'Error: 400 Bad Request: {"errors":{"customfield_10042":"Team is required."}}')
+    assert rca.rejected_create(stream(args, error=True, content="403 Forbidden")) is not None
+    for s in (stream(args, error=True, content="Request timed out"),
+              stream(args, error=True, content="500 Internal Server Error"),
+              stream(args),
+              stream(args, result={"id": "1"}),
+              stream(args, tool="mcp__claude_ai_Atlassian__editJiraIssue", error=True, content=REQUIRED)):
+        assert rca.rejected_create(s) is None
+    created_then_rejected = stream(args) + stream(args, error=True, content=REQUIRED)[2:]
+    assert rca.rejected_create(created_then_rejected) is None   # a ticket may exist
+
+
+def test_reopen_unticks_the_line_with_the_reason_and_returns_the_draft(vault):
+    prepare(vault)
+    path = note(vault)
+    line(vault, "2026-10-11-orders", "x")
+    now.add(vault, "work", "owed", "Another line", TODAY)
+    rca.approve(vault, "work", "2026-10-11-orders")
+    rca.reopen(vault, "work", "2026-10-11-orders", 'Jira: "Team is required." (customfield_10042)', TODAY)
+    page = now.read(vault, "work")
+    assert ("- [ ] owed: Review RCA draft: 2026-10-11-orders: not filed 2026-10-11, Jira: \"Team is required.\" "
+            "customfield_10042 (since 2026-10-11, rca:2026-10-11-orders)") in page
+    assert "- [ ] owed: Another line (since 2026-10-11)" in page
+    assert 'status: "draft"' in path.read_text()
+    assert rca.pending(vault) == []   # nothing retries until the line is ticked again
+    rca.reopen(vault, "work", "2026-10-11-orders", "403 Forbidden", "2026-10-12")
+    page = now.read(vault, "work")
+    assert page.count("not filed") == 1 and "not filed 2026-10-12, 403 Forbidden (since" in page
 
 
 def test_filed_writes_the_key_to_the_note_and_the_now_line(vault):

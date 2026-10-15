@@ -37,6 +37,44 @@ jira_says() {
   } > "$STUB_STREAM"
 }
 
+# jira_errs <text>: a session whose one create call comes back as an error with that text.
+jira_errs() {
+  {
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"ToolSearch","input":{}}]}}\n'
+    printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"tool_reference","tool_name":"%s"}]}]}}\n' "$C"
+    jq -cn --arg t "$C" --argjson a "$ARGS" '{type: "assistant", message: {content: [{type: "tool_use", id: "t2", name: $t, input: $a}]}}'
+    jq -cn --arg e "$1" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "t2", is_error: true,
+      content: [{type: "text", text: $e}]}]}}'
+    printf '{"type":"result","subtype":"success","is_error":false}\n'
+  } > "$STUB_STREAM"
+}
+
+@test "a create Jira refuses for a required field clears the marker and hands the draft back; the field then files (#175)" {
+  jira_errs 'Error: 400 Bad Request: {"errors":{"customfield_10042":"Team is required."}}'
+  run "$RF" work "$STEM"
+  [ "$status" -eq 6 ]
+  [ ! -e "system/logs/rca/work-$STEM.attempt" ]
+  grep -qx 'status: "draft"' "wiki/work/rca/$STEM.md"
+  grep -q '^- \[ \] owed: Review RCA draft: Orders fail: not filed .*Team is required.* (since 2026-10-11, rca:' wiki/work/Now.md
+  grep -qF 'Jira refused the ticket, nothing was created' "$ALERTS"
+  sed -i '$d' system/config.md
+  printf '%s\n' "rca_extra_fields: {customfield_10042: '{\"id\": \"10042\"}'}" '---' >> system/config.md
+  ARGS="$(system/scripts/rca.py args work "$STEM")"
+  [ "$(jq -c .additional_fields <<< "$ARGS")" = '{"customfield_10042":{"id":"10042"}}' ]
+  jira_says "$C" "$ARGS"
+  run "$RF" work "$STEM"
+  [ "$status" -eq 0 ]
+  [ "$output" = "EX-7" ]
+}
+
+@test "a create error that is not a client rejection keeps the marker, since a ticket may exist" {
+  jira_errs '500 Internal Server Error'
+  run "$RF" work "$STEM"
+  [ "$status" -eq 6 ]
+  [ -e "system/logs/rca/work-$STEM.attempt" ]
+  grep -q '^- \[x\] owed: Review RCA draft: Orders fail (since' wiki/work/Now.md
+}
+
 @test "an approved draft is filed once, and the key reaches the note, its Now line and the alerts" {
   jira_says "$C" "$ARGS"
   run "$RF" work "$STEM"

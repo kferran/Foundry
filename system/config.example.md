@@ -21,6 +21,7 @@ rca_project: ""                 # Jira project key approved /rca drafts are file
 rca_issue_type: "Bug"           # the issue type /rca files
 rca_labels: []                  # labels /rca puts on each ticket, e.g. ["production-finding"]
 rca_assignee: ""                # Atlassian account ID to assign /rca tickets to; empty leaves them unassigned
+rca_extra_fields: {}            # a required custom field per Jira field id, e.g. {customfield_10042: '{"id": "10042"}'}; JSON values are sent as JSON
 triage_enabled: "false"         # server and standalone: every 30 minutes on workdays, mail that needs you goes to the Now page
 triage_partition: "work"        # work | personal: the Now page triage writes to
 triage_watch_senders: []        # domains or addresses whose mail archived unread still reaches the Now page, e.g. ["@example.com"]

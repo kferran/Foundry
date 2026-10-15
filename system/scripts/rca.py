@@ -5,6 +5,9 @@ Usage: rca.py pending                          print "<file|reject> <partition> 
        rca.py args <partition> <stem>          print the createJiraIssue arguments as JSON
        rca.py extract <partition> <stem>       check a filer session's stream on stdin; print the new issue key
        rca.py called                           exit 0 when the stream on stdin called the create tool, 1 when not
+       rca.py rejected                         print Jira's rejection and exit 0 when every create call in the stream on
+                                               stdin was a client rejection (nothing created), 1 otherwise (#175)
+       rca.py reopen <partition> <stem> <why>  return the note to draft and untick its Now line with the reason
        rca.py filed <partition> <stem> <key>   write the key back to the note and its Now line, under run.lock
 Exit: 0 ok, 1 claude error or no key, 2 usage or incomplete settings or draft, 3 no connector, 4 run.lock busy,
 6 connector error, 7 unexpected tool use or other arguments. A non-zero exit writes one reason line to stderr.
@@ -38,12 +41,22 @@ def main(argv) -> int:
             print(rca.extract(messages(sys.stdin.read()), args))
         elif argv[1:] == ["called"]:
             return 0 if rca.called(messages(sys.stdin.read())) else 1
+        elif argv[1:] == ["rejected"]:
+            line = rca.rejected_create(messages(sys.stdin.read()))
+            if line is None:
+                return 1
+            print(line)
+        elif len(argv) == 5 and argv[1] == "reopen":
+            intake = Intake(VAULT)
+            with intake.lock("run.lock", timeout=120):
+                rca.reopen(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
         elif len(argv) == 5 and argv[1] == "filed" and rca.KEY.match(argv[4]):
             intake = Intake(VAULT)
             with intake.lock("run.lock", timeout=120):
                 rca.filed(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
         else:
-            raise rca.Fail(2, "usage: rca.py pending | args <p> <stem> | extract <p> <stem> | filed <p> <stem> <key>")
+            raise rca.Fail(2, "usage: rca.py pending | args <p> <stem> | extract <p> <stem> | called | rejected | "
+                              "filed <p> <stem> <key> | reopen <p> <stem> <why>")
     except rca.Fail as f:
         print(f"rca: {f.reason}", file=sys.stderr)
         return f.code
