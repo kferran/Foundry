@@ -313,6 +313,63 @@ def test_review_groups_closed_stale_and_duplicate_lines_and_writes_nothing(vault
     assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": []}
 
 
+HEAD = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: {p}\n---\n# Now\n\n## Needs you\n"
+OVERDUE = ("**1 to 7 days over**\n"
+           "- owed: Seven days [due:: 2026-10-13] (since 2026-10-01)\n"
+           "- owed: One day [rec:: Yes: cheap] [due:: 2026-10-19] (since 2026-10-01)\n"
+           "**8 to 30 days over**\n"
+           "- draft: Thirty days [due:: 2026-09-20] (since 2026-09-01)\n"
+           "- waiting: Eight days [due:: 2026-10-12] (Avery Sample, since 2026-10-01, EX-1)\n"
+           "**More than 30 days over**\n"
+           "- owed: Thirty-one days [due:: 2026-09-19] (since 2026-09-01)\n"
+           "2 open lines carry no clock.")
+
+
+def overdue_pages(vault):
+    write(vault, "wiki/work/Now.md", HEAD.format(p="work") +
+          "- [ ] owed: One day [rec:: Yes: cheap] [due:: 2026-10-19] (since 2026-10-01)\n"
+          "- [ ] owed: Seven days [due:: 2026-10-13] (since 2026-10-01)\n"
+          "- [ ] owed: Due today [due:: 2026-10-20] (since 2026-10-01)\n"
+          "- [ ] owed: No clock (since 2026-10-01)\n"
+          "- [x] owed: Ticked [due:: 2026-09-01] (since 2026-08-01) _(closed: ticked 2026-10-19)_\n"
+          "- [-] owed: Dropped [due:: 2026-09-01] (since 2026-08-01) _(closed: ticked 2026-10-19)_\n"
+          "\n## Waiting\n- [ ] waiting: Eight days [due:: 2026-10-12] (Avery Sample, since 2026-10-01, EX-1)\n")
+    write(vault, "wiki/personal/Now.md", HEAD.format(p="personal") +
+          "- [ ] owed: Thirty-one days [due:: 2026-09-19] (since 2026-09-01)\n"
+          "- [ ] draft: Thirty days [due:: 2026-09-20] (since 2026-09-01)\n"
+          "\n## Waiting\n- [ ] call the bank back\n")
+
+
+def test_overdue_groups_both_pages_by_days_over_and_counts_clockless_lines(vault):
+    # Now clock spec §7: open lines with due before the date, uncapped, oldest due first in each group, then the
+    # count of open lines with no clock; ticked and dropped lines and a line due on the date are left out.
+    prepare(vault)
+    overdue_pages(vault)
+    before = (page(vault), page(vault, "personal"))
+    assert now.overdue(vault, "2026-10-20") == OVERDUE
+    assert (page(vault), page(vault, "personal")) == before
+    assert not (vault / "system/logs").exists()
+
+
+def test_overdue_prints_every_line_and_nothing_when_all_lines_are_on_time(vault):
+    prepare(vault)  # Now clock spec §7
+    write(vault, "wiki/work/Now.md", HEAD.format(p="work") + "".join(
+        f"- [ ] owed: Item {i} [due:: 2026-10-01] (since 2026-09-01)\n" for i in range(40)))
+    out = now.overdue(vault, "2026-10-20").splitlines()
+    assert out[0] == "**8 to 30 days over**" and len(out) == 41
+    assert now.overdue(vault, "2026-10-01") == ""
+    assert now.overdue(vault, "2026-09-01") == ""
+
+
+def test_cli_overdue_prints_the_groups_and_refuses_a_bad_date(vault):
+    prepare(vault)  # Now clock spec §7
+    overdue_pages(vault)
+    r = cli(vault, "overdue", "--date", "2026-10-20")
+    assert (r.returncode, r.stdout) == (0, OVERDUE + "\n"), r.stderr
+    assert cli(vault, "overdue", "--date", "tomorrow").returncode == 2
+    assert not (vault / "system/run.lock").exists()
+
+
 def test_review_reports_a_failed_pr_check_and_skips_the_other_prs(vault, tmp_path):
     prepare(vault)  # (#145)
     now.add(vault, "work", "owed", "One", TODAY, evidence="https://github.com/acme/shop/pull/7")

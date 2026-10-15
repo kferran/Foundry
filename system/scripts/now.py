@@ -11,7 +11,10 @@
   now.py review --partition <p> [--stale-days N]
                                   read-only: lines closed by their evidence, open more than N days (14) with no
                                   evidence, or duplicated; nothing printed when there is nothing to review
-  now.py seed YYYY-MM-DD          once: a missing default-partition page takes the previous brief's open objectives
+  now.py overdue [--date YYYY-MM-DD]
+                                  read-only: open lines past their [due::] (before the date, today by default) in
+                                  groups of 1 to 7, 8 to 30 and more than 30 days over, then the clockless count
+  now.py seed YYYY-MM-DD         once: a missing default-partition page takes the previous brief's open objectives
 """
 import argparse
 import os
@@ -40,10 +43,19 @@ sub.add_parser("check")
 r = sub.add_parser("review")
 r.add_argument("--partition", required=True, choices=now.PARTITIONS)
 r.add_argument("--stale-days", type=int, default=now.STALE_DAYS)
+sub.add_parser("overdue").add_argument("--date")
 sub.add_parser("seed").add_argument("date")
 args = p.parse_args()
 
 intake = Intake(VAULT)
+if args.cmd == "overdue":  # read-only, so no run.lock
+    if args.date is not None and not now.is_date(args.date):
+        print("usage: now.py overdue [--date YYYY-MM-DD]", file=sys.stderr)
+        sys.exit(2)
+    text = now.overdue(VAULT, args.date or intake.today())
+    if text:
+        print(text)
+    sys.exit(0)
 if args.cmd == "list":
     for part in [args.partition] if args.partition else now.PARTITIONS:
         lines = now.open_lines(now.read(VAULT, part))

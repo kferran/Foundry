@@ -35,6 +35,7 @@ REC = re.compile(r"\[rec:: ([^\[\]\n]+)\]")
 DUE = re.compile(r"\[due:: (\d{4}-\d{2}-\d{2})\]")
 ISO_DATE = re.compile(r"(?<![\w-])\d{4}-\d{2}-\d{2}(?![\w-])")
 SHORT_DAYS, LONG_DAYS = 3, 30
+OVERDUE_HEADINGS = ("**1 to 7 days over**", "**8 to 30 days over**", "**More than 30 days over**")
 
 
 class CheckFailed(Exception):
@@ -273,6 +274,28 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
     return {"closed": [f"{line} _(closed: {found[line]})_" for line in lines if line in found],
             "stale": [line for line, m in parsed if m and not m.group("evidence") and m.group("since") < cutoff],
             "duplicate": [line for group in statements.values() if len(group) > 1 for line in group]}
+
+
+def overdue(vault, day: str) -> str:
+    """The brief's Overdue block (Now clock spec §7), read-only: the open lines of both pages whose due is before day,
+    grouped by days over, oldest due first, then the count of open lines with no clock; "" when there is neither."""
+    groups, clockless = ([], [], []), 0
+    for partition in PARTITIONS:
+        for line in open_lines(read(vault, partition)):
+            due = DUE.search(line)
+            if not (due and is_date(due.group(1))):
+                clockless += 1
+                continue
+            over = (date.fromisoformat(day) - date.fromisoformat(due.group(1))).days
+            if over > 0:
+                groups[0 if over <= 7 else 1 if over <= 30 else 2].append((due.group(1), f"- {line.rstrip()[6:]}"))
+    out = []
+    for heading, lines in zip(OVERDUE_HEADINGS, groups):
+        if lines:
+            out += [heading] + [line for _, line in sorted(lines, key=lambda t: t[0])]
+    if clockless:
+        out.append(f"{clockless} open line carries no clock." if clockless == 1 else f"{clockless} open lines carry no clock.")
+    return "\n".join(out)
 
 
 def latest_open_objectives(vault, day: str) -> list:
