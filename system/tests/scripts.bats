@@ -69,6 +69,15 @@ bad_note() {
   ! git -C "$V" rev-parse --verify HEAD
 }
 
+@test "hook allows a staged extension file the index never lints, such as a template named example (extensions spec §8)" {
+  mkdir -p "$V/extensions"
+  cp -r "$REPO/extensions/telemetry" "$V/extensions/telemetry"
+  # A staged note the hook lints turns the lint on, as a template merge does; the extension's files ride along.
+  git -C "$V" add extensions/telemetry/templates wiki/work/concepts/Kafka.md
+  run git -C "$V" commit -qm "extension template"
+  [ "$status" -eq 0 ]
+}
+
 @test "hook allows a commit with nothing lintable staged" {
   echo hi > "$V/README.txt"
   git -C "$V" add README.txt
