@@ -1102,6 +1102,14 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'slack_notify_channel: ""' system/config.example.md
 }
 
+@test "release notes: the brief prints What changed from updates.md; the manual has the changelog rule (release notes spec §2)" {
+  f=.claude/commands/brief.md
+  grep -qF 'system/logs/inputs/<date>/updates.md' "$f"
+  grep -qF '**What changed**' "$f"
+  grep -qF 'Omit What changed when `updates.md` is missing or empty.' "$f"
+  grep -qF 'A pull request that changes something a vault user would notice adds its line to `CHANGELOG.md`' FOUNDRY.md
+}
+
 @test "brief: reads each enabled extension's section prompt and data, and omits a section with no data" {
   f=.claude/commands/brief.md
   grep -qF 'system/logs/inputs/<date>/sections/' "$f"
