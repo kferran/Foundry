@@ -2,6 +2,7 @@
 import contextlib
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import posixpath
@@ -341,7 +342,7 @@ class Index:
                         add(path, 1, "error", "unique-true",
                             f"{fname} is true in {len(hits)} {sch.name} notes; at most one is allowed")
         self._supersession_issues(conn, add)
-        self._telemetry_source_issues(conn, add)
+        self._extension_issues(conn, add)
         for (path,) in conn.execute(
                 "SELECT n.path FROM notes n WHERE n.path LIKE 'wiki/%' AND n.active=1 "
                 "AND coalesce(n.type,'') != 'index' AND NOT EXISTS "
@@ -351,47 +352,24 @@ class Index:
             if path not in ROOT_DOCS:   # an editor's new note lands here, where nothing ingests it
                 add(path, 1, "warning", "root-note", "a note at the vault root is never ingested; move it to raw/inbox/")
 
-    SENTRY_FIELDS = ("sentry_url", "sentry_org", "sentry_projects", "sentry_query")
-    ADX_FIELDS = ("adx_cluster", "adx_database", "adx_filter", "adx_signals", "adx_group_keys", "covers")
-
-    def _telemetry_source_issues(self, conn, add):
-        """Cross-field rules for telemetry_source notes (Plan 11 spec §2.1)."""
-        def field(path, key):
-            row = conn.execute("SELECT value FROM fields WHERE path=? AND key=?", (path, key)).fetchone()
-            return row[0] if row else None
-
-        # fields stores one row per top-level key (lists and maps as JSON text), so an exact key match is enough.
-        def has(path, key):
-            return field(path, key) is not None
-
-        sources = [p for (p,) in conn.execute("SELECT path FROM notes WHERE type='telemetry_source'")]
-        codebases = {field(p, "name") for (p,) in conn.execute("SELECT path FROM notes WHERE type='codebase'")}
-        by_name = {field(p, "name"): p for p in sources}
-        for path in sources:
-            if path.endswith("/example.md"):
+    def _extension_issues(self, conn, add):
+        """Each present extension's own cross-field rules (extensions spec §3, `lint`): a module path whose
+        issues(conn, add) reports like the rules above. Present, like their schemas, so a note of an extension the owner
+        turned off still lints; a module that does not load is one error on its manifest."""
+        for manifest in sorted((self.vault / "extensions").glob("*/extension.md")):
+            name = manifest.parent.name
+            data, _ = extmod.manifest(self.vault, name)
+            rel = (data or {}).get("lint")
+            if not isinstance(rel, str) or not rel:
                 continue
-            name, kind = field(path, "name"), field(path, "kind")
-            if name != posixpath.basename(path)[:-3]:
-                add(path, 1, "error", "telemetry-source", f"name {name!r} must equal the file name")
-            if field(path, "codebase") not in codebases:
-                add(path, 1, "error", "telemetry-source", f"codebase {field(path, 'codebase')!r} is not registered")
-            other = self.ADX_FIELDS if kind == "sentry" else self.SENTRY_FIELDS
-            for key in other:
-                if has(path, key):
-                    add(path, 1, "error", "telemetry-source", f"{key} does not apply to kind {kind}")
-            mine = ("sentry_url", "sentry_org", "sentry_projects") if kind == "sentry" else ("adx_cluster", "adx_database")
-            for key in mine:
-                if not has(path, key):
-                    add(path, 1, "error", "telemetry-source", f"kind {kind} needs {key}")
-            covers = field(path, "covers")
-            if covers is not None:
-                target = by_name.get(covers)
-                ok = (target is not None and field(target, "kind") == "sentry"
-                      and (field(target, "enabled") or "true").lower() == "true"
-                      and field(target, "environment") == field(path, "environment"))
-                if not ok:
-                    add(path, 1, "error", "telemetry-source",
-                        f"covers {covers!r} must name an enabled sentry source with environment {field(path, 'environment')!r}")
+            try:
+                spec = importlib.util.spec_from_file_location(f"foundry_ext_{name}_lint", manifest.parent / rel)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                module.issues(conn, add)
+            except Exception as exc:  # noqa: BLE001 - one extension's rules never stop the lint
+                add(f"extensions/{name}/extension.md", 1, "error", "extension-lint",
+                    f"lint {rel} failed: {exc.__class__.__name__}: {exc}")
 
     def _supersession_issues(self, conn, add):
         edges = {}

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import re
 
-from . import frontmatter
+from vaultlib import frontmatter
 from .telemetry import event_id, kql_reopen, mask, sanitize, trace_id
 
 STATE = "system/logs/telemetry_state.json"
@@ -109,7 +109,7 @@ class Store:
                                   if g.get("filters") is not None else "")
         reopen = f"Reopen in ADX:\n\n```kql\n{kql}\n```\n" if kql else (
             f"Sentry: {fm['link']}\n" if fm.get("link") else "")
-        tpl = (self.vault / "system/templates/production-error.md")
+        tpl = (self.vault / "extensions/telemetry/templates/production-error.md")
         text = tpl.read_text(encoding="utf-8") if tpl.exists() else "# {{exception}}\n\n{{key_rows}}\n\n{{reopen}}\n"
         for k, v in {"exception": fm["exception"], "environment": fm["environment"], "key_rows": rows,
                      "count": fm["count"], "detected_at": fm["detected_at"], "last_seen": fm["last_seen"],

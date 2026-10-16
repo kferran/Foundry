@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from vaultlib import http, sentry
+from telemetrylib import http, sentry
 
 ISSUE = {"id": "101", "shortId": "API-1", "permalink": "https://sentry.example.com/organizations/acme/issues/101/",
          "project": {"slug": "api"}, "level": "error", "status": "unresolved", "substatus": "new",

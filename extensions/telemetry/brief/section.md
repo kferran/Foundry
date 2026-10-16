@@ -1,0 +1,12 @@
+**Telemetry:** the data file holds the production-error groups under `## Error groups` (the active groups and those resolved since the cutoff it names, as a table) and each source's `rank` under `## Sources`. Each group is critical and routes to the Workcell with `telemetry`. Print them as the first bullet of the 🛑 Blockers section, `- **Telemetry**:`, before Friction; when an existing briefing already has that bullet, rewrite it. Omit the bullet when the data file is empty.
+  - First **Escalated**, across all environments: active groups with `escalate` set and `last_seen` in the last 24 hours, by `count`. At most 3 Escalated rows, then "and N more". Each row: `persistent`, environment, service, `exception` (the route and status, or the scope and event id), `count` and the note path. A printed Escalated row is not repeated under New or Recurring; escalated groups past the cap stay under New or Recurring.
+  - Then per environment, ordered by their source's `rank`. **New**: active groups with `detected_at` in the last 24 hours, `substatus` regressed or escalating, or `regressed` true, as a table.
+  - **Recurring**: other active groups with `last_seen` in the last 24 hours, as one line, `Recurring: N groups`, followed by the three largest by `count` as `service exception (count)`; never a table.
+  - **Resolved**: one line with the number of groups whose `resolved_at` is in the last 24 hours.
+  - At most 10 rows per environment in the New table, then "and N more".
+  - Skip groups with `covered` true. Their Sentry issue is listed.
+  - Each New row: environment, service, exception, `count`, and the `sentry_issue` short ID or the note path.
+  - Mock notes stay in the list: mark their rows "(mock)".
+  - Leave the `[incident]` alerts out of Pipeline: this bullet lists those groups.
+
+**Add to Now**, with the other `owed` lines and the same rules: each **Escalated** row whose `escalated_at` is in the last 24 hours, at most 3 per brief, on the page of its note's `partition` (`default_partition` from config for `shared`): `Telemetry <environment>: persistent, <service> on <exception>; decide an owner (proposed: read-only analysis by the Workcell with telemetry)`, named by the group (its service and route, or scope and event id) and nothing that changes between runs. The note path is its evidence, after the date: `(since <date>, <note path>)`, or `--evidence <note path>` interactive. No count or date goes in the statement, so the group keeps one line and a ticked line does not come back.

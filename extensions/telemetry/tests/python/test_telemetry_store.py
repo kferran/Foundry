@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from vaultlib import frontmatter
-from vaultlib.telemetry_store import Store
+from telemetrylib.telemetry_store import Store
 
 NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 GUID = "3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b"

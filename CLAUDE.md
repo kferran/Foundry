@@ -27,7 +27,7 @@
 - `/query <question>`: answer from compiled `wiki/` notes only.
 - `/lint`: vault integrity report plus link, duplicate, contradiction and staleness suggestions.
 - `/impact <component> [--repo name]`: read-only blast-radius analysis across registered codebases.
-- `/rca <raw/telemetry/note>`: root-cause analysis of one production error group; its Ticket draft is filed to Jira only after you tick its Now line.
+- Extension skills, such as `/rca <raw/telemetry/note>` from the telemetry extension (root-cause analysis of one production error group; its Ticket draft is filed only after you tick its Now line), are linked into `.claude/skills/` while their extension is on.
 - `/backup`: verify, commit and push according to `remote_mode`.
 - `/order add|ask|list|cancel|status`: queue refined work as Work Orders for unattended runs (a plan's task range to a pull request, or a research brief to a findings note).
 - `/setup`: interactive onboarding; safe to re-run.

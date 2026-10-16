@@ -9,16 +9,15 @@ SAMPLE = {
     "date": "2026-09-30", "partition": "work", "codebase": "sample", "capability": "code",
     "source_stem": "SampleSource", "title": "Sample", "status": "active", "brief_time": "06:00",
     "debrief_time": "17:00",
-    "source": "raw/telemetry/sample.md", "environment": "prod",
 }
 TEMPLATE_TARGETS = {
     "wiki-concept.md": "wiki/work/concepts/Sample.md",
     "daily-briefing.md": "briefings/2026-09-30.md",
     "daily-debrief.md": "briefings/2026-09-30.debrief.md",
     "now.md": "wiki/work/Now.md",
-    "rca.md": "wiki/work/rca/2026-09-30-sample.md",
 }
-NOT_NOTES = {"production-error.md"}  # body fragment filled by telemetry_store.render_body, no frontmatter
+NOT_NOTES = set()
+# Core's schemas, and those of every extension present (extensions spec §3: a present extension's schemas load).
 EXPECTED = {"schema", "concept", "index", "briefing", "debrief",
             "production_error", "config", "codebase", "session_digest", "preference", "workcell",
             "meeting", "meeting_transcript", "meeting_input", "telemetry_source", "nightshift_item", "rca"}

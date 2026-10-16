@@ -24,8 +24,6 @@
       "Bash(system/scripts/verify_setup.sh)",
       "Bash(system/scripts/verify_setup.sh --health)",
       "Bash(system/scripts/nightshift.py list)",
-      "Bash(system/scripts/telemetry_fetch.py --list)",
-      "Bash(system/scripts/telemetry_fetch.py --check *)",
       "Bash(systemctl --user list-timers *)",
       "Edit(/docs/**)", "Edit(/.scratch/**)",
       "Bash(date +%F)",

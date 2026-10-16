@@ -1,7 +1,7 @@
 # Extensions: vendor features out of core, into tracked extension folders
 
 **Date:** 2026-10-15
-**Status:** Approved (owner, 2026-10-15), with the review decisions in §6. Scope narrowed (owner, 2026-10-16, §7): only the vendor-specific features move. Home changed (owner, 2026-10-16, §8): extensions are tracked folders in the template, with no separate repository. The loader is merged (#226); next is the Jira handoffs move.
+**Status:** Approved (owner, 2026-10-15), with the review decisions in §6. Scope narrowed (owner, 2026-10-16, §7): only the vendor-specific features move. Home changed (owner, 2026-10-16, §8): extensions are tracked folders in the template, with no separate repository. The loader (#226) and the Jira handoffs move (#232) are merged; telemetry with RCA moves next (§9), and DTCC moves into the owner's vault.
 **Plan:** phase 4 of `docs/superpowers/2026-10-15-next-phase-plan.md`; simplification step 3 of `2026-10-11-simplification-review.md` §4. Overlaps #62 (closed out below).
 
 ## 1. Facts (master after #209)
@@ -162,3 +162,15 @@ What changes:
 - `.gitignore` no longer excludes `extensions/`. `extensions_remote` is gone, and so are the clone and pull in `update_template.sh` and `/setup` phase 6e. The update re-links skills and runs `extensions.py check` after each merge.
 - DTCC moves into the owner's vault as a vault-only extension, so no DTCC name ships in the template. The template merge never touches a folder the template does not have.
 - With the template shipping extensions, the §7 reason for keeping meetings, inbox triage, Slack notices and sync in core is gone. They stay in core anyway: moving them mostly shrinks a line count, and any of them can move later as one PR.
+
+## 9. The telemetry move (2026-10-16)
+
+Telemetry with RCA needed four contract additions, each generic:
+- **`smoke` rows checked per item.** A row with `each: "<list command>"` runs the list, then `run` once per item it prints, with `{}` replaced by the item, reported as `<source>/<item>`. A list that fails is one failed `<source>` line (audit C5); an empty list is `<source>: off`. The list prints `item[<tab>credential<tab>renewal]` lines, so `sources.py` reads the Sources rows and the expired-login renewals from it too (`telemetry_fetch.py --sources`).
+- **`tick: {run, timeout}`.** The intake tick runs each enabled extension's tick command once, under `intake.lock`; a failure or a timeout is one `[intake]` alert. RCA filing is telemetry's tick (`rca.py tick`).
+- **`lint: <module path>`.** `vault_index.py` lint loads the module of each present extension (present, like its schemas) and calls `issues(conn, add)`; a module that fails is one error on its manifest. The `telemetry_source` cross-field rules moved there from `index.py`.
+- **`migrate` reads the vault and enables `requires` first.** Each `MIGRATIONS` rule is `(vault, cfg)`. Telemetry's rule is "a source file other than `example.md` exists in `system/telemetry/`"; it turns on `handoffs` first.
+
+What moved with it: `http.py` (its only user is telemetry, and its stub routes name the vendors), the `production-error` and `rca` templates, the example source, `handoffs_site` (into the handoffs extension's config fragment, beside `handoffs_projects`), and the `rca_*` keys. `/rca` is a skill; on a client, `/setup` phase 6e writes that machine's own `extensions` list (config is per machine) and runs only `link`.
+
+What stays: `~/.azure` in the two credential deny lists (`headless.settings.json`, `nightshift_session.py`). They deny reads; dropping an entry would weaken the sandbox, so `core_clean.allow` keeps those two lines.

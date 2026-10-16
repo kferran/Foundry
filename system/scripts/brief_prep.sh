@@ -40,15 +40,6 @@ prep_write projects.md system/scripts/active_projects.py "$PREP_DATE" \
 prep_write quarantine.md system/scripts/intake.py --quarantine --date "$PREP_DATE" \
   || prep_unavailable "quarantine: intake.py --quarantine failed (see $PREP_DIR/prep_errors.log)"
 prep_meetings
-# Error telemetry (Plan 11 spec §6): a last fetch before the brief. Notes land in raw/telemetry/.
-rc=0
-system/scripts/telemetry_fetch.py > /dev/null 2>> "$PREP_DIR/prep_errors.log" || rc=$?
-case "$rc" in
-  0) ;;
-  1) prep_unavailable "telemetry: a source failed (see system/logs/telemetry-${PREP_DATE:0:7}.jsonl)" ;;
-  4) prep_unavailable "telemetry: a fetch was already running" ;;
-  *) prep_unavailable "telemetry: telemetry_fetch.py failed (exit $rc; see $PREP_DIR/prep_errors.log)" ;;
-esac
 
 # The Now page (Now page spec §3.3): once, a missing default-partition page takes the latest earlier briefing's
 # open objectives; then now.md lists the open lines of both pages, so the brief adds no repeat.

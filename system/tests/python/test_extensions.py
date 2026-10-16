@@ -83,6 +83,13 @@ def test_rows_prints_smoke_sources_units_allow_as_tsv(ext):
     assert run(ext, "ignore").stdout == "raw/demo\n"
 
 
+def test_a_row_checked_per_item_carries_its_list_command_as_a_fifth_field(ext):
+    config(ext, "demo", "items")
+    assert run(ext, "smoke").stdout == (
+        "demo\t30\t0\textensions/demo/scripts/demo_check.sh\n"
+        "items\t30\t0\textensions/items/scripts/items_check.sh {}\textensions/items/scripts/items_list.sh\n")
+
+
 def test_no_extensions_folder_is_empty_everywhere(vault):
     assert extensions.listed(vault) == []
     assert extensions.enabled(vault) == []
@@ -274,3 +281,38 @@ def test_migrate_does_nothing_without_the_old_switch(vault):
     assert run(vault, "migrate").stdout == ""
     assert extensions.listed(vault) == []
     assert not (vault / "system/logs/extensions-migrated").exists()
+
+
+def test_migrate_enables_what_a_moved_feature_requires_first_and_reads_the_vault(vault, monkeypatch):
+    manifest(vault, "base")
+    manifest(vault, "top", requires="[base]")
+    write(vault, "system/config.md", '---\ntype: config\n---\n')
+    monkeypatch.setattr(extensions, "MIGRATIONS", {"top": lambda v, cfg: (v / "system/top.flag").exists()})
+    assert extensions.migrate(vault) == []
+    write(vault, "system/top.flag", "")
+    assert extensions.migrate(vault) == ["base", "top"]
+    assert [n for n, _ in extensions.enabled(vault)] == ["base", "top"]
+    assert extensions.migrate(vault) == []
+
+
+# lint (extensions spec §3): a present extension's own cross-field rules run inside the index lint.
+def lint_issues(vault):
+    from vaultlib.index import Index
+    idx = Index(vault)
+    idx.refresh(full=True)
+    return [(p, c, m) for p, c, m in idx.connect().execute("SELECT path, code, message FROM issues")]
+
+
+def test_a_present_extension_s_lint_module_reports_into_the_index(vault):
+    manifest(vault, "rules", lint="scripts/rules.py")
+    write(vault, "extensions/rules/scripts/rules.py",
+          'def issues(conn, add):\n    n = conn.execute("SELECT count(*) FROM notes").fetchone()[0]\n'
+          '    add("wiki/Index.md", 1, "warning", "rules", f"{n > 0} notes seen")\n')
+    assert ("wiki/Index.md", "rules", "True notes seen") in lint_issues(vault)
+
+
+def test_a_lint_module_that_fails_is_one_error_on_its_manifest(vault):
+    manifest(vault, "rules", lint="scripts/rules.py")
+    write(vault, "extensions/rules/scripts/rules.py", "def issues(conn, add):\n    raise ValueError('broken')\n")
+    assert ("extensions/rules/extension.md", "extension-lint",
+            "lint scripts/rules.py failed: ValueError: broken") in lint_issues(vault)

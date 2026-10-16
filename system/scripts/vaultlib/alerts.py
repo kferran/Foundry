@@ -15,7 +15,7 @@ TAGS = {
     "smoke": ("the smoke check", "brief"),
     "calendar": ("the calendar fetch", "brief"),
     "meetings": ("the meetings fetch", "brief"),
-    "handoffs": ("the Jira handoffs fetch", "brief"),
+    "handoffs": ("the handoffs fetch", "brief"),
     "telemetry": ("the telemetry fetch", "brief"),
     "memory": ("the memory hooks", "brief"),
     "extensions": ("an extension that will not load, once a day", "brief"),

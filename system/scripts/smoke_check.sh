@@ -123,36 +123,50 @@ else echo "meetings: off"; fi
 if [[ "$(config_get triage_enabled false)" == true ]]; then
   connector triage "${SMOKE_TRIAGE_TIMEOUT:-360}" system/scripts/triage_fetch.sh --check
 else echo "triage: off"; fi
-# A source list that fails decides nothing (audit C5): it is a failed source, never "no source".
-lrc=0 tt="${SMOKE_TELEMETRY_TIMEOUT:-120}"
-sources="$(timeout "$tt" system/scripts/telemetry_fetch.py --list 2> "$out" < /dev/null)" || lrc=$?
-if (( lrc != 0 )); then
-  report telemetry "$lrc" "telemetry_fetch.py --list failed (exit $lrc): $(reason telemetry_fetch.py)"
-elif [[ -z "$sources" ]]; then
-  echo "telemetry: off"
-else
-  # One line per source (connector health spec §2): each has its own credential and host.
-  while IFS= read -r name; do
-    [[ -n "$name" ]] || continue
+# each <source> <timeout> <connector flag> <list command> <check command…>: one line per item the list command prints
+# (its first tab-separated column), each checked with "{}" in the check command replaced by the item, as
+# "<source>/<item>" (connector health spec §2: each item has its own credential and host). A list that fails decides
+# nothing (audit C5): it is a failed source, never "no item"; an empty list is off.
+each() {
+  local source="$1" t="$2" conn="$3" lrc=0 items item rc r
+  local -a list
+  read -ra list <<< "$4"
+  shift 4
+  items="$(timeout "$t" "${list[@]}" 2> "$out" < /dev/null)" || lrc=$?
+  if (( lrc != 0 )); then
+    report "$source" "$lrc" "${list[*]##*/} failed (exit $lrc): $(reason "${list[0]}")"
+    return 0
+  fi
+  [[ -n "$items" ]] || { echo "$source: off"; return 0; }
+  while IFS=$'\t' read -r item _; do
+    [[ -n "$item" ]] || continue
+    if [[ "$conn" == 1 && -n "$held" ]]; then
+      logline "$source/$item" 0 "held: $held"
+      echo "$source/$item: held: $held"
+      continue
+    fi
     rc=0
-    timeout "$tt" system/scripts/telemetry_fetch.py --check "$name" > "$out" 2>&1 < /dev/null || rc=$?
+    timeout "$t" "${@//\{\}/$item}" > "$out" 2>&1 < /dev/null || rc=$?
     if (( rc == 0 )); then r=""
-    elif (( rc == 124 )); then r="timeout: timed out after ${tt}s"
-    else r="$(reason telemetry_fetch.py)" r="${r#"$name: "}"; fi
-    report "telemetry/$name" "$rc" "$r"
-  done <<< "$sources"
-fi
-# Extensions (extensions spec §3): each enabled extension's smoke entries, as source, timeout, connector flag and
-# command. A loader failure is one failed source, never "no extensions".
+    elif (( rc == 124 )); then r="timeout: timed out after ${t}s"
+    else r="$(reason "$1")" r="${r#"$item: "}"; fi
+    report "$source/$item" "$rc" "$r"
+  done <<< "$items"
+}
+# Extensions (extensions spec §3): each enabled extension's smoke entries, as source, timeout, connector flag,
+# command and, for a row checked per item, its list command. A loader failure is one failed source, never "no
+# extensions".
 erc=0
 ext_rows="$(timeout 30 system/scripts/extensions.py smoke 2> "$out" < /dev/null)" || erc=$?
 if (( erc != 0 )); then
   report extensions "$erc" "extensions.py smoke failed (exit $erc): $(reason extensions.py)"
 else
-  while IFS=$'\t' read -r src t conn cmd; do
+  while IFS=$'\t' read -r src t conn cmd list; do
     [[ -n "$src" ]] || continue
     read -ra words <<< "$cmd"
-    if [[ "$conn" == 1 ]]; then connector "$src" "$t" "${words[@]}"; else check "$src" "$t" "${words[@]}"; fi
+    if [[ -n "$list" ]]; then each "$src" "$t" "$conn" "$list" "${words[@]}"
+    elif [[ "$conn" == 1 ]]; then connector "$src" "$t" "${words[@]}"
+    else check "$src" "$t" "${words[@]}"; fi
   done <<< "$ext_rows"
 fi
 

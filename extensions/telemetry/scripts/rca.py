@@ -11,6 +11,9 @@ Usage: rca.py pending                          print "<file|reject> <partition> 
        rca.py reopen <partition> <stem> <why>  return the note to draft and untick its Now line with the reason
        rca.py filed <partition> <stem> <key>   write the key back to the note and its Now line, under run.lock, and
                                                clear the filer's .key and .attempt markers
+       rca.py tick                             the intake tick (extensions spec §3, `tick`): file the drafts you
+                                               approved, at most PER_TICK, and reject the dropped ones; off while
+                                               rca_project is empty
 Exit: 0 ok, 1 claude error or no key, 2 usage or incomplete settings or draft, 3 no connector, 4 run.lock busy,
 6 connector error, 7 unexpected tool use or other arguments. A non-zero exit writes one reason line to stderr.
 """
@@ -18,9 +21,9 @@ import json
 import sys
 from pathlib import Path
 
-VAULT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(VAULT / "system" / "scripts"))
-from vaultlib import rca  # noqa: E402
+VAULT = Path(__file__).resolve().parents[3]
+sys.path[:0] = [str(VAULT / "system" / "scripts"), str(Path(__file__).resolve().parent)]
+from telemetrylib import rca  # noqa: E402
 from vaultlib.cli import UsageError  # noqa: E402
 from vaultlib.intake import Intake  # noqa: E402
 from vaultlib.stream import messages  # noqa: E402
@@ -34,7 +37,9 @@ def target(partition: str, stem: str) -> tuple:
 
 def main(argv) -> int:
     try:
-        if argv[1:] == ["pending"]:
+        if argv[1:] == ["tick"]:
+            rca.tick(VAULT)
+        elif argv[1:] == ["pending"]:
             print("".join(f"{a} {p} {s}\n" for a, p, s in rca.pending(VAULT)), end="")
         elif len(argv) == 4 and argv[1] == "args":
             print(json.dumps(rca.arguments(VAULT, *target(argv[2], argv[3]))))
@@ -60,7 +65,7 @@ def main(argv) -> int:
                 (VAULT / "system" / "logs" / "rca" / f"{argv[2]}-{argv[3]}.{marker}").unlink(missing_ok=True)
         else:
             raise rca.Fail(2, "usage: rca.py pending | args <p> <stem> | extract <args file> | called | rejected | "
-                              "filed <p> <stem> <key> | reopen <p> <stem> <why>")
+                              "filed <p> <stem> <key> | reopen <p> <stem> <why> | tick")
     except rca.Fail as f:
         print(f"rca: {f.reason}", file=sys.stderr)
         return f.code

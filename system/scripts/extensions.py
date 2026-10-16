@@ -44,10 +44,12 @@ def main(argv: list) -> int:
         value = data.get(args[1], [] if args[1] in ("requires", "deps", "allow", "alert_tags", "index_ignore") else "")
         out = [value if isinstance(value, str) else json.dumps(value)]
     elif cmd == "smoke" and not args:
+        # source, timeout, connector flag, command and, for a row checked once per listed item, the list command.
         for name, d in loaded:
             for s in d.get("smoke") or []:
                 out.append("\t".join([str(s.get("source") or name), str(s.get("timeout", "")), "1" if _truthy(s.get("connector")) else "0",
-                                      f"extensions/{name}/{s.get('run', '')}"]))
+                                      f"extensions/{name}/{s.get('run', '')}",
+                                      f"extensions/{name}/{s['each']}" if s.get("each") else ""]).rstrip("\t"))
     elif cmd == "brief" and not args:
         out = [n for n, d in loaded if _truthy(d.get("brief"))]
     elif cmd == "units" and len(args) == 1 and args[0] in ROLES:

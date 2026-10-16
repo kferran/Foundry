@@ -408,7 +408,8 @@ self_edit_contract() {
     [[ "$sec" == *"$k"* ]]
   done
   [[ "$sec" == *'Ask once'* ]]
-  for p in '3. Codebases' '5a. Memory hooks' '6. Calendar' '6a. Telemetry' '6c. RCA filing' '6d. Slack notices'; do
+  [[ "$(setup_section '6e. Extensions')" == *'on a standalone machine or a server only when chosen in 2a'* ]]
+  for p in '3. Codebases' '5a. Memory hooks' '6. Calendar' '6d. Slack notices'; do
     [[ "$(setup_section "$p")" == *'Only when chosen in 2a.'* ]]
   done
   sec="$(setup_section '3. Codebases')"
@@ -430,8 +431,8 @@ self_edit_contract() {
 
 @test "/setup on a client skips the phases a client does not use, and says so" {
   f=.claude/commands/setup.md
-  grep -qF 'On a client, skip phases 3, 6, 6a to 6d, 9, 9a and 11' "$f"
-  grep -qF 'skips phases 3, 6, 6a to 6d, 9, 9a and 11' FOUNDRY.md
+  grep -qF 'On a client, skip phases 3, 6, 6b, 6d, 9, 9a and 11' "$f"
+  grep -qF 'skips phases 3, 6, 6b, 6d, 9, 9a and 11' FOUNDRY.md
   # A machine re-run as a client must stop running automation and memory hooks.
   units="$(setup_section '5. Units')"
   [[ "$units" == *'On a client, run `system/scripts/install_units.sh` without asking'* ]]
@@ -570,7 +571,7 @@ self_edit_contract() {
   grep -qF '`system/agents/workcells/*.md`' CLAUDE.md
   grep -qF 'route to the Workcell with `telemetry`' CLAUDE.md
   grep -qF 'routing them to the Workcell with `vault-health`' CLAUDE.md
-  grep -qF 'routes to the Workcell with `telemetry`' .claude/commands/brief.md
+  grep -qF 'routes to the Workcell with `telemetry`' extensions/telemetry/brief/section.md
   grep -qF 'hand each concrete slice to a capability' .claude/commands/brief.md
   grep -qF '`capability: code`' .claude/commands/setup.md
   grep -qx 'GROUP BY capability' wiki/Index.md
@@ -635,7 +636,7 @@ self_edit_contract() {
   grep -qF '**Before today'"'"'s meetings**' "$f"
   grep -qF 'print `people.md` verbatim' "$f"
   grep -qF 'print `friction.md` verbatim' "$f"
-  grep -qF 'Recurring: N groups' "$f"
+  grep -qF 'Recurring: N groups' extensions/telemetry/brief/section.md
   grep -qF 'one brief'"'"'s worth: the meetings imported since the previous weekday brief' "$f"
   run grep -E 'Focus Drift|focus_yesterday|Focus Fragmentation' "$f"
   [ "$status" -eq 1 ]
@@ -650,7 +651,8 @@ self_edit_contract() {
   notes_line="$(grep -nx '## 📝 Notes' "$t" | cut -d: -f1)"
   [ "$blockers_line" -lt "$waiting_line" ]
   [ "$waiting_line" -lt "$notes_line" ]
-  grep -qxF -- '- **Telemetry**:' "$t"
+  run grep -xF -- '- **Telemetry**:' "$t"   # the telemetry extension's section adds it
+  [ "$status" -eq 1 ]
   grep -qxF -- '- **Friction**:' "$t"
   grep -qxF -- '- **Pipeline**:' "$t"
   grep -qxF -- '- **Communication Debt**:' "$t"
@@ -682,7 +684,6 @@ self_edit_contract() {
   sec="$(setup_section '6b. Meetings')"
   [[ "$sec" == *'which already wrote `meetings_enabled` and `triage_enabled`, so phase 5'"'"'s units follow them'* ]]
   [[ "$sec" != *'install_units.sh'* ]]
-  [[ "$(setup_section '6a. Telemetry')" == *'install on an explicit yes'* ]]
   run grep -cF 'run `system/scripts/install_units.sh` again' .claude/commands/setup.md
   [ "$output" = "0" ]
 }
@@ -712,28 +713,14 @@ self_edit_contract() {
   grep -qF 'a drop from a phone is redacted only at import' .claude/commands/setup.md
 }
 
-@test "/brief lists telemetry from v_production_error, new first, capped per environment" {
-  f=".claude/commands/brief.md"
-  grep -qF 'v_production_error' "$f"
-  grep -qF 'At most 10 rows per environment' "$f"
-  grep -qF 'covered' "$f"
-  grep -qF 'resolved_at' "$f"
-  grep -qF 'OR resolved_at >=' "$f"
-  grep -qF 'UTC with a +00:00 offset' "$f"
-  ! grep -qF 'coalesce(mock' "$f"
-}
-
-@test "/brief prints persistent telemetry groups first, at most 3, and adds one owed line per group (#171, telemetry escalation spec §3.3, §3.4)" {
+@test "/brief has no telemetry rule of its own: an extension section adds its Blockers bullet and its Now lines" {
   f=.claude/commands/brief.md
-  grep -qF 'mock, partition, escalate, escalated_at FROM v_production_error' "$f"
-  grep -qF '**Escalated**, across all environments: active groups with `escalate` set and `last_seen` in the last 24 hours, by `count`' "$f"
-  grep -qF 'At most 3 Escalated rows, then "and N more"' "$f"
-  grep -qF 'A printed Escalated row is not repeated under New or Recurring' "$f"
-  grep -qF 'each **Escalated** row whose `escalated_at` is in the last 24 hours, at most 3 per brief' "$f"
-  grep -qF 'Telemetry <environment>: persistent, <service> on <exception>; decide an owner (proposed: read-only analysis by the Workcell with telemetry)' "$f"
-  grep -qF -- '--evidence <note path>' "$f"
-  grep -qF 'an **Escalated** block' FOUNDRY.md
-  grep -qF 'seen over at least 24 hours and is still firing' FOUNDRY.md
+  run grep -E 'v_production_error|Escalated|sentry' "$f"
+  [ "$status" -eq 1 ]
+  grep -qF '  - the lines an extension section'"'"'s prompt adds here;' "$f"
+  grep -qF 'after any bullet an extension section places first' "$f"
+  run grep -x -- '- \*\*Telemetry\*\*:' system/templates/daily-briefing.md
+  [ "$status" -eq 1 ]
   grep -qF 'or a telemetry note path' CLAUDE.md
 }
 
@@ -750,19 +737,6 @@ self_edit_contract() {
   grep -qF 'system/logs/telemetry-<YYYY-MM>.jsonl' ".claude/commands/debrief.md"
 }
 
-@test "/setup has a telemetry phase that is skipped on a client and checks each source" {
-  sec="$(sed -n '/^## 6a\. Telemetry/,/^## 7\./p' ".claude/commands/setup.md")"
-  [[ "$sec" == *'telemetry_fetch.py --check'* ]]
-  [[ "$sec" == *'0600'* ]]
-  grep -qF 'skip phases 3, 6, 6a to 6d, 9, 9a and 11' ".claude/commands/setup.md"
-}
-
-@test "an empty ADX filter value for shared services is documented (#94 A)" {
-  sec="$(sed -n '/^## 6a\. Telemetry/,/^## 7\./p' ".claude/commands/setup.md")"
-  [[ "$sec" == *'A filter value of `""` selects the rows that lack the attribute'* ]]
-  grep -qF 'An empty filter value (`adx_filter: {deployment.instance: ""}`) selects the rows that lack that attribute' FOUNDRY.md
-  grep -qF 'An empty value, `{deployment.instance: ""}`, selects the rows that lack the attribute' system/telemetry/example.md
-}
 
 @test "/brief shows From Now as a Dataview query and adds its new lines to the Now pages (Now page spec §3.3)" {
   f=.claude/commands/brief.md
@@ -1023,17 +997,15 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'whose bullets are only ever a **patch**' .claude/commands/ingest.md
 }
 
-@test "/setup phase 6c sets RCA filing and its Jira site; handoffs are set up as an extension in 6e (extensions spec §2)" {
+@test "/setup has no telemetry or RCA phase: handoffs and telemetry with RCA are extensions set up in 6e (extensions spec §2)" {
   s=.claude/commands/setup.md
-  grep -qx '## 6c. RCA filing' "$s"
-  sec="$(awk '$0 == "## 6c. RCA filing" { on = 1; next } /^## / { on = 0 } on' "$s")"
-  [[ "$sec" == *'On a client, skip this phase and report "not used on a client".'* ]]
-  [[ "$sec" == *'`handoffs_site`'* ]]
-  [[ "$sec" == *'phase 6e'* ]]
-  run grep -F 'jira_fetch' "$s"
+  run grep -E '^## 6a\.|^## 6c\.|jira_fetch|telemetry_fetch|rca_project|handoffs_site' "$s"
   [ "$status" -eq 1 ]
-  grep -qF 'telemetry sources, meetings, RCA filing, extensions, index, verification' "$s"
+  grep -qF '10. Extensions (phase 6e, `extensions`)' "$s"
+  grep -qF 'an extension that `requires` another turns that one on too' "$s"
+  grep -qF 'calendar, meetings, extensions, index, verification' "$s"
   grep -qF '**Delivered work.**' FOUNDRY.md
+  grep -qF 'error telemetry and `/rca` are the `telemetry` extension' FOUNDRY.md
 }
 
 @test "/setup and the README describe the daily template update and how to turn it off (#87)" {
@@ -1074,7 +1046,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
 
 @test "inbox triage: /setup asks for it and checks the connector; the manual and the config schema describe it (#99)" {
   sec="$(setup_section '6b. Meetings')"
-  [[ "$sec" == *'**Inbox triage** (7, `triage_enabled`)'* ]]
+  [[ "$sec" == *'**Inbox triage** (6, `triage_enabled`)'* ]]
   [[ "$sec" == *'system/scripts/triage_fetch.sh --check'* ]]
   [[ "$sec" == *'`triage_partition`'* ]]
   grep -qF '**Inbox triage.**' FOUNDRY.md
@@ -1090,30 +1062,12 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   [[ "$(setup_section '6b. Meetings')" == *'`triage_watch_senders`'* ]]
 }
 
-@test "/rca: read-only, nothing outward, the two scales, the humanizer and marker rules, the Now approval (#106)" {
-  f=.claude/commands/rca.md
-  grep -qF 'Read-only on code: never edit code, run tests, or write outside the vault.' "$f"
-  grep -qF 'Write nothing outward: never create or edit a Jira issue' "$f"
-  grep -qF 'Run no live log query.' "$f"
-  grep -qF '**Root-cause confidence (1–5):**' "$f"
-  grep -qF '**Fix confidence (1–5):**' "$f"
-  grep -qF '.claude/skills/humanizer/SKILL.md' "$f"
-  grep -qF 'Proposed code never carries a teammate'"'"'s initials marker' "$f"
-  grep -qF 'marked "meaning unconfirmed". Never guess a meaning.' "$f"
-  grep -qF -- '--kind owed --statement "Review RCA draft: <note stem>" --evidence rca:<note stem>' "$f"
-  grep -qF 'Never queue it yourself.' "$f"
-  grep -qF -- '- `/rca <raw/telemetry/note>`:' CLAUDE.md
-  grep -qF '| `/rca <raw/telemetry/note.md>` |' FOUNDRY.md
-  grep -qF '**RCA.**' FOUNDRY.md
-  sec="$(setup_section '6c. RCA filing')"
-  [[ "$sec" == *'approved `/rca` drafts should be filed to Jira'* ]]
-  grep -qF 'rca_project: {kind: string}' system/schemas/config.md
-  grep -qF 'rca_project: ""' system/config.example.md
-}
-
-@test "/rca: the hotfix alert line and the within-minutes approval text (#106)" {
-  grep -qF 'With `hotfix_candidate: true`, also run `system/scripts/alert.py rca "HOTFIX candidate: <title>"`.' .claude/commands/rca.md
-  grep -qF 'approves filing, and the intake tick files it within minutes.' .claude/commands/rca.md
+@test "/rca is the telemetry extension's skill: CLAUDE.md and the manual point there, and core holds no rca command" {
+  [ ! -e .claude/commands/rca.md ]
+  grep -qF 'Extension skills, such as `/rca <raw/telemetry/note>` from the telemetry extension' CLAUDE.md
+  grep -qF '| `/rca <raw/telemetry/note.md>` | The telemetry extension'"'"'s skill' FOUNDRY.md
+  run grep -E 'rca_project' system/schemas/config.md system/config.example.md
+  [ "$status" -eq 1 ]
 }
 
 @test "FOUNDRY.md defines the fix lane, its safety surfaces and the promotion rule (fast lane spec §2)" {
@@ -1129,7 +1083,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'every new alert line whose tag Slack carries' FOUNDRY.md
   grep -qF '| `foreman`, `incident`, `orders`, `sync`, `update`, `rca`, `intake` | Slack at the next tick |' FOUNDRY.md
   grep -qF 'An `incident` line is a new production error group, or a resolved one that came back' FOUNDRY.md
-  grep -qF 'an `[incident]` line (Telemetry lists those groups)' .claude/commands/brief.md
+  grep -qF 'Leave the `[incident]` alerts out of Pipeline: this bullet lists those groups.' extensions/telemetry/brief/section.md
   grep -qF '| `commit_runs`, `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `memory`, `extensions` | the next brief |' FOUNDRY.md
   grep -qF 'system/scripts/alert.py foreman "<one line>"' FOUNDRY.md
   grep -qF 'To tell the user something now, outside the brief: `system/scripts/alert.py foreman "<one line>"`.' CLAUDE.md
@@ -1154,13 +1108,14 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'sections/<name>.prompt.md' "$f"
   grep -qF 'sections/<name>.md' "$f"
   grep -qF 'Omit a section whose data file is missing or empty.' "$f"
-  grep -qF -- "  - every line an extension's section asks to add, as its section says;" "$f"
+  grep -qF -- "  - the lines an extension section's prompt adds here;" "$f"
 }
 
 @test "/setup phase 6e turns tracked extensions on: show, ask, write, allow rules, links, units, smoke; a failure never blocks (extensions spec §3)" {
   f=.claude/commands/setup.md
   grep -qF '## 6e. Extensions' "$f"
-  grep -qF 'Only when `extensions/` holds an extension folder.' "$f"
+  grep -qF 'Only when `extensions/` holds an extension folder' "$f"
+  grep -qF 'On a client, ask which extensions this machine'"'"'s sessions use' "$f"
   run grep -lE 'extensions_remote|git clone [^ ]* extensions' "$f" system/config.example.md system/schemas/config.md FOUNDRY.md
   [ "$status" -eq 1 ]
   grep -qF 'extensions.py allow --write' "$f"

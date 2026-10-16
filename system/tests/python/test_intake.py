@@ -591,35 +591,35 @@ def test_a_heading_of_your_own_inside_notes_keeps_the_block_waiting(iv):
     assert drops(iv) == []
 
 
-# -- RCA drafts (RCA spec §3.3) -------------------------------------------------
-def rca_draft(iv, stem, mark):
-    write(iv, f"wiki/work/rca/{stem}.md", '---\ntype: rca\ntitle: "T"\npartition: work\ncreated_at: "2026-10-11"\n'
-          'source: "raw/telemetry/a.md"\nrc_confidence: 3\nfix_confidence: 3\nstatus: draft\n---\n# T\n')
-    page = iv / "wiki/work/Now.md"
-    old = page.read_text() if page.exists() else ('---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-11"\n'
-                                                  'partition: work\n---\n# Now\n\n## Needs you\n\n## Waiting\n')
-    page.write_text(old.replace("## Needs you\n", f"## Needs you\n- [{mark}] owed: Review RCA draft: {stem} "
-                                                  f"(since 2026-10-11, rca:{stem})\n"))
-
-
-def test_rca_filing_is_off_without_rca_project(iv):
-    rca_draft(iv, "a", "-")
-    Intake(iv, now=later()).file_rcas()
-    assert "status: draft" in (iv / "wiki/work/rca/a.md").read_text()
-
-
-def test_the_intake_tick_rejects_dropped_drafts_and_files_ticked_ones_up_to_the_cap(iv):
-    cfg = iv / "system/config.md"
-    cfg.write_text(cfg.read_text().replace("---\n", '---\nrca_project: "EX"\n', 1))
-    stub = iv / "system/scripts/rca_file.sh"
-    stub.write_text(f'#!/bin/bash\necho "$*" >> {iv}/filer.calls\n')
+# -- extension ticks (extensions spec §3, `tick`) --------------------------------
+def ticker(iv, script, listed=True, timeout=5):
+    """An extension `ticker` whose tick runs `script` (bash) with two arguments; listed in config when asked."""
+    write(iv, "extensions/ticker/extension.md",
+          f'---\nname: ticker\ncontract: 1\ntick: {{run: "scripts/tick.sh one two", timeout: {timeout}}}\n---\n')
+    stub = write(iv, "extensions/ticker/scripts/tick.sh", "#!/bin/bash\n" + script)
     stub.chmod(0o755)
-    rca_draft(iv, "dropped", "-")
-    for n in range(4):
-        rca_draft(iv, f"ticked{n}", "x")
-    Intake(iv, now=later()).file_rcas()
-    assert 'status: "rejected"' in (iv / "wiki/work/rca/dropped.md").read_text()
-    calls = (iv / "filer.calls").read_text().splitlines()
-    assert len(calls) == 3
-    for call in calls:
-        assert 'status: "approved"' in (iv / f"wiki/work/rca/{call.split()[1]}.md").read_text()
+    if listed:
+        cfg = iv / "system/config.md"
+        cfg.write_text(cfg.read_text().replace("---\n", '---\nextensions: ["ticker"]\n', 1))
+
+
+def test_an_enabled_extension_s_tick_runs_from_the_vault_root_with_its_arguments(iv):
+    ticker(iv, f'echo "$PWD $*" >> {iv}/tick.calls\n')
+    Intake(iv, now=later()).extension_ticks()
+    assert (iv / "tick.calls").read_text() == f"{iv} one two\n"
+
+
+def test_an_extension_that_is_not_listed_never_ticks(iv):
+    ticker(iv, f'echo ran >> {iv}/tick.calls\n', listed=False)
+    Intake(iv, now=later()).extension_ticks()
+    assert not (iv / "tick.calls").exists()
+
+
+def test_a_failing_or_stuck_tick_is_one_alert_and_the_intake_tick_goes_on(iv):
+    ticker(iv, 'echo "no settings" >&2\nexit 2\n')
+    Intake(iv, now=later()).extension_ticks()
+    ticker(iv, "sleep 5\n", listed=False, timeout=1)
+    Intake(iv, now=later()).extension_ticks()
+    alerts = next((iv / "system/logs").glob("alerts_*.md")).read_text()
+    assert "[intake] ticker tick failed (exit 2: no settings); will retry" in alerts
+    assert "[intake] ticker tick did not finish (TimeoutExpired); will retry" in alerts

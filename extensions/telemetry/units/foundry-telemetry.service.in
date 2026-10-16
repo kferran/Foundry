@@ -8,4 +8,4 @@ Environment="TZ={{TZ}}"
 Environment="PATH={{UNIT_PATH}}"
 TimeoutStartSec=20min
 SuccessExitStatus=1 4
-ExecStart="{{VAULT_ROOT}}/system/scripts/telemetry_fetch.py"
+ExecStart="{{VAULT_ROOT}}/extensions/telemetry/scripts/telemetry_fetch.py"

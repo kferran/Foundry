@@ -10,7 +10,7 @@ from . import frontmatter
 CONTRACT = 1
 NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
 FIELDS = {"name", "contract", "description", "requires", "config_keys", "sources", "smoke", "brief", "debrief",
-          "units", "alert_tags", "allow", "deps", "index_ignore", "importer"}
+          "units", "alert_tags", "allow", "deps", "index_ignore", "importer", "tick", "lint"}
 
 
 def _strs(value) -> list:
@@ -127,16 +127,19 @@ def enable(vault: Path, name: str) -> bool:
     return True
 
 
-# One rule per feature that moved out of core: the old switch that means the owner used it. Each runs once per vault
-# (system/logs/extensions-migrated), so an extension the owner turns off later stays off.
+# One rule per feature that moved out of core: the old switch that means the owner used it, read from the vault and
+# its config. Each runs once per vault (system/logs/extensions-migrated), so an extension the owner turns off later
+# stays off.
 MIGRATIONS = {
-    "handoffs": lambda cfg: bool(cfg.get("handoffs_projects")),
+    "handoffs": lambda vault, cfg: bool(cfg.get("handoffs_projects")),
+    "telemetry": lambda vault, cfg: any(p.name != "example.md" for p in (vault / "system" / "telemetry").glob("*.md")),
 }
 MIGRATED = Path("system/logs/extensions-migrated")
 
 
 def migrate(vault: Path) -> list:
-    """Enable each moved feature whose old switch is set and that was never migrated. Returns the names enabled."""
+    """Enable each moved feature whose old switch is set and that was never migrated, with the extensions it requires
+    first. Returns the names enabled."""
     vault = Path(vault)
     path = vault / "system" / "config.md"
     try:
@@ -147,8 +150,12 @@ def migrate(vault: Path) -> list:
     done = set(log.read_text(encoding="utf-8").split()) if log.is_file() else set()
     out = []
     for name, used in MIGRATIONS.items():
-        if name in done or not used(cfg):
+        if name in done or not used(vault, cfg):
             continue
+        data, _ = manifest(vault, name)
+        for req in _strs((data or {}).get("requires")):
+            if enable(vault, req):
+                out.append(req)
         if enable(vault, name):
             out.append(name)
         done.add(name)
