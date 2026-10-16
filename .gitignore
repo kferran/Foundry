@@ -30,4 +30,3 @@ meetings/drop/**/.*
 meetings/drop/**/Thumbs.db
 meetings/drop/**/desktop.ini
 system/telemetry.lock
-/extensions/

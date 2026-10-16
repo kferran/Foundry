@@ -329,10 +329,15 @@ sealed_problems() {
     'sandbox.network.allowedDomains holds a wildcard' 'Bash(claude -p:*)')" ]
 }
 
-@test "the gate runs an extension's suites: its bats files and its python folder" {
+@test "the gate runs a listed extension's suites, its bats files and its python folder, and skips an unlisted one (extensions spec §5, §8)" {
   d="$BATS_TEST_TMPDIR/gate"
-  mkdir -p "$d/system/scripts" "$d/system/tests/python" "$d/extensions/demo/tests/python" "$d/bin"
-  cp "$VAULT_ROOT/system/scripts/verify_setup.sh" "$d/system/scripts/"
+  mkdir -p "$d/system/scripts" "$d/system/tests/python" "$d/extensions/demo/tests/python" "$d/extensions/off/tests" "$d/bin"
+  cp "$VAULT_ROOT/system/scripts/verify_setup.sh" "$VAULT_ROOT/system/scripts/extensions.py" "$d/system/scripts/"
+  cp -r "$VAULT_ROOT/system/scripts/vaultlib" "$d/system/scripts/vaultlib"
+  printf -- '---\ntype: config\nextensions: ["demo"]\n---\n' > "$d/system/config.md"
+  printf -- '---\nname: demo\ncontract: 1\n---\n' > "$d/extensions/demo/extension.md"
+  printf -- '---\nname: off\ncontract: 1\n---\n' > "$d/extensions/off/extension.md"
+  : > "$d/extensions/off/tests/off.bats"
   printf '#!/bin/bash\nexit 0\n' > "$d/system/scripts/lint_vault.sh"
   chmod +x "$d/system/scripts/lint_vault.sh"
   : > "$d/system/tests/core.bats"
@@ -347,6 +352,8 @@ sealed_problems() {
   grep -qx 'PASS system/tests/core.bats' <<< "$output"
   grep -qx 'PASS extensions/demo/tests/demo.bats' <<< "$output"
   grep -qx 'extensions/demo/tests/demo.bats' "$d/bats.calls"
+  run grep -c 'extensions/off' "$d/bats.calls"
+  [ "$output" = 0 ]
 }
 
 # Task 10: core names no vendor or customer outside a shrinking allowlist (extensions spec §6; plan task 10).

@@ -55,11 +55,15 @@ if (( have_bats )) && python3 -m pytest --version >/dev/null 2>&1; then
   for f in system/tests/*.bats; do
     [[ "${f##*/}" == system_health.bats ]] || suites+=("$f")
   done
-  # Each present extension's own suites (extensions spec §3) gate like core's: bats files in extensions/*/tests/ and
-  # every extensions/*/tests/python folder, which pytest gets beside core's.
+  # Each listed extension's own suites (extensions spec §5, §8) gate like core's: bats files in extensions/<name>/tests/
+  # and its tests/python folder, which pytest gets beside core's. A tracked extension that is not listed is not run.
   ext_py=()
-  for f in extensions/*/tests/*.bats; do suites+=("$f"); done
-  for f in extensions/*/tests/python; do [[ -d "$f" ]] && ext_py+=("$f"); done
+  ext_names=()
+  [[ ! -f system/scripts/extensions.py ]] || mapfile -t ext_names < <(system/scripts/extensions.py list 2>/dev/null || true)
+  for n in "${ext_names[@]}"; do
+    for f in "extensions/$n"/tests/*.bats; do suites+=("$f"); done
+    [[ ! -d "extensions/$n/tests/python" ]] || ext_py+=("extensions/$n/tests/python")
+  done
   if (( ${#suites[@]} == 0 )); then
     results+=("FAIL no gating bats suites in system/tests/")
     failed=1
