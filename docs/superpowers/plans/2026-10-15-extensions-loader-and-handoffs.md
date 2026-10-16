@@ -435,12 +435,8 @@ Tests:
 
 ## After this plan
 
-The next moves reuse the mechanism, one plan each:
+The next moves reuse the mechanism, one plan each (narrowed by the owner 2026-10-16, spec §7):
 1. DTCC (its map file becomes the switch's migration rule)
 2. telemetry and RCA (`requires: [handoffs]`; `/rca` becomes a skill)
-3. meetings (the intake importer hook)
-4. triage (the usage ceiling moves to `vaultlib/usage.py` first)
-5. notices
-6. sync (the server and client roles)
 
-The line budget test is set when the last move lands.
+Meetings, inbox triage, Slack notices and sync stay in core. The line budget test is set when the last move lands.
