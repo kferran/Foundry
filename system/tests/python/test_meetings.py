@@ -358,10 +358,13 @@ def test_rendered_notes_validate_and_keep_the_doc_id():
     assert links.extract(tr.body, 1)[0] == []
 
 
-def test_empty_sections_say_none():
+def test_empty_sections_say_none_and_no_summary_from_the_source_215():
+    # #215: a drop's note with "Summary: None." read like an empty meeting; it says the source had no summary.
     m = meetings.scrub(meetings.parse_drop("call.srt", SRT.encode(), TZ, datetime(2026, 10, 5, 15, 0, tzinfo=TZ)))
     body = frontmatter.parse(meetings.render_meeting(m, "2026-10-05-1500-call", "personal")).body
-    assert "## Summary\nNone.\n\n## Decisions\nNone.\n\n## Action items\nNone.\n\n## Details\nNone.\n" in body
+    assert ("## Summary\nNo summary from the source.\n\n## Decisions\nNone.\n\n## Action items\nNone.\n\n"
+            "## Details\nNone.\n") in body
+    assert "## Summary\nNone.\n" in meetings.render_input(m, "2026-10-05-1500-call", "personal", m.start)
 
 
 # -- import (meetings spec §2.3 steps 2-9) -------------------------------------------------------
@@ -550,7 +553,7 @@ def test_a_recording_that_replaces_an_empty_note_keeps_its_attendees_188(iv):
 
 
 def test_a_populated_note_stays_canonical_when_a_later_recording_has_no_summary_188(iv):
-    # #188: a drop's sections are always None. (no model step); a first note with text is never retired for it.
+    # #188: a drop's sections are always empty (no model step); a first note with text is never retired for it.
     config(iv, meetings_partition="work")
     fetched(iv)
     tick(iv)

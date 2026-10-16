@@ -40,6 +40,9 @@ BOILERPLATE = re.compile(r"^\s*(?:\\?\[|\*)?\s*(?:A summary wasn[’']t produced
 DATE_LINE = re.compile(r"^\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}, \d{4}\s*$")  # a tab's date
 HEADING_EVERY = 300  # seconds of cue offsets between ### headings in a plain transcript
 SLUG_MAX = 60
+NO_SUMMARY = "No summary from the source."  # a drop has no notes; "None." read like an empty meeting (#215)
+# An empty section: "None.", NO_SUMMARY, a Markdown horizontal rule (a Gemini Doc's empty Details), or nothing.
+EMPTY_SECTION = re.compile(r"(None\.|" + re.escape(NO_SUMMARY) + r"|[*_-]{3,}|)")
 
 
 class ParseError(ValueError):
@@ -314,7 +317,7 @@ def render_meeting(m: Meeting, name: str, partition: str) -> str:
             f"start: \"{m.start.isoformat()}\"\npartition: {partition}\n"
             f"attendees: [{', '.join(_q(a) for a in m.attendees)}]\nsource: {_q(m.source)}\n"
             f"source_name: {_q(m.source_name)}\ntranscript: \"[[{name}.transcript]]\"\nstatus: canonical\n---\n"
-            f"# {_one_line(safe(m.title))}\n\n## Summary\n{m.summary or 'None.'}\n\n"
+            f"# {_one_line(safe(m.title))}\n\n## Summary\n{m.summary or NO_SUMMARY}\n\n"
             f"## Decisions\n{m.decisions or 'None.'}\n\n## Action items\n{actions or 'None.'}\n\n"
             f"## Details\n{m.details or 'None.'}\n")
 
