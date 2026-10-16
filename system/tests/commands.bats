@@ -1114,6 +1114,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'system/logs/inputs/<date>/updates.md' "$f"
   grep -qF '**What changed**' "$f"
   grep -qF 'Omit What changed when `updates.md` is missing or empty.' "$f"
+  grep -qF 'An absent `updates.md` means no template update merged today: never list it.' "$f"
   grep -qF 'A pull request that changes something a vault user would notice adds its line to `CHANGELOG.md`' FOUNDRY.md
 }
 

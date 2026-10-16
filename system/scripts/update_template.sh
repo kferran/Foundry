@@ -98,6 +98,7 @@ fi
 attrs="$(mktemp)"
 trap 'rm -f -- "$attrs"' EXIT
 printf 'README.md merge=ours\n' > "$attrs"
+pre_merge="$(g rev-parse HEAD)"
 if ! out="$(g -c core.attributesFile="$attrs" -c merge.ours.driver=true merge --no-ff --no-edit "$ref" 2>&1)"; then
   printf '%s\n' "$out" >&2
   conflicted="$(g diff --name-only --diff-filter=U)"
@@ -140,15 +141,27 @@ after_merge() {
 
 update_extensions
 
-# What changed (release notes spec §2.4): the lines this merge added to CHANGELOG.md, change and Action lines only,
-# for the next brief. Written on every merge, empty when it added none.
+# What changed (release notes spec §2.4): the change and Action lines this merge added under CHANGELOG.md's
+# ## Changes, appended to today's updates.md for the next brief. What's next is never a change. A vault's first
+# changelog gives only its newest dated section, so its history does not flood one brief.
+changelog_added() {
+  if g cat-file -e HEAD^1:CHANGELOG.md 2>/dev/null; then
+    g diff --no-color -U100000 HEAD^1 HEAD -- CHANGELOG.md \
+      | awk '/^[ +]## Changes$/ { on = 1; next } on && /^\+(- |  - Action: )/ { print substr($0, 2) }'
+  elif g cat-file -e HEAD:CHANGELOG.md 2>/dev/null; then
+    g show HEAD:CHANGELOG.md | awk '/^## Changes$/ { on = 1; next }
+      on && /^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/ { if (++n > 1) exit; next }
+      on && n == 1 && /^(- |  - Action: )/ { print }'
+  fi
+}
 notes="system/logs/inputs/$(date +%F)/updates.md"
-mkdir -p "$(dirname "$notes")"
-{ g diff --no-color -U0 HEAD^1 HEAD -- CHANGELOG.md 2>/dev/null || true; } \
-  | sed -n 's/^+\(- .*\|  - Action: .*\)$/\1/p' > "$notes.tmp"
-mv -f -- "$notes.tmp" "$notes"
 notes_suffix=""
-[[ ! -s "$notes" ]] || notes_suffix="; notes in today's brief"
+if [[ "$(g rev-parse HEAD)" != "$pre_merge" ]]; then
+  added="$(changelog_added || true)"
+  mkdir -p "$(dirname "$notes")" || true
+  touch "$notes" || true
+  if [[ -n "$added" ]] && printf '%s\n' "$added" >> "$notes"; then notes_suffix="; notes in today's brief"; fi
+fi
 
 # Runs from before this update are committed with the rest of the vault, never one by one (two-machines spec §4.2).
 after_merge "commit_runs.py --init-cutover" system/scripts/commit_runs.py --init-cutover

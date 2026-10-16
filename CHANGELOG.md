@@ -19,7 +19,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 - Jira handoffs move to the `handoffs` extension. The update turns it on once for vaults that use handoffs. (#232)
 - Telemetry and root-cause analysis (`/rca`) move to the `telemetry` extension. The update turns it on once for vaults with a telemetry source. (#235)
 - The template no longer ships the DTCC watcher. (#237)
-  - Action: vaults that use the DTCC watcher keep it as their own extension. Restore it from the template's history into `extensions/dtcc/`, add `dtcc` to `extensions:`, then run `system/scripts/extensions.py check`, `system/scripts/extensions.py link` and `system/scripts/install_units.sh`.
+  - Action: a vault that uses the DTCC watcher keeps it as its own extension. Before taking this update, stop the update timer. After it, restore the folder from the template's history (`git checkout 9e3d45c -- extensions/dtcc`), add `dtcc` to `extensions:` on every machine, then run `system/scripts/extensions.py check`, `allow --write`, `link` and `system/scripts/install_units.sh`.
 - The debrief drops the Agent Health section, which nothing ever filled. (#230)
 - A new production error posts an `[incident]` line to Slack. (#223)
 - A notes Doc that arrives after a dropped transcript fills the meeting note's empty sections. (#224)
@@ -34,20 +34,20 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 - Now lines get a decide-by date and an optional recommendation, and the brief lists overdue lines. (#205)
 - The brief and debrief read failed inputs the same way, and each failed input gets one automatic retry. (#206)
 - A telemetry error group still firing after 24 hours reaches the brief and the Now page. (#204)
-- `/ingest` reuses a partition's existing tags, and lint and the publish gate keep one tag form. (#208)
-- Unattended runs check their wording against the short Writing rules in `CLAUDE.md`, so they read a much shorter prompt, and `CLAUDE.md` keeps only the rules a script enforces. (#201, #202)
+- `/ingest` reuses a partition's existing tags, and lint and the check before a run's notes are saved keep one tag form. (#208)
+- Unattended runs check their wording against the short Writing rules in `CLAUDE.md`, so they read a much shorter prompt, and `CLAUDE.md` drops three sections of rules nothing enforced. (#201, #202)
 - `/rca` reads required Jira fields from `rca_extra_fields`, and a ticket Jira refuses comes back as a draft you can retry. (#200)
 - The pre-commit hook refuses added text shaped like a secret. The sync and the daily update leave that file out, keep going, and name it in an alert, and the update no longer stops on a refused commit. (#185, #193)
-- Work Orders: each run records its real duration, readiness refuses tasks that need a credential the run does not have, and codebases that use corepack install and verify. (#178, #192, #195)
+- Work Orders: each run records its real duration, readiness refuses tasks that need a credential the run does not have, and codebases whose package manager is pinned in the project install and check correctly. (#178, #192, #195)
 - Meetings: a recording that replaces an empty note keeps its attendees, and `/ingest` compiles a dropped transcript. (#190)
-- Fixes: lint warns about a note at the vault root, where nothing ingests it; a missing alerts file no longer shows as a problem in the brief; a correction that renames a heading passes the publish gate; the pre-commit lint checks what you are committing; `operation_id` is optional on production errors; setup requires Python 3.11 or newer and names the version it found. (#180, #182, #194, #196, #197, #209)
+- Fixes: lint warns about a note at the vault root, where nothing ingests it; a missing alerts file no longer shows as a problem in the brief; a correction that renames a heading is saved; the pre-commit lint checks what you are committing; `operation_id` is optional on production errors; setup requires Python 3.11 or newer and names the version it found. (#180, #182, #194, #196, #197, #209)
 
 ## 2026-10-14
 - A research Workcell answers research questions in the session, read-only, from the index first. (#172)
 - `now.py review` lists closed, stale and duplicate Now lines, and the Foreman reviews them when things are quiet. (#174)
 - The calendar fetch works on busy calendars, so the brief gets its calendar again. (#176)
 - The daily update commits uncommitted changes first, and a refused commit no longer stops the sync. (#165)
-- Work Orders install dependencies before the sealed verify step, with toolchain paths available inside it. A Work Order session cannot read the vault and gets only the environment it names. (#155, #156)
+- Work Orders install a codebase's dependencies before their final check runs, with the project's own tools on hand. A Work Order session cannot read the vault and gets only the environment it names. (#155, #156)
 - The pre-commit hook redacts a committed transcript drop. (#154)
 - Fixes: a note held back at publish counts as a conflict and the run still succeeds; an empty first meeting notes source, or one holding only a divider line, no longer blocks a later recording of the same meeting. (#152, #153, #163)
 
@@ -57,7 +57,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 - A daily smoke check tests every configured fetch and the `claude` version, 15 minutes before the brief. (#146, #147)
 - Mail from watched senders that was archived unread still reaches the Now page. (#143)
 - Security: unattended runs cannot read credential files, and `/ingest` no longer writes the Now page. (#141)
-- Fixes: the debrief stops waiting on a hung GitHub search; the brief has more time before it times out; a failed telemetry source list no longer removes telemetry timers; extra spaces no longer hide a Now line from the duplicate check; notices default to Slack through claude.ai; connector reads pass the publish gate; a vault's own README passes lint. (#137, #139)
+- Fixes: the debrief stops waiting on a hung GitHub search; the brief has more time before it times out; a failed telemetry source list no longer removes telemetry timers; extra spaces no longer hide a Now line from the duplicate check; notices default to Slack through claude.ai; connector reads are saved; a vault's own README passes lint. (#137, #139)
 
 ## 2026-10-12
 - Slack notices for the brief, the debrief, failed runs, finished Work Orders and alerts. (#125)

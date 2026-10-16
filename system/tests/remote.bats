@@ -616,22 +616,29 @@ readme_setup() {
   sed -i 's/^default_partition: "personal"$/&\nextensions: ["nosuch"]/' system/config.md
   run "$UT"
   [ "$status" -eq 0 ]
-  grep -qE '^- [0-9:]{8} \[extensions\] .*nosuch' "system/logs/alerts_$(date +%F).md"
+  grep -qE '^- [0-9:]{8} \[extensions\] .*nosuch' "system/logs/alerts_$(TZ=America/Denver date +%F).md"
 }
 
 @test "an update writes the changelog lines it merged to today's updates.md and points the alert at the brief (release notes spec §2.4)" {
   template_setup
-  printf '# Changelog\n\n## Changes\n\n## 2026-10-01\n- Old line (#1)\n' > "$W/CHANGELOG.md"
+  f="system/logs/inputs/$(TZ=America/Denver date +%F)/updates.md"
+  # A vault's first changelog: only its newest dated section is new to the owner; What's next and history are not.
+  printf '# Changelog\n\n## What'"'"'s next\n\n- A planned thing\n\n## Changes\n\n## 2026-10-02\n- Second (#2)\n  - Action: run step two\n\n## 2026-10-01\n- First (#1)\n' > "$W/CHANGELOG.md"
   upstream_commit base.txt base
   run "$UT" --unattended
   [ "$status" -eq 0 ]
-  printf '# Changelog\n\n## Changes\n\n## 2026-10-16\n- New line (#9)\n  - Action: run install_units.sh\n\n## 2026-10-01\n- Old line, reworded (#1)\n' > "$W/CHANGELOG.md"
+  [ "$(cat "$f")" = "$(printf '%s\n' '- Second (#2)' '  - Action: run step two')" ]
+  alerts | grep '\[update\]' | tail -n 1 | grep -q "notes in today's brief"
+  # A later merge the same day appends only the lines it added under Changes; a What's next edit is not a change.
+  printf '# Changelog\n\n## What'"'"'s next\n\n- A planned thing, renamed\n\n## Changes\n\n## 2026-10-03\n- Third (#3)\n\n## 2026-10-02\n- Second (#2)\n  - Action: run step two\n\n## 2026-10-01\n- First (#1)\n' > "$W/CHANGELOG.md"
   upstream_commit note.txt note
   run "$UT" --unattended
   [ "$status" -eq 0 ]
-  f="system/logs/inputs/$(date +%F)/updates.md"
-  [ "$(cat "$f")" = "$(printf '%s\n' '- New line (#9)' '  - Action: run install_units.sh' '- Old line, reworded (#1)')" ]
-  alerts | grep '\[update\]' | tail -n 1 | grep -q "notes in today's brief"
+  [ "$(cat "$f")" = "$(printf '%s\n' '- Second (#2)' '  - Action: run step two' '- Third (#3)')" ]
+  # A by-hand run with nothing new merges nothing and leaves the file as it was.
+  run "$UT"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$f")" = "$(printf '%s\n' '- Second (#2)' '  - Action: run step two' '- Third (#3)')" ]
 }
 
 @test "a by-hand update that adds no changelog line writes an empty updates.md (release notes spec §2.4)" {
@@ -639,7 +646,7 @@ readme_setup() {
   upstream_commit new.txt hello
   run "$UT"
   [ "$status" -eq 0 ]
-  f="system/logs/inputs/$(date +%F)/updates.md"
+  f="system/logs/inputs/$(TZ=America/Denver date +%F)/updates.md"
   [ -e "$f" ]
   [ ! -s "$f" ]
 }
@@ -649,6 +656,6 @@ readme_setup() {
   upstream_commit new.txt hello
   run "$UT" --unattended
   [ "$status" -eq 0 ]
-  run grep -c "notes in today's brief" "system/logs/alerts_$(date +%F).md"
+  run grep -c "notes in today's brief" "system/logs/alerts_$(TZ=America/Denver date +%F).md"
   [ "$output" = 0 ]
 }
