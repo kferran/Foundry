@@ -1084,7 +1084,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF '| `foreman`, `incident`, `orders`, `sync`, `update`, `rca`, `intake` | Slack at the next tick |' FOUNDRY.md
   grep -qF 'An `incident` line is a new production error group, or a resolved one that came back' FOUNDRY.md
   grep -qF 'Leave the `[incident]` alerts out of Pipeline: this bullet lists those groups.' extensions/telemetry/brief/section.md
-  grep -qF '| `commit_runs`, `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `dtcc`, `memory`, `extensions` | the next brief |' FOUNDRY.md
+  grep -qF '| `commit_runs`, `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `memory`, `extensions` | the next brief |' FOUNDRY.md
   grep -qF 'system/scripts/alert.py foreman "<one line>"' FOUNDRY.md
   grep -qF 'To tell the user something now, outside the brief: `system/scripts/alert.py foreman "<one line>"`.' CLAUDE.md
   grep -qF 'grouped by tag' .claude/commands/brief.md
@@ -1108,6 +1108,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'sections/<name>.prompt.md' "$f"
   grep -qF 'sections/<name>.md' "$f"
   grep -qF 'Omit a section whose data file is missing or empty.' "$f"
+  grep -qF -- "  - the lines an extension section's prompt adds here;" "$f"
 }
 
 @test "/setup phase 6e turns tracked extensions on: show, ask, write, allow rules, links, units, smoke; a failure never blocks (extensions spec §3)" {

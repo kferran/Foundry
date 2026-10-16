@@ -1,27 +1,3 @@
 # file:term pairs core may still name (core-clean test, extensions spec §6). A move into extensions/ deletes its lines. The two azure lines stay: they are ~/.azure in the credential deny lists of headless runs and Work Order sessions.
-.claude/commands/brief.md:dtcc
-.claude/settings.json:dtcc
-.claude/skills/dtcc-watch/SKILL.md:dtcc
-CLAUDE.md:dtcc
-FOUNDRY.md:dtcc
-system/dtcc/map.example.yaml:dtcc
 system/headless.settings.json:azure
-system/schemas/dtcc_change.md:dtcc
-system/scripts/brief_prep.sh:dtcc
-system/scripts/dtcc_watch.py:dtcc
-system/scripts/install_units.sh:dtcc
-system/scripts/smoke_check.sh:dtcc
-system/scripts/vaultlib/alerts.py:dtcc
-system/scripts/vaultlib/dtcc_diff.py:dtcc
-system/scripts/vaultlib/dtcc_fetch.py:dtcc
-system/scripts/vaultlib/dtcc_fetch.py:dtcclearning.com
-system/scripts/vaultlib/dtcc_map.py:dtcc
-system/scripts/vaultlib/dtcc_notes.py:dtcc
-system/scripts/vaultlib/dtcc_parse.py:dtcc
-system/scripts/vaultlib/dtcc_run.py:dtcc
-system/scripts/vaultlib/index.py:dtcc
 system/scripts/vaultlib/nightshift_session.py:azure
-system/scripts/vaultlib/sources.py:dtcc
-system/systemd/foundry-dtcc-watch.service.in:dtcc
-system/systemd/foundry-dtcc-watch.timer.in:dtcc
-system/systemd/foundry-smoke.service.in:dtcc

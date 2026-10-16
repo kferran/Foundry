@@ -16,7 +16,6 @@ setup() {
   stub calendar_fetch.sh 0 "calendar_fetch: the connector listed 1 events" 1
   stub meetings_fetch.sh 0 "meetings_fetch: the search listed 0 Docs" 1
   stub triage_fetch.sh 0 "triage_fetch: 0 threads need you" 1
-  stub dtcc_watch.py 0 "map ok" 1
   # Units (#166): an empty unit directory, and a systemctl that answers from $STUB_TIMERS lines
   # "<timer>|<LastTriggerUSec>|<SubState>"; a timer with no line is not enabled. Other verbs succeed silently.
   cp -r "$REPO/system/systemd" system/systemd
@@ -73,12 +72,11 @@ items() {
   [ "${lines[1]}" = "calendar: ok" ]
   [ "${lines[2]}" = "meetings: off" ]
   [ "${lines[3]}" = "triage: off" ]
-  [ "${lines[4]}" = "dtcc: off" ]
   [ "$(cat system/logs/claude.version)" = "1.0.0 (Claude Code)" ]
   [ -z "$(alerts)" ]
   [ "$(jq -r 'select(.source == "calendar") | .exit' "$LOG")" = 0 ]
   grep -qx 'calendar_fetch.sh --check' "$CALLS"
-  run grep -c -e meetings_fetch -e triage_fetch -e dtcc_watch "$CALLS"
+  run grep -c -e meetings_fetch -e triage_fetch "$CALLS"
   [ "$output" = 0 ]
 }
 
@@ -102,14 +100,10 @@ items() {
   grep -qx 'calendar: failed: no output' <<< "$output"
 }
 
-@test "a reason keeps the Python checks' own first word and drops only the script's prefix" {
-  mkdir -p system/dtcc
-  printf 'partition: work\n' > system/dtcc/map.yaml
-  stub dtcc_watch.py 1 "stale: shop: src/x is missing at main" 1
+@test "a reason drops only the script's prefix" {
   stub calendar_fetch.sh 6 $'claude: some noise\nmore noise\ncalendar_fetch: no Google Calendar connector'
   run "$SC"
   [ "$status" -eq 1 ]
-  grep -qx 'dtcc: failed: stale: shop: src/x is missing at main' <<< "$output"
   grep -qx 'calendar: failed: no Google Calendar connector' <<< "$output"
 }
 
@@ -123,7 +117,7 @@ items() {
   grep -qx 'version: ok' <<< "$output"
   grep -qx 'calendar: held: five-hour usage 0.7 is at or above 0.6' <<< "$output"
   grep -qx 'meetings: held: five-hour usage 0.7 is at or above 0.6' <<< "$output"
-  grep -qx 'dtcc: off' <<< "$output"
+  grep -qx 'triage: off' <<< "$output"
   # No check ran, so no call was logged (the log may not exist at all).
   run grep -c -e calendar_fetch -e meetings_fetch <<< "$(cat "$CALLS" 2>/dev/null)"
   [ "$output" = 0 ]
@@ -147,17 +141,13 @@ items() {
   need_user_systemd
   set_key meetings_enabled '"true"'
   set_key triage_enabled '"true"'
-  mkdir -p system/dtcc
-  printf 'partition: work\n' > system/dtcc/map.yaml
   items prod-a prod-b
   run "$SC"
   [ "$status" -eq 0 ]
   grep -qx 'items/prod-a: ok' <<< "$output"
   grep -qx 'items/prod-b: ok' <<< "$output"
-  grep -qx 'dtcc: ok' <<< "$output"
   [ "$(grep -c -x 'meetings_fetch.sh --check' "$CALLS")" -eq 1 ]
   [ "$(grep -c -x 'triage_fetch.sh --check' "$CALLS")" -eq 1 ]
-  [ "$(grep -c -x 'dtcc_watch.py --check' "$CALLS")" -eq 1 ]
 }
 
 @test "a per-item list that fails is a failed source, never no item; an empty list is off (audit C5)" {
@@ -234,7 +224,7 @@ items() {
   SMOKE_CALENDAR_TIMEOUT=1 run "$SC"
   [ "$status" -eq 1 ]
   grep -qx 'calendar: failed: timed out after 1s' <<< "$output"
-  grep -qx 'dtcc: off' <<< "$output"
+  grep -qx 'meetings: off' <<< "$output"
   [ "$(jq -r 'select(.source == "calendar") | .exit' "$LOG")" = 124 ]
 }
 

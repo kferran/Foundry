@@ -7,7 +7,7 @@ from vaultlib import alerts
 @pytest.mark.parametrize("tag,want", [
     ("foreman", "now"), ("incident", "now"), ("orders", "now"), ("sync", "now"), ("update", "now"), ("rca", "now"), ("intake", "now"),
     ("commit_runs", "brief"), ("calendar", "brief"), ("meetings", "brief"),
-    ("handoffs", "brief"), ("telemetry", "brief"), ("dtcc", "brief"), ("memory", "brief"), ("notify", "never"),
+    ("handoffs", "brief"), ("telemetry", "brief"), ("memory", "brief"), ("notify", "never"),
 ])
 def test_each_tag_has_the_owners_severity(tag, want):
     assert alerts.severity(f"- 06:10:00 [{tag}] text") == want

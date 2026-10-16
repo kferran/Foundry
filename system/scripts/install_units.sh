@@ -117,11 +117,6 @@ if [[ "$role" != client && "$(config_get update_enabled true)" == true ]]; then
   UNITS+=(foundry-update.service foundry-update.timer)
   ENABLE+=(foundry-update.timer)
 fi
-# DTCC watcher: standalone and server, only when the vault has a map (DTCC watcher spec §7).
-if [[ "$role" != client ]] && [[ -f system/dtcc/map.yaml ]]; then
-  UNITS+=(foundry-dtcc-watch.service foundry-dtcc-watch.timer)
-  ENABLE+=(foundry-dtcc-watch.timer)
-fi
 # Extension units (extensions spec §3): extensions/<name>/units/<unit>.{service,timer}.in for each unit an enabled
 # extension lists for this role. A list that fails decides nothing (audit C5): nothing is changed.
 declare -A EXT_TEMPLATE=()
@@ -190,9 +185,10 @@ if ! out="$(config_validate 2>&1)"; then
 fi
 tz="$(config_get timezone)" brief="$(config_get brief_time)" debrief="$(config_get debrief_time)"
 IFS=: read -r bh bm <<< "$brief"
+# {{PRE_BRIEF_TIME}}: 30 minutes before the brief, after the template update, for a unit that feeds the brief.
 t=$(( (10#$bh * 60 + 10#$bm + 1410) % 1440 ))
-dtcc_time="$(printf '%02d:%02d' $(( t / 60 )) $(( t % 60 )))"
-# The template update runs 45 minutes before the brief, ahead of the DTCC watcher (#117).
+pre_brief_time="$(printf '%02d:%02d' $(( t / 60 )) $(( t % 60 )))"
+# The template update runs 45 minutes before the brief, ahead of the pre-brief units (#117).
 t=$(( (10#$bh * 60 + 10#$bm + 1395) % 1440 ))
 update_time="$(printf '%02d:%02d' $(( t / 60 )) $(( t % 60 )))"
 # The smoke check runs 15 minutes before the brief, after both (smoke check spec §2).
@@ -218,7 +214,7 @@ render() {
   {
     printf '%s\n' "$HEADER"
     sed "$@" -e "s|{{VAULT_ROOT}}|$(esc "$VAULT_ROOT")|g" -e "s|{{TZ}}|$(esc "$tz")|g" \
-        -e "s|{{BRIEF_TIME}}|$(esc "$brief")|g" -e "s|{{DTCC_TIME}}|$(esc "$dtcc_time")|g" -e "s|{{UPDATE_TIME}}|$(esc "$update_time")|g" \
+        -e "s|{{BRIEF_TIME}}|$(esc "$brief")|g" -e "s|{{PRE_BRIEF_TIME}}|$(esc "$pre_brief_time")|g" -e "s|{{UPDATE_TIME}}|$(esc "$update_time")|g" \
         -e "s|{{SMOKE_TIME}}|$(esc "$smoke_time")|g" -e "s|{{DEBRIEF_TIME}}|$(esc "$debrief")|g" \
         -e "s|{{SYNC_INTERVAL}}|$(esc "$sync_interval")|g" \
         -e "s|{{CLAUDE_BIN}}|$(esc "$claude_bin")|g" -e "s|{{UNIT_PATH}}|$(esc "$unit_path")|g" "$t"

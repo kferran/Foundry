@@ -19,7 +19,7 @@ NOT_INDEXED = ("system/logs/", "system/quarantine/", "system/jobs/", "system/tem
 # Walked but never indexed: reachable by explicit path, never by bare [[Name]].
 NAME_EXCLUDED = ("system/tests/", "system/templates/", "system/schemas/", "system/agents/", "docs/",
                  "system/quarantine/", "wiki/.staging/",  # run copies keep their note names
-                 "system/codebases/", "system/telemetry/", "system/dtcc/", "system/nightshift/")  # named after what they configure
+                 "system/codebases/", "system/telemetry/", "system/nightshift/")  # named after what they configure
 SKIP_FILES = ("system/index.db", "system/index.lock")
 ROOT_DOCS = {"README.md", "README.local.md", "FOUNDRY.md", "CLAUDE.md"}   # the only Markdown files the root holds
 TABLES = ("files", "notes", "fields", "links", "tags", "issues", "notes_fts")

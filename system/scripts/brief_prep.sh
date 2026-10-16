@@ -65,9 +65,6 @@ if [[ -f "system/logs/nightshift/$PREP_DATE.md" ]]; then
 else
   : > "$PREP_DIR/nightshift.md"
 fi
-# New DTCC changes since the latest earlier briefing (DTCC watcher spec §7); empty without a map.
-prep_write dtcc.md system/scripts/dtcc_watch.py --brief "$PREP_DATE" \
-  || prep_unavailable "dtcc: dtcc_watch.py --brief failed (see $PREP_DIR/prep_errors.log)"
 # Sections from enabled extensions (extensions spec §3): each extension's brief/prep.sh is sourced in a subshell with
 # PREP_DATE, PREP_DIR and the prep_* functions, writes sections/<name>.md and records its readings; its
 # brief/section.md is copied beside it as sections/<name>.prompt.md for the headless brief to read.
@@ -112,8 +109,8 @@ else
   printf 'none: no debrief found from %s to %s\n' "$since" "$(date -d "$PREP_DATE -1 day" +%F)" > "$PREP_DIR/yesterday.md"
 fi
 
-# Briefings and debriefs dated before today move to briefings/archive/<YYYY-MM>/, after the Now seed and
-# dtcc.md are written (now.py seed and dtcc_watch.py read the archive too). The sync commit records
+# Briefings and debriefs dated before today move to briefings/archive/<YYYY-MM>/, after the Now seed and the
+# extension sections are written (now.py seed and a section's prep may read the archive too). The sync commit records
 # the moves. Only a run for today archives: /brief <past date> must find that day's briefing where it is.
 today="$(date +%F)"
 if [[ "$PREP_DATE" == "$today" ]]; then

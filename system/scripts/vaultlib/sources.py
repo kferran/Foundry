@@ -143,12 +143,11 @@ def report(vault: Path, day: str, given: dict) -> list:
     missing = [n for n in extensions.listed(vault)
                if n not in loaded and not (vault / "extensions" / n / "extension.md").is_file()]
     order += ext + [n for n in missing if n not in ext]
-    order += ["dtcc", "notify"]
+    order += ["notify"]
     off = {
         "meetings": str(config.get("meetings_enabled", "false")).lower() != "true",
         "triage": str(config.get("triage_enabled", "false")).lower() != "true",
         **{source: True for source, rows in each.items() if rows == []},
-        "dtcc": not (vault / "system" / "dtcc" / "map.yaml").is_file(),
         "notify": not config.get("slack_notify_channel"),
     }
     out = []
