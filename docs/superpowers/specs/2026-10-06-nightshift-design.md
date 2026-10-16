@@ -14,7 +14,7 @@ Refined work waits for attended time: an approved implementation plan sits until
 | Work it takes | (A) an approved implementation plan, or a task range of one; (C) a written research brief. Maintenance sweeps are a later phase. |
 | Autonomy ceiling | Plans: implement in a private clone, test, push a branch, open a pull request. Never merge, never deploy, never touch a protected `master` or production. Research: read-only, one findings note. |
 | Intake | A `/nightshift` skill writes one queue note per item. Queuing is the approval record. A readiness check refuses items that are not refined enough. |
-| When | Per item: the nightly window (config `nightshift_window`, default `22:00-05:00` local), `--at HH:MM`, or `--now`. A 15-minute timer runs one due item at a time. No count cap; per-item time budgets. |
+| When | Per item: the nightly window (config `nightshift_window`, default `22:00-05:00` local), `--at HH:MM`, or `--now`. A 15-minute timer runs due items, up to 3 at once since 2026-10-16 (`2026-10-16-parallel-orders-design.md`). No count cap; per-item time budgets. |
 | Execution | A deterministic runner (no model) owns the queue, lock, windows, budgets, usage limits, verification, push, pull request and report. Each item runs in a fresh, confined `claude -p` session that never holds a credential. |
 | Hosting | GitHub pull requests are opened with `gh`. A Bitbucket-hosted codebase ends at "branch pushed + prefilled create-PR link" (no unattended Bitbucket PR without an API token; a later option). |
 | Model | `sonnet` by default; `--model` per item. |
@@ -191,6 +191,6 @@ Build through its own plan; merge; enable on the server; run the self-test and o
 
 - Maintenance sweeps (ingest, lint, telemetry triage): a later phase.
 - Opening Bitbucket pull requests unattended (needs an API token held by the runner).
-- More than one item at a time.
+- More than one item at a time (since built: `2026-10-16-parallel-orders-design.md`).
 - Seeing user activity on a client machine.
 - Merging, deploying, or any write to an issue tracker, chat or mail.

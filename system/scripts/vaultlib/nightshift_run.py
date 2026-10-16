@@ -8,6 +8,7 @@ import secrets
 import shutil
 import signal
 import subprocess
+import threading
 import sys
 import time as clock
 import uuid
@@ -24,6 +25,9 @@ from . import nightshift_session as ss
 
 LOCK = "system/nightshift.lock"
 POLL = 30            # seconds between session checks
+MAX_PARALLEL = 3     # Work Orders one tick runs at once (#229; owner, 2026-10-16)
+TICK_HOURS = 13      # no new start that would end past this: the unit stops a tick at 14h
+SHARED = threading.RLock()   # the files more than one worker writes: report, health, ledger, alerts
 PR_FOR_LOCAL = ""    # tests: the pull-request kind used when template_remote is a local path
 CANARY = "~/.config/foundry/nightshift-canary"  # planted by the self-test under a path every profile denies
 TOKEN_VARS = ("SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "DBUS_SESSION_BUS_ADDRESS", "CLAUDE_CODE_OAUTH_TOKEN",
@@ -101,21 +105,23 @@ class Ctx:
     def alert(self, key: str, msg: str) -> None:
         day = self.local.date().isoformat()
         seen = self.vault / rep.DIR / "alerts.json"
-        data = json.loads(seen.read_text()) if seen.is_file() else {}
-        if data.get(key) == day:
-            return
-        data[key] = day
-        seen.parent.mkdir(parents=True, exist_ok=True)
-        seen.write_text(json.dumps(data))
-        path = self.vault / "system" / "logs" / f"alerts_{day}.md"
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(f"- {self.local.strftime('%H:%M:%S')} [orders] {msg}\n")
+        with SHARED:
+            data = json.loads(seen.read_text()) if seen.is_file() else {}
+            if data.get(key) == day:
+                return
+            data[key] = day
+            seen.parent.mkdir(parents=True, exist_ok=True)
+            seen.write_text(json.dumps(data))
+            path = self.vault / "system" / "logs" / f"alerts_{day}.md"
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(f"- {self.local.strftime('%H:%M:%S')} [orders] {msg}\n")
 
     def log(self, line: dict) -> None:
         path = self.vault / "system" / "logs" / f"nightshift-{self.now.strftime('%Y-%m')}.jsonl"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps({"time": self.now.isoformat(), **line}, sort_keys=True) + "\n")
+        with SHARED:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"time": self.clock_now().isoformat(), **line}, sort_keys=True) + "\n")
 
 
 # --- health and self-test ---------------------------------------------------------------------------
@@ -541,14 +547,19 @@ def _finish(ctx: Ctx, path: Path, fm: dict, idir: Path, cwd, out: dict) -> int:
     ni.update(path, state=out["state"], reason=out.get("reason") or None, result=out.get("result") or None,
               finished_at=finished if final else None)
     if final:
+        _report_outcome(ctx, fm, out, finished)
+    ctx.log({"item": fm["id"], "state": out["state"], "reason": out.get("reason", "")})
+    return 0 if out["state"] in ("done", "cancelled", "delivering") else 1
+
+
+def _report_outcome(ctx: Ctx, fm: dict, out: dict, finished: str) -> None:
+    with SHARED:
         rep.write_outcome(ctx.vault, {"id": fm["id"], "kind": fm["kind"], "state": out["state"], "result": out.get("result", ""),
-                                      "reason": out.get("reason", ""), "started_at": fm.get("started_at") or ctx.now.isoformat(),
+                                      "reason": out.get("reason", ""), "started_at": fm.get("started_at") or ctx.clock_now().isoformat(),
                                       "finished_at": finished, "report_date": ctx.date,
                                       "needs": out.get("needs", []), "notes": out.get("notes", ""),
                                       "output": fm.get("output") or ""})  # a notice links it (#157)
         rep.write(ctx.vault, ctx.date)
-    ctx.log({"item": fm["id"], "state": out["state"], "reason": out.get("reason", "")})
-    return 0 if out["state"] in ("done", "cancelled", "delivering") else 1
 
 
 def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
@@ -559,8 +570,9 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     _stop_stale(idir)
     resume = fm.get("state") in ("waiting_reset", "running")
     attempts = int(fm.get("attempts") or 0) + 1
-    ni.update(path, state="running", started_at=fm.get("started_at") or ctx.now.isoformat(), attempts=str(attempts),
-              reset_at=None)
+    started = fm.get("started_at") or ctx.clock_now().isoformat()   # read now: a slot can free hours into the tick
+    ni.update(path, state="running", started_at=started, attempts=str(attempts), reset_at=None)
+    fm = {**fm, "started_at": started}   # the outcome and the report carry the same stamp
     if nc.workspace_inside_vault(ctx.vault, ctx.workspace):   # the session's profile denies the vault root
         return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "workspace", "needs": [
             f"Move order_workspace outside the vault ({ctx.workspace} is inside it), then queue {fm['id']} again"]})
@@ -582,7 +594,8 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
                 f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then queue {fm['id']} again ({exc})"]})
     run = _run_session(ctx, path, fm, body, cwd, idir, resume)
-    rep.record_usage(ctx.vault, ctx.date, run.get("usage") or {}, ctx.clock_now().isoformat())
+    with SHARED:
+        rep.record_usage(ctx.vault, ctx.date, run.get("usage") or {}, ctx.clock_now().isoformat())
     if run["outcome"] == "waiting_reset":
         reset = datetime.fromtimestamp(run["reset_at"], tz=timezone.utc).astimezone(ctx.tz)
         ni.update(path, state="waiting_reset", reset_at=reset.isoformat())
@@ -644,25 +657,66 @@ def _reconcile(ctx: Ctx, entries: list) -> None:
                     shutil.rmtree(d, ignore_errors=True)
 
 
-def tick(ctx: Ctx) -> int:
-    entries, refused = _screen(ctx)
-    if refused:
-        return 2
-    _reconcile(ctx, entries)
-    entries, _ = _screen(ctx)
-    delivering = [e for e in entries if e[1].get("state") == "delivering"]
-    if delivering:
-        path, fm, body = delivering[0]
-        return run_item(ctx, path, fm, body)
+def _plan_key(fm: dict):
+    """Two plan items on one repo and base would push competing branches from one plan: they never run together."""
+    return (fm.get("repo"), fm.get("base")) if fm.get("kind") == "plan" else None
+
+
+class _Pool:
+    """The tick's workers (parallel orders spec §3): each runs run_item on its own thread; a finish wakes the tick."""
+
+    def __init__(self, ctx: Ctx):
+        self.ctx, self.threads, self.keys, self.done, self.rc = ctx, {}, {}, threading.Event(), 0
+        self.started = set()   # one attempt per item per tick, as before: a requeued item waits for the next tick
+        self.finished = set()
+
+    def free(self) -> int:
+        return MAX_PARALLEL - len(self.threads)
+
+    def busy_keys(self) -> set:
+        return {k for k in self.keys.values() if k}
+
+    def start(self, entry) -> None:
+        path, fm, body = entry
+
+        def work():
+            rc = 1
+            try:
+                rc = run_item(self.ctx, path, fm, body)
+            except Exception as exc:   # one order's crash never stops the others; it is an alert and a failed tick
+                self.ctx.alert(f"worker/{fm['id']}", f"{fm['id']}: the worker stopped: {exc.__class__.__name__}: {exc}")
+            finally:
+                with SHARED:
+                    self.rc = max(self.rc, rc)
+                    self.finished.add(fm["id"])
+                self.done.set()
+
+        t = threading.Thread(target=work, name=f"order-{fm['id']}")
+        self.threads[fm["id"]], self.keys[fm["id"]] = t, _plan_key(fm)
+        self.started.add(fm["id"])
+        t.start()
+
+    def reap(self) -> None:
+        with SHARED:
+            gone, self.finished = self.finished, set()
+        for iid in gone:
+            self.threads.pop(iid).join()
+            self.keys.pop(iid)
+
+    def wait(self) -> None:
+        self.done.wait(timeout=5)
+        self.done.clear()
+        self.reap()
+
+    def join_all(self) -> None:
+        for t in list(self.threads.values()):
+            t.join()
+        self.reap()
+
+
+def _day_health(ctx: Ctx, entries) -> tuple:
+    """The day's checks on its first tick, and this tick's stamp. Returns (health, Held line it cleared)."""
     hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
-    candidates = [e for e in entries if ns.due(e[1], ctx.local, ctx.window, 0)[0]
-                  or e[1].get("state") == "running"]
-    if not candidates:   # a held item was cancelled or finished elsewhere: drop the stale Held line
-        h = json.loads(hfile.read_text()) if hfile.is_file() else {}
-        if h.pop("held", None):
-            rep.write_health(ctx.vault, ctx.date, h)
-            rep.write(ctx.vault, ctx.date)
-        return 0
     try:
         h = json.loads(hfile.read_text()) if hfile.is_file() else {}
     except (OSError, ValueError):
@@ -676,33 +730,113 @@ def tick(ctx: Ctx) -> int:
         except (OSError, ValueError):
             old = {}
         carry = {k: old[k] for k in ("usage5", "usage5_at") if k in old}
-        rep.write_health(ctx.vault, ctx.date, health(ctx.vault, ctx.now, entries) | carry | h)
-    h = json.loads(hfile.read_text())
-    h["last_tick"] = ctx.local.strftime("%H:%M")
-    was_held = h.pop("held", None)   # the report's Held line shows only the latest tick's hold
-    rep.write_health(ctx.vault, ctx.date, h)
-    if str(h.get("sandbox", "")).startswith("FAILED"):
-        ctx.alert("sandbox", f"sandbox self-test failed: {h['sandbox']}; no items run")
-        rep.write(ctx.vault, ctx.date)
-        return 1
-    usage7 = h.get("usage7")
-    running = [e for e in entries if e[1].get("state") == "running"]
-    chosen = running[0] if running else ns.pick(entries, ctx.local, ctx.window, usage7)
-    # The 5-hour ceiling holds only a new start: running and waiting_reset items resume (pick ranks those first).
-    held = ns.five_hour_hold(h, ctx.now, ctx.max_five_hour) if chosen and chosen[1].get("state") == "queued" else ""
-    if was_held or held:
-        rep.write_health(ctx.vault, ctx.date, h | ({"held": held} if held else {}))
-        rep.write(ctx.vault, ctx.date)   # the brief and the debrief copy this file, so the Held line must be in it
-    if held or not chosen:
-        return 0
-    path, fm, body = chosen
+        checked = health(ctx.vault, ctx.now, entries)   # the self-test runs outside the lock: workers keep writing
+        with SHARED:
+            rep.write_health(ctx.vault, ctx.date, checked | carry | h)
+    with SHARED:
+        h = json.loads(hfile.read_text())
+        h["last_tick"] = ctx.local.strftime("%H:%M")
+        was_held = h.pop("held", None)   # the report's Held line shows only the latest tick's hold
+        rep.write_health(ctx.vault, ctx.date, h)
+    return h, was_held
+
+
+def _claim(ctx: Ctx, fm: dict) -> bool:
     claim = rep.item_dir(ctx.vault, fm["id"]) / f"claim-{int(fm.get('attempts') or 0) + 1}"
     try:
         claim.parent.mkdir(parents=True, exist_ok=True)
         claim.mkdir()
     except FileExistsError:
-        return 0
-    return run_item(ctx, path, fm, body)
+        return False
+    return True
+
+
+def _set_held(ctx: Ctx, held: str) -> None:
+    """Write the Held line ("" clears it) when it changed; the brief and the debrief copy the report, so it is in it."""
+    hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+    with SHARED:
+        h = json.loads(hfile.read_text()) if hfile.is_file() else {}
+        if (h.get("held") or "") == held:
+            return
+        h.pop("held", None)
+        rep.write_health(ctx.vault, ctx.date, h | ({"held": held} if held else {}))
+        rep.write(ctx.vault, ctx.date)
+
+
+def _fits(ctx: Ctx, now: datetime, fm: dict) -> bool:
+    """The unit stops a tick at 14h and kills its sessions with it: a new start must end inside TICK_HOURS."""
+    budget = ni.budget_seconds(fm.get("budget") or ("4h" if fm.get("kind") == "plan" else "1h"))
+    return (now - ctx.now).total_seconds() + budget <= TICK_HOURS * 3600
+
+
+def tick(ctx: Ctx) -> int:
+    """Up to MAX_PARALLEL items at once (parallel orders spec §3). Delivering items first, then running ones resume,
+    then queued and waiting items in pick order; each finish refills its slot until nothing runs or can start.
+    Each pass reads the clock again: a tick lives for hours, and due times, the window and the ceiling move with it."""
+    entries, refused = _screen(ctx)
+    if refused:
+        return 2
+    _reconcile(ctx, entries)
+    pool, day, skip, blocked, held = _Pool(ctx), None, set(), False, ""
+    try:
+        while True:
+            now = ctx.clock_now()
+            local = now.astimezone(ctx.tz)
+            entries, _ = _screen(ctx)
+            idle = [e for e in entries if e[1]["id"] not in pool.started and e[1]["id"] not in skip]
+            for e in [e for e in idle if e[1].get("state") == "delivering"][:pool.free()]:
+                pool.start(e)
+            idle = [e for e in idle if e[1]["id"] not in pool.started]
+            candidates = [e for e in idle if ns.due(e[1], local, ctx.window, 0)[0] or e[1].get("state") == "running"]
+            if candidates and pool.free() and not blocked:
+                if day is None:
+                    day = _day_health(ctx, entries)
+                    if str(day[0].get("sandbox", "")).startswith("FAILED"):
+                        ctx.alert("sandbox", f"sandbox self-test failed: {day[0]['sandbox']}; no items run")
+                        with SHARED:
+                            rep.write(ctx.vault, ctx.date)
+                        pool.rc = max(pool.rc, 1)
+                        blocked = True   # nothing new starts this tick; delivering workers finish
+            if candidates and pool.free() and not blocked:
+                for e in [e for e in candidates if e[1].get("state") == "running"]:
+                    if pool.free() and (_plan_key(e[1]) is None or _plan_key(e[1]) not in pool.busy_keys()):
+                        if _claim(ctx, e[1]):
+                            pool.start(e)
+                        else:
+                            skip.add(e[1]["id"])
+                while pool.free():
+                    rest = [e for e in candidates if e[1].get("state") != "running" and e[1]["id"] not in pool.started
+                            and e[1]["id"] not in skip and (_plan_key(e[1]) is None or _plan_key(e[1]) not in pool.busy_keys())]
+                    chosen = ns.pick(rest, local, ctx.window, day[0].get("usage7"))
+                    if not chosen:
+                        break
+                    if not _fits(ctx, now, chosen[1]):
+                        skip.add(chosen[1]["id"])   # waits for the next tick
+                        continue
+                    if chosen[1].get("state") == "queued":
+                        # The 5-hour ceiling holds only a new start, read afresh: a finished worker may have raised it.
+                        hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+                        with SHARED:
+                            fresh = json.loads(hfile.read_text()) if hfile.is_file() else day[0]
+                        held = ns.five_hour_hold(fresh, now, ctx.max_five_hour)
+                        _set_held(ctx, held)
+                        if held:
+                            break   # checked again on the next pass, after a worker finishes
+                    if _claim(ctx, chosen[1]):
+                        pool.start(chosen)
+                    else:
+                        skip.add(chosen[1]["id"])
+            if not pool.threads:
+                break
+            pool.wait()
+    finally:   # the global lock goes when this returns: never while a worker still runs a session
+        pool.join_all()
+    if day is None:   # nothing could start: a held item was cancelled or finished elsewhere, so drop a stale Held line
+        _set_held(ctx, "")
+    elif day[1] and not held:
+        with SHARED:
+            rep.write(ctx.vault, ctx.date)
+    return pool.rc
 
 
 def _add(ctx: Ctx, a) -> int:

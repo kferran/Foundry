@@ -1,6 +1,7 @@
 """Per-item outcome files, the health file and the night's report (Nightshift spec §6)."""
 import json
 import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -15,11 +16,18 @@ def item_dir(vault, item_id: str) -> Path:
     return Path(vault) / DIR / "items" / item_id
 
 
+_UMASK = os.umask(0)   # read once: os.umask can only be read by setting it
+os.umask(_UMASK)
+
+
 def _atomic(path: Path, text: str) -> None:
+    # A temp file per writer: up to 3 Work Orders finish at once (#229), and a shared .tmp name loses a rename.
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.",
+                                     suffix=".tmp", delete=False) as f:
+        f.write(text)
+    os.chmod(f.name, 0o666 & ~_UMASK)   # a temp file is 0600: keep the mode a plain write gives
+    os.replace(f.name, path)
 
 
 def write_outcome(vault, outcome: dict) -> None:

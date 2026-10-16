@@ -877,6 +877,13 @@ self_edit_contract() {
   grep -qF 'order_install' system/codebases/example.md
 }
 
+@test "Work Orders: up to 3 run at once, and two plans on one repo and base take turns (parallel orders spec §6)" {
+  grep -qF 'Up to 3 Work Orders run at once' FOUNDRY.md
+  grep -qF 'Two plan orders on the same repo and base run one after the other.' FOUNDRY.md
+  run grep -c 'runs one due item at a time' FOUNDRY.md
+  [ "$output" = 0 ]
+}
+
 @test "Work Orders start now by default; tonight, hold, the window and the 5-hour ceiling are documented (Foreman v1 §3.2)" {
   f=.claude/skills/order/SKILL.md
   grep -qF 'With no start flag a Work Order starts now.' "$f"
