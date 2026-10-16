@@ -28,6 +28,7 @@ fields:
   triage_enabled: {kind: bool, default: "false"}
   triage_partition: {kind: enum, values: [work, personal]}
   triage_watch_senders: {kind: list, of: string}
+  triage_chat_enabled: {kind: bool, default: "false"}
   slack_notify_channel: {kind: string}
   slack_connector: {kind: string, default: "claude.ai Slack"}
   notify_links: {kind: enum, values: [github, obsidian], default: "github"}
@@ -40,7 +41,7 @@ The per-user global configuration written by `/setup` (gitignored). `system/conf
 
 `run_window` is the window for Work Orders queued with `--window`, as `HH:MM-HH:MM`; empty (the default) or `00:00-24:00` means always. `order_max_five_hour` is the 5-hour usage fraction at or above which no new Work Order starts.
 
-`triage_enabled` turns on inbox triage on a standalone machine or a server (inbox triage spec): every 30 minutes on workdays, mail that needs the owner becomes an `owed` line on the Now page of `triage_partition` (default `work`). `triage_watch_senders` lists domains (`@example.com`) or addresses whose unread mail outside the inbox from the last two days also becomes an `owed` line: mail from them archived unread is not missed.
+`triage_enabled` turns on inbox triage on a standalone machine or a server (inbox triage spec): every 30 minutes on workdays, mail that needs the owner becomes an `owed` line on the Now page of `triage_partition` (default `work`). `triage_watch_senders` lists domains (`@example.com`) or addresses whose unread mail outside the inbox from the last two days also becomes an `owed` line: mail from them archived unread is not missed. `triage_chat_enabled` adds the Slack channels the owner is a member of (public and private, not DMs, bots skipped) to each triage tick, through `slack_connector` (chat triage spec).
 
 `slack_notify_channel` turns on Slack notices on a standalone machine or a server (Slack notices spec): a Slack channel ID, or the owner's user ID for a direct message; empty is off. `slack_connector` is the connector a headless session loads: `claude.ai Slack` (the default) for Slack connected at claude.ai; `plugin:slack:slack` only when headless sessions load the Slack plugin. `claude mcp list` can show the plugin while a headless session loads only the claude.ai connector (#133); `notify.sh --check` names the server the session loaded. `notify_links` picks the notices' links: `github` (the default) or `obsidian`, an `obsidian://open?file=<path>` link that names no vault; with several vaults on one device, check which one it opens (#157).
 
