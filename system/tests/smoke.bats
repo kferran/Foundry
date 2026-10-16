@@ -384,3 +384,29 @@ EOF
   [ "$status" -eq 2 ]
   [ ! -e "$CALLS" ]
 }
+
+@test "an enabled extension's smoke entry runs and reads ok or failed like a core source" {
+  need_user_systemd
+  use_extension demo
+  run "$SC"
+  [ "$status" -eq 0 ]
+  grep -qx 'demo: ok' <<< "$output"
+  [ "$(jq -r 'select(.source == "demo") | .exit' "$LOG")" = "0" ]
+}
+
+@test "an expired credential from a manifest names it and its renewal" {
+  need_user_systemd
+  use_extension demo
+  DEMO_CHECK_MODE=expired run "$SC"
+  [ "$status" -eq 1 ]
+  grep -qx 'demo: expired: Demo connector; renew: reconnect it at example.invalid' <<< "$output"
+  [ "$(alerts | grep -c '\[smoke\] expired Demo connector:')" -eq 1 ]
+}
+
+@test "without extensions the smoke check prints no extension line" {
+  need_user_systemd
+  run "$SC"
+  [ "$status" -eq 0 ]
+  run grep -c '^demo' <<< "$output"
+  [ "$status" -ne 0 ]
+}

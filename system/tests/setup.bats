@@ -410,3 +410,26 @@ STUB
     [ "$status" -eq 2 ]
   done
 }
+
+@test "check_deps: an enabled extension's deps are optional, with a hint naming the extension; absent while it is off" {
+  V="$BATS_TEST_TMPDIR/v"
+  cp -r "$REPO/system/scripts/." "$V/system/scripts/"
+  mkdir -p "$V/extensions/demo"
+  cat > "$V/extensions/demo/extension.md" <<'MD'
+---
+name: demo
+contract: 1
+description: "fixture"
+deps: [example-tool]
+---
+MD
+  printf -- '---\ntype: config\nextensions: ["demo"]\n---\n' > "$V/system/config.md"
+  run env PATH="$BIN" "$V/system/scripts/check_deps.sh" --strict
+  [ "$status" -eq 0 ]
+  grep -qx 'optional example-tool (extension demo)' <<< "$output"
+  printf -- '---\ntype: config\nextensions: []\n---\n' > "$V/system/config.md"
+  run env PATH="$BIN" "$V/system/scripts/check_deps.sh" --strict
+  [ "$status" -eq 0 ]
+  run grep -c example-tool <<< "$output"
+  [ "$status" -ne 0 ]
+}

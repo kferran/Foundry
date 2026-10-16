@@ -26,3 +26,54 @@ jobs:
           git config --global user.email "ci@example.invalid"
       - name: Gate
         run: system/scripts/verify_setup.sh --require-suites
+  # Everything on (extensions spec §3): the private extensions repository is checked out at extensions/, every folder
+  # in it is listed in a CI config, and the gate runs core's and every extension's suites together. It prints one
+  # skip line and succeeds while the deploy key is not set. The repository is FOUNDRY_EXTENSIONS_REPO, or
+  # <owner>/foundry-extensions when that variable is unset.
+  gate-all-extensions:
+    if: vars.FOUNDRY_CI == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXTENSIONS_KEY: ${{ secrets.EXTENSIONS_DEPLOY_KEY }}
+    steps:
+      - name: Is the extensions repository configured?
+        id: cfg
+        run: |
+          if [[ -n "$EXTENSIONS_KEY" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "extensions repository not configured: skipped"
+          fi
+      - uses: actions/checkout@v5
+        if: steps.cfg.outputs.configured == 'true'
+      - uses: actions/checkout@v5
+        if: steps.cfg.outputs.configured == 'true'
+        with:
+          repository: ${{ vars.FOUNDRY_EXTENSIONS_REPO || format('{0}/foundry-extensions', github.repository_owner) }}
+          ssh-key: ${{ secrets.EXTENSIONS_DEPLOY_KEY }}
+          path: extensions
+      - name: Install the development tools
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bats jq sqlite3 parallel shellcheck bubblewrap \
+            python3-yaml python3-pytest python3-pytest-xdist
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          git config --global user.name "Foundry CI"
+          git config --global user.email "ci@example.invalid"
+      - name: List every extension in a CI config
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          shopt -s nullglob
+          list=""
+          for d in extensions/*/extension.md; do
+            n="$(basename "$(dirname "$d")")"
+            list+="${list:+, }\"$n\""
+          done
+          sed "s|^extensions: .*|extensions: [$list]|" system/config.example.md > system/config.md
+          system/scripts/extensions.py check
+          system/scripts/extensions.py list
+      - name: Gate, everything on
+        if: steps.cfg.outputs.configured == 'true'
+        run: system/scripts/verify_setup.sh --require-suites

@@ -1,0 +1,8 @@
+[Unit]
+Description=The Foundry: the demo extension (fixture)
+
+[Service]
+Type=oneshot
+WorkingDirectory={{VAULT_ROOT}}
+Environment="TZ={{TZ}}"
+ExecStart="{{VAULT_ROOT}}/extensions/demo/scripts/demo_check.sh"

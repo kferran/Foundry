@@ -77,3 +77,39 @@ def test_report_without_a_smoke_reading_says_unknown(vault):
     lines = sources.report(vault, "2026-10-13", {"calendar": ("ok", "")})
     assert "- triage: unknown (no smoke check reading today)" in lines
     assert "- telemetry: off" in lines
+
+
+def _demo(vault, listed=True):
+    import shutil
+    from helpers import REPO
+    shutil.copytree(REPO / "system/tests/fixtures/extensions/demo", vault / "extensions/demo")
+    write(vault, "system/config.md", f'---\ntype: config\nextensions: [{"demo" if listed else ""}]\n---\n')
+
+
+def test_report_lists_enabled_extension_sources_and_off_when_not_listed(vault):
+    _demo(vault)
+    smoke(vault, ("2026-10-01", "demo", 0, ""))
+    out = sources.report(vault, "2026-10-01", {})
+    assert "- demo: ok" in out
+    assert out.index("- demo: ok") < out.index("- dtcc: off")
+    _demo_off = [ln for ln in sources.report(vault, "2026-10-01", {}) if ln.startswith("- demo")]
+    assert _demo_off == ["- demo: ok"]
+
+
+def test_report_without_the_listing_shows_no_extension_source(vault):
+    _demo(vault, listed=False)
+    assert not [ln for ln in sources.report(vault, "2026-10-01", {}) if "demo" in ln]
+
+
+def test_a_listed_extension_with_no_folder_reads_failed(vault):
+    write(vault, "system/config.md", '---\ntype: config\nextensions: ["gone"]\n---\n')
+    out = sources.report(vault, "2026-10-01", {})
+    assert any(ln.startswith("- gone: failed: other: extensions/gone/ is missing") for ln in out)
+
+
+def test_credential_comes_from_the_manifest(vault):
+    _demo(vault)
+    assert sources.credential(vault, "demo", "auth: HTTP 401") == ("Demo connector", "reconnect it at example.invalid")
+    report = sources.report(vault, "2026-10-01", {"demo": ("failed", "auth: HTTP 401")})
+    assert any("demo: failed: auth: HTTP 401" in ln and "expired: Demo connector; renew: reconnect it at example.invalid"
+               in ln for ln in report)

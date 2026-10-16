@@ -328,3 +328,37 @@ sealed_problems() {
   [ "$output" = "$(printf '%s\n' 'sandbox.allowUnsandboxedCommands is not false' 'sandbox.excludedCommands is not empty' \
     'sandbox.network.allowedDomains holds a wildcard' 'Bash(claude -p:*)')" ]
 }
+
+@test "the gate runs an extension's suites: its bats files and its python folder" {
+  d="$BATS_TEST_TMPDIR/gate"
+  mkdir -p "$d/system/scripts" "$d/system/tests/python" "$d/extensions/demo/tests/python" "$d/bin"
+  cp "$VAULT_ROOT/system/scripts/verify_setup.sh" "$d/system/scripts/"
+  printf '#!/bin/bash\nexit 0\n' > "$d/system/scripts/lint_vault.sh"
+  chmod +x "$d/system/scripts/lint_vault.sh"
+  : > "$d/system/tests/core.bats"
+  : > "$d/extensions/demo/tests/demo.bats"
+  printf 'def test_core():\n    pass\n' > "$d/system/tests/python/test_core.py"
+  printf 'def test_demo():\n    pass\n' > "$d/extensions/demo/tests/python/test_demo.py"
+  # A bats that records what it was asked to run, and passes.
+  printf '#!/bin/bash\n[[ "${1:-}" == --version ]] || echo "$1" >> "%s/bats.calls"\necho "1..0"\n' "$d" > "$d/bin/bats"
+  chmod +x "$d/bin/bats"
+  run env PATH="$d/bin:$PATH" "$d/system/scripts/verify_setup.sh" --require-suites
+  [ "$status" -eq 0 ]
+  grep -qx 'PASS system/tests/core.bats' <<< "$output"
+  grep -qx 'PASS extensions/demo/tests/demo.bats' <<< "$output"
+  grep -qx 'extensions/demo/tests/demo.bats' "$d/bats.calls"
+}
+
+# Task 10: core names no vendor or customer outside a shrinking allowlist (extensions spec §6; plan task 10).
+@test "core names no vendor or customer outside its allowlist" {
+  allow="$BATS_TEST_DIRNAME/core_clean.allow"
+  want="$BATS_TEST_TMPDIR/hits.txt"
+  # Every tracked file outside docs/, extensions/, system/tests/ and the loader, for each term and domain.
+  pattern='dtcc|sentry|kusto|azure|\bjira\b|atlassian|gemini|google drive|slack|dtcclearning\.com|atlassian\.net|sentry\.io'
+  git ls-files -z -- . ':(exclude)docs' ':(exclude)extensions' ':(exclude)system/tests' ':(exclude)system/scripts/extensions.py' \
+    | xargs -0 grep -I -o -i -E "$pattern" /dev/null 2>/dev/null \
+    | awk -F: '{ term = tolower($NF); sub(/:[^:]*$/, ""); print $0 ":" term }' | sort -u > "$want" || true
+  # The allowlist holds every file:term pair of today's hits; a move deletes its lines.
+  run diff <(grep -v '^#' "$allow" | sort -u) "$want"
+  [ "$status" -eq 0 ]
+}

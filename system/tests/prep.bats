@@ -604,3 +604,30 @@ gh_says() {
   run grep -c 'focus' "$IN/unavailable.md"
   [ "$status" -ne 0 ]  # no focus line, or no unavailable.md at all
 }
+
+@test "brief_prep: an enabled extension writes its section and prompt into sections/" {
+  use_extension demo
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/sections/demo.md")" = '- [ ] demo line' ]
+  grep -q 'Demo' "$IN/sections/demo.prompt.md"
+  grep -q '^demo	ok' "$IN/sources.given"
+}
+
+@test "brief_prep: a failing extension prep is one unavailable line and the rest of the prep still runs" {
+  use_extension demo
+  DEMO_PREP_FAIL=1 run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ ! -e "$IN/sections/demo.md" ]
+  grep -qxF -- '- brief_prep: demo: brief section failed (see system/logs/inputs/2026-10-01/prep_errors.log)' "$IN/unavailable.md"
+  [ -e "$IN/actions.md" ]
+  [ -e "$IN/sources.md" ]
+}
+
+@test "brief_prep: no extensions writes no sections/ folder" {
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ ! -e "$IN/sections" ]
+  run grep -c extensions "$IN/unavailable.md"
+  [ "$status" -ne 0 ]
+}

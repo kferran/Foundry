@@ -7,7 +7,7 @@ the date it has been failing since.
 import json
 from pathlib import Path
 
-from . import frontmatter, telemetry
+from . import extensions, frontmatter, telemetry
 
 CLASSES = ("auth", "network", "timeout", "connector", "claude", "other")
 CONNECT = "reconnect it at claude.ai, Settings, Connectors"
@@ -38,6 +38,16 @@ def _config(vault: Path) -> dict:
         return {}
 
 
+def _extension_sources(vault: Path) -> dict:
+    """source name -> (credential, renewal) from each enabled extension's manifest, read at call time."""
+    out = {}
+    for _, data in extensions.enabled(vault):
+        for row in data.get("sources") or []:
+            if isinstance(row, dict) and row.get("name"):
+                out[str(row["name"])] = (str(row.get("credential", "")), str(row.get("renew", "")))
+    return out
+
+
 def _telemetry(vault: Path) -> dict:
     return {s.name: s for s in telemetry.load_sources(vault) if s.enabled}
 
@@ -53,7 +63,7 @@ def credential(vault: Path, source: str, reason: str):
     if source.startswith("telemetry/"):
         src = _telemetry(vault).get(source.split("/", 1)[1])
         return CREDENTIALS.get(src.kind) if src else None
-    return CREDENTIALS.get(source)
+    return CREDENTIALS.get(source) or _extension_sources(vault).get(source) or None
 
 
 def _records(paths):
@@ -109,6 +119,12 @@ def report(vault: Path, day: str, given: dict) -> list:
     vault, config = Path(vault), _config(Path(vault))
     order = ["calendar", "meetings", "handoffs", "triage"]
     order += [f"telemetry/{n}" for n in _telemetry(vault)] or ["telemetry"]
+    ext = list(_extension_sources(vault))
+    # A listed extension with no folder reads as failed, once per name (its sources are not known without it).
+    loaded = {n for n, _ in extensions.enabled(vault)}
+    missing = [n for n in extensions.listed(vault)
+               if n not in loaded and not (vault / "extensions" / n / "extension.md").is_file()]
+    order += ext + [n for n in missing if n not in ext]
     order += ["dtcc", "notify"]
     off = {
         "meetings": str(config.get("meetings_enabled", "false")).lower() != "true",
@@ -120,7 +136,9 @@ def report(vault: Path, day: str, given: dict) -> list:
     }
     out = []
     for s in order:
-        if s in given:
+        if s in missing and s not in ext:
+            state, reason = "failed", f"other: extensions/{s}/ is missing"
+        elif s in given:
             state, reason = given[s]
         elif off.get(s):
             state, reason = "off", ""

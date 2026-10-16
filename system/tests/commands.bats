@@ -1139,7 +1139,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF '| `foreman`, `incident`, `orders`, `sync`, `update`, `rca`, `intake` | Slack at the next tick |' FOUNDRY.md
   grep -qF 'An `incident` line is a new production error group, or a resolved one that came back' FOUNDRY.md
   grep -qF 'an `[incident]` line (Telemetry lists those groups)' .claude/commands/brief.md
-  grep -qF '| `commit_runs`, `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `dtcc`, `memory` | the next brief |' FOUNDRY.md
+  grep -qF '| `commit_runs`, `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `dtcc`, `memory`, `extensions` | the next brief |' FOUNDRY.md
   grep -qF 'system/scripts/alert.py foreman "<one line>"' FOUNDRY.md
   grep -qF 'To tell the user something now, outside the brief: `system/scripts/alert.py foreman "<one line>"`.' CLAUDE.md
   grep -qF 'grouped by tag' .claude/commands/brief.md
@@ -1155,4 +1155,21 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'No note text from `wiki/` is sent.' FOUNDRY.md
   grep -qF 'slack_notify_channel: {kind: string}' system/schemas/config.md
   grep -qF 'slack_notify_channel: ""' system/config.example.md
+}
+
+@test "brief: reads each enabled extension's section prompt and data, and omits a section with no data" {
+  f=.claude/commands/brief.md
+  grep -qF 'system/logs/inputs/<date>/sections/' "$f"
+  grep -qF 'sections/<name>.prompt.md' "$f"
+  grep -qF 'sections/<name>.md' "$f"
+  grep -qF 'Omit a section whose data file is missing or empty.' "$f"
+}
+
+@test "/setup phase 6e turns extensions on: clone, show, ask, write, allow rules, links, units, smoke; a failure never blocks" {
+  f=.claude/commands/setup.md
+  grep -qF '## 6e. Extensions' "$f"
+  grep -qF 'git clone <extensions_remote> extensions' "$f"
+  grep -qF 'extensions.py allow --write' "$f"
+  grep -qF 'extensions.py link' "$f"
+  grep -qF 'A failure here never blocks setup' "$f"
 }

@@ -96,6 +96,18 @@ for c in herdr tmux; do report "$c" "$(has "$c")" optional; done
 if [[ "$role" != client ]]; then report az "$(has az)" optional; fi
 if [[ "$role" != client ]]; then report pdftotext "$(has pdftotext)" optional; fi
 if [[ "$role" != client ]]; then report gh "$(has gh)" optional; fi
+# Each enabled extension's deps (extensions spec §3): optional, with a hint naming the extension. A loader that
+# cannot run adds nothing here; /setup and the smoke check report it.
+if [[ "$role" != client ]] && (( $(has python3) )); then
+  while IFS= read -r ext; do
+    [[ -n "$ext" ]] || continue
+    while IFS= read -r tool; do
+      [[ -n "$tool" ]] || continue
+      if (( $(has "$tool") )); then echo "ok $tool"; else echo "optional $tool (extension $ext)"; fi
+    done < <(python3 -c 'import json, sys; [print(d) for d in json.loads(sys.argv[1])]' \
+               "$(cd "$VAULT_ROOT" && python3 system/scripts/extensions.py field "$ext" deps 2>/dev/null || echo '[]')" 2>/dev/null)
+  done < <(cd "$VAULT_ROOT" && python3 system/scripts/extensions.py list 2>/dev/null || true)
+fi
 
 (( strict && missing )) && exit 1
 exit 0

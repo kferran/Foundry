@@ -132,6 +132,21 @@ if [[ "$role" != client ]] && [[ -f system/dtcc/map.yaml ]]; then
   UNITS+=(foundry-dtcc-watch.service foundry-dtcc-watch.timer)
   ENABLE+=(foundry-dtcc-watch.timer)
 fi
+# Extension units (extensions spec §3): extensions/<name>/units/<unit>.{service,timer}.in for each unit an enabled
+# extension lists for this role. A list that fails decides nothing, like telemetry's: nothing is changed.
+declare -A EXT_TEMPLATE=()
+if [[ "$role" != client ]]; then
+  ext_units="$(system/scripts/extensions.py units "$role" 2>/dev/null)" \
+    || die 1 "extensions.py units failed, so the extension units cannot be decided; nothing was changed"
+  while IFS=$'\t' read -r ext unit; do
+    [[ -n "$ext" && -n "$unit" ]] || continue
+    for kind in service timer; do
+      UNITS+=("$unit.$kind")
+      EXT_TEMPLATE["$unit.$kind"]="extensions/$ext/units/$unit.$kind.in"
+    done
+    ENABLE+=("$unit.timer")
+  done <<< "$ext_units"
+fi
 # A server syncs around every run (two-machine spec §5.2): one drop-in per run service, with the
 # service's own prep step and a timeout raised by two sync deadlines plus margin.
 DROPINS=()
@@ -201,8 +216,9 @@ work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
 templates=()
 for n in "${UNITS[@]}"; do
-  [[ -f "system/systemd/$n.in" ]] || die 1 "missing unit template system/systemd/$n.in"
-  templates+=("system/systemd/$n.in")
+  tmpl="${EXT_TEMPLATE[$n]:-system/systemd/$n.in}"
+  [[ -f "$tmpl" ]] || die 1 "missing unit template $tmpl"
+  templates+=("$tmpl")
 done
 # render <template> <output> [sed args…]: header plus the template with every placeholder replaced.
 render() {

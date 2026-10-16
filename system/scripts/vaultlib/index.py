@@ -9,7 +9,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from . import frontmatter, links as linkmod, schema as schemamod
+from . import extensions as extmod, frontmatter, links as linkmod, schema as schemamod
 
 INDEX_VERSION = "2"   # 2: tag issues (#158), so a rebuild lints notes whose bytes did not change
 PRUNE = {".git", ".obsidian"}
@@ -104,12 +104,18 @@ class Index:
         for path in sorted((self.vault / "system" / "schemas").glob("*.md")):
             digest.update(path.name.encode())
             digest.update(path.read_bytes())
+        for path in schemamod.extension_schema_paths(self.vault):
+            digest.update(path.relative_to(self.vault).as_posix().encode())
+            digest.update(path.read_bytes())
         return digest.hexdigest()
 
     def walk(self):
         """Yield (rel, abs_path, stat) for every vault file, pruning dot-directories."""
+        ignored = tuple(p.strip("/") + "/" for p in extmod.ignore(self.vault) if p.strip("/"))
         for root, dirs, files in os.walk(self.vault):
             dirs[:] = [d for d in dirs if not d.startswith(".") and d not in PRUNE]
+            if Path(root) == self.vault:   # extensions/ is a clone of another repository, never indexed
+                dirs[:] = [d for d in dirs if d != "extensions"]
             for name in files:
                 if name.startswith("."):
                     continue
@@ -117,7 +123,7 @@ class Index:
                 if path.is_symlink():
                     continue
                 rel = path.relative_to(self.vault).as_posix()
-                if rel.startswith(SKIP_FILES):
+                if rel.startswith(SKIP_FILES) or rel.startswith(ignored):
                     continue
                 try:
                     yield rel, path, path.stat()

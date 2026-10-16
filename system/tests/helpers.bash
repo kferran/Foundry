@@ -31,6 +31,7 @@ make_vault() {
   cp -r "$REPO/system/scripts/." "$V/system/scripts/"
   rm -rf "$V/system/scripts/__pycache__" "$V/system/scripts/vaultlib/__pycache__"
   cp "$REPO/CLAUDE.md" "$V/CLAUDE.md"
+  [[ ! -d "$REPO/extensions" ]] || cp -r "$REPO/extensions" "$V/extensions"
   cp -r "$REPO/.claude/commands" "$V/.claude/commands"
   [[ -f "$REPO/system/headless.settings.json" ]] && cp "$REPO/system/headless.settings.json" "$V/system/"
   [[ -f "$REPO/.claude/settings.json" ]] && cp "$REPO/.claude/settings.json" "$V/.claude/"
@@ -47,4 +48,21 @@ EOF
   git -C "$V" init -q
   git -C "$V" config user.email test@example.com
   git -C "$V" config user.name test
+}
+
+# use_extension <name…>: turn extensions on in the fixture vault ($V). A folder under the real extensions/ wins,
+# else the loader's fixture extension of that name is copied in; then config.md lists exactly these names.
+use_extension() {
+  local n list=""
+  mkdir -p "$V/extensions"
+  for n in "$@"; do
+    if [[ ! -d "$V/extensions/$n" ]]; then
+      if [[ -d "$REPO/extensions/$n" ]]; then cp -r "$REPO/extensions/$n" "$V/extensions/$n"
+      else cp -r "$REPO/system/tests/fixtures/extensions/$n" "$V/extensions/$n"; fi
+    fi
+    list+="${list:+, }\"$n\""
+  done
+  sed -i '/^extensions:/d' "$V/system/config.md"
+  sed -i '$d' "$V/system/config.md"
+  printf 'extensions: [%s]\n---\n' "$list" >> "$V/system/config.md"
 }

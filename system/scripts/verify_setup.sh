@@ -55,6 +55,11 @@ if (( have_bats )) && python3 -m pytest --version >/dev/null 2>&1; then
   for f in system/tests/*.bats; do
     [[ "${f##*/}" == system_health.bats ]] || suites+=("$f")
   done
+  # Each present extension's own suites (extensions spec §3) gate like core's: bats files in extensions/*/tests/ and
+  # every extensions/*/tests/python folder, which pytest gets beside core's.
+  ext_py=()
+  for f in extensions/*/tests/*.bats; do suites+=("$f"); done
+  for f in extensions/*/tests/python; do [[ -d "$f" ]] && ext_py+=("$f"); done
   if (( ${#suites[@]} == 0 )); then
     results+=("FAIL no gating bats suites in system/tests/")
     failed=1
@@ -80,7 +85,7 @@ if (( have_bats )) && python3 -m pytest --version >/dev/null 2>&1; then
   # pytest-xdist, when installed, spreads the tests over every core.
   xdist=()
   if python3 -c 'import xdist' >/dev/null 2>&1; then xdist=(-n auto); fi
-  gate "pytest system/tests/python" python3 -m pytest system/tests/python -q "${xdist[@]}"
+  gate "pytest system/tests/python" python3 -m pytest system/tests/python "${ext_py[@]}" -q "${xdist[@]}"
 elif (( require_suites )); then
   results+=("FAIL suites: bats or pytest is not installed (development tools)")
   failed=1
