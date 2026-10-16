@@ -16,4 +16,4 @@ fields:
   provenance: {kind: list, of: {kind: enum, values: [headless, interactive, session]}}
 ---
 # Meeting
-One meeting, written by `system/scripts/meeting_import.py` from a Gemini Doc (`source: gdoc:<id>`) or a dropped transcript (`source: drop:<sha256 of the file>`). Body: `## Summary`, `## Decisions`, `## Action items` (`- [ ] [Owner, …] Title: text`; tick a line to close it) and `## Details`. No headless run rewrites a meeting note, except the import filling a note's empty sections from a later Gemini Doc of the same meeting; retire one with `status: deprecated`.
+One meeting, written by `system/scripts/meeting_import.py` from a Gemini Doc (`source: gdoc:<id>`) or a dropped transcript (`source: drop:<sha256 of the file>`). Body: `## Summary`, `## Decisions`, `## Action items` (`- [ ] [Owner, …] Title: text`; tick a line to close it) and `## Details`. No headless run rewrites a meeting note, except the import filling a note's empty sections from a later Gemini Doc of the same meeting, or adding an `Another transcript: [[<name>.transcript]]` line under the title for a later dropped transcript; retire one with `status: deprecated`.

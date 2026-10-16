@@ -600,7 +600,9 @@ class Intake:
                                             meetings.render_transcript(m, name, partition))):
                     # a first note with empty sections takes this source's notes (#215: a drop, then its Doc)
                     filled = meetings.fill_sections(twin.read_text(encoding="utf-8"), m) if local else None
-                    if filled is None:
+                    if filled is None and local and m.source.startswith("drop:") and not self._empty_note(twin):
+                        self._link_transcript(path, rel, m, twin, partition)  # #216: a populated note keeps the drop
+                    elif filled is None:
                         self._archive_duplicate(path, rel, m, twin)
                     elif time.time() - twin.stat().st_mtime >= publish.RECENT_SECONDS:  # else the next tick
                         target = twin.relative_to(self.vault).as_posix()
@@ -670,11 +672,41 @@ class Intake:
         return (meetings.slug(str(data.get("title", ""))) == meetings.slug(m.title)
                 and abs((start - m.start).total_seconds()) <= DUPLICATE_SECONDS)
 
-    def _archive_duplicate(self, path: Path, rel: str, m, twin: Path, filled=False) -> None:
+    def _link_transcript(self, path: Path, rel: str, m, twin: Path, partition: str) -> None:
+        """Publish the drop's transcript beside the populated twin, link it from the twin's head (above the sections,
+        so emptiness and #215 filling read them as before), then archive the drop. When the drop's transcript is already
+        there (the same file dropped again, or a run whose note was held back), only a missing link is added."""
+        text, name = twin.read_text(encoding="utf-8"), None
+        for tr in twin.parent.glob("*.transcript.md"):
+            try:
+                if (frontmatter.parse(tr.read_text(encoding="utf-8")).data or {}).get("source") == m.source:
+                    name = tr.name[:-len(".transcript.md")]
+                    break
+            except (OSError, UnicodeDecodeError):
+                continue
+        if name is not None and f"[[{name}.transcript]]" in text:
+            return self._archive_duplicate(path, rel, m, twin, linked=True)
+        if time.time() - twin.stat().st_mtime < publish.RECENT_SECONDS:
+            return  # the gate refuses a target modified in the last 60 s: the next tick links it
+        targets, texts = [twin.relative_to(self.vault).as_posix()], []
+        if name is None:
+            name = self._free_name(meetings.note_name(m))
+            targets.append(f"wiki/{partition}/meetings/{name}.transcript.md")
+            texts.append(meetings.render_transcript(m, twin.name[:-3], partition))
+        head, sep, rest = text.partition("\n## ")
+        texts.insert(0, f"{head.rstrip()}\n\nAnother transcript: [[{name}.transcript]]\n{sep}{rest}")
+        if self._published(self._publish_run(rel, partition, targets, texts, targets[:1]), path, rel):
+            self._archive_duplicate(path, rel, m, twin, linked=True)
+
+    def _archive_duplicate(self, path: Path, rel: str, m, twin: Path, filled=False, linked=False) -> None:
         archive = self.vault / "raw" / "archive"
         archive.mkdir(parents=True, exist_ok=True)
         path.rename(unique(archive / path.name))
         note = twin.relative_to(self.vault).as_posix()
+        if linked:
+            self.alert(f"meeting source {rel} archived: its transcript is linked from {note}")
+            self._meeting_log({"kind": "linked", "source": rel, "note": note})
+            return
         if filled:
             self.alert(f"meeting source {rel} filled the empty sections of {note} and was archived")
         else:
