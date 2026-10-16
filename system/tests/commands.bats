@@ -1077,6 +1077,13 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   [ "$status" -eq 1 ]
 }
 
+@test "FOUNDRY.md keeps the speed rules: probe first, CI gate, small features without a plan, safe auto-merge" {
+  grep -qF '**Keeping it quick.**' FOUNDRY.md
+  grep -qF '**Probe first:**' FOUNDRY.md
+  grep -qF '**CI is the gate:**' FOUNDRY.md
+  grep -qF '**Safe features merge themselves:**' FOUNDRY.md
+}
+
 @test "FOUNDRY.md defines the fix lane, its safety surfaces and the promotion rule (fast lane spec §2)" {
   grep -qF '**Two lanes.**' FOUNDRY.md
   grep -qF 'clear from one sentence' FOUNDRY.md
