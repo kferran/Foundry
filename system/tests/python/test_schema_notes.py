@@ -21,7 +21,7 @@ TEMPLATE_TARGETS = {
 NOT_NOTES = {"production-error.md"}  # body fragment filled by telemetry_store.render_body, no frontmatter
 EXPECTED = {"schema", "concept", "index", "briefing", "debrief",
             "production_error", "config", "codebase", "session_digest", "preference", "workcell",
-            "meeting", "meeting_transcript", "meeting_input", "telemetry_source", "nightshift_item", "dtcc_change", "rca"}
+            "meeting", "meeting_transcript", "meeting_input", "telemetry_source", "nightshift_item", "rca"}
 
 
 def load():
