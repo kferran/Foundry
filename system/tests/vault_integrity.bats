@@ -211,6 +211,21 @@ boundary_rules() {
   [ -z "$bad" ]
 }
 
+@test "the manual names every command, skill, Workcell and unit the tree ships (#166 manual-table drift)" {
+  bad=""
+  units="$(grep -ohE 'foundry-(\{[a-z,]+\}|[a-z]+)' FOUNDRY.md | tr -d '{}' | sed 's/^foundry-//' | tr ',' '\n')"
+  for f in .claude/commands/*.md .claude/skills/*/SKILL.md system/agents/workcells/*.md system/systemd/foundry-*.service.in; do
+    case $f in
+      .claude/commands/*) grep -qF "| \`/$(basename "$f" .md)" FOUNDRY.md || bad="$bad $f" ;;
+      .claude/skills/*) grep -qE "\`/$(basename "$(dirname "$f")")[\` ]" FOUNDRY.md || bad="$bad $f" ;;
+      system/agents/*) grep -qF "| \`$(basename "$f")\` |" FOUNDRY.md || bad="$bad $f" ;;
+      *) n="${f#system/systemd/foundry-}"; grep -qx "${n%.service.in}" <<< "$units" || bad="$bad $f" ;;
+    esac
+  done
+  printf 'missing from FOUNDRY.md:%s\n' "$bad"
+  [ -z "$bad" ]
+}
+
 # Files the template owns (Plan 9 spec §6), never the user's notes. ':!system/codebases' also drops
 # system/codebases/example.md, so each check lists it on its own.
 OWN=(CLAUDE.md README.md FOUNDRY.md .gitignore .claude .githooks system wiki/Index.md ':!system/codebases')
