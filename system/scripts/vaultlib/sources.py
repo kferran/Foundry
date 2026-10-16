@@ -16,8 +16,7 @@ CREDENTIALS = {
     "calendar": ("Google connector", CONNECT),
     "meetings": ("Google connector", CONNECT),
     "triage": ("Google connector", CONNECT),
-    "handoffs": ("Atlassian connector", CONNECT),
-    "rca": ("Atlassian connector", CONNECT),
+    "rca":("Atlassian connector", CONNECT),
     "notify": ("Slack connector", CONNECT),
     "adx": ("Azure CLI", "az login on the server"),
     "sentry": ("Sentry token", "write a new token to ~/.config/foundry/sentry.token (mode 0600)"),
@@ -117,7 +116,7 @@ def report(vault: Path, day: str, given: dict) -> list:
     `given` holds what the brief read itself (source -> (state, reason)); the rest come from that morning's smoke
     check, and notify from its own log."""
     vault, config = Path(vault), _config(Path(vault))
-    order = ["calendar", "meetings", "handoffs", "triage"]
+    order = ["calendar", "meetings", "triage"]
     order += [f"telemetry/{n}" for n in _telemetry(vault)] or ["telemetry"]
     ext = list(_extension_sources(vault))
     # A listed extension with no folder reads as failed, once per name (its sources are not known without it).
@@ -128,7 +127,6 @@ def report(vault: Path, day: str, given: dict) -> list:
     order += ["dtcc", "notify"]
     off = {
         "meetings": str(config.get("meetings_enabled", "false")).lower() != "true",
-        "handoffs": not config.get("handoffs_projects"),
         "triage": str(config.get("triage_enabled", "false")).lower() != "true",
         "telemetry": True,
         "dtcc": not (vault / "system" / "dtcc" / "map.yaml").is_file(),

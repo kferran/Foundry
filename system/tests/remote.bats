@@ -593,6 +593,23 @@ readme_setup() {
   [ "$(readlink .claude/skills/demo-skill)" = "../../extensions/demo/skills/demo-skill" ]
 }
 
+@test "the update lists handoffs once when handoffs_projects is set, and never again (extensions spec §4)" {
+  template_setup
+  sed -i '$d' system/config.md
+  printf '%s\n' 'handoffs_projects: ["EX"]' '---' >> system/config.md
+  upstream_commit new.txt hello
+  run "$UT"
+  [ "$status" -eq 0 ]
+  grep -qx 'extensions: \["handoffs"\]' system/config.md
+  grep -qF 'update_template: extensions: enabled handoffs' <<< "$output"
+  upstream_commit newer.txt again
+  run "$UT"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^extensions:' system/config.md)" -eq 1 ]
+  run grep -c 'enabled handoffs' <<< "$output"
+  [ "$output" = 0 ]
+}
+
 @test "after a template update, a listed extension that cannot load is alerted (extensions spec §4)" {
   template_setup
   upstream_commit new.txt hello

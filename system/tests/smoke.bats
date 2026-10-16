@@ -15,7 +15,6 @@ setup() {
   # Every real check prints a line on success; a stub that says nothing stands for a check that did not run.
   stub calendar_fetch.sh 0 "calendar_fetch: the connector listed 1 events" 1
   stub meetings_fetch.sh 0 "meetings_fetch: the search listed 0 Docs" 1
-  stub jira_fetch.sh 0 "jira_fetch: the search listed 0 stalled handoffs" 1
   stub triage_fetch.sh 0 "triage_fetch: 0 threads need you" 1
   stub dtcc_watch.py 0 "map ok" 1
   stub telemetry_fetch.py 0 "telemetry_fetch: prod-sentry: ok" 1
@@ -72,16 +71,15 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   [ "${lines[0]}" = "version: ok" ]
   [ "${lines[1]}" = "calendar: ok" ]
   [ "${lines[2]}" = "meetings: off" ]
-  [ "${lines[3]}" = "handoffs: off" ]
-  [ "${lines[4]}" = "triage: off" ]
-  [ "${lines[5]}" = "telemetry: off" ]
-  [ "${lines[6]}" = "dtcc: off" ]
+  [ "${lines[3]}" = "triage: off" ]
+  [ "${lines[4]}" = "telemetry: off" ]
+  [ "${lines[5]}" = "dtcc: off" ]
   [ "$(cat system/logs/claude.version)" = "1.0.0 (Claude Code)" ]
   [ -z "$(alerts)" ]
   [ "$(jq -r 'select(.source == "calendar") | .exit' "$LOG")" = 0 ]
   grep -qx 'calendar_fetch.sh --check' "$CALLS"
   grep -qx 'telemetry_fetch.py --list' "$CALLS"
-  run grep -c -e meetings_fetch -e jira_fetch -e triage_fetch -e dtcc_watch -e 'telemetry_fetch.py --check' "$CALLS"
+  run grep -c -e meetings_fetch -e triage_fetch -e dtcc_watch -e 'telemetry_fetch.py --check' "$CALLS"
   [ "$output" = 0 ]
 }
 
@@ -149,7 +147,6 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   need_user_systemd
   set_key meetings_enabled '"true"'
   set_key triage_enabled '"true"'
-  set_key handoffs_projects '["AB"]'
   mkdir -p system/dtcc
   printf 'partition: work\n' > system/dtcc/map.yaml
   STUB_SOURCES=$'prod-sentry\nprod-adx' run "$SC"
@@ -158,7 +155,6 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   grep -qx 'telemetry/prod-adx: ok' <<< "$output"
   grep -qx 'dtcc: ok' <<< "$output"
   [ "$(grep -c -x 'meetings_fetch.sh --check' "$CALLS")" -eq 1 ]
-  [ "$(grep -c -x 'jira_fetch.sh --check' "$CALLS")" -eq 1 ]
   [ "$(grep -c -x 'triage_fetch.sh --check' "$CALLS")" -eq 1 ]
   [ "$(grep -c -x 'dtcc_watch.py --check' "$CALLS")" -eq 1 ]
   grep -qx 'telemetry_fetch.py --check prod-sentry' "$CALLS"
@@ -183,20 +179,20 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
 
 @test "an auth failure names the credential and its renewal, one alert a day per credential (connector health spec §2)" {
   set_key meetings_enabled '"true"'
-  set_key handoffs_projects '["AB"]'
+  use_extension demo   # an extension's credential comes from its manifest (extensions spec §3)
   stub calendar_fetch.sh 3 "calendar_fetch: auth: no Google Calendar connector reachable"
   stub meetings_fetch.sh 6 "meetings_fetch: auth: HTTP 401 from Drive"
-  stub jira_fetch.sh 6 "jira_fetch: auth: token expired"
+  export DEMO_CHECK_MODE=expired
   run "$SC"
   [ "$status" -eq 1 ]
   grep -qx 'calendar: expired: Google connector; renew: reconnect it at claude.ai, Settings, Connectors' <<< "$output"
-  grep -qx 'handoffs: expired: Atlassian connector; renew: reconnect it at claude.ai, Settings, Connectors' <<< "$output"
+  grep -qx 'demo: expired: Demo connector; renew: reconnect it at example.invalid' <<< "$output"
   [ "$(jq -r 'select(.source == "calendar") | .reason' "$LOG")" = "auth: no Google Calendar connector reachable" ]
-  # calendar and meetings share the Google connector: one alert for it, one for Atlassian
+  # calendar and meetings share the Google connector: one alert for it, one for the demo connector
   [ "$(alerts | grep -c '\[smoke\] expired Google connector:')" -eq 1 ]
-  [ "$(alerts | grep -c '\[smoke\] expired Atlassian connector:')" -eq 1 ]
+  [ "$(alerts | grep -c '\[smoke\] expired Demo connector:')" -eq 1 ]
   [ "$(alerts | grep -c '\[smoke\] expired')" -eq 2 ]
-  run grep -c -e '\[smoke\] calendar' -e '\[smoke\] meetings' -e '\[smoke\] handoffs' <<< "$(alerts)"
+  run grep -c -e '\[smoke\] calendar' -e '\[smoke\] meetings' -e '\[smoke\] demo' <<< "$(alerts)"
   [ "$output" = 0 ]
   run "$SC"
   [ "$(alerts | grep -c '\[smoke\] expired')" -eq 2 ]

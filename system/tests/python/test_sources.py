@@ -27,7 +27,7 @@ def test_classed_puts_other_in_front_of_a_reason_without_a_class():
 
 def test_streak_counts_trailing_failures_across_months_and_skips_held(vault):
     smoke(vault, ("2026-09-29", "calendar", 0, ""), ("2026-09-30", "calendar", 6, "auth: HTTP 401"),
-          ("2026-10-01", "calendar", 0, "held: usage"), ("2026-10-01", "handoffs", 6, "connector: x"),
+          ("2026-10-01", "calendar", 0, "held: usage"), ("2026-10-01", "triage", 6, "connector: x"),
           ("2026-10-02", "calendar", 6, "auth: HTTP 401"))
     assert sources.streak(vault, "calendar") == (2, "2026-09-30", "auth: HTTP 401")
     assert sources.streak(vault, "calendar", until="2026-09-29") == (0, "", "")
@@ -45,7 +45,7 @@ def test_credential_by_source_and_by_telemetry_kind(vault):
     write(vault, "system/codebases/shop.md", CB)
     write(vault, "system/telemetry/prod-adx.md", ADX)
     assert sources.credential(vault, "calendar", "auth: no connector")[0] == "Google connector"
-    assert sources.credential(vault, "handoffs", "auth: HTTP 401")[0] == "Atlassian connector"
+    assert sources.credential(vault, "rca", "auth: HTTP 401")[0] == "Atlassian connector"
     assert sources.credential(vault, "telemetry/prod-adx", "auth: run az login") == ("Azure CLI", "az login on the server")
     assert sources.credential(vault, "calendar", "claude: not logged in")[0] == "claude login"
     assert sources.credential(vault, "calendar", "claude: claude not found (claude)") is None
@@ -64,7 +64,6 @@ def test_report_lists_every_source_with_its_state_since_date_and_renewal(vault):
         "- calendar: failed: auth: HTTP 401 (since 2026-10-13); expired: Google connector; "
         "renew: reconnect it at claude.ai, Settings, Connectors",
         "- meetings: off",
-        "- handoffs: off",
         "- triage: ok",
         "- telemetry/prod-adx: failed: network: example.kusto.windows.net (URLError) (since 2026-10-12)",
         "- dtcc: off",

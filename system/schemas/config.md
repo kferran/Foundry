@@ -26,7 +26,6 @@ fields:
   nightshift_workspace: {kind: string}
   nightshift_window: {kind: string}
   handoffs_site: {kind: string}
-  handoffs_projects: {kind: list, of: string}
   rca_project: {kind: string}
   rca_issue_type: {kind: string, default: "Bug"}
   rca_labels: {kind: list, of: string}
@@ -47,7 +46,7 @@ The per-user global configuration written by `/setup` (gitignored). `system/conf
 
 `run_window` is the window for Work Orders queued with `--window`, as `HH:MM-HH:MM`; empty (the default) or `00:00-24:00` means always. `order_max_five_hour` is the 5-hour usage fraction at or above which no new Work Order starts.
 
-`handoffs_site` (the Jira site's host name) and `handoffs_projects` (Jira project keys) turn on the brief's Handoffs to chase (delivered work spec §3.1); it stays off while `handoffs_projects` is empty.
+`handoffs_site` (the Jira site's host name) is where approved `/rca` drafts are filed, and the site the handoffs extension reads (its `handoffs_projects` key is in the extension's config fragment, extensions spec §3).
 
 `rca_project` (a Jira project key) turns on filing approved `/rca` drafts to `handoffs_site`, as `rca_issue_type` (default `Bug`) with `rca_labels`, the project's required fields in `rca_extra_fields` (Jira field id to value; a value written as JSON is sent as JSON, #175) and, when set, the Atlassian account ID `rca_assignee` (RCA spec §3.4); filing stays off while `rca_project` is empty.
 

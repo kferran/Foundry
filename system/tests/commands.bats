@@ -415,7 +415,7 @@ self_edit_contract() {
     [[ "$sec" == *"$k"* ]]
   done
   [[ "$sec" == *'Ask once'* ]]
-  for p in '3. Codebases' '5a. Memory hooks' '6. Calendar' '6a. Telemetry' '6c. Handoffs' '6d. Slack notices'; do
+  for p in '3. Codebases' '5a. Memory hooks' '6. Calendar' '6a. Telemetry' '6c. RCA filing' '6d. Slack notices'; do
     [[ "$(setup_section "$p")" == *'Only when chosen in 2a.'* ]]
   done
   sec="$(setup_section '3. Codebases')"
@@ -996,12 +996,13 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py review:*)")' .claude/settings.json >/dev/null
 }
 
-@test "/brief shows Handoffs to chase from handoffs.md, never carried forward (delivered work §3.3)" {
+@test "/brief has no handoffs rule of its own: the section comes from the handoffs extension (extensions spec §2)" {
   f=.claude/commands/brief.md
-  grep -qF -- '- `system/logs/inputs/<date>/handoffs.md`:' "$f"
-  grep -qF -- '- **🧾 Handoffs to chase:** every line of `handoffs.md` verbatim' "$f"
-  grep -qF 'never carries forward; it is not part of the Active Objectives' "$f"
-  grep -qF 'add it after ⏳ Waiting on' "$f"
+  run grep -F 'handoffs.md' "$f"
+  [ "$status" -eq 1 ]
+  run grep -F 'Handoffs to chase' "$f"
+  [ "$status" -eq 1 ]
+  grep -qF -- '- **Extension sections:** for each `sections/<name>.prompt.md`, follow it' "$f"
 }
 
 @test "delivered work: digests carry Delivered, ingest skips it, the debrief lists it with Notes lines and prs.md (delivered work §3.4)" {
@@ -1030,19 +1031,17 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'whose bullets are only ever a **patch**' .claude/commands/ingest.md
 }
 
-@test "/setup phase 6c sets the handoffs and checks the Atlassian connector; the README explains it (delivered work §3.5)" {
+@test "/setup phase 6c sets RCA filing and its Jira site; handoffs are set up as an extension in 6e (extensions spec §2)" {
   s=.claude/commands/setup.md
-  grep -qx '## 6c. Handoffs' "$s"
-  sec="$(awk '$0 == "## 6c. Handoffs" { on = 1; next } /^## / { on = 0 } on' "$s")"
+  grep -qx '## 6c. RCA filing' "$s"
+  sec="$(awk '$0 == "## 6c. RCA filing" { on = 1; next } /^## / { on = 0 } on' "$s")"
   [[ "$sec" == *'On a client, skip this phase and report "not used on a client".'* ]]
   [[ "$sec" == *'`handoffs_site`'* ]]
-  [[ "$sec" == *'`handoffs_projects`'* ]]
-  [[ "$sec" == *'run `system/scripts/jira_fetch.sh --check` with a Bash timeout of at least 400000 ms'* ]]
-  [[ "$sec" == *'exit 3, connect Atlassian'* ]]
-  [[ "$sec" == *'A Jira failure never blocks setup'* ]]
-  grep -qF 'telemetry sources, meetings, handoffs, index, verification' "$s"
-  grep -qF '**Handoffs and delivered work.**' FOUNDRY.md
-  grep -qF 'the connector returns no change history' FOUNDRY.md
+  [[ "$sec" == *'phase 6e'* ]]
+  run grep -F 'jira_fetch' "$s"
+  [ "$status" -eq 1 ]
+  grep -qF 'telemetry sources, meetings, RCA filing, extensions, index, verification' "$s"
+  grep -qF '**Delivered work.**' FOUNDRY.md
 }
 
 @test "/setup and the README describe the daily template update and how to turn it off (#87)" {
@@ -1114,7 +1113,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF -- '- `/rca <raw/telemetry/note>`:' CLAUDE.md
   grep -qF '| `/rca <raw/telemetry/note.md>` |' FOUNDRY.md
   grep -qF '**RCA.**' FOUNDRY.md
-  sec="$(setup_section '6c. Handoffs')"
+  sec="$(setup_section '6c. RCA filing')"
   [[ "$sec" == *'approved `/rca` drafts should be filed to Jira'* ]]
   grep -qF 'rca_project: {kind: string}' system/schemas/config.md
   grep -qF 'rca_project: ""' system/config.example.md

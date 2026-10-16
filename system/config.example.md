@@ -16,7 +16,6 @@ meetings_enabled: "false"       # server and standalone: fetch Gemini notes from
 meetings_partition: ""          # work | personal: where fetched meetings go (empty: default_partition, or personal when that is shared)
 owner_names: []                 # your names as they appear in meeting action items, e.g. ["Avery Sample"]
 handoffs_site: ""               # server and standalone: your Jira site's host name, e.g. example.atlassian.net
-handoffs_projects: []           # Jira project keys whose stalled handoffs the brief lists, e.g. ["EX"]; empty is off
 rca_project: ""                 # Jira project key approved /rca drafts are filed to, e.g. "EX"; empty is off
 rca_issue_type: "Bug"           # the issue type /rca files
 rca_labels: []                  # labels /rca puts on each ticket, e.g. ["production-finding"]

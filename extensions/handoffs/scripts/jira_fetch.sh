@@ -6,7 +6,7 @@
 # Exit: 0 ok, 1 claude error (or a refused allow rule), 2 usage or incomplete settings, 3 no connector, 4 timeout,
 # 6 connector error, 7 unexpected tool, 127 no claude.
 set -euo pipefail
-VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"   # extensions/handoffs/scripts/
 cd "$VAULT_ROOT"
 # shellcheck source=lib_config.sh
 source system/scripts/lib_config.sh
@@ -58,7 +58,7 @@ fail() {  # <exit> <reason>
 }
 
 qrc=0
-query="$(system/scripts/jira_handoffs.py query 2>&1)" || qrc=$?
+query="$(extensions/handoffs/scripts/jira_handoffs.py query 2>&1)" || qrc=$?
 (( qrc == 0 )) || fail "$qrc" "${query#jira_handoffs: }"
 site="${query%%$'\n'*}" jql="${query#*$'\n'}"
 work="$(mktemp -d -p /tmp)"
@@ -72,7 +72,7 @@ If the result's pageInfo has hasNextPage true, call it again with the same cloud
 connector_run "$prompt" "$work" || fail $? "$CONNECTOR_REASON"
 # The tool-use check runs on every session, a timed-out one included.
 prc=0
-system/scripts/jira_handoffs.py extract < "$work/out.jsonl" > "$work/lines.md" 2> "$work/check.err" || prc=$?
+extensions/handoffs/scripts/jira_handoffs.py extract < "$work/out.jsonl" > "$work/lines.md" 2> "$work/check.err" || prc=$?
 connector_outcome "$prc" "$work"
 (( CONNECTOR_EXIT == 0 )) || fail "$CONNECTOR_EXIT" "$CONNECTOR_REASON"
 n="$(wc -l < "$work/lines.md")"
