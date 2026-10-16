@@ -576,42 +576,28 @@ readme_setup() {
   git merge --abort
 }
 
-# extensions_clone: extensions/ is a clone of a bare repository (EXT) that holds the demo fixture extension.
-extensions_clone() {
-  local seed="$BATS_TEST_TMPDIR/ext-seed"
-  EXT="$BATS_TEST_TMPDIR/ext.git"
-  git init -q "$seed"
-  cp -r "$REPO/system/tests/fixtures/extensions/demo" "$seed/demo"
-  git -C "$seed" -c user.email=ext@example.com -c user.name=ext add -A
-  git -C "$seed" -c user.email=ext@example.com -c user.name=ext commit -qm "ext: demo"
-  git clone -q --bare "$seed" "$EXT"
-  git clone -q "$EXT" extensions
-  EXTW="$seed"
-  git -C "$EXTW" remote add origin "$EXT"
-}
-
-@test "update_template reports a fast-forward of extensions/, and the update merges" {
+@test "a template update brings a tracked extension, keeps a vault-only one and links the enabled skills (extensions spec §3, §7)" {
   template_setup
-  extensions_clone
+  mkdir -p extensions/local
+  printf -- '---\nname: local\ncontract: 1\n---\nA vault-only extension.\n' > extensions/local/extension.md
+  git add extensions/local
+  git commit -qm "vault: a vault-only extension"
+  mkdir -p "$W/extensions"
+  cp -r "$REPO/system/tests/fixtures/extensions/demo" "$W/extensions/demo"
   upstream_commit new.txt hello
-  printf 'more\n' > "$EXTW/demo/NOTES.md"
-  git -C "$EXTW" -c user.email=ext@example.com -c user.name=ext add -A
-  git -C "$EXTW" -c user.email=ext@example.com -c user.name=ext commit -qm "ext: notes"
-  git -C "$EXTW" push -q origin HEAD
+  sed -i 's/^default_partition: "personal"$/&\nextensions: ["demo"]/' system/config.md
   run "$UT"
   [ "$status" -eq 0 ]
-  [ "$(cat new.txt)" = hello ]
-  [ -f extensions/demo/NOTES.md ]
-  grep -qE '^update_template: extensions: [0-9a-f]+\.\.[0-9a-f]+$' <<< "$output"
+  [ "$(git log -1 --format=%s -- extensions/demo/extension.md)" != "" ]
+  [ -f extensions/local/extension.md ]
+  [ "$(readlink .claude/skills/demo-skill)" = "../../extensions/demo/skills/demo-skill" ]
 }
 
-@test "a failed pull of extensions/ is reported and the update still merges" {
+@test "after a template update, a listed extension that cannot load is alerted (extensions spec §4)" {
   template_setup
-  extensions_clone
-  git -C extensions remote set-url origin "$BATS_TEST_TMPDIR/does-not-exist.git"
   upstream_commit new.txt hello
+  sed -i 's/^default_partition: "personal"$/&\nextensions: ["nosuch"]/' system/config.md
   run "$UT"
   [ "$status" -eq 0 ]
-  [ "$(cat new.txt)" = hello ]
-  grep -q 'update_template: extensions: pull failed' <<< "$output"
+  grep -qE '^- [0-9:]{8} \[extensions\] .*nosuch' "system/logs/alerts_$(date +%F).md"
 }

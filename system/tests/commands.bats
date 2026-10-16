@@ -1165,10 +1165,12 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'Omit a section whose data file is missing or empty.' "$f"
 }
 
-@test "/setup phase 6e turns extensions on: clone, show, ask, write, allow rules, links, units, smoke; a failure never blocks" {
+@test "/setup phase 6e turns tracked extensions on: show, ask, write, allow rules, links, units, smoke; a failure never blocks (extensions spec §3)" {
   f=.claude/commands/setup.md
   grep -qF '## 6e. Extensions' "$f"
-  grep -qF 'git clone <extensions_remote> extensions' "$f"
+  grep -qF 'Only when `extensions/` holds an extension folder.' "$f"
+  run grep -lE 'extensions_remote|git clone [^ ]* extensions' "$f" system/config.example.md system/schemas/config.md FOUNDRY.md
+  [ "$status" -eq 1 ]
   grep -qF 'extensions.py allow --write' "$f"
   grep -qF 'extensions.py link' "$f"
   grep -qF 'A failure here never blocks setup' "$f"

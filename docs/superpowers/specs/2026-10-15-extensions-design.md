@@ -1,7 +1,7 @@
-# Extensions: features out of core, into one extensions repository
+# Extensions: vendor features out of core, into tracked extension folders
 
 **Date:** 2026-10-15
-**Status:** Approved (owner, 2026-10-15), with the review decisions in §6. Scope narrowed (owner, 2026-10-16, §7): only the vendor-specific features move. The loader is merged (#226); next is the Jira handoffs move.
+**Status:** Approved (owner, 2026-10-15), with the review decisions in §6. Scope narrowed (owner, 2026-10-16, §7): only the vendor-specific features move. Home changed (owner, 2026-10-16, §8): extensions are tracked folders in the template, with no separate repository. The loader is merged (#226); next is the Jira handoffs move.
 **Plan:** phase 4 of `docs/superpowers/2026-10-15-next-phase-plan.md`; simplification step 3 of `2026-10-11-simplification-review.md` §4. Overlaps #62 (closed out below).
 
 ## 1. Facts (master after #209)
@@ -50,10 +50,10 @@ Owner-specific names in core include `dtcc.com`, `atlassian.net` and `sentry.io`
    - there are 14 schemas or fewer (`dtcc_change`, `production_error`, `telemetry_source`, `rca` and `plan_gate` leave);
    - the gate is green with no extensions and with every extension on.
    - The core line budget is measured after the three moves and set then. The 8,800-line target assumed all seven moves.
-3. **Home: one extensions repository** (working name `foundry-extensions`). It holds every extension.
-   - The template ships core only.
-   - A vault clones the extensions repository into `extensions/` and pins it, the same way the template remote is pinned. `update_template.sh` updates both.
-   - This replaces the 10-11 split (DTCC private, the rest in the template).
+3. **Home (changed 2026-10-16, §8): tracked folders `extensions/<name>/` in the template.**
+   - The template ships every extension, each off until it is listed in `extensions:`.
+   - The template update brings them with the normal merge. There is no clone, no pin and no `extensions_remote`.
+   - DTCC is a vault-only extension: `extensions/dtcc/`, tracked only in the owner's vault repository.
 4. **Packaging: skills plus a Foundry manifest.**
    - An extension's Claude-facing parts are skills in its `skills/` folder, linked into `.claude/skills/` while the extension is on. `/rca` becomes a skill.
    - What Claude Code cannot load is declared in `extension.md`, which Foundry's loader reads: units, scripts, schemas, the brief section, the smoke check, sources, config keys, dependencies and allow rules.
@@ -122,15 +122,14 @@ Every shared file reads the loader in place of its per-feature `if` blocks:
 ## 4. Migration and the owner's vault
 
 - `update_template.sh` (and `/setup`) turns a non-empty `handoffs_projects`, an existing `system/dtcc/map.yaml` and an existing telemetry source into `extensions:` entries, once.
-  - It then clones the extensions repository at the pinned ref and runs `extensions.py check`.
-  - Until the clone exists, a listed extension is reported (`[extensions] <name> is listed but extensions/ has no folder for it`) and skipped. Nothing fails.
-- Each move is one PR to the template, which deletes the code, and one PR to the extensions repository, which adds it with its tests. Both merge together. The update brings both, so the owner's features keep running across the move.
+  - It then runs `extensions.py check`. A listed extension with no folder is reported (`[extensions] <name> …`) and skipped. Nothing fails.
+- Each move is one PR to the template: it deletes the code from core and adds it under `extensions/<name>/` with its tests. The update brings both halves together, so the owner's features keep running across the move. DTCC's move lands in the owner's vault instead (§8).
 - A live acceptance run follows each move that changes brief, debrief or ingest text or the settings.
 
 ## 5. Tests
 
 - **Core alone:** the gate runs with `extensions/` absent, and every suite passes with no feature skipped for being absent.
-- **Everything on:** CI checks out the extensions repository at the pinned ref, enables every extension, and runs the core gate plus each extension's `tests/`.
+- **Everything on:** CI enables every tracked extension and runs the core gate plus each extension's `tests/`. With no extension tracked it prints one skip line.
 - **Core is clean:** a bats test fails when a core file (outside `extensions.py` and the docs) names DTCC, Sentry, ADX, Kusto, Azure, Jira or Atlassian, or one of their domains. Slack, Gemini and Google Drive stay in core with the features that use them (§7). It extends the owner-leak test.
 - **Loader:** a manifest with a missing `requires`, an unknown key, or a listed extension with no folder is reported by `extensions.py check`.
 - **Line budget:** a test counts core script lines and fails above the budget, set once at the end of phase 4.
@@ -138,7 +137,7 @@ Every shared file reads the loader in place of its per-feature `if` blocks:
 ## 6. Review decisions (owner, 2026-10-15)
 
 1. **Allow rules:** `/setup` writes each enabled extension's `allow` rules from its manifest into `.claude/settings.json` and removes the rules of an extension that is turned off. Every rule stays specific; there is no generic `extensions/*` rule.
-2. **Visibility:** the extensions repository is private. The template's CI checks it out with a read-only deploy key; without the key (a fork, or a pull request from outside), the "every extension on" job is skipped and says so, and the core-alone gate still runs.
+2. **Visibility (superseded 2026-10-16, §8):** extensions are public in the template, apart from the vault-only DTCC.
 3. **Sequencing with phases 2 and 3:** phase 2 (brief section files) is not built. The first move builds the section-file mechanism for its own section only; phase 2 then moves the remaining core sections onto it.
 
 ## 7. Scope decision (owner, 2026-10-16)
@@ -152,3 +151,14 @@ What changes from §2:
 - The usage ceiling stays where it is.
 - The core-clean test drops Slack, Gemini and Google Drive from its terms, and their allowlist lines go.
 - The line budget is set after the three moves.
+
+## 8. Home decision (owner, 2026-10-16)
+
+Extensions are tracked folders `extensions/<name>/` in the template, turned on by the `extensions:` list. The separate extensions repository is dropped and archived once nothing uses it.
+
+Why: every problem the separate repository caused on 2026-10-16 came from the split: a deploy key, an empty repository breaking the checkout, a fixture vault copying the clone, and pairs of PRs that had to merge together. In the template, a move is one PR, the update is the normal merge, and the all-on CI job needs no checkout. The vendor names that move live under `extensions/`, which the core-clean test excludes.
+
+What changes:
+- `.gitignore` no longer excludes `extensions/`. `extensions_remote` is gone, and so are the clone and pull in `update_template.sh` and `/setup` phase 6e. The update re-links skills and runs `extensions.py check` after each merge.
+- DTCC moves into the owner's vault as a vault-only extension, so no DTCC name ships in the template. The template merge never touches a folder the template does not have.
+- With the template shipping extensions, the §7 reason for keeping meetings, inbox triage, Slack notices and sync in core is gone. They stay in core anyway: moving them mostly shrinks a line count, and any of them can move later as one PR.

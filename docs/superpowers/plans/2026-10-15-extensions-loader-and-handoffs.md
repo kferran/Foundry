@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Core gets one generic extension loader. Jira handoffs then leave core for the private extensions repository and keep working on the owner's vault.
+**Goal:** Core gets one generic extension loader. Jira handoffs then leave core for a tracked `extensions/handoffs/` folder and keep working on the owner's vault.
 
-**Architecture:** An extension is a folder `extensions/<name>/` with an `extension.md` manifest (YAML frontmatter). The vault holds a git clone of the extensions repository at `extensions/`, which the vault's `.gitignore` excludes.
+**Architecture:** An extension is a folder `extensions/<name>/` with an `extension.md` manifest (YAML frontmatter). The template tracks `extensions/` (spec §8, 2026-10-16), so a vault gets it with the template merge.
 
 `system/scripts/extensions.py` reads the manifests and prints what each shared script needs, as tab-separated lines bash can read. These scripts then read the loader in place of their per-feature `if` blocks:
 - `brief_prep.sh`, `smoke_check.sh`, `install_units.sh`, `verify_setup.sh`
@@ -17,13 +17,10 @@ The loader validates manifests itself. The spec's "a new schema" for `type: exte
 
 **Spec:** `docs/superpowers/specs/2026-10-15-extensions-design.md` (approved 2026-10-15).
 
-**Pull requests:** four.
-- **PR A (template):** the loader and every mechanism point, proven with a fixture extension. Nothing moves and no behaviour changes.
-- **PR B1 (extensions repository):** the skeleton, its CI and the handoffs extension.
-- **PR B2 (template):** handoffs deleted from core, plus the one-time migration.
-- **PR C (template):** the leftovers (Agent Health, `plan_gate`, #62).
-
-B1 and B2 merge together. C is independent.
+**Pull requests** (revised 2026-10-16, spec §8: extensions are tracked in the template, so B1 and B2 are one PR):
+- **PR A (template):** the loader and every mechanism point, proven with a fixture extension. Nothing moves and no behaviour changes. Merged as #226.
+- **PR B (template):** handoffs move from core into `extensions/handoffs/`, plus the one-time migration (tasks 12 and 13; task 11's skeleton is not needed). The repository paths below that name the extensions repository mean `extensions/` in this one.
+- **PR C (template):** the leftovers (Agent Health, `plan_gate`, #62). #230.
 
 ## Global constraints
 
@@ -42,12 +39,8 @@ B1 and B2 merge together. C is independent.
 4. The settings writer touches only lines it owns and leaves the file valid JSON (Task 7).
 5. The handoffs brief section, smoke line and Sources line read byte for byte as they do on master, now from the extension (B2 live acceptance).
 
-## Owner steps (before PR B1)
+## Owner steps (dropped 2026-10-16, spec §8: there is no separate repository)
 
-- [ ] **O1.** Create the private repository `kferran/foundry-extensions`, empty, with default branch `master`.
-- [ ] **O2.** Add a read-only deploy key on it. Store the private half as the Actions secret `EXTENSIONS_DEPLOY_KEY` on `kferran/Foundry`. Set the repository variable `FOUNDRY_EXTENSIONS_REPO` to `kferran/foundry-extensions`.
-- [ ] **O3.** For the extensions repository's own CI: if `kferran/Foundry` is private, add a read-only deploy key for it as the secret `TEMPLATE_DEPLOY_KEY` on `kferran/foundry-extensions`.
-- [ ] **O4.** Add the extensions repository to this Claude Code session (or the Work Order's codebase list) so the build can push to it.
 
 ---
 
@@ -326,17 +319,11 @@ Gate green; CI's core job green; `gate-all-extensions` prints its skip line (no 
 
 ---
 
-## PR B1: the extensions repository (after O1–O4)
+## PR B1: the extensions repository (dropped 2026-10-16; task 12 joins PR B)
 
-### Task 11: skeleton and CI
+### Task 11: dropped
 
-**Files** (in `kferran/foundry-extensions`):
-- `README.md`: what an extension is, and how to install it (`extensions_remote`, `/setup` phase 6e).
-- `.github/workflows/gate.yml`: checks out `kferran/Foundry` (with `TEMPLATE_DEPLOY_KEY` if it is private), places this repository at `extensions/`, turns every extension on, and runs `verify_setup.sh --require-suites`.
-- `.gitignore`: `__pycache__/`.
-
-- [ ] **Step 1:** Create the files. Push to a branch, open a draft PR, and confirm CI goes green with no extensions (core gate only).
-- [ ] **Step 2: Commit.** `chore: extensions repository skeleton and CI`
+There is no separate repository to scaffold. The template's `gate-all-extensions` job enables every tracked extension.
 
 ### Task 12: the handoffs extension
 
@@ -384,7 +371,7 @@ with a Bash timeout of at least 400000 ms; a Jira failure never blocks setup)
 - [ ] **Step 3:** Green. Run the full core gate with `extensions: ["handoffs"]`.
 - [ ] **Step 4: Commit.** `feat(handoffs): Jira handoffs as an extension (extensions spec §2.6)`
 
-## PR B2: handoffs leave core (template; merges with B1)
+## PR B: handoffs leave core into extensions/handoffs/ (template)
 
 ### Task 13: delete and migrate
 

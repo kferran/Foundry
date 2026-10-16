@@ -41,7 +41,6 @@ fields:
   orders_enabled: {kind: bool, default: "true"}
   update_enabled: {kind: bool, default: "true"}
   extensions: {kind: list, of: string}
-  extensions_remote: {kind: string}
 ---
 # Config
 The per-user global configuration written by `/setup` (gitignored). `system/config.example.md` is the committed example.
@@ -60,4 +59,4 @@ The per-user global configuration written by `/setup` (gitignored). `system/conf
 
 `nightshift_workspace` and `nightshift_window` are the old names of `order_workspace` and `run_window`. They are still read when the new key is absent; the new key wins when both are set. `order_workspace` (default `~/code/worktrees`) must sit outside the vault: every Work Order session denies the vault root, so `/order add` and the tick refuse a workspace inside it (audit S3/S7 spec).
 
-`extensions` lists the extensions turned on (extensions spec §3): each is a folder `extensions/<name>/` with an `extension.md` manifest, in a clone of the extensions repository that the vault's `.gitignore` excludes. `extensions_remote` is that repository's URL; `/setup` clones it when `extensions/` is missing. A listed extension with no folder is reported once a day and skipped. An extension's own config keys validate while its folder is present.
+`extensions` lists the extensions turned on (extensions spec §3): each is a tracked folder `extensions/<name>/` with an `extension.md` manifest, shipped by the template or kept by the vault alone. A listed extension with no folder is reported once a day and skipped. An extension's own config keys validate while its folder is present.

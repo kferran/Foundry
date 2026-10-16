@@ -41,23 +41,10 @@ if (( unattended )); then
 fi
 
 g remote get-url template >/dev/null 2>&1 || die 1 "no template remote; run system/scripts/setup_remote.sh first"
-# update_extensions: the extensions clone follows its remote (extensions spec §3). A failed pull is reported and never
-# stops the update; the skill links are re-made either way, and each extension that cannot load is alerted once a
-# day as "[extensions] <reason>". ext_note names what changed, for the [update] line.
-ext_note=""
+# update_extensions: extensions/ is tracked and arrives with the merge (extensions spec §3). The skill links are
+# re-made, and each listed extension that cannot load is alerted once a day as "[extensions] <reason>".
 update_extensions() {
-  local out rc=0 before after reason
-  if [[ -e extensions/.git ]]; then
-    before="$(g -C extensions rev-parse --short HEAD 2>/dev/null || true)"
-    out="$(timeout "${UPDATE_FETCH_TIMEOUT:-300}" git -C extensions pull --ff-only --quiet 2>&1 9>&-)" || rc=$?
-    if (( rc != 0 )); then
-      ext_note="extensions: pull failed ($(head -n 1 <<< "$out"))"
-      echo "update_template: $ext_note" >&2
-    else
-      after="$(g -C extensions rev-parse --short HEAD 2>/dev/null || true)"
-      [[ "$before" == "$after" ]] || ext_note="extensions: ${before:-new}..${after}"
-    fi
-  fi
+  local reason
   [[ ! -f system/scripts/extensions.py ]] || system/scripts/extensions.py link > /dev/null 2>&1 9>&- || true
   [[ ! -f system/scripts/extensions.py ]] || while IFS= read -r reason; do
     [[ -n "$reason" ]] || continue
@@ -65,7 +52,6 @@ update_extensions() {
     grep -qF -- "[extensions] $reason" "system/logs/alerts_$(date +%F).md" 2>/dev/null \
       || printf -- '- %s [extensions] %s\n' "$(date +%H:%M:%S)" "$reason" >> "system/logs/alerts_$(date +%F).md"
   done < <(system/scripts/extensions.py check 2>/dev/null 9>&- || true)
-  [[ -z "$ext_note" ]] || echo "update_template: $ext_note"
 }
 # list10 <item…>: the alert's list form, at most 10 items then "and N more".
 list10() {
@@ -100,8 +86,7 @@ ref="template/$branch"
 g merge-base HEAD "$ref" >/dev/null 2>&1 \
   || die 1 "$ref shares no history with this vault (created from a GitHub template?); merge it by hand: git merge --allow-unrelated-histories $ref"
 if (( unattended )) && g merge-base --is-ancestor "$ref" HEAD; then
-  update_extensions
-  [[ -z "$committed$ext_note" ]] || alert "template update: ${committed}${ext_note:+$ext_note; }nothing new to merge"
+  [[ -z "$committed" ]] || alert "template update: ${committed}nothing new to merge"
   exit 0
 fi
 
@@ -173,5 +158,5 @@ else
 fi
 
 if (( unattended )); then
-  alert "template updated: ${committed}merged ${#merged[@]} change(s): $list${ext_note:+; $ext_note}${new_units:+; new unit available: $new_units (install with system/scripts/install_units.sh)}"
+  alert "template updated: ${committed}merged ${#merged[@]} change(s): $list${new_units:+; new unit available: $new_units (install with system/scripts/install_units.sh)}"
 fi
