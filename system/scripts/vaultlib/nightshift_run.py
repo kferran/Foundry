@@ -632,8 +632,8 @@ def _reconcile(ctx: Ctx, entries: list) -> None:
         if state == "cancelled":
             _stop_stale(idir)
         elif state == "running" and int(fm.get("attempts") or 0) >= 3:
-            _stop_stale(idir)
-            ni.update(path, state="failed", reason="no result", finished_at=ctx.now.isoformat())
+            _stop_stale(idir)   # through _finish, so outcome.json is written and a notice goes out (#28)
+            _finish(ctx, path, fm, idir, ctx.workspace / f"nightshift-{fm['id']}", {"state": "failed", "reason": "no result"})
         if state in ("failed", "blocked", "cancelled", "done") and fm.get("finished_at"):
             try:
                 old = ctx.now - datetime.fromisoformat(str(fm["finished_at"])) > timedelta(days=7)

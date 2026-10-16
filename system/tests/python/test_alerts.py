@@ -5,7 +5,7 @@ from vaultlib import alerts
 
 
 @pytest.mark.parametrize("tag,want", [
-    ("foreman", "now"), ("orders", "now"), ("sync", "now"), ("update", "now"), ("rca", "now"), ("intake", "now"),
+    ("foreman", "now"), ("incident", "now"), ("orders", "now"), ("sync", "now"), ("update", "now"), ("rca", "now"), ("intake", "now"),
     ("commit_runs", "brief"), ("calendar", "brief"), ("meetings", "brief"),
     ("handoffs", "brief"), ("telemetry", "brief"), ("dtcc", "brief"), ("memory", "brief"), ("notify", "never"),
 ])

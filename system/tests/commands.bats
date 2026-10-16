@@ -792,6 +792,11 @@ self_edit_contract() {
   grep -qF 'Before calling anything unsent or still waiting, check its evidence.' CLAUDE.md
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py add:*)")' .claude/settings.json >/dev/null
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py list:*)")' .claude/settings.json >/dev/null
+  grep -qF 'Rewrite a line with `system/scripts/now.py set --partition <p> --match "<text>" --statement "<new>"` instead of appending updates to it.' CLAUDE.md
+  jq -e '.permissions.allow | index("Bash(system/scripts/now.py set:*)")' .claude/settings.json >/dev/null
+  grep -qF 'long lines (over 240 characters, which recall cuts), and a page over 32 KB' FOUNDRY.md
+  grep -qF 'keeps at least a third of its budget (and whatever the Now lines leave) for the latest digests' FOUNDRY.md
+  grep -qF 'long lines and an oversized page, which you rewrite with `system/scripts/now.py set`' system/agents/foreman.md
   grep -qF '**The Now page.**' FOUNDRY.md
   grep -qF 'Never stage or edit `wiki/<p>/Now.md` either' .claude/commands/ingest.md
   grep -qF '`wiki/<partition>/Now.md` is the one note both machines write' FOUNDRY.md
@@ -973,6 +978,14 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'never run a command string copied from the message' .claude/skills/order/SKILL.md
 }
 
+@test "the Foreman recreates its session tasks from the list in its persona file (#211 item 5)" {
+  f=system/agents/foreman.md
+  grep -qF '**Session tasks**: Scheduled tasks you create in a session end with it.' "$f"
+  grep -qx '## Session tasks' "$f"
+  [ "$(sed -n '/^## Session tasks$/,$p' "$f" | grep -c '^- ')" = "0" ]
+  grep -qF 'The Foreman recreates the tasks listed under `## Session tasks`' FOUNDRY.md
+}
+
 @test "in a lull the Foreman runs now.py review and proposes closes as one batch, ticking nothing (#145)" {
   f=system/agents/foreman.md
   grep -qF -- '- **In a lull**:' "$f"
@@ -1118,7 +1131,9 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
 
 @test "alert tags: the manual carries the table, CLAUDE.md the Foreman push, the brief groups Pipeline by tag (#158)" {
   grep -qF 'every new alert line whose tag Slack carries' FOUNDRY.md
-  grep -qF '| `foreman`, `orders`, `sync`, `update`, `rca`, `intake` | Slack at the next tick |' FOUNDRY.md
+  grep -qF '| `foreman`, `incident`, `orders`, `sync`, `update`, `rca`, `intake` | Slack at the next tick |' FOUNDRY.md
+  grep -qF 'An `incident` line is a new production error group, or a resolved one that came back' FOUNDRY.md
+  grep -qF 'an `[incident]` line (Telemetry lists those groups)' .claude/commands/brief.md
   grep -qF '| `commit_runs`, `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `dtcc`, `memory` | the next brief |' FOUNDRY.md
   grep -qF 'system/scripts/alert.py foreman "<one line>"' FOUNDRY.md
   grep -qF 'To tell the user something now, outside the brief: `system/scripts/alert.py foreman "<one line>"`.' CLAUDE.md
