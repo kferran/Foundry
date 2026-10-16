@@ -14,7 +14,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-16
-- Dropping an RCA draft's Now line after its Jira ticket was already created now records that ticket on the note instead of marking the draft rejected. (#PR)
+- Dropping an RCA draft's Now line after its Jira ticket was already created now records that ticket on the note instead of marking the draft rejected. (#245)
 - Up to three Work Orders run at the same time: a long research order no longer holds up the next one, and two plans on the same codebase and branch still take turns. (#241)
 - Extensions: optional features live in `extensions/<name>/` folders that ship with the template, and one `extensions:` list in `system/config.md` turns them on. (#226, #231)
   - Action: on a second (client) machine, add the extensions the update turned on to that machine's `extensions:` list (or re-run `/setup`), then run `system/scripts/extensions.py link`.
