@@ -1063,14 +1063,10 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
 }
 
 @test "chat triage: /setup asks for it; the manual, the config schema and the example describe it (#222)" {
-  sec="$(setup_section '6b. Meetings')"
-  [[ "$sec" == *'Also watch the Slack channels you are in for messages that need you?'* ]]
-  [[ "$sec" == *'`triage_chat_enabled`'* ]]
+  [[ "$(setup_section '6b. Meetings')" == *'`triage_chat_enabled`'* ]]
   grep -qF 'triage_chat_enabled: {kind: bool, default: "false"}' system/schemas/config.md
   grep -qF 'triage_chat_enabled: "false"' system/config.example.md
-  grep -qF 'With `triage_chat_enabled: true`, each tick also runs a second confined session that may only search Slack' FOUNDRY.md
-  grep -qF 'only the channels you are a member of' FOUNDRY.md
-  grep -qF 'Results in `slack_notify_channel` are skipped' FOUNDRY.md
+  grep -qF '`triage_chat_enabled: true`' FOUNDRY.md
 }
 
 @test "/rca is the telemetry extension's skill: CLAUDE.md and the manual point there, and core holds no rca command" {

@@ -267,19 +267,32 @@ def extract(stream, q: str) -> dict:
 
 
 def chat_messages(got: list, notify_channel: str) -> dict:
-    """"<channel id>/<ts>" -> {link, date, sender, channel}, from the search results' markdown only. A result in the
-    notify channel is skipped: notices post as the owner, and triage must not read its own back."""
+    """"<channel id>/<ts>" -> {link, date, sender, channel}, from the search results' markdown only. Message text sits
+    inside that markdown, so a piece is a result only when its link is that message's own Slack permalink, and the
+    first piece for a message wins (its real header comes before its text). A piece without the fields is body text,
+    skipped. A result in the notify channel is skipped: notices post as the owner, and triage must not read its own
+    back."""
     out = {}
     for page in got:
-        for part in str(page.get("results") or "").split("### Result ")[1:]:
+        results = page.get("results")
+        if not isinstance(results, str):
+            raise Fail(1, "a chat search result is not in the shape asked for")
+        parsed = 0
+        for part in results.split("### Result ")[1:]:
             f = {k: rx.search(part) for k, rx in CHAT_FIELDS.items()}
             if not (f["channel"] and f["ts"] and f["link"]):
-                raise Fail(1, "a chat result lacks a channel, a ts or a link")
-            if f["channel"].group(2) == notify_channel:
                 continue
-            out[f"{f['channel'].group(2)}/{f['ts'].group(1)}"] = {
-                "link": f["link"].group(1), "date": f["ts"].group(1), "channel": f["channel"].group(1),
-                "sender": f["sender"].group(1) if f["sender"] else ""}
+            cid, ts, link = f["channel"].group(2), f["ts"].group(1), f["link"].group(1)
+            if not re.match(rf"https://(?:[a-z0-9-]+\.)+slack\.com/archives/{cid}/p{ts.replace('.', '')}(?:\?|$)", link):
+                continue
+            parsed += 1
+            if cid == notify_channel or f"{cid}/{ts}" in out:
+                continue
+            out[f"{cid}/{ts}"] = {"link": link, "date": ts, "channel": f["channel"].group(1),
+                                  "sender": f["sender"].group(1) if f["sender"] else ""}
+        listed = re.search(r"^## Messages \((\d+) results?\)", results, re.M)
+        if listed and int(listed.group(1)) > 0 and parsed == 0:
+            raise Fail(1, "a chat search result is not in the shape asked for")
     return out
 
 
@@ -299,7 +312,8 @@ def chat_extract(stream, q: dict, tool: str, notify_channel: str) -> dict:
         items.append({"thread_id": key, "date": m["date"], "link": m["link"], "sender": address(m["sender"]),
                       "who": f"{one_line(r.get('who')) or address(m['sender'])} in #{one_line(m['channel'])}",
                       "ask": ask, "next_step": one_line(r.get("next_step"))})
-    full = len(got) == CHAT_MAX_PAGES and "cursor" in str(got[-1].get("pagination_info") or "")
+    # A last page that still offers a cursor left messages unread, whether the session read 5 pages or stopped early.
+    full = "use cursor `" in str(got[-1].get("pagination_info") or "") if got else False
     return {"items": items, "full": full}
 
 
