@@ -249,8 +249,9 @@ def test_a_hold_lifts_within_the_tick_when_a_lower_reading_arrives(env, monkeypa
     assert states(vault) == {"started": "done", "queued": "done"}
 
 
-def test_a_claim_left_by_a_crashed_tick_keeps_that_attempt_from_starting_again(env, monkeypatch):
-    # Review Focus 3: claim-<attempt> is the per-item guard against a double start.
+def test_a_claim_left_by_a_stopped_tick_is_cleared_and_the_attempt_runs(env, monkeypatch):
+    # #229 minor: a SIGTERM between _claim and run_item's attempts update leaves claim-1 while the note still reads
+    # attempts 0. The tick holds the global lock, so that claim's owner is dead and attempt 1 never began: it runs.
     vault, tmp = env
     fake = Fake()
     monkeypatch.setattr(nr, "run_item", fake)
@@ -258,7 +259,7 @@ def test_a_claim_left_by_a_crashed_tick_keeps_that_attempt_from_starting_again(e
     research(vault, tmp, "free")
     (nr.rep.item_dir(vault, ids(vault)["claimed"]) / "claim-1").mkdir(parents=True)
     assert nr.main(["tick"], vault, NOW) == 0
-    assert states(vault) == {"claimed": "queued", "free": "done"}
+    assert states(vault) == {"claimed": "done", "free": "done"}
 
 
 def test_an_error_on_the_tick_waits_for_its_workers_before_the_lock_goes(env, monkeypatch):
