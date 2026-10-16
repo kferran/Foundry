@@ -15,6 +15,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## 2026-10-16
 - Up to three Work Orders run at the same time: a long research order no longer holds up the next one, and two plans on the same codebase and branch still take turns. (#241)
+- A Work Order whose start was cut short by a restart or shutdown runs on the next tick instead of waiting forever. (#PR)
 - Extensions: optional features live in `extensions/<name>/` folders that ship with the template, and one `extensions:` list in `system/config.md` turns them on. (#226, #231)
   - Action: on a second (client) machine, add the extensions the update turned on to that machine's `extensions:` list (or re-run `/setup`), then run `system/scripts/extensions.py link`.
 - Jira handoffs move to the `handoffs` extension. The update turns it on once for vaults that use handoffs. (#232)

@@ -747,7 +747,9 @@ def _claim(ctx: Ctx, fm: dict) -> bool:
         claim.parent.mkdir(parents=True, exist_ok=True)
         claim.mkdir()
     except FileExistsError:
-        return False
+        # Only a tick stopped between this claim and run_item's attempts update leaves one: the tick holds the global
+        # lock, so its owner is dead and the attempt never began. Taking it over keeps the item from waiting forever.
+        pass
     return True
 
 
