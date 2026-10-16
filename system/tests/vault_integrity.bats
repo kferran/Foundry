@@ -357,12 +357,20 @@ sealed_problems() {
 }
 
 # Task 10: core names no vendor or customer outside a shrinking allowlist (extensions spec §6; plan task 10).
+@test "core stays inside its budget: 12,500 script lines and 14 schemas (extensions spec §2.2, §5)" {
+  # Set once at the end of phase 4 (2026-10-16: 12,270 lines, 14 schemas). A feature that needs more moves code into an
+  # extension, or raises the budget in its own pull request, with the reason.
+  lines="$(git ls-files -z system/scripts | xargs -0 cat | wc -l)"
+  [ "$lines" -le 12500 ]
+  [ "$(git ls-files system/schemas | wc -l)" -le 14 ]
+}
+
 @test "core names no vendor or customer outside its allowlist" {
   allow="$BATS_TEST_DIRNAME/core_clean.allow"
   want="$BATS_TEST_TMPDIR/hits.txt"
-  # Every tracked file outside docs/, extensions/, system/tests/ and the loader, for each term and domain.
+  # Every tracked file outside docs/, CHANGELOG.md (history, like docs/), extensions/, system/tests/ and the loader.
   pattern='dtcc|sentry|kusto|azure|\bjira\b|atlassian|dtcclearning\.com|atlassian\.net|sentry\.io'
-  git ls-files -z -- . ':(exclude)docs' ':(exclude)extensions' ':(exclude)system/tests' ':(exclude)system/scripts/extensions.py' \
+  git ls-files -z -- . ':(exclude)docs' ':(exclude)CHANGELOG.md' ':(exclude)extensions' ':(exclude)system/tests' ':(exclude)system/scripts/extensions.py' \
     | xargs -0 grep -I -o -i -E "$pattern" /dev/null 2>/dev/null \
     | awk -F: '{ term = tolower($NF); sub(/:[^:]*$/, ""); print $0 ":" term }' | sort -u > "$want" || true
   # The allowlist holds every file:term pair of today's hits; a move deletes its lines.

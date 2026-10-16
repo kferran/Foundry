@@ -69,7 +69,7 @@ setup() {
   rm "$BIN/az"
   run env PATH="$BIN" "$CD" --strict --role standalone
   [ "$status" -eq 0 ]
-  run grep -c 'az' <<< "$output"   # core names no az of its own
+  run grep -c -e 'az' -e 'pdftotext' <<< "$output"   # core names neither: they are extensions' deps
   [ "$output" = 0 ]
   v="$BATS_TEST_TMPDIR/v"
   cp -r "$REPO/system/scripts/extensions.py" "$REPO/system/scripts/vaultlib" "$v/system/scripts/"
