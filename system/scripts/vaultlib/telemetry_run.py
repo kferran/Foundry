@@ -4,6 +4,7 @@ import copy
 import fcntl
 import json
 import os
+import re
 import time
 import urllib.parse
 from datetime import datetime, timezone
@@ -12,6 +13,10 @@ from pathlib import Path
 from . import kusto, sentry, telemetry as t
 from .http import TelemetryError
 from .telemetry_store import Store
+
+PRODUCTION = re.compile(r"prod", re.IGNORECASE)   # a source whose environment starts with prod (prod, production)
+INCIDENT_MAX = 3
+CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f  ]+")   # error text from outside: one alert, one line
 
 LOCK = "system/telemetry.lock"
 LOCK_WAIT = int(os.environ.get("TELEMETRY_LOCK_WAIT", "120"))
@@ -31,7 +36,7 @@ def _parser():
     return p
 
 
-def _alert(vault: Path, store: Store, now: datetime, key: str, msg: str) -> None:
+def _alert(vault: Path, store: Store, now: datetime, key: str, msg: str, tag: str = "telemetry") -> None:
     day = now.astimezone().strftime("%Y-%m-%d")
     if store.state["alerts"].get(key) == day:
         return
@@ -39,7 +44,21 @@ def _alert(vault: Path, store: Store, now: datetime, key: str, msg: str) -> None
     path = vault / "system" / "logs" / f"alerts_{day}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
-        f.write(f"- {now.astimezone().strftime('%H:%M:%S')} [telemetry] {msg}\n")
+        f.write(f"- {now.astimezone().strftime('%H:%M:%S')} [{tag}] {CONTROL.sub(' ', msg)}\n")
+
+
+def _push(vault: Path, store: Store, now: datetime, src, pushes: list) -> None:
+    """An [incident] line, which Slack carries at the next tick, for each new or returning production error group of
+    this run: at most INCIDENT_MAX, then one line counting the rest (incident push, #158 follow-up)."""
+    for key, g, back in pushes[:INCIDENT_MAX]:
+        what = "a resolved production error is back in" if back else "new production error in"
+        rec = store.state["groups"][key]
+        _alert(vault, store, now, f"incident/{key}",
+               f"{src.name}: {what} {g['service']}: {str(g['exception'])[:120]} ({rec['count']} events) {rec['note']}",
+               tag="incident")
+    if len(pushes) > INCIDENT_MAX:
+        _alert(vault, store, now, f"incident/{src.name}/more",
+               f"{src.name}: and {len(pushes) - INCIDENT_MAX} more new production errors (see the brief)", tag="incident")
 
 
 def _log(vault: Path, now: datetime, line: dict) -> None:
@@ -143,8 +162,17 @@ def _run_source(vault, src, store, by_name, now, dry, line):
         for g in groups:
             print(json.dumps({k: g[k] for k in ("source", "fingerprint", "kind", "service", "exception", "count")}))
         return start, end, moved, counters
+    # A source's first run finds every open group new: push none of them (turning a source on sends no backlog).
+    push = PRODUCTION.match(src.environment or "") and st.get("checkpoint")
+    pushes = []
     for g in groups:
-        counters[store.upsert(g, now)] += 1
+        key = f"{src.name}/{g['fingerprint']}"
+        back = (store.state["groups"].get(key) or {}).get("status") == "resolved"
+        result = store.upsert(g, now)
+        counters[result] += 1
+        if push and not g.get("covered") and (result == "new" or back):   # a covered group is its Sentry source's
+            pushes.append((key, g, back))
+    _push(vault, store, now, src, pushes)
     for key in skipped:
         store.state["groups"][key]["cover_pending"] = True
     if src.kind == "sentry":
