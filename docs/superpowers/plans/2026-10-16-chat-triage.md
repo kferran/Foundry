@@ -56,7 +56,7 @@
   - `triage.py query [--source chat]`: mail prints the Gmail query (unchanged); chat prints `json.dumps(chat_query(...), sort_keys=True)`.
   - `triage.py chat-tool`: prints `chat_tool(VAULT)`.
   - `triage.py extract [--source chat] <query>`: chat parses `<query>` as JSON and reads `slack_notify_channel` from config.
-  - `triage.py record <start epoch> [--source chat]`.
+  - `triage.py record [--source chat] <start epoch>` (`--source chat` always follows the command word).
 
 - [ ] **Step 1: Write the failing tests** in `test_triage.py`, with a `chat_stream(*pages, reply=..., q=CQ, tool=CT)` helper shaped like the live probe: each tool_result's `content` is `[{"type": "text", "text": json.dumps({"results": md, "pagination_info": pi})}]`, with no `structuredContent`. One block of `md`:
 

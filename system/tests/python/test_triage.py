@@ -159,3 +159,110 @@ def test_a_bad_triage_partition_is_a_settings_error_before_any_session(vault):
     with pytest.raises(tr.Fail) as e:
         tr.query(vault, 10_000, TODAY)
     assert e.value.code == 2 and "triage_partition" in e.value.reason
+
+
+# Chat triage (chat triage spec §3.2): the Slack search's detailed result, as the 2026-10-16 probe returned it.
+CT = "mcp__claude_ai_Slack__slack_search_public_and_private"
+CQ = {"filters": "after:1969-12-30", "only_my_channels": True, "channel_types": "public_channel,private_channel",
+      "content_types": "messages", "after": "3700", "sort": "timestamp", "limit": 20, "include_bots": False,
+      "include_context": False, "response_format": "detailed"}
+TS = "1792170000.000100"
+PERMALINK = "https://example.slack.com/archives/C0000000001/p1792170000000100"
+
+
+def block(channel="C0000000001", ts=TS, link=PERMALINK):
+    return (f"### Result 1 of 1\nChannel: #ops (ID: {channel})\n"
+            "From: Blake Sample <blake@example.com> (ID: U0000000001) \nTime: 2026-10-16 10:05:24 MDT\n"
+            f"Message_ts: {ts}\n" + (f"Permalink: [link]({link})\n" if link else "")
+            + "Text: \nprod checkout is down for everyone, can you look?\n\n---\n\n")
+
+
+def chat_stream(*pages, items=(), q=CQ, tool=CT, error=False, more=False):
+    s = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t0", "name": "ToolSearch", "input": {}}]}},
+         {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t0",
+                                                   "content": [{"type": "tool_reference", "tool_name": CT}]}]}}]
+    for n, md in enumerate(pages, 1):
+        i = q if n == 1 else {**q, "cursor": f"c{n}"}
+        s.append({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": f"t{n}", "name": tool, "input": i}]}})
+        pi = "For the next page of results use cursor `abc`\n" if more else ""
+        text = json.dumps({"results": "# Search Results for: \n\n## Messages (1 results)\n" + md, "pagination_info": pi})
+        s.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": f"t{n}", "is_error": error,
+                                                           "content": [{"type": "text", "text": text}]}]}})
+    s.append({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps({"items": list(items)})})
+    return s
+
+
+def chat_item(channel="C0000000001", ts=TS):
+    return {"channel_id": channel, "ts": ts, "who": "Blake", "ask": "prod checkout is down", "next_step": "look now"}
+
+
+def chat_fails(code, s):
+    with pytest.raises(tr.Fail) as e:
+        tr.chat_extract(s, CQ, CT, "")
+    assert e.value.code == code
+    return e.value.reason
+
+
+def test_chat_query_is_the_exact_input_and_starts_after_the_last_chat_tick(vault):
+    write(vault, "system/logs/triage-2026-10.jsonl", json.dumps({"kind": "tick", "epoch": 5_000}) + "\n"
+          + json.dumps({"kind": "tick", "epoch": 4_000, "source": "chat"}) + "\n")
+    assert tr.chat_query(vault, 9_000, TODAY) == CQ
+
+
+def test_each_source_keeps_its_own_cursor(vault):
+    prepare(vault)
+    write(vault, "system/logs/triage-2026-10.jsonl", json.dumps({"kind": "tick", "epoch": 5_000}) + "\n")
+    assert tr.cursor(vault, 9_000, TODAY, "mail") == 4_700
+    assert tr.cursor(vault, 9_000, TODAY, "chat") == 9_000 - 7200
+    tr.record(vault, "work", {"items": []}, TODAY, "t", 4_000, source="chat")
+    assert tr.records(vault, TODAY)[-1] == {"kind": "tick", "epoch": 4_000, "time": "t", "items": 0, "full": False,
+                                            "source": "chat"}
+    assert tr.cursor(vault, 9_000, TODAY, "chat") == 3_700
+    assert tr.cursor(vault, 9_000, TODAY, "mail") == 4_700
+
+
+def test_chat_items_take_link_sender_and_channel_from_the_results():
+    got = tr.chat_extract(chat_stream(block(), items=[chat_item(), chat_item(ts="1.2"), chat_item()]), CQ, CT, "")
+    assert got == {"full": False, "items": [{
+        "thread_id": f"C0000000001/{TS}", "date": TS, "link": PERMALINK, "sender": "blake@example.com",
+        "who": "Blake in #ops", "ask": "prod checkout is down", "next_step": "look now"}]}
+
+
+@pytest.mark.parametrize("kwargs,code", [
+    ({"tool": "mcp__claude_ai_Slack__slack_read_channel"}, 7),
+    ({"q": {**CQ, "include_bots": True}}, 7),
+    ({"error": True}, 6),
+])
+def test_a_chat_session_outside_the_rules_fails_closed(kwargs, code):
+    chat_fails(code, chat_stream(block(), items=[chat_item()], **kwargs))
+
+
+def test_more_than_five_chat_pages_is_refused_and_no_search_means_no_connector():
+    chat_fails(7, chat_stream(*[block()] * 6))
+    s = [{"type": "result", "subtype": "success", "is_error": False, "result": "{}"}]
+    assert "no Slack connector" in chat_fails(3, s)
+
+
+def test_a_cursor_page_is_the_same_search():
+    assert len(tr.chat_extract(chat_stream(block(), block(ts="1.2"), items=[chat_item()]), CQ, CT, "")["items"]) == 1
+
+
+def test_results_in_the_notify_channel_are_dropped():
+    assert tr.chat_extract(chat_stream(block(), items=[chat_item()]), CQ, CT, "C0000000001")["items"] == []
+
+
+def test_a_full_fifth_chat_page_is_flagged():
+    assert tr.chat_extract(chat_stream(*[block()] * 5, more=True), CQ, CT, "")["full"] is True
+    assert tr.chat_extract(chat_stream(*[block()] * 4, more=True), CQ, CT, "")["full"] is False
+
+
+def test_a_chat_result_without_a_permalink_fails():
+    assert "lacks" in chat_fails(1, chat_stream(block(link=None), items=[chat_item()]))
+
+
+def test_chat_enabled_and_tool_follow_config(vault):
+    write(vault, "system/config.md", '---\ntype: config\n---\n')
+    assert tr.chat_enabled(vault) is False and tr.chat_tool(vault) == CT
+    write(vault, "system/config.md", '---\ntype: config\ntriage_chat_enabled: "true"\nslack_connector: "plugin:slack:slack"\n---\n')
+    assert tr.chat_enabled(vault) is True
+    assert tr.chat_tool(vault) == "mcp__plugin_slack_slack__slack_search_public_and_private"
