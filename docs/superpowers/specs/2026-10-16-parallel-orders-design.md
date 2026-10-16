@@ -1,7 +1,7 @@
 # Parallel Work Orders: up to three orders at once
 
 **Date:** 2026-10-16
-**Status:** Draft, from the owner's grill answers on #229 (2026-10-16); awaiting approval.
+**Status:** Approved by the owner (2026-10-16), from the grill answers on #229.
 **Issue:** #229.
 
 ## 1. Today

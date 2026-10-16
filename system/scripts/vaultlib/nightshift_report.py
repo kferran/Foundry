@@ -16,12 +16,17 @@ def item_dir(vault, item_id: str) -> Path:
     return Path(vault) / DIR / "items" / item_id
 
 
+_UMASK = os.umask(0)   # read once: os.umask can only be read by setting it
+os.umask(_UMASK)
+
+
 def _atomic(path: Path, text: str) -> None:
     # A temp file per writer: up to 3 Work Orders finish at once (#229), and a shared .tmp name loses a rename.
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.",
                                      suffix=".tmp", delete=False) as f:
         f.write(text)
+    os.chmod(f.name, 0o666 & ~_UMASK)   # a temp file is 0600: keep the mode a plain write gives
     os.replace(f.name, path)
 
 
