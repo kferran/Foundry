@@ -24,6 +24,18 @@ jobs:
         run: |
           git config --global user.name "Foundry CI"
           git config --global user.email "ci@example.invalid"
+      # The owner's forbidden-names list (FOUNDRY.md Development) lives outside the repository: the secret holds it,
+      # and the check skips when the secret is unset (a fork, or a pull request from outside).
+      - name: The forbidden-names list, when its secret is set
+        env:
+          LIST: ${{ secrets.FOUNDRY_FORBIDDEN_NAMES_LIST }}
+        run: |
+          if [[ -n "$LIST" ]]; then
+            printf '%s\n' "$LIST" > "$RUNNER_TEMP/forbidden-names"
+            echo "FOUNDRY_FORBIDDEN_NAMES=$RUNNER_TEMP/forbidden-names" >> "$GITHUB_ENV"
+          else
+            echo "no forbidden-names list: the check skips"
+          fi
       - name: Gate
         run: system/scripts/verify_setup.sh --require-suites
   # Everything on (extensions spec §3): every tracked extensions/<name>/ is listed in a CI config, and the gate runs
