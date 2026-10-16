@@ -1,7 +1,7 @@
 # Extensions: features out of core, into one extensions repository
 
 **Date:** 2026-10-15
-**Status:** Approved (owner, 2026-10-15), with the review decisions in §6. Next: the plan for the loader and the Jira handoffs move.
+**Status:** Approved (owner, 2026-10-15), with the review decisions in §6. Scope narrowed (owner, 2026-10-16, §7): only the vendor-specific features move. The loader is merged (#226); next is the Jira handoffs move.
 **Plan:** phase 4 of `docs/superpowers/2026-10-15-next-phase-plan.md`; simplification step 3 of `2026-10-11-simplification-review.md` §4. Overlaps #62 (closed out below).
 
 ## 1. Facts (master after #209)
@@ -41,14 +41,15 @@ Owner-specific names in core include `dtcc.com`, `atlassian.net` and `sentry.io`
 
 ## 2. Decisions (owner, 2026-10-15)
 
-1. **What moves:** seven extensions.
-   - Jira handoffs, DTCC, telemetry with RCA, meetings, inbox triage, Slack notices and two-machine sync.
+1. **What moves (narrowed 2026-10-16, §7):** three extensions, the vendor-specific features.
+   - Jira handoffs, DTCC, and telemetry with RCA.
+   - Meetings, inbox triage, Slack notices and two-machine sync stay in core, with their own switches.
    - Work Orders stay in core, off by default.
-2. **Revised target.** The old target, core under 7,500 lines, is not reachable with Work Orders in core (about 8,600 remain). Phase 4 is done when:
-   - no feature-specific code or names are left in core, enforced by a test;
-   - core scripts are at about 8,800 lines or fewer;
-   - there are 12 schemas or fewer (11 projected);
+2. **Target (revised 2026-10-16).** Phase 4 is done when:
+   - no DTCC, Sentry, ADX, Kusto, Azure, Jira or Atlassian name or domain is left in core, enforced by the core-clean test;
+   - there are 14 schemas or fewer (`dtcc_change`, `production_error`, `telemetry_source`, `rca` and `plan_gate` leave);
    - the gate is green with no extensions and with every extension on.
+   - The core line budget is measured after the three moves and set then. The 8,800-line target assumed all seven moves.
 3. **Home: one extensions repository** (working name `foundry-extensions`). It holds every extension.
    - The template ships core only.
    - A vault clones the extensions repository into `extensions/` and pins it, the same way the template remote is pinned. `update_template.sh` updates both.
@@ -56,17 +57,14 @@ Owner-specific names in core include `dtcc.com`, `atlassian.net` and `sentry.io`
 4. **Packaging: skills plus a Foundry manifest.**
    - An extension's Claude-facing parts are skills in its `skills/` folder, linked into `.claude/skills/` while the extension is on. `/rca` becomes a skill.
    - What Claude Code cannot load is declared in `extension.md`, which Foundry's loader reads: units, scripts, schemas, the brief section, the smoke check, sources, config keys, dependencies and allow rules.
-5. **Switch: one `extensions:` list** in `system/config.md`, for example `extensions: ["handoffs", "meetings"]`.
-   - It replaces `meetings_enabled`, `triage_enabled` and DTCC's "map file exists" rule.
+5. **Switch: one `extensions:` list** in `system/config.md`, for example `extensions: ["handoffs", "dtcc"]`.
+   - It replaces DTCC's "map file exists" rule and the handoffs and telemetry on-rules.
+   - Core features keep their own switches (`meetings_enabled`, `triage_enabled`, `slack_notify_channel`, `machine_role`).
    - The update migrates the old keys once.
    - Each extension keeps its own settings keys, declared in its manifest and validated against its own schema fragment.
 6. **First move: Jira handoffs.** It is the smallest, has no units, and touches every mechanism point except units (brief prep, brief section, smoke check, sources, setup, config). The rest follow in this order:
    1. DTCC
    2. telemetry and RCA
-   3. meetings
-   4. inbox triage
-   5. Slack notices
-   6. sync
 7. **Leftovers:**
    - Delete the debrief's **Agent Health** section, the metrics template and the coding Workcell's instruction to write `system/logs/metrics/`, since nothing writes that folder.
    - Delete the `plan_gate` schema and the intent-shaper template.
@@ -116,14 +114,14 @@ Every shared file reads the loader in place of its per-feature `if` blocks:
 - `setup.md` gets one generic "Extensions" phase that walks each enabled extension's manifest.
 
 **Core keeps, generic:**
-- the usage ceiling, which moves from `vaultlib/triage.py` to a core `vaultlib/usage.py` because Work Orders and intake need it;
+- the usage ceiling, which stays in `vaultlib/triage.py` (inbox triage stays in core, §7);
 - the connector runner (`lib_connector.sh`, `lib_confine.sh`) and `connector_classify`;
 - `http.py`, the run ledger, the publish gate, quarantine, the Now page and Work Orders;
 - the standalone role (the sync extension adds `server` and `client`).
 
 ## 4. Migration and the owner's vault
 
-- `update_template.sh` (and `/setup`) turns `meetings_enabled: true`, `triage_enabled: true`, a non-empty `handoffs_projects`, an existing `system/dtcc/map.yaml`, a set `slack_notify_channel`, a `machine_role` other than standalone and an existing telemetry source into `extensions:` entries, once.
+- `update_template.sh` (and `/setup`) turns a non-empty `handoffs_projects`, an existing `system/dtcc/map.yaml` and an existing telemetry source into `extensions:` entries, once.
   - It then clones the extensions repository at the pinned ref and runs `extensions.py check`.
   - Until the clone exists, a listed extension is reported (`[extensions] <name> is listed but extensions/ has no folder for it`) and skipped. Nothing fails.
 - Each move is one PR to the template, which deletes the code, and one PR to the extensions repository, which adds it with its tests. Both merge together. The update brings both, so the owner's features keep running across the move.
@@ -133,7 +131,7 @@ Every shared file reads the loader in place of its per-feature `if` blocks:
 
 - **Core alone:** the gate runs with `extensions/` absent, and every suite passes with no feature skipped for being absent.
 - **Everything on:** CI checks out the extensions repository at the pinned ref, enables every extension, and runs the core gate plus each extension's `tests/`.
-- **Core is clean:** a bats test fails when a core file (outside `extensions.py` and the docs) names DTCC, Sentry, ADX, Kusto, Jira, Atlassian, Gemini, Google Drive or Slack, or one of their domains. It extends the owner-leak test.
+- **Core is clean:** a bats test fails when a core file (outside `extensions.py` and the docs) names DTCC, Sentry, ADX, Kusto, Azure, Jira or Atlassian, or one of their domains. Slack, Gemini and Google Drive stay in core with the features that use them (§7). It extends the owner-leak test.
 - **Loader:** a manifest with a missing `requires`, an unknown key, or a listed extension with no folder is reported by `extensions.py check`.
 - **Line budget:** a test counts core script lines and fails above the budget, set once at the end of phase 4.
 
@@ -142,3 +140,15 @@ Every shared file reads the loader in place of its per-feature `if` blocks:
 1. **Allow rules:** `/setup` writes each enabled extension's `allow` rules from its manifest into `.claude/settings.json` and removes the rules of an extension that is turned off. Every rule stays specific; there is no generic `extensions/*` rule.
 2. **Visibility:** the extensions repository is private. The template's CI checks it out with a read-only deploy key; without the key (a fork, or a pull request from outside), the "every extension on" job is skipped and says so, and the core-alone gate still runs.
 3. **Sequencing with phases 2 and 3:** phase 2 (brief section files) is not built. The first move builds the section-file mechanism for its own section only; phase 2 then moves the remaining core sections onto it.
+
+## 7. Scope decision (owner, 2026-10-16)
+
+Only the vendor-specific features move: Jira handoffs, DTCC, and telemetry with RCA. Meetings, inbox triage, Slack notices, two-machine sync and Work Orders stay in core.
+
+Why: the extensions repository is private, so a feature that moves is gone from the template for anyone who clones it. The four generic features are what a new vault most needs. The part of the design that pays is the core-clean test: vendor and owner names leave core and stay out. Each move costs a pair of PRs that merge together and a live acceptance run, and the loader (#226) already serves the three moves.
+
+What changes from §2:
+- The core features keep their own switches; `extensions:` lists only extensions.
+- The usage ceiling stays where it is.
+- The core-clean test drops Slack, Gemini and Google Drive from its terms, and their allowlist lines go.
+- The line budget is set after the three moves.
