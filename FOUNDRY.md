@@ -358,7 +358,7 @@ system/scripts/verify_setup.sh --health   # also the advisory live-state suite
 
 One suite or one pytest target runs through `system/scripts/test.sh <suite.bats | pytest path> [args…]`, which sets the gate's environment (temp files under `.scratch/tmp`, a git ceiling) so no command needs a leading `TMPDIR=` assignment. Plans name it in their test steps.
 
-`vault_integrity.bats` fails when a tracked template file holds a name from your forbidden-names list, kept outside the repository at `$FOUNDRY_FORBIDDEN_NAMES` (default `~/.config/foundry/forbidden-names`, one case-insensitive name per line, `#` comments); it reports `<path>:<line>` and the list line, never the name, and skips when the list is absent or the checkout is a vault.
+`vault_integrity.bats` fails when a tracked template file holds a name from your forbidden-names list, kept outside the repository at `$FOUNDRY_FORBIDDEN_NAMES` (default `~/.config/foundry/forbidden-names`, one case-insensitive name per line, `#` comments); it reports `<path>:<line>` and the list line, never the name, and skips when the list is absent or the checkout is a vault. CI reads the list from the Actions secret `FOUNDRY_FORBIDDEN_NAMES_LIST`, written to a file before the gate.
 
 **Permissions while developing.** The template's `.claude/settings.json` allows only the read-only vault commands, because vaults merge it (fewer-prompts spec). Development commands go in `.claude/settings.local.json` (gitignored; "Yes, and don't ask again" writes there too), for example:
 
