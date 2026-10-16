@@ -274,3 +274,17 @@ def test_migrate_does_nothing_without_the_old_switch(vault):
     assert run(vault, "migrate").stdout == ""
     assert extensions.listed(vault) == []
     assert not (vault / "system/logs/extensions-migrated").exists()
+
+
+def test_migrate_lists_dtcc_once_when_the_vault_has_a_map(vault):
+    write(vault, "system/config.md", "---\ntype: config\n---\n")
+    write(vault, "system/dtcc/map.yaml", "partition: work\n")
+    assert run(vault, "migrate").stdout == "enabled dtcc\n"
+    write(vault, "system/config.md", "---\ntype: config\nextensions: []\n---\n")
+    assert run(vault, "migrate").stdout == ""
+    assert extensions.listed(vault) == []
+
+
+def test_migrate_does_not_list_dtcc_without_a_map(vault):
+    write(vault, "system/config.md", "---\ntype: config\n---\n")
+    assert run(vault, "migrate").stdout == ""

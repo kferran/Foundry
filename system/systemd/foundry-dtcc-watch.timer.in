@@ -1,8 +1,8 @@
 [Unit]
-Description=The Foundry: DTCC change watch at {{DTCC_TIME}}
+Description=The Foundry: DTCC change watch at {{PRE_BRIEF_TIME}}
 
 [Timer]
-OnCalendar=*-*-* {{DTCC_TIME}}:00 {{TZ}}
+OnCalendar=*-*-* {{PRE_BRIEF_TIME}}:00 {{TZ}}
 Persistent=true
 
 [Install]

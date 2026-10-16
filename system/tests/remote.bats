@@ -610,6 +610,20 @@ readme_setup() {
   [ "$output" = 0 ]
 }
 
+@test "an update in a vault with a DTCC map lists dtcc, and a missing extension folder is one alert (extensions spec §4, §8)" {
+  template_setup
+  mkdir -p system/dtcc
+  printf 'partition: work\n' > system/dtcc/map.yaml
+  git add system/dtcc/map.yaml
+  git commit -qm "vault: a DTCC map"
+  upstream_commit new.txt hello
+  run "$UT"
+  [ "$status" -eq 0 ]
+  grep -qx 'extensions: \["dtcc"\]' system/config.md
+  run grep -c '\[extensions\] dtcc: listed in extensions but extensions/dtcc/ does not exist' "system/logs/alerts_$(date +%F).md"
+  [ "$output" = 1 ]
+}
+
 @test "after a template update, a listed extension that cannot load is alerted (extensions spec §4)" {
   template_setup
   upstream_commit new.txt hello
