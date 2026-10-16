@@ -484,6 +484,18 @@ def test_resume_stops_a_session_left_running(needs_bwrap, env):
     assert stale.poll() is not None
 
 
+def test_a_running_item_failed_by_the_reconciler_writes_its_outcome(env):
+    """A notice reads outcome.json, so the third failed attempt must write one (#28)."""
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ni.update(path, state="running", attempts="3", session_id="old")
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1]["state"] == "failed"
+    out = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
+    assert out["state"] == "failed" and out["reason"] == "no result"
+
+
 def test_cancel_stops_a_live_session(env):
     vault, tmp = env
     assert add(vault, "--now") == 0
