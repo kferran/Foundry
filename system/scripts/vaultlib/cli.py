@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from . import frontmatter, guard, publish, recall as recallmod, retrieve, schema as schemamod, scope as scopemod
-from .index import ISSUE_ROWS, NOT_INDEXED, Index
+from .index import ISSUE_ROWS, NOT_INDEXED, Index, citation_issues
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
 
@@ -171,7 +171,7 @@ def cmd_issues(args, vault, sc):
         return print_issues([r for r in rows if r[0] in keep], args.json)
     idx.refresh()
     conn = sqlite3.connect(idx.db_path)
-    rows = conn.execute(ISSUE_ROWS).fetchall()
+    rows = sorted(conn.execute(ISSUE_ROWS).fetchall() + citation_issues(conn), key=lambda r: (r[2], r[0], r[1]))
     conn.close()
     return print_issues(rows, args.json)
 

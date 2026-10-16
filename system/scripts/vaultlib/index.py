@@ -3,9 +3,11 @@ import contextlib
 import fcntl
 import hashlib
 import importlib.util
+import itertools
 import json
 import os
 import posixpath
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -56,6 +58,46 @@ WALLS = {("work", "personal"), ("personal", "work"), ("shared", "work"), ("share
 
 def wall_blocked(src_partition: str, target_partition: str) -> bool:
     return (src_partition, target_partition) in WALLS
+
+
+CITATION = re.compile(r"(?<![\w/:.-])([\w.-]+(?:/[\w.-]+)+\.[A-Za-z]\w*):(\d+)\b")
+
+
+def citation_issues(conn) -> list:
+    """Warning rows for each `dir/file.ext:NN` in an rca or codebase note body, outside fences, that names a file
+    missing from the note's codebase or shorter than NN lines (#166). Read at lint time, never cached in the index, since
+    the code moves on its own; a codebase that is not on this machine is skipped. Bare file names are not checked."""
+    roots = dict(conn.execute(
+        "SELECT a.value, b.value FROM fields a JOIN fields b ON a.path=b.path JOIN notes n ON n.path=a.path "
+        "WHERE n.type='codebase' AND a.key='name' AND b.key='path'").fetchall())
+    rows = []
+    for path, body_line, body, name in conn.execute(
+            "SELECT n.path, n.body_line, f.body, (SELECT value FROM fields WHERE path=n.path AND key=CASE n.type "
+            "WHEN 'rca' THEN 'codebase' ELSE 'name' END) FROM notes n JOIN notes_fts f ON f.path=n.path "
+            "WHERE n.type IN ('rca','codebase') ORDER BY n.path").fetchall():
+        if name not in roots or not (root := Path(os.path.expanduser(roots[name])).resolve()).is_dir():
+            continue
+        fence = False
+        for i, line in enumerate(body.split("\n")):
+            if line.lstrip().startswith("```"):
+                fence = not fence
+            for m in [] if fence else CITATION.finditer(line):
+                target, need = (root / m.group(1)).resolve(), int(m.group(2))
+                if root not in target.parents:
+                    continue
+                try:
+                    with open(target, "rb") as fh:
+                        have = sum(1 for _ in itertools.islice(fh, need))
+                except FileNotFoundError:
+                    rows.append((path, body_line + i, "warning", "citation",
+                                 f"citation {m.group(1)}:{need}: no such file in codebase {name}"))
+                    continue
+                except OSError:
+                    continue
+                if have < need:
+                    rows.append((path, body_line + i, "warning", "citation",
+                                 f"citation {m.group(1)}:{need}: the file has {have} lines"))
+    return rows
 
 
 class Index:
