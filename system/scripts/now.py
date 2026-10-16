@@ -6,12 +6,16 @@
                                   a new line gets [due::] (--due, else since + 3 days with --who or a date in the
                                   statement, else + 30); a repeat add may move it earlier (exit 2 if later), set
                                   --rec, or set missing evidence, and writes nothing when nothing is new
+  now.py set --partition <p> --match "<text>" --statement "<new statement>"
+                                  the one open line whose statement contains the text gets the new statement, keeping
+                                  its kind, who, since, evidence and clock (exit 2 on no match or several)
   now.py list [--partition <p>]   the open lines; without --partition, both pages under "## <partition>"
   now.py check                    close lines on checked evidence, stamp hand ticks, prune (the intake timer runs it)
   now.py review --partition <p> [--stale-days N]
                                   read-only: lines closed by their evidence, open more than N days (14) with no
-                                  evidence, duplicated, or holding a [rec::]/[due::] field after the parenthesis
-                                  (unreadable); nothing printed when there is nothing to review
+                                  evidence, duplicated, holding text or a [rec::]/[due::] field after the parenthesis
+                                  (unreadable), over 240 characters, and a page over 32 KB; nothing printed when there
+                                  is nothing to review
   now.py overdue [--date YYYY-MM-DD]
                                   read-only: open lines past their [due::] (before the date, today by default) in
                                   groups of 1 to 7, 8 to 30 and more than 30 days over, then the clockless count
@@ -39,6 +43,10 @@ a.add_argument("--who", default="")
 a.add_argument("--evidence", default="")
 a.add_argument("--rec", default="")
 a.add_argument("--due", default="")
+s = sub.add_parser("set")
+s.add_argument("--partition", required=True, choices=now.PARTITIONS)
+s.add_argument("--match", required=True)
+s.add_argument("--statement", required=True)
 sub.add_parser("list").add_argument("--partition", choices=now.PARTITIONS)
 sub.add_parser("check")
 r = sub.add_parser("review")
@@ -73,8 +81,12 @@ if args.cmd == "review":  # read-only, so no run.lock
         if found[key]:
             print("\n".join([heading, *found[key]]))
     if found["unreadable"]:
-        print("\n".join([f"## Unreadable lines ({len(found['unreadable'])}): move the [rec::] or [due::] field before "
-                         "the parenthesis", *found["unreadable"]]))
+        print("\n".join([f"## Unreadable lines ({len(found['unreadable'])}): move the text or the [rec::] or [due::] "
+                         "field after the parenthesis back before it", *found["unreadable"]]))
+    if found["long"]:
+        print("\n".join([f"## Long lines (over {now.LONG_LINE} characters): rewrite with now.py set", *found["long"]]))
+    if found["page_bytes"] > now.PAGE_BYTES:
+        print(f"## Page size: {found['page_bytes'] // 1024} KB (over {now.PAGE_BYTES // 1024} KB): close or rewrite lines")
     sys.exit(0)
 if args.cmd == "seed":
     try:
@@ -91,6 +103,8 @@ try:
             status, line = now.add(VAULT, args.partition, args.kind, args.statement, intake.today(),
                                    args.who, args.evidence, args.rec, args.due)
             print(f"{status}: {line}")
+        elif args.cmd == "set":
+            print(f"set: {now.set_statement(VAULT, args.partition, args.match, args.statement, intake.today())}")
         elif args.cmd == "check":
             print(f"closed: {now.check(VAULT, intake.today(), intake.alert)}")
         else:
