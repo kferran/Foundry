@@ -502,8 +502,11 @@ def test_first_source_wins_a_drop_after_a_doc_is_archived(iv):
     fetched(iv)
     tick(iv)
     dup = dropped(iv, "work/2026-10-05 1510 Weekly sync - Planning.vtt", VTT)
+    tick(iv)  # the note was published seconds ago: the link waits for the next tick
+    assert len(meeting_runs(iv)) == 1 and dup.exists()
+    aged(iv, "work", NAME)
     tick(iv)
-    assert len(meeting_runs(iv)) == 1 and not dup.exists()
+    assert len(meeting_runs(iv)) == 2 and not dup.exists()
     assert (iv / "raw/archive" / dup.name).is_file()
     assert f"wiki/work/meetings/{NAME}.md" in alerts(iv)
 
@@ -560,9 +563,49 @@ def test_a_populated_note_stays_canonical_when_a_later_recording_has_no_summary_
     aged(iv, "work", NAME)
     dup = dropped(iv, "work/2026-10-05 1500 Weekly sync - Planning.srt", long_cues(30, ".srt"))
     tick(iv)
-    assert len(meeting_runs(iv)) == 1 and (iv / "raw/archive" / dup.name).is_file()
+    assert len(meeting_runs(iv)) == 2 and (iv / "raw/archive" / dup.name).is_file()
     assert frontmatter.parse((iv / f"wiki/work/meetings/{NAME}.md").read_text()).data.get("status", "canonical") == "canonical"
     assert not (iv / f"wiki/work/meetings/{NAME}-2.md").exists()
+
+
+def test_a_drop_for_a_populated_note_links_its_transcript_from_that_note_216(iv):
+    # #216: the drop's transcript is kept beside the populated note and linked from it; the drop is archived.
+    config(iv, meetings_partition="work")
+    fetched(iv)
+    tick(iv)
+    aged(iv, "work", NAME)
+    note = iv / f"wiki/work/meetings/{NAME}.md"
+    before = frontmatter.parse(note.read_text())
+    text = long_cues(30, ".srt")
+    dup = dropped(iv, "work/2026-10-05 1500 Weekly sync - Planning.srt", text)
+    digest = sha(dup)
+    tick(iv)
+    assert len(meeting_runs(iv)) == 2 and not dup.exists() and (iv / "raw/archive" / dup.name).is_file()
+    after = frontmatter.parse(note.read_text())
+    assert after.data == before.data and after.body.startswith(before.body.split("\n## ")[0])
+    assert f"[[{NAME}-2.transcript]]" in after.body and "## Summary\nAvery and Blake agreed" in after.body
+    tr = frontmatter.parse((iv / f"wiki/work/meetings/{NAME}-2.transcript.md").read_text())
+    assert (tr.data["type"], tr.data["meeting"], tr.data["partition"], tr.data["source"]) == \
+           ("meeting_transcript", f"[[{NAME}]]", "work", f"drop:{digest}")
+    assert not (iv / f"wiki/work/meetings/{NAME}-2.md").exists()
+    assert not (iv / f"raw/work/notes/{NAME}-2.meeting-input.md").exists()
+    assert f"linked from wiki/work/meetings/{NAME}.md" in alerts(iv)
+    again = dropped(iv, "work/2026-10-05 1500 Weekly sync - Planning.srt", text)  # the same file dropped twice
+    tick(iv)
+    assert len(meeting_runs(iv)) == 2 and not again.exists() and note.read_text().count("Another transcript:") == 1
+
+
+def test_a_drop_for_a_populated_note_in_another_partition_is_only_archived_216(iv):
+    config(iv, meetings_partition="work")
+    fetched(iv)
+    tick(iv)
+    aged(iv, "work", NAME)
+    note = iv / f"wiki/work/meetings/{NAME}.md"
+    text = note.read_text()
+    dup = dropped(iv, "personal/2026-10-05 1500 Weekly sync - Planning.srt", long_cues(30, ".srt"))
+    tick(iv)
+    assert len(meeting_runs(iv)) == 1 and (iv / "raw/archive" / dup.name).is_file()
+    assert note.read_text() == text and not list((iv / "wiki/personal").glob("meetings/*"))
 
 
 def test_an_empty_later_source_still_loses_to_an_empty_first_source(iv):
@@ -585,8 +628,9 @@ def test_a_hand_edited_empty_note_is_kept_and_the_later_source_archived(iv):
     aged(iv, "work", NAME)
     dup = dropped(iv, "work/2026-10-05 1500 Weekly sync - Planning.srt", long_cues(30, ".srt"))
     tick(iv)
-    assert len(meeting_runs(iv)) == 1 and (iv / "raw/archive" / dup.name).is_file()
+    assert len(meeting_runs(iv)) == 2 and (iv / "raw/archive" / dup.name).is_file()
     assert frontmatter.parse(note.read_text()).data.get("status", "canonical") == "canonical"
+    assert "I typed this after the call." in note.read_text() and f"[[{NAME}-2.transcript]]" in note.read_text()
 
 
 def test_a_section_holding_only_a_horizontal_rule_still_counts_as_empty(iv):
@@ -855,9 +899,12 @@ def test_meeting_import_script_runs_one_tick(iv):
 def test_a_note_whose_start_has_no_offset_is_read_in_the_config_timezone(iv):
     write(iv, "wiki/work/meetings/2026-10-05-1505-vendor-call.md",
           meeting("work", "2026-10-05-1505-vendor-call", "Vendor call", start='"2026-10-05T15:05:00"', source='"drop:other"'))
+    os.utime(iv / "wiki/work/meetings/2026-10-05-1505-vendor-call.md", (time.time() - HOURS, time.time() - HOURS))
     src = dropped(iv, "work/2026-10-05 1500 Vendor call.vtt", VTT)
     tick(iv)
-    assert meeting_runs(iv) == [] and not src.exists() and (iv / "raw/archive" / src.name).is_file()
+    assert not src.exists() and (iv / "raw/archive" / src.name).is_file()
+    assert [r["publish"]["published"] for r in meeting_runs(iv)] == [[  # the twin, so its transcript is linked (#216)
+        "wiki/work/meetings/2026-10-05-1500-vendor-call.transcript.md", "wiki/work/meetings/2026-10-05-1505-vendor-call.md"]]
 
 
 @pytest.mark.parametrize("name, text", [("Untitled.md", ""), ("call.vtt", "WEBVTT\n\n"), ("notes.txt", " \n\n ")])
