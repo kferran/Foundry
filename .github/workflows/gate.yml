@@ -65,6 +65,7 @@ jobs:
       - name: List every extension in a CI config
         if: steps.cfg.outputs.configured == 'true'
         run: |
+          shopt -s nullglob
           list=""
           for d in extensions/*/extension.md; do
             n="$(basename "$(dirname "$d")")"
