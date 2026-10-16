@@ -31,7 +31,6 @@ make_vault() {
   cp -r "$REPO/system/scripts/." "$V/system/scripts/"
   rm -rf "$V/system/scripts/__pycache__" "$V/system/scripts/vaultlib/__pycache__"
   cp "$REPO/CLAUDE.md" "$V/CLAUDE.md"
-  [[ ! -d "$REPO/extensions" ]] || cp -r "$REPO/extensions" "$V/extensions"
   cp -r "$REPO/.claude/commands" "$V/.claude/commands"
   [[ -f "$REPO/system/headless.settings.json" ]] && cp "$REPO/system/headless.settings.json" "$V/system/"
   [[ -f "$REPO/.claude/settings.json" ]] && cp "$REPO/.claude/settings.json" "$V/.claude/"
