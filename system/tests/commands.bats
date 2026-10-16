@@ -1118,7 +1118,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
 @test "alert tags: the manual carries the table, CLAUDE.md the Foreman push, the brief groups Pipeline by tag (#158)" {
   grep -qF 'every new alert line whose tag Slack carries' FOUNDRY.md
   grep -qF '| `foreman`, `orders`, `sync`, `update`, `rca`, `intake` | Slack at the next tick |' FOUNDRY.md
-  grep -qF '| `commit_runs`, `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `dtcc`, `memory` | the next brief |' FOUNDRY.md
+  grep -qF '| `commit_runs`, `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `dtcc`, `memory`, `extensions` | the next brief |' FOUNDRY.md
   grep -qF 'system/scripts/alert.py foreman "<one line>"' FOUNDRY.md
   grep -qF 'To tell the user something now, outside the brief: `system/scripts/alert.py foreman "<one line>"`.' CLAUDE.md
   grep -qF 'grouped by tag' .claude/commands/brief.md

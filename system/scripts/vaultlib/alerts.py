@@ -18,6 +18,7 @@ TAGS = {
     "telemetry": ("the telemetry fetch", "brief"),
     "dtcc": ("the DTCC watcher", "brief"),
     "memory": ("the memory hooks", "brief"),
+    "extensions": ("an extension that will not load, once a day", "brief"),
     "notify": ("the notifier itself", "never"),
 }
 LINE = re.compile(r"^- \d\d:\d\d:\d\d \[([a-z_]+)\] ")
