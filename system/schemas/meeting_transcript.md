@@ -11,4 +11,4 @@ fields:
   provenance: {kind: list, of: {kind: enum, values: [headless, interactive, session]}}
 ---
 # Meeting transcript
-The redacted transcript beside its meeting note, named `<meeting note>.transcript.md`: one `**Speaker:** text` turn per line under `### HH:MM:SS` headings. `complete: false` means the Doc's text ended before its end marker.
+The redacted transcript beside its meeting note, named `<meeting note>.transcript.md` (a later drop for a note with content gets its own free name, and `meeting` links the note it joins): one `**Speaker:** text` turn per line under `### HH:MM:SS` headings. `complete: false` means the Doc's text ended before its end marker.

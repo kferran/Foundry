@@ -7,6 +7,7 @@ WorkingDirectory={{VAULT_ROOT}}
 Environment="TZ={{TZ}}"
 Environment="PATH={{UNIT_PATH}}"
 Environment="CLAUDE_BIN={{CLAUDE_BIN}}"
-# The server listing and one search session with its kill margin (inbox triage spec §3.1).
-TimeoutStartSec=10min
+# Per source (mail, then chat when on), the server listing and one search session with its kill margins (inbox
+# triage spec §3.1; chat triage spec §3.2): two of them, about 12 minutes at worst.
+TimeoutStartSec=20min
 ExecStart="{{VAULT_ROOT}}/system/scripts/triage_fetch.sh"

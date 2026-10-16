@@ -1,20 +1,28 @@
-"""Inbox triage (inbox triage spec): the Gmail query, the check of a triage_fetch.sh session, and the write.
+"""Inbox triage (inbox triage spec; chat triage spec): the Gmail query and the Slack search input, the check of a
+triage_fetch.sh session, and the write.
 
-The session may call only the Gmail thread search. Each item's link, date and sender come from the search results,
-paired with the call by tool_use_id; from the model's reply only the thread id and three short texts are used, and a
-thread id the search never returned is dropped.
+A session may call only its source's search. Each item's link, date and sender come from the search results, paired
+with the call by tool_use_id; from the model's reply only the thread (or channel and ts) and three short texts are
+used, and one the search never returned is dropped. Each source keeps its own cursor in the ledger.
 """
 import json
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from . import frontmatter
 from . import nightshift_sched as ns
 from . import now as nowmod
+from .notify import prefix
 from .stream import blocks
 
 TOOL = "mcp__claude_ai_Gmail__search_threads"
+CHAT_TOOL = "slack_search_public_and_private"
+CHAT_MAX_PAGES = 5
+CHAT_FIELDS = {"channel": re.compile(r"^Channel: #(\S*) \(ID: ([CG][A-Z0-9]+)\)", re.M),
+               "sender": re.compile(r"^From: (.*?) \(ID: [A-Z0-9]+\)", re.M),
+               "ts": re.compile(r"^Message_ts: (\d+\.\d+)", re.M),
+               "link": re.compile(r"^Permalink: \[[^\]]*\]\((https://[^)\s]+)\)", re.M)}
 EXCLUDE = "-category:promotions -category:social -category:forums -from:me"
 MAX_PAGES = 3
 OVERLAP_SECONDS = 300
@@ -81,17 +89,43 @@ def watch_senders(vault) -> list:
     return senders
 
 
+def cursor(vault, now_epoch: int, today: str, source: str) -> int:
+    """The source's last successful tick (with an overlap), or two hours back on its first run. A record without a
+    source is mail."""
+    ticks = [r.get("epoch") for r in records(vault, today) if r.get("kind") == "tick"
+             and isinstance(r.get("epoch"), int) and r.get("source", "mail") == source]
+    return max(ticks) - OVERLAP_SECONDS if ticks else now_epoch - FIRST_LOOKBACK_SECONDS
+
+
 def query(vault, now_epoch: int, today: str) -> str:
-    """Mail since the last successful tick (with an overlap), or the last two hours on the first run; with watched
-    senders, also their unread mail outside the inbox from the last two days (deduped by record())."""
+    """Mail since the last mail tick; with watched senders, also their unread mail outside the inbox from the last two
+    days (deduped by record())."""
     partition(vault)
     senders = watch_senders(vault)
-    ticks = [r.get("epoch") for r in records(vault, today) if r.get("kind") == "tick" and isinstance(r.get("epoch"), int)]
-    after = max(ticks) - OVERLAP_SECONDS if ticks else now_epoch - FIRST_LOOKBACK_SECONDS
+    after = cursor(vault, now_epoch, today, "mail")
     if not senders:
         return f"in:inbox after:{after} {EXCLUDE}"
     return (f"((in:inbox after:{after}) OR (is:unread -in:inbox from:({' OR '.join(senders)}) {WATCH_WINDOW})) "
             + EXCLUDE)
+
+
+def chat_enabled(vault) -> bool:
+    return str(config(vault).get("triage_chat_enabled", "false")).lower() == "true"
+
+
+def chat_tool(vault) -> str:
+    return prefix(str(config(vault).get("slack_connector") or "claude.ai Slack")) + "__" + CHAT_TOOL
+
+
+def chat_query(vault, now_epoch: int, today: str) -> dict:
+    """The Slack search input: every channel the owner is in since the last chat tick. The tool refuses a search with
+    no filter, and Slack reads a date filter in the owner's timezone, so it reaches two days back; `after` bounds it."""
+    partition(vault)
+    after = cursor(vault, now_epoch, today, "chat")
+    day = datetime.fromtimestamp(after, timezone.utc).date() - timedelta(days=2)
+    return {"filters": f"after:{day}", "only_my_channels": True, "channel_types": "public_channel,private_channel",
+            "content_types": "messages", "after": str(after), "sort": "timestamp", "limit": 20,
+            "include_bots": False, "include_context": False, "response_format": "detailed"}
 
 
 def hold(vault, now) -> str:
@@ -108,16 +142,34 @@ def hold(vault, now) -> str:
     return ns.five_hour_hold(health if isinstance(health, dict) else {}, now, ceiling)
 
 
-def pages(stream, q: str) -> tuple:
-    """(the structuredContent of each search result, the result message), after the tool-use and error checks."""
+def _structured(b, m) -> dict:
+    tur = m.get("tool_use_result")
+    sc = tur.get("structuredContent") if isinstance(tur, dict) else None
+    return sc if isinstance(sc, dict) else {}
+
+
+def _text_json(b, m) -> dict:
+    """The Slack search answers in text only: one JSON object with the markdown results and the pagination line."""
+    content = b.get("content")
+    text = "".join(c.get("text", "") for c in content if isinstance(c, dict)) if isinstance(content, list) else str(content)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        data = None
+    return data if isinstance(data, dict) else {}
+
+
+def pages(stream, tool: str, same, take, max_pages: int, server: str) -> tuple:
+    """(each search result's payload from take(block, message), the result message), after the tool-use and error
+    checks: only ToolSearch and the search, each search input passing same(input)."""
     calls, out, errors, named = {}, [], [], False
     for m in stream:
         if m.get("type") == "assistant":
             for b in blocks(m, "tool_use"):
-                if b.get("name") not in ("ToolSearch", TOOL):
+                if b.get("name") not in ("ToolSearch", tool):
                     raise Fail(7, f"the session used an unexpected tool: {b.get('name')}")
                 i = b.get("input") if isinstance(b.get("input"), dict) else {}
-                if b.get("name") == TOOL and i.get("query") != q:
+                if b.get("name") == tool and not same(i):
                     raise Fail(7, "the session searched with another query than the one built for this tick")
                 calls[b.get("id")] = b
         if m.get("type") == "user":
@@ -125,27 +177,25 @@ def pages(stream, q: str) -> tuple:
                 call = calls.get(b.get("tool_use_id")) or {}
                 content = b.get("content")
                 if call.get("name") == "ToolSearch" and isinstance(content, list) and any(
-                        isinstance(c, dict) and c.get("tool_name") == TOOL for c in content):
+                        isinstance(c, dict) and c.get("tool_name") == tool for c in content):
                     named = True
-                if call.get("name") != TOOL:
+                if call.get("name") != tool:
                     continue
                 if b.get("is_error"):
                     errors.append(json.dumps(content)[:200])
                     continue
-                tur = m.get("tool_use_result")
-                sc = tur.get("structuredContent") if isinstance(tur, dict) else None
-                out.append(sc if isinstance(sc, dict) else {})
+                out.append(take(b, m))
     result = next((m for m in reversed(stream) if m.get("type") == "result"), None)
     if result is None:
         raise Fail(1, "claude produced no result")
     if errors:
         raise Fail(6, f"the connector returned an error: {errors[0]}")
-    if not any(c.get("name") == TOOL for c in calls.values()):
-        raise Fail(1 if named else 3, f"the session never called {TOOL}" if named else "no Gmail connector reachable")
+    if not any(c.get("name") == tool for c in calls.values()):
+        raise Fail(1 if named else 3, f"the session never called {tool}" if named else f"no {server} connector reachable")
     if result.get("is_error") or result.get("subtype") != "success":
         raise Fail(1, f"claude returned an error result ({result.get('subtype')})")
-    if len(out) > MAX_PAGES:
-        raise Fail(7, f"the session searched {len(out)} pages; the limit is {MAX_PAGES}")
+    if len(out) > max_pages:
+        raise Fail(7, f"the session searched {len(out)} pages; the limit is {max_pages}")
     return out, result
 
 
@@ -197,7 +247,7 @@ def reply(result: dict) -> list:
 
 def extract(stream, q: str) -> dict:
     """{"items": [...], "full": bool}: the threads the session marked, joined to the search results."""
-    got, result = pages(stream, q)
+    got, result = pages(stream, TOOL, lambda i: i.get("query") == q, _structured, MAX_PAGES, "Gmail")
     known = threads(got)
     items, seen = [], set()
     for r in reply(result):
@@ -216,10 +266,62 @@ def extract(stream, q: str) -> dict:
     return {"items": items, "full": full}
 
 
-def record(vault, partition: str, found: dict, today: str, now_iso: str, now_epoch: int) -> list:
-    """Add a Now line for each item whose (thread, latest message) is new, then record the tick. The caller holds
-    run.lock. Returns the lines added."""
-    known = {(r.get("thread_id"), r.get("date")) for r in records(vault, today) if r.get("kind") == "item"}
+def chat_messages(got: list, notify_channel: str) -> dict:
+    """"<channel id>/<ts>" -> {link, date, sender, channel}, from the search results' markdown only. Message text sits
+    inside that markdown, so a piece is a result only when its link is that message's own Slack permalink, and the
+    first piece for a message wins (its real header comes before its text). A piece without the fields is body text,
+    skipped. A result in the notify channel is skipped: notices post as the owner, and triage must not read its own
+    back."""
+    out = {}
+    for page in got:
+        results = page.get("results")
+        if not isinstance(results, str):
+            raise Fail(1, "a chat search result is not in the shape asked for")
+        parsed = 0
+        for part in results.split("### Result ")[1:]:
+            f = {k: rx.search(part) for k, rx in CHAT_FIELDS.items()}
+            if not (f["channel"] and f["ts"] and f["link"]):
+                continue
+            cid, ts, link = f["channel"].group(2), f["ts"].group(1), f["link"].group(1)
+            if not re.match(rf"https://(?:[a-z0-9-]+\.)+slack\.com/archives/{cid}/p{ts.replace('.', '')}(?:\?|$)", link):
+                continue
+            parsed += 1
+            if cid == notify_channel or f"{cid}/{ts}" in out:
+                continue
+            out[f"{cid}/{ts}"] = {"link": link, "date": ts, "channel": f["channel"].group(1),
+                                  "sender": f["sender"].group(1) if f["sender"] else ""}
+        listed = re.search(r"^## Messages \((\d+) results?\)", results, re.M)
+        if listed and int(listed.group(1)) > 0 and parsed == 0:
+            raise Fail(1, "a chat search result is not in the shape asked for")
+    return out
+
+
+def chat_extract(stream, q: dict, tool: str, notify_channel: str) -> dict:
+    """extract() for the Slack search: each search input is q, with only a cursor added on later pages. Items take
+    the mail item's shape (thread_id "<channel id>/<ts>"), so record() writes both."""
+    got, result = pages(stream, tool, lambda i: {k: v for k, v in i.items() if k != "cursor"} == q, _text_json,
+                        CHAT_MAX_PAGES, "Slack")
+    known = chat_messages(got, notify_channel)
+    items = []
+    for r in reply(result):
+        key = f"{r.get('channel_id')}/{r.get('ts')}"
+        ask = one_line(r.get("ask"))
+        if key not in known or ask == "" or key in {i["thread_id"] for i in items}:
+            continue  # a message the search never returned is dropped
+        m = known[key]
+        items.append({"thread_id": key, "date": m["date"], "link": m["link"], "sender": address(m["sender"]),
+                      "who": f"{one_line(r.get('who')) or address(m['sender'])} in #{one_line(m['channel'])}",
+                      "ask": ask, "next_step": one_line(r.get("next_step"))})
+    # A last page that still offers a cursor left messages unread, whether the session read 5 pages or stopped early.
+    full = "use cursor `" in str(got[-1].get("pagination_info") or "") if got else False
+    return {"items": items, "full": full}
+
+
+def record(vault, partition: str, found: dict, today: str, now_iso: str, now_epoch: int, source: str = "mail") -> list:
+    """Add a Now line for each item whose (thread, latest message) is new to its source, then record the tick. The
+    caller holds run.lock. Returns the lines added."""
+    known = {(r.get("thread_id"), r.get("date")) for r in records(vault, today)
+             if r.get("kind") == "item" and r.get("source", "mail") == source}
     added = []
     for i in found.get("items") or []:
         if (i["thread_id"], i["date"]) in known:
@@ -230,10 +332,10 @@ def record(vault, partition: str, found: dict, today: str, now_iso: str, now_epo
         except ValueError:  # a link or sender the Now line cannot hold: keep the item, drop the metadata
             status, line = nowmod.add(vault, partition, "owed", f"{statement} ({i['link']})", today)
         _append(vault, today, {"kind": "item", "thread_id": i["thread_id"], "date": i["date"], "line": line,
-                               "time": now_iso})
+                               "time": now_iso, "source": source})
         known.add((i["thread_id"], i["date"]))
         if status == "added":
             added.append(f"{i['who']}: {i['ask']}")
     _append(vault, today, {"kind": "tick", "epoch": now_epoch, "time": now_iso, "items": len(added),
-                           "full": bool(found.get("full"))})
+                           "full": bool(found.get("full")), "source": source})
     return added

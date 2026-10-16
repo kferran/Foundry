@@ -15,7 +15,9 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## 2026-10-16
 - Dropping an RCA draft's Now line after its Jira ticket was already created now records that ticket on the note instead of marking the draft rejected. (#245)
+- Inbox triage can also watch the Slack channels you are in: with `triage_chat_enabled: true`, messages that ask you something or report a production problem become `owed` Now lines with their Slack link. (#244)
 - Up to three Work Orders run at the same time: a long research order no longer holds up the next one, and two plans on the same codebase and branch still take turns. (#241)
+- A Work Order whose start was cut short by a restart or shutdown runs on the next tick instead of waiting forever. (#248)
 - Extensions: optional features live in `extensions/<name>/` folders that ship with the template, and one `extensions:` list in `system/config.md` turns them on. (#226, #231)
   - Action: on a second (client) machine, add the extensions the update turned on to that machine's `extensions:` list (or re-run `/setup`), then run `system/scripts/extensions.py link`.
 - Jira handoffs move to the `handoffs` extension. The update turns it on once for vaults that use handoffs. (#232)
@@ -25,6 +27,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 - The debrief drops the Agent Health section, which nothing ever filled. (#230)
 - A new production error posts an `[incident]` line to Slack. (#223)
 - A notes Doc that arrives after a dropped transcript fills the meeting note's empty sections. (#224)
+- A transcript dropped for a meeting whose note already has content is kept and linked from that note, and the drop is archived. (#246)
 - A failed Work Order found during cleanup is announced, and GitHub remotes written as `ssh://` get links in notices. (#220)
 - Session recall ranks and caps Now lines and keeps room for digests. `now.py set` rewrites a Now line in place. (#214)
 - A changelog page and a What changed section in the morning brief, showing what each update brought. (#239)

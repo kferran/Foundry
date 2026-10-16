@@ -1,6 +1,7 @@
 """Parallel Work Orders (#229, parallel orders spec §3): one tick runs up to MAX_PARALLEL items at once, refills a slot
 when one finishes, never runs two plans on one repo and base together, and checks the 5-hour ceiling before each start.
-run_item is replaced by a fake that records when each item starts and ends."""
+run_item is replaced by a fake that records when each item starts and ends. Overlap is proved by handshakes, never by
+sleeps: the first `meet` orders wait at a barrier that opens only once all of them are running at the same time."""
 import json
 import threading
 import time
@@ -11,11 +12,14 @@ from test_nightshift_run import NOW, add, env, git, health_at  # noqa: F401  (en
 from vaultlib import nightshift_item as ni
 from vaultlib import nightshift_run as nr
 
+WAIT = 30   # seconds a handshake waits before the test fails; a passing run never waits this long
+
 
 class Fake:
-    def __init__(self, delay=0.3, fail=()):
-        self.delay, self.fail, self.lock, self.active = delay, set(fail), threading.Lock(), 0
+    def __init__(self, fail=(), meet=0, hold=None):
+        self.fail, self.lock, self.active = set(fail), threading.Lock(), 0
         self.peak, self.starts, self.ends, self.started = 0, {}, {}, []
+        self.meet, self.barrier, self.hold = meet, threading.Barrier(meet) if meet else None, hold
 
     def __call__(self, ctx, path, fm, body):
         with self.lock:
@@ -23,10 +27,14 @@ class Fake:
             self.peak = max(self.peak, self.active)
             self.starts[fm["id"]] = time.monotonic()
             self.started.append(fm["id"])
+            meets = len(self.started) <= self.meet
         try:
             if slug(fm) in self.fail:
                 raise RuntimeError("boom")
-            time.sleep(self.delay)
+            if meets:   # breaks (and the order fails) unless all `meet` orders are running at once
+                self.barrier.wait(timeout=WAIT)
+            if self.hold:
+                assert self.hold.wait(timeout=WAIT)
             ni.update(path, state="done")
             return 0
         finally:
@@ -60,7 +68,7 @@ def overlap(fake, a, b):
 
 def test_four_research_orders_run_three_at_a_time_and_all_finish_in_one_tick(env, monkeypatch):
     vault, tmp = env
-    fake = Fake()
+    fake = Fake(meet=3)
     monkeypatch.setattr(nr, "run_item", fake)
     for t in ("ra", "rb", "rc", "rd"):
         research(vault, tmp, t)
@@ -71,7 +79,7 @@ def test_four_research_orders_run_three_at_a_time_and_all_finish_in_one_tick(env
 
 def test_two_plans_on_one_repo_and_base_take_turns_while_research_runs_beside_them(env, monkeypatch):
     vault, tmp = env
-    fake = Fake()
+    fake = Fake(meet=2)   # the first plan and the research order meet; the second plan waits its turn
     monkeypatch.setattr(nr, "run_item", fake)
     assert add(vault, "--now", "--title", "plan one") == 0
     assert add(vault, "--now", "--title", "plan two") == 0
@@ -87,7 +95,7 @@ def test_plans_on_different_bases_run_together(env, monkeypatch):
     vault, tmp = env
     git(vault, "branch", "feat/y")
     git(vault, "push", "-q", str(tmp / "remote.git"), "feat/y")
-    fake = Fake()
+    fake = Fake(meet=2)
     monkeypatch.setattr(nr, "run_item", fake)
     assert add(vault, "--now", "--title", "on x") == 0
     assert add(vault, "--now", "--title", "on y", "--base", "feat/y") == 0
@@ -98,7 +106,7 @@ def test_plans_on_different_bases_run_together(env, monkeypatch):
 
 def test_the_ceiling_holds_new_starts_and_lets_a_running_item_resume(env, monkeypatch):
     vault, tmp = env
-    fake = Fake(delay=0.05)
+    fake = Fake()
     monkeypatch.setattr(nr, "run_item", fake)
     research(vault, tmp, "started")
     research(vault, tmp, "queued")
@@ -126,7 +134,7 @@ def test_a_worker_that_raises_leaves_the_others_running_and_is_alerted(env, monk
 
 def test_max_parallel_one_runs_one_at_a_time(env, monkeypatch):
     vault, tmp = env
-    fake = Fake(delay=0.05)
+    fake = Fake()
     monkeypatch.setattr(nr, "run_item", fake)
     monkeypatch.setattr(nr, "MAX_PARALLEL", 1)
     for t in ("ra", "rb"):
@@ -167,7 +175,7 @@ class Timed(Fake):
     """The fake, plus: move the clock forward and record a usage reading as an order finishes."""
 
     def __init__(self, clock=None, advance=0, usage=None, **kw):
-        super().__init__(delay=0.05, **kw)
+        super().__init__(**kw)
         self.clock, self.advance, self.usage = clock, advance, usage
 
     def __call__(self, ctx, path, fm, body):
@@ -241,23 +249,31 @@ def test_a_hold_lifts_within_the_tick_when_a_lower_reading_arrives(env, monkeypa
     assert states(vault) == {"started": "done", "queued": "done"}
 
 
-def test_a_claim_left_by_a_crashed_tick_keeps_that_attempt_from_starting_again(env, monkeypatch):
-    # Review Focus 3: claim-<attempt> is the per-item guard against a double start.
+def test_a_claim_left_by_a_stopped_tick_is_cleared_and_the_attempt_runs(env, monkeypatch):
+    # #229 minor: a SIGTERM between _claim and run_item's attempts update leaves claim-1 while the note still reads
+    # attempts 0. The tick holds the global lock, so that claim's owner is dead and attempt 1 never began: it runs.
     vault, tmp = env
-    fake = Fake(delay=0.05)
+    fake = Fake()
     monkeypatch.setattr(nr, "run_item", fake)
     research(vault, tmp, "claimed")
     research(vault, tmp, "free")
     (nr.rep.item_dir(vault, ids(vault)["claimed"]) / "claim-1").mkdir(parents=True)
     assert nr.main(["tick"], vault, NOW) == 0
-    assert states(vault) == {"claimed": "queued", "free": "done"}
+    assert states(vault) == {"claimed": "done", "free": "done"}
 
 
 def test_an_error_on_the_tick_waits_for_its_workers_before_the_lock_goes(env, monkeypatch):
     # Review: an exception on the main thread released the global lock while workers still ran their sessions.
     vault, tmp = env
-    fake = Fake(delay=0.3)
+    release = threading.Event()   # the worker runs until the tick starts joining: a tick that skips the join leaves it running
+    fake = Fake(hold=release)
     monkeypatch.setattr(nr, "run_item", fake)
+    join = nr._Pool.join_all
+
+    def join_all(self):
+        release.set()
+        join(self)
+    monkeypatch.setattr(nr._Pool, "join_all", join_all)
     research(vault, tmp, "running")
     research(vault, tmp, "next")
     real, calls = nr.ns.pick, []

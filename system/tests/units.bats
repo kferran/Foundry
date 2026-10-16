@@ -353,6 +353,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qx 'Persistent=false' "$UD/foundry-triage.timer"
   grep -qxF "ExecStart=\"$VP/system/scripts/triage_fetch.sh\"" "$UD/foundry-triage.service"
   grep -qxF "Environment=\"CLAUDE_BIN=$STUBS/claude\"" "$UD/foundry-triage.service"
+  grep -qx 'TimeoutStartSec=20min' "$UD/foundry-triage.service"   # mail and chat sessions (chat triage spec §3.2)
   grep -q -- 'foundry-triage.timer' "$STUB_SYSTEMCTL_LOG"
   set_role server
   run "$IU"

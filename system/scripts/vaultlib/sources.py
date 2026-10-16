@@ -17,6 +17,7 @@ CREDENTIALS = {
     "calendar": ("Google connector", CONNECT),
     "meetings": ("Google connector", CONNECT),
     "triage": ("Google connector", CONNECT),
+    "triage_chat": ("Slack connector", CONNECT),
     "notify": ("Slack connector", CONNECT),
 }
 CLAUDE = ("claude login", "claude, then /login, on the server")
@@ -131,7 +132,7 @@ def report(vault: Path, day: str, given: dict) -> list:
     `given` holds what the brief read itself (source -> (state, reason)); the rest come from that morning's smoke
     check, and notify from its own log."""
     vault, config = Path(vault), _config(Path(vault))
-    order = ["calendar", "meetings", "triage"]
+    order = ["calendar", "meetings", "triage", "triage_chat"]
     ext = list(_extension_sources(vault))
     # A per-item source lists its items; with none it reads off, and a list that did not run is one line read from
     # the smoke check.
@@ -147,6 +148,7 @@ def report(vault: Path, day: str, given: dict) -> list:
     off = {
         "meetings": str(config.get("meetings_enabled", "false")).lower() != "true",
         "triage": str(config.get("triage_enabled", "false")).lower() != "true",
+        "triage_chat": {str(config.get(k, "false")).lower() for k in ("triage_enabled", "triage_chat_enabled")} != {"true"},
         **{source: True for source, rows in each.items() if rows == []},
         "notify": not config.get("slack_notify_channel"),
     }
