@@ -310,9 +310,31 @@ def _q(value: str) -> str:
     return json.dumps(_one_line(value), ensure_ascii=False)
 
 
-def render_meeting(m: Meeting, name: str, partition: str) -> str:
+def _action_lines(m: Meeting) -> str:
     owners = lambda os: f"[{', '.join(_one_line(o) for o in os)}] " if os else ""  # noqa: E731
-    actions = "\n".join(f"- [ ] {owners(os)}{_one_line(said)}" for os, said in m.actions)
+    return "\n".join(f"- [ ] {owners(os)}{_one_line(said)}" for os, said in m.actions)
+
+
+def fill_sections(note_text: str, m: Meeting):
+    """The note with each empty section filled from m, or None when its Summary, Decisions or Action items hold
+    text or m has nothing for an empty section (#215: a later Gemini Doc fills a drop's note). Text-level, so the
+    frontmatter and every section that holds text stay as they are."""
+    parts = re.split(r"^## (.*)\n", note_text, flags=re.M)  # [head, heading, body, heading, body, …]
+    bodies = dict(zip(parts[1::2], parts[2::2]))
+    if not all(EMPTY_SECTION.fullmatch(bodies.get(h, "").strip()) for h in ("Summary", "Decisions", "Action items")):
+        return None
+    new = {"Summary": m.summary, "Decisions": m.decisions, "Action items": _action_lines(m), "Details": m.details}
+    changed = False
+    for i in range(1, len(parts), 2):
+        body = parts[i + 1]
+        if new.get(parts[i]) and EMPTY_SECTION.fullmatch(body.strip()):
+            parts[i + 1] = new[parts[i]] + body[len(body.rstrip()):]
+            changed = True
+    return parts[0] + "".join(f"## {h}\n{b}" for h, b in zip(parts[1::2], parts[2::2])) if changed else None
+
+
+def render_meeting(m: Meeting, name: str, partition: str) -> str:
+    actions = _action_lines(m)
     return (f"---\ntype: meeting\ntitle: {_q(m.title)}\ndate: \"{m.start:%Y-%m-%d}\"\n"
             f"start: \"{m.start.isoformat()}\"\npartition: {partition}\n"
             f"attendees: [{', '.join(_q(a) for a in m.attendees)}]\nsource: {_q(m.source)}\n"

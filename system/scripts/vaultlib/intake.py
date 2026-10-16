@@ -601,10 +601,18 @@ class Intake:
             name = self._free_name(meetings.note_name(m))
             retire = None
             if twin is not None:  # first source wins, unless it is empty and this one is not (#142)
-                if not (twin.parent.parent.name == partition and self._empty_note(twin)
+                local = twin.parent.parent.name == partition
+                if not (local and self._empty_note(twin)
                         and not self._empty(meetings.render_meeting(m, name, partition),
                                             meetings.render_transcript(m, name, partition))):
-                    self._archive_duplicate(path, rel, m, twin)
+                    # a first note with empty sections takes this source's notes (#215: a drop, then its Doc)
+                    filled = meetings.fill_sections(twin.read_text(encoding="utf-8"), m) if local else None
+                    if filled is None:
+                        self._archive_duplicate(path, rel, m, twin)
+                    elif time.time() - twin.stat().st_mtime >= publish.RECENT_SECONDS:  # else the next tick
+                        target = twin.relative_to(self.vault).as_posix()
+                        if self._published(self._publish_run(rel, partition, [target], [filled], [target]), path, rel):
+                            self._archive_duplicate(path, rel, m, twin, filled=True)
                     return
                 if time.time() - twin.stat().st_mtime < publish.RECENT_SECONDS:
                     return  # the gate refuses a target modified in the last 60 s: the next tick retires it
@@ -612,16 +620,7 @@ class Intake:
                 listed = dict(known)[twin].get("attendees")
                 if not m.attendees and isinstance(listed, list):  # a recorder's cues name no speakers (#188)
                     m.attendees = [str(a) for a in listed]
-            report =self._publish_meeting(m, name, partition, rel, retire)
-            if report["status"] == "conflict":  # held back at apply time (#37): the next tick finishes or retries
-                self.alert(f"meeting import of {rel} held back {', '.join(report['conflicts'])} "
-                           "(changed during the publish); will retry")
-                return
-            if report["status"] != "published":
-                problems = [p["reason"] for p in report.get("problems") or []]
-                if problems and all(r.startswith("conflict:") for r in problems):
-                    return  # a target appeared meanwhile: the next tick's duplicate check finds it
-                self._quarantine_meeting(path, rel, "the publish gate rejected it: " + "; ".join(problems))
+            if not self._published(self._publish_meeting(m, name, partition, rel, retire), path, rel):
                 return
             note = f"wiki/{partition}/meetings/{name}.md"
             record = {"kind": "imported", "source": rel, "note": note, "complete": m.complete}
@@ -633,6 +632,20 @@ class Intake:
             self._meeting_log(record)
         self._hand_to_compile(m, name, partition)
         path.unlink()
+
+    def _published(self, report: dict, path: Path, rel: str) -> bool:
+        """True for a published run; a held-back or conflicting run waits for the next tick, any other is quarantined."""
+        if report["status"] == "conflict":  # held back at apply time (#37): the next tick finishes or retries
+            self.alert(f"meeting import of {rel} held back {', '.join(report['conflicts'])} "
+                       "(changed during the publish); will retry")
+            return False
+        if report["status"] != "published":
+            problems = [p["reason"] for p in report.get("problems") or []]
+            if problems and all(r.startswith("conflict:") for r in problems):
+                return False  # a target appeared meanwhile: the next tick's duplicate check finds it
+            self._quarantine_meeting(path, rel, "the publish gate rejected it: " + "; ".join(problems))
+            return False
+        return True
 
     def _empty(self, note_text: str, transcript_text: str) -> bool:
         """Every section reads only "None.", "No summary from the source.", a horizontal rule or nothing, and the
@@ -664,13 +677,16 @@ class Intake:
         return (meetings.slug(str(data.get("title", ""))) == meetings.slug(m.title)
                 and abs((start - m.start).total_seconds()) <= DUPLICATE_SECONDS)
 
-    def _archive_duplicate(self, path: Path, rel: str, m, twin: Path) -> None:
+    def _archive_duplicate(self, path: Path, rel: str, m, twin: Path, filled=False) -> None:
         archive = self.vault / "raw" / "archive"
         archive.mkdir(parents=True, exist_ok=True)
         path.rename(unique(archive / path.name))
         note = twin.relative_to(self.vault).as_posix()
-        self.alert(f"meeting source {rel} archived: the same meeting is already {note} (first source wins)")
-        self._meeting_log({"kind": "duplicate", "source": rel, "note": note})
+        if filled:
+            self.alert(f"meeting source {rel} filled the empty sections of {note} and was archived")
+        else:
+            self.alert(f"meeting source {rel} archived: the same meeting is already {note} (first source wins)")
+        self._meeting_log({"kind": "filled" if filled else "duplicate", "source": rel, "note": note})
         if m.source.startswith("gdoc:"):
             _append_jsonl(self.logs / f"meetings_fetch-{self.dt():%Y-%m}.jsonl",
                           {"time": self.dt().isoformat(timespec="seconds"), "step": "import",
@@ -686,18 +702,23 @@ class Intake:
 
     def _publish_meeting(self, m, name: str, partition: str, rel: str, retire=None) -> dict:
         """Publish the note and transcript as one run; with retire, that empty twin note is deprecated in the same run."""
-        run_id = f"{self.dt():%Y%m%dT%H%M%S}-meeting-{os.urandom(2).hex()}"
         base = f"wiki/{partition}/meetings/{name}"
         targets = [f"{base}.md", f"{base}.transcript.md"]
         texts = [meetings.render_meeting(m, name, partition), meetings.render_transcript(m, name, partition)]
         if retire is not None:
             targets.append(retire.relative_to(self.vault).as_posix())
             texts.append(cli.set_scalar_text(retire.read_text(encoding="utf-8"), "status", "deprecated"))
+        return self._publish_run(rel, partition, targets, texts, targets[2:])
+
+    def _publish_run(self, rel: str, partition: str, targets: list, texts: list, existing: list) -> dict:
+        """One meeting run: the texts staged at targets (existing: notes on disk it rewrites), published, and its
+        ledger line written."""
+        run_id = f"{self.dt():%Y%m%dT%H%M%S}-meeting-{os.urandom(2).hex()}"
         started = self.dt().isoformat(timespec="seconds")
         publish.snapshot(self.vault, run_id, targets)
         staging = publish.staging_dir(self.vault, run_id)
-        if retire is not None:
-            publish.record_stage(self.vault, run_id, targets[-1])
+        for target in existing:
+            publish.record_stage(self.vault, run_id, target)
         for target, text in zip(targets, texts):
             (staging / target).parent.mkdir(parents=True, exist_ok=True)
             (staging / target).write_text(text, encoding="utf-8")
