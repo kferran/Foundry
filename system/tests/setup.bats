@@ -23,7 +23,7 @@ setup() {
 @test "check_deps: every item present reports ok and --strict passes" {
   run env PATH="$BIN" "$CD" --strict
   [ "$status" -eq 0 ]
-  for item in claude git jq bats systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze bwrap az; do
+  for item in claude git jq bats systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze bwrap; do
     grep -qx "ok $item" <<< "$output"
   done
 }
@@ -65,11 +65,21 @@ setup() {
   grep -q '^optional herdr ' <<< "$output"
 }
 
-@test "check_deps: az is optional and never fails --strict" {
+@test "check_deps: an enabled extension's deps are optional, named with the extension, and never fail --strict" {
   rm "$BIN/az"
   run env PATH="$BIN" "$CD" --strict --role standalone
   [ "$status" -eq 0 ]
-  grep -q '^optional az ' <<< "$output"
+  run grep -c 'az' <<< "$output"   # core names no az of its own
+  [ "$output" = 0 ]
+  v="$BATS_TEST_TMPDIR/v"
+  cp -r "$REPO/system/scripts/extensions.py" "$REPO/system/scripts/vaultlib" "$v/system/scripts/"
+  mkdir -p "$v/extensions"
+  cp -r "$REPO/system/tests/fixtures/extensions/demo" "$v/extensions/"
+  sed -i 's/^deps: \[\]$/deps: [az]/' "$v/extensions/demo/extension.md"
+  printf -- '---\ntype: config\nextensions: ["demo"]\n---\n' > "$v/system/config.md"
+  run env PATH="$BIN" "$CD" --strict --role standalone
+  [ "$status" -eq 0 ]
+  grep -qx 'optional az (extension demo)' <<< "$output"
 }
 
 @test "check_deps: python module checks run against the python3 on PATH" {

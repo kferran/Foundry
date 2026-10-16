@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 
 from helpers import write
-from vaultlib import telemetry as t
+from telemetrylib import telemetry as t
 
 NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 

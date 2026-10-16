@@ -2,11 +2,12 @@
 write-back. The arguments come from the settings and the note's Ticket draft only; the key comes from the tool result."""
 import json
 import re
+import subprocess
 from pathlib import Path
 
-from . import cli, frontmatter, now as nowmod
-from .cli import set_scalar
-from .stream import blocks
+from vaultlib import cli, frontmatter, now as nowmod
+from vaultlib.cli import set_scalar
+from vaultlib.stream import blocks
 
 TOOL = "mcp__claude_ai_Atlassian__createJiraIssue"
 PROJECT = re.compile(r"^[A-Z][A-Z0-9_]{0,30}$")
@@ -234,3 +235,34 @@ def filed(vault, partition: str, stem: str, key: str, today: str) -> None:
 
 def rejected(vault, partition: str, stem: str) -> None:
     set_scalar(note_path(vault, partition, stem), "status", "rejected")
+
+
+def tick(vault) -> None:
+    """The intake tick (extensions spec §3, `tick`): file the drafts you approved on the Now page, at most PER_TICK a
+    tick, and reject the dropped ones; off while rca_project is empty. A busy run.lock ends the tick: the next one
+    retries."""
+    from vaultlib.intake import Intake  # intake imports much of vaultlib; only the tick needs it
+
+    vault = Path(vault)
+    intake = Intake(vault)
+    if not intake.config("rca_project", ""):
+        return
+    filed = 0
+    for action, partition, stem in pending(vault):
+        try:
+            if action == "reject":
+                with intake.lock("run.lock", timeout=0):
+                    rejected(vault, partition, stem)
+                continue
+            if filed >= PER_TICK:
+                continue
+            filed += 1  # rca_file.sh logs and alerts its own failures; the next tick retries
+            with intake.lock("run.lock", timeout=0):
+                approve(vault, partition, stem)
+        except TimeoutError:
+            return
+        try:
+            subprocess.run([str(vault / "extensions" / "telemetry" / "scripts" / "rca_file.sh"), partition, stem],
+                           cwd=vault, capture_output=True, timeout=600)
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            intake.alert(f"RCA filing of {stem} did not finish ({exc.__class__.__name__}); will retry")

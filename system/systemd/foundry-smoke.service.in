@@ -8,7 +8,7 @@ Environment="TZ={{TZ}}"
 Environment="PATH={{UNIT_PATH}}"
 Environment="CLAUDE_BIN={{CLAUDE_BIN}}"
 # The checks run one after another under the script's own timeouts: 210 + 210 + 360 + 360 s for the connectors,
-# 30 for the version, 120 for the telemetry list and each source, 60 for the DTCC map (spec §3.1).
+# 30 for the version, each extension's smoke timeouts (120 per telemetry source), 60 for the DTCC map (spec §3.1).
 TimeoutStartSec=35min
 # A failed source is reported by its [smoke] alert, not as a failed unit.
 SuccessExitStatus=1

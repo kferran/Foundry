@@ -4,10 +4,15 @@ import json
 from helpers import write
 from vaultlib import sources
 
-CB = '---\ntype: codebase\nname: "shop"\npath: "~"\npartition: "work"\nsearch_globs: ["*"]\n---\n'
-ADX = ('---\ntype: telemetry_source\nname: "prod-adx"\ncodebase: "shop"\nenvironment: "prod"\nkind: "adx"\n'
-       'adx_cluster: "https://example.kusto.windows.net"\nadx_database: "prod"\nadx_signals: ["logs"]\n---\n')
-TRIAGE_ON = '---\ntype: config\ntriage_enabled: "true"\n---\n'
+TRIAGE_ON = '---\ntype: config\ntriage_enabled: "true"\nextensions: ["items"]\n---\n'
+
+
+def items(vault, *rows):
+    """The fixture extension checked per item, listed in config, with these "item<tab>credential<tab>renewal" rows."""
+    import shutil
+    from helpers import REPO
+    shutil.copytree(REPO / "system/tests/fixtures/extensions/items", vault / "extensions/items", dirs_exist_ok=True)
+    write(vault, "system/logs/items.list", "".join(f"{r}\n" for r in rows))
 
 
 def smoke(v, *rows):
@@ -41,23 +46,22 @@ def test_streak_of_a_class_stops_at_another_class(vault):
     assert sources.streak(vault, "telemetry/prod-adx")[:2] == (3, "2026-10-01")
 
 
-def test_credential_by_source_and_by_telemetry_kind(vault):
-    write(vault, "system/codebases/shop.md", CB)
-    write(vault, "system/telemetry/prod-adx.md", ADX)
+def test_credential_by_source_and_by_listed_item(vault):
+    write(vault, "system/config.md", TRIAGE_ON)
+    items(vault, "a\tItem token\twrite a new one", "b")
     assert sources.credential(vault, "calendar", "auth: no connector")[0] == "Google connector"
-    assert sources.credential(vault, "rca", "auth: HTTP 401")[0] == "Atlassian connector"
-    assert sources.credential(vault, "telemetry/prod-adx", "auth: run az login") == ("Azure CLI", "az login on the server")
+    assert sources.credential(vault, "items/a", "auth: HTTP 401") == ("Item token", "write a new one")
+    assert sources.credential(vault, "items/b", "auth: HTTP 401") is None   # its list names no login
     assert sources.credential(vault, "calendar", "claude: not logged in")[0] == "claude login"
     assert sources.credential(vault, "calendar", "claude: claude not found (claude)") is None
     assert sources.credential(vault, "calendar", "connector: HTTP 500") is None
 
 
 def test_report_lists_every_source_with_its_state_since_date_and_renewal(vault):
-    write(vault, "system/codebases/shop.md", CB)
-    write(vault, "system/telemetry/prod-adx.md", ADX)
     write(vault, "system/config.md", TRIAGE_ON)
-    smoke(vault, ("2026-10-12", "telemetry/prod-adx", 1, "network: example.kusto.windows.net (URLError)"),
-          ("2026-10-13", "telemetry/prod-adx", 1, "network: example.kusto.windows.net (URLError)"),
+    items(vault, "a\tItem token\twrite a new one")
+    smoke(vault, ("2026-10-12", "items/a", 1, "network: example.invalid (URLError)"),
+          ("2026-10-13", "items/a", 1, "network: example.invalid (URLError)"),
           ("2026-10-13", "calendar", 6, "auth: HTTP 401"), ("2026-10-13", "triage", 0, "1 threads"))
     lines = sources.report(vault, "2026-10-13", {"calendar": ("failed", "auth: HTTP 401")})
     assert lines == [
@@ -65,7 +69,7 @@ def test_report_lists_every_source_with_its_state_since_date_and_renewal(vault):
         "renew: reconnect it at claude.ai, Settings, Connectors",
         "- meetings: off",
         "- triage: ok",
-        "- telemetry/prod-adx: failed: network: example.kusto.windows.net (URLError) (since 2026-10-12)",
+        "- items/a: failed: network: example.invalid (URLError) (since 2026-10-12)",
         "- dtcc: off",
         "- notify: off",
     ]
@@ -73,9 +77,20 @@ def test_report_lists_every_source_with_its_state_since_date_and_renewal(vault):
 
 def test_report_without_a_smoke_reading_says_unknown(vault):
     write(vault, "system/config.md", TRIAGE_ON)
+    items(vault)
     lines = sources.report(vault, "2026-10-13", {"calendar": ("ok", "")})
     assert "- triage: unknown (no smoke check reading today)" in lines
-    assert "- telemetry: off" in lines
+    assert "- items: off" in lines   # a per-item source with nothing listed
+
+
+def test_a_per_item_list_that_does_not_run_is_one_line_read_from_the_smoke_check(vault):
+    write(vault, "system/config.md", TRIAGE_ON)
+    items(vault, "a")
+    write(vault, "system/logs/items.fail", "")
+    smoke(vault, ("2026-10-13", "items", 1, "items_list.sh failed (exit 1): other: the list broke"))
+    lines = sources.report(vault, "2026-10-13", {})
+    assert "- items: failed: other: items_list.sh failed (exit 1): other: the list broke (since 2026-10-13)" in lines
+    assert not [ln for ln in lines if ln.startswith("- items/")]
 
 
 def _demo(vault, listed=True):

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import cli, frontmatter, meetings, now as nowmod, publish, rca as rcamod, redact as redactmod, schema as schemamod
+from . import cli, extensions as extmod, frontmatter, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
 from . import triage
 
 FRESH_SECONDS = 60
@@ -298,32 +298,25 @@ class Intake:
         except TimeoutError:
             pass
 
-    # -- RCA drafts (RCA spec §3.3) ---------------------------------------
-    def file_rcas(self) -> None:
-        """File the RCA drafts you approved on the Now page, at most PER_TICK a tick; a dropped line rejects its draft.
-        Off while rca_project is empty."""
-        if not self.config("rca_project", ""):
-            return
-        filed = 0
-        for action, partition, stem in rcamod.pending(self.vault):
-            if action == "reject":
-                try:
-                    with self.lock("run.lock", timeout=0):
-                        rcamod.rejected(self.vault, partition, stem)
-                except TimeoutError:
-                    return
-            elif filed < rcamod.PER_TICK:
-                filed += 1  # rca_file.sh logs and alerts its own failures; the next tick retries
-                try:
-                    with self.lock("run.lock", timeout=0):
-                        rcamod.approve(self.vault, partition, stem)
-                except TimeoutError:
-                    return
-                try:
-                    subprocess.run([str(self.vault / "system" / "scripts" / "rca_file.sh"), partition, stem],
-                                   cwd=self.vault, capture_output=True, timeout=600)
-                except (subprocess.TimeoutExpired, OSError) as exc:
-                    self.alert(f"RCA filing of {stem} did not finish ({exc.__class__.__name__}); will retry")
+    # -- extension ticks (extensions spec §3) -----------------------------
+    def extension_ticks(self) -> None:
+        """Run each enabled extension's `tick` command once, under intake.lock, in dependency order. A tick that fails
+        or runs past its timeout is one alert; the next tick runs it again."""
+        for name, data in extmod.enabled(self.vault):
+            tick = data.get("tick")
+            if not isinstance(tick, dict) or not tick.get("run"):
+                continue
+            words = str(tick["run"]).split()
+            cmd = [str(self.vault / "extensions" / name / words[0]), *words[1:]]
+            try:
+                out = subprocess.run(cmd, cwd=self.vault, capture_output=True, text=True,
+                                     timeout=int(tick.get("timeout", 600)))
+            except (subprocess.TimeoutExpired, OSError) as exc:
+                self.alert(f"{name} tick did not finish ({exc.__class__.__name__}); will retry")
+                continue
+            if out.returncode != 0:
+                last = (out.stderr.strip().splitlines() or ["no output"])[-1]
+                self.alert(f"{name} tick failed (exit {out.returncode}: {last}); will retry")
 
     # -- inbox -----------------------------------------------------------
     def process_inbox(self) -> bool:
@@ -820,9 +813,9 @@ class Intake:
                 except Exception as exc:  # noqa: BLE001 - meetings, inbox and digests still run
                     self.alert(f"Now check failed ({exc.__class__.__name__}: {exc}); will retry")
                 try:
-                    self.file_rcas()
+                    self.extension_ticks()
                 except Exception as exc:  # noqa: BLE001 - meetings, inbox and digests still run
-                    self.alert(f"RCA filing failed ({exc.__class__.__name__}: {exc}); will retry")
+                    self.alert(f"extension ticks failed ({exc.__class__.__name__}: {exc}); will retry")
                 try:
                     self.import_meetings()
                 except Exception as exc:  # noqa: BLE001 - inbox and digests still run

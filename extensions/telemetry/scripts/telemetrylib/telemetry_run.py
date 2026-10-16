@@ -32,8 +32,17 @@ def _parser():
     g.add_argument("--source")
     g.add_argument("--check")
     g.add_argument("--list", action="store_true")
+    g.add_argument("--sources", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     return p
+
+
+# The login each kind of source needs, for the Sources line and the smoke check's expired lines (connector health
+# spec §2); --sources prints it beside each source's name.
+CREDENTIALS = {
+    "adx": ("Azure CLI", "az login on the server"),
+    "sentry": ("Sentry token", "write a new token to ~/.config/foundry/sentry.token (mode 0600)"),
+}
 
 
 def _alert(vault: Path, store: Store, now: datetime, key: str, msg: str, tag: str = "telemetry") -> None:
@@ -217,6 +226,10 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
     by_name = {s.name: s for s in sources if s.enabled}
     if args.list:
         print("\n".join(by_name))
+        return 0
+    if args.sources:
+        print("".join(f"{n}\t{CREDENTIALS.get(s.kind, ('', ''))[0]}\t{CREDENTIALS.get(s.kind, ('', ''))[1]}\n"
+                      for n, s in by_name.items()), end="")
         return 0
     wanted = args.source or args.check
     if wanted and wanted not in by_name:

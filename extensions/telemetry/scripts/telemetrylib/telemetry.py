@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import frontmatter
-from .redact import redact_credentials
+from vaultlib import frontmatter
+from vaultlib.redact import redact_credentials
 
 LAG = {"adx": timedelta(minutes=10), "sentry": timedelta(minutes=2)}
 FIRST = timedelta(hours=24)
