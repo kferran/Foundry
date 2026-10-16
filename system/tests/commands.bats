@@ -45,7 +45,6 @@ headless_contract() {
   [ "$(wc -l < "$f")" -le 120 ]   # CLAUDE.md prune spec §2: the next imported block has to displace something
 }
 
-
 @test "ingest: headless contract, allowlisted index calls, decisions file" {
   f=.claude/commands/ingest.md
   headless_contract "$f"
@@ -116,7 +115,7 @@ headless_contract() {
 }
 
 @test "nothing writes or reads agent metrics, and no plan_gate note type is left (extensions spec §2.7)" {
-  run grep -rliE 'agent health|agent metrics|completion metric|logs/metrics|compilation-metric|plan_gate|intent-shaper|intent proposal' \
+  run grep -rliE 'agent health|agent metrics|completion metric|logs/metrics|compilation-metric|plan_gate|intent-shaper|intent proposal|intent notes|test_suite_passed|verification_gates' \
     system/agents system/templates system/schemas .claude/commands FOUNDRY.md CLAUDE.md
   [ "$status" -eq 1 ]
 }
