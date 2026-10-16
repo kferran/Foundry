@@ -3,12 +3,14 @@
 
 Usage: rca.py pending                          print "<file|reject> <partition> <stem>" per approved or dropped draft
        rca.py args <partition> <stem>          print the createJiraIssue arguments as JSON
-       rca.py extract <partition> <stem>       check a filer session's stream on stdin; print the new issue key
+       rca.py extract <args file>              check a filer session's stream on stdin against the arguments sent (the
+                                               JSON in <args file>); print the new issue key
        rca.py called                           exit 0 when the stream on stdin called the create tool, 1 when not
        rca.py rejected                         print Jira's rejection and exit 0 when every create call in the stream on
                                                stdin was a client rejection (nothing created), 1 otherwise (#175)
        rca.py reopen <partition> <stem> <why>  return the note to draft and untick its Now line with the reason
-       rca.py filed <partition> <stem> <key>   write the key back to the note and its Now line, under run.lock
+       rca.py filed <partition> <stem> <key>   write the key back to the note and its Now line, under run.lock, and
+                                               clear the filer's .key and .attempt markers
 Exit: 0 ok, 1 claude error or no key, 2 usage or incomplete settings or draft, 3 no connector, 4 run.lock busy,
 6 connector error, 7 unexpected tool use or other arguments. A non-zero exit writes one reason line to stderr.
 """
@@ -36,8 +38,8 @@ def main(argv) -> int:
             print("".join(f"{a} {p} {s}\n" for a, p, s in rca.pending(VAULT)), end="")
         elif len(argv) == 4 and argv[1] == "args":
             print(json.dumps(rca.arguments(VAULT, *target(argv[2], argv[3]))))
-        elif len(argv) == 4 and argv[1] == "extract":
-            args = rca.arguments(VAULT, *target(argv[2], argv[3]))
+        elif len(argv) == 3 and argv[1] == "extract":
+            args = json.loads(Path(argv[2]).read_text(encoding="utf-8"))
             print(rca.extract(messages(sys.stdin.read()), args))
         elif argv[1:] == ["called"]:
             return 0 if rca.called(messages(sys.stdin.read())) else 1
@@ -54,8 +56,10 @@ def main(argv) -> int:
             intake = Intake(VAULT)
             with intake.lock("run.lock", timeout=120):
                 rca.filed(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
+            for marker in ("key", "attempt"):  # a key written back, by rca_file.sh or by hand, ends the filing
+                (VAULT / "system" / "logs" / "rca" / f"{argv[2]}-{argv[3]}.{marker}").unlink(missing_ok=True)
         else:
-            raise rca.Fail(2, "usage: rca.py pending | args <p> <stem> | extract <p> <stem> | called | rejected | "
+            raise rca.Fail(2, "usage: rca.py pending | args <p> <stem> | extract <args file> | called | rejected | "
                               "filed <p> <stem> <key> | reopen <p> <stem> <why>")
     except rca.Fail as f:
         print(f"rca: {f.reason}", file=sys.stderr)

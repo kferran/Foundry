@@ -788,6 +788,7 @@ self_edit_contract() {
 
 @test "CLAUDE.md and the settings let sessions record Now lines (Now page spec §3.2)" {
   grep -qF 'system/scripts/now.py add --partition <work|personal> --kind <owed|waiting|draft>' CLAUDE.md
+  grep -qF -- '--evidence <pull request URL, Work Order id, ticket key, rca:<note stem> or a telemetry note path>' CLAUDE.md   # #106
   grep -qF 'Before calling anything unsent or still waiting, check its evidence.' CLAUDE.md
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py add:*)")' .claude/settings.json >/dev/null
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py list:*)")' .claude/settings.json >/dev/null
@@ -1108,7 +1109,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF '.claude/skills/humanizer/SKILL.md' "$f"
   grep -qF 'Proposed code never carries a teammate'"'"'s initials marker' "$f"
   grep -qF 'marked "meaning unconfirmed". Never guess a meaning.' "$f"
-  grep -qF -- '--kind owed --statement "Review RCA draft: <title>" --evidence rca:<note stem>' "$f"
+  grep -qF -- '--kind owed --statement "Review RCA draft: <note stem>" --evidence rca:<note stem>' "$f"
   grep -qF 'Never queue it yourself.' "$f"
   grep -qF -- '- `/rca <raw/telemetry/note>`:' CLAUDE.md
   grep -qF '| `/rca <raw/telemetry/note.md>` |' FOUNDRY.md
@@ -1117,6 +1118,11 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   [[ "$sec" == *'approved `/rca` drafts should be filed to Jira'* ]]
   grep -qF 'rca_project: {kind: string}' system/schemas/config.md
   grep -qF 'rca_project: ""' system/config.example.md
+}
+
+@test "/rca: the hotfix alert line and the within-minutes approval text (#106)" {
+  grep -qF 'With `hotfix_candidate: true`, also run `system/scripts/alert.py rca "HOTFIX candidate: <title>"`.' .claude/commands/rca.md
+  grep -qF 'approves filing, and the intake tick files it within minutes.' .claude/commands/rca.md
 }
 
 @test "FOUNDRY.md defines the fix lane, its safety surfaces and the promotion rule (fast lane spec §2)" {

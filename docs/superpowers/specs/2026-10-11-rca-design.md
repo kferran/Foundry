@@ -22,7 +22,7 @@ Production errors reach the brief as error-group notes in `raw/telemetry/`. Root
   - **Root-cause confidence:** 5 = pinned to `file:line` with a repro and a clean trace; 4 = located with a clear trace, but the repro is partial or one inference is unconfirmed; 3 = a plausible leading candidate; 2 = symptom clear, cause not localized; 1 = cannot localize, or it needs a product decision.
   - **Fix confidence:** derived from root-cause confidence, fix scope and blast radius. 5 = a mechanical fix in 1–3 files with a repro; 3 = an open design call; 1 = a human decision.
 - **One note type, `rca`,** in `wiki/<partition>/rca/`, with a Ticket draft section. There is no separate draft type.
-- **Approval is a tick.** `/rca` adds an `owed` line, "Review RCA draft: <title>", with evidence `rca:<note stem>`. Ticking it approves filing; dropping it (`[-]`) rejects the draft.
+- **Approval is a tick.** `/rca` adds an `owed` line, "Review RCA draft: <note stem>", with evidence `rca:<note stem>`. Ticking it approves filing; dropping it (`[-]`) rejects the draft.
 - **The filer is the only Jira writer:** a confined connector session allowed only `createJiraIssue` (the `jira_fetch.sh` pattern, no API token). The intake tick starts it when an approved line's note has no ticket yet. It writes the new key back into the note.
 - **`/rca` sessions write nothing outward.** Jira create and edit, error-tracker updates, and mail and chat sends are denied.
 - **The draft carries a masked "Not verified" section** into Jira.
@@ -56,7 +56,7 @@ Body sections, in this order:
 
 `/rca <raw/telemetry/... .md>`, interactive only.
 - Runs the six steps against the error-group note and the codebase named in its `codebase` field (`system/codebases/<name>.md`, path read-only).
-- Writes `wiki/<partition>/rca/<date>-<slug>.md` from the template, runs the humanizer pass on the Ticket draft, then runs `now.py add --partition <p> --kind owed --statement "Review RCA draft: <title>" --evidence rca:<stem>`.
+- Writes `wiki/<partition>/rca/<date>-<slug>.md` from the template, runs the humanizer pass on the Ticket draft, then runs `now.py add --partition <p> --kind owed --statement "Review RCA draft: <stem>" --evidence rca:<stem>`.
 - With `hotfix_candidate: true`, it also appends one `[rca] HOTFIX candidate: <title>` alert line.
 - When fix confidence is 4–5, it ends by suggesting `/order` with a plan; it starts nothing itself.
 

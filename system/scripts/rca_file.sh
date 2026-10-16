@@ -65,7 +65,6 @@ writeback() {  # <key>
   local wrc=0
   system/scripts/rca.py filed "$partition" "$stem" "$1" 2> "$work/filed.err" || wrc=$?
   (( wrc == 0 )) || fail "$wrc" "filed $1, but the note was not updated: $(sed 's/^rca: //' "$work/filed.err" | head -n 1)"
-  rm -f -- "$created" "$attempt"
   logline 0 "" "$1"
   printf -- '- %s [rca] filed %s for %s\n' "$(date +%H:%M:%S)" "$1" "$stem" >> "system/logs/alerts_$(date +%F).md"
   echo "$1"
@@ -97,7 +96,8 @@ if (( rrc != 0 )); then
 fi
 # The tool-use check runs on every session, a timed-out one included: a ticket may exist even when claude failed.
 prc=0
-key="$(system/scripts/rca.py extract "$partition" "$stem" < "$work/out.jsonl" 2> "$work/check.err")" || prc=$?
+printf '%s' "$args" > "$work/args.json"  # the check compares against what was sent, not the note as it is now
+key="$(system/scripts/rca.py extract "$work/args.json" < "$work/out.jsonl" 2> "$work/check.err")" || prc=$?
 connector_outcome "$prc" "$work"
 if (( CONNECTOR_EXIT != 0 )); then
   reason="$CONNECTOR_REASON"

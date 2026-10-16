@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from . import frontmatter, now as nowmod
+from . import cli, frontmatter, now as nowmod
 from .cli import set_scalar
 from .stream import blocks
 
@@ -219,10 +219,11 @@ def reopen(vault, partition: str, stem: str, reason: str, today: str) -> None:
 
 
 def filed(vault, partition: str, stem: str, key: str, today: str) -> None:
-    """Under run.lock: the note records the ticket, and its Now line's stamp names it."""
+    """Under run.lock: the note records the ticket and its status in one write (#106), and its Now line's stamp
+    names it."""
     path = note_path(vault, partition, stem)
-    set_scalar(path, "ticket", key)
-    set_scalar(path, "status", "filed")
+    text = cli.set_scalar_text(path.read_text(encoding="utf-8"), "ticket", key)
+    cli.write_atomic(path, cli.set_scalar_text(text, "status", "filed"))
     lines = nowmod.read(vault, partition).split("\n")
     for i, line in enumerate(lines):
         m = nowmod.LINE.match(line)
