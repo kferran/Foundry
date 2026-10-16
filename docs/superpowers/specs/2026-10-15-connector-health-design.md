@@ -46,7 +46,7 @@ On master (merge of #202):
   - Mail and chat move into that line as `mail and chat: off (no connector in headless runs)`. The Communication Debt skipped line goes.
   - Pipeline alerts that repeat a Sources entry (a fetch failure the line already shows) are left out of Pipeline.
 - **Alert severity.** When the alert-tags registry (`2026-10-14-alert-tags-design.md`) lands, `expired` and `unreachable` lines are `now`: the owner can renew within the hour. Until then they are `[smoke]` alerts, which Slack notices already send.
-- **#176 is confirmed live.** The calendar fetch listed 11 events on Claude Code 2.1.300 on 10-15 (feOS); nothing more to do for it here.
+- **#176 is confirmed live.** The calendar fetch listed 11 events on Claude Code 2.1.300 on 10-15 (the live vault); nothing more to do for it here.
 
 ## 3. Changes
 

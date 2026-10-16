@@ -30,17 +30,17 @@ def by_file(result: dict) -> dict:
 
 def test_vue_and_dotnet_pair(tmp_path):
     repo = make_repo(tmp_path / "r", {
-        "ultron-ui/package.json": '{"name": "ui", "dependencies": {"vue": "^3"}, "devDependencies": {"@angular/core": "1", "lodash": "4"}}',
-        "Ultron.Api/Ultron.Api.csproj": "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework>"
-                                        "<RootNamespace>Ultron.Api</RootNamespace></PropertyGroup></Project>",
-        "Ultron.sln": "Microsoft Visual Studio Solution File",
+        "sample-ui/package.json": '{"name": "ui", "dependencies": {"vue": "^3"}, "devDependencies": {"@angular/core": "1", "lodash": "4"}}',
+        "Sample.Api/Sample.Api.csproj": "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework>"
+                                        "<RootNamespace>Sample.Api</RootNamespace></PropertyGroup></Project>",
+        "Sample.sln": "Microsoft Visual Studio Solution File",
     })
     m = by_file(inspect_repo(repo))
-    assert m["ultron-ui/package.json"] == {"file": "ultron-ui/package.json", "dir": "ultron-ui", "kind": "npm",
+    assert m["sample-ui/package.json"] == {"file": "sample-ui/package.json", "dir": "sample-ui", "kind": "npm",
                                            "details": {"name": "ui", "notable": ["angular", "vue"]}}
-    assert m["Ultron.Api/Ultron.Api.csproj"]["details"] == {"TargetFramework": "net8.0", "RootNamespace": "Ultron.Api"}
-    assert m["Ultron.sln"]["kind"] == "dotnet-solution"
-    assert m["Ultron.sln"]["dir"] == "."
+    assert m["Sample.Api/Sample.Api.csproj"]["details"] == {"TargetFramework": "net8.0", "RootNamespace": "Sample.Api"}
+    assert m["Sample.sln"]["kind"] == "dotnet-solution"
+    assert m["Sample.sln"]["dir"] == "."
 
 
 def test_go_python_rust_maven_ruby(tmp_path):

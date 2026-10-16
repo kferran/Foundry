@@ -279,7 +279,7 @@ Edit 2 in `README.md`. Find:
 | 7. Style lint | Warning-only `style-*` checks for wiki and briefing notes | After the real vault has run a few weeks |
 | 5. Preferences | Preference status derivation, acceptance in `/brief`, recall slot | After the real vault has run a few weeks |
 | Sub-project 2 | the Foreman orchestrator | Separate spec, after Plans 7 and 5 |
-| 10. Migrate Cerebro and Wong | Import both older systems, then decommission them (Sub-project 3) | Complete (2026-10-06): content migrated outside this repo's plans |
+| 10. Migrate the two earlier systems | Import both older systems, then decommission them (Sub-project 3) | Complete (2026-10-06): content migrated outside this repo's plans |
 
 - Design spec: [docs/superpowers/specs/2026-09-30-vault-template-design.md](docs/superpowers/specs/2026-09-30-vault-template-design.md)
 - Roadmap: [docs/superpowers/roadmap.md](docs/superpowers/roadmap.md)

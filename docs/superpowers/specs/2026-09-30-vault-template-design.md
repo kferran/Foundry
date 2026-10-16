@@ -44,7 +44,7 @@ A survey of 20 open-source second-brain and agent-memory projects (§13.5) found
 | Repo model | Committed `system/template_source` names the canonical template URL; `/setup` ensures a `template` remote and a private `origin` (or none, or keep for maintainers); `update_template.sh` merges template updates |
 | Raw inputs in git | `raw/**` and `system/quarantine/*` contents are gitignored; compiled `wiki/` is the durable record |
 | Multiple codebases | One file per codebase in `system/codebases/`, produced by discovery + inspection + user confirmation |
-| Audience | Generic template; no hardcoded Ultron/Vue/.NET/Kusto |
+| Audience | Generic template; no hardcoded codebase/Vue/.NET/Kusto |
 | `herdr` | Optional, documented in README, not dependency-checked |
 | Source of truth | Markdown notes. SQLite is a derived, gitignored, rebuildable index |
 | Schemas | One Obsidian note per note type in `system/schemas/`, field definitions in frontmatter |
@@ -147,7 +147,7 @@ system/fleet/                       reserved for sub-project 2 (gitignored, §16
 docs/superpowers/specs/             this spec
 ```
 
-★ = new or moved relative to the scaffold output. Removed relative to the scaffold: `telemetry_enricher.sh`, `ultron-telemetry.*` units.
+★ = new or moved relative to the scaffold output. Removed relative to the scaffold: `telemetry_enricher.sh`, `sample-telemetry.*` units.
 
 ## 6. Components
 
@@ -622,15 +622,15 @@ superpowers:
 ```yaml
 ---
 type: codebase
-name: "ultron"
+name: "sample"
 path: "~/code/worktrees/main"
 partition: "work"
 default: "true"
 stack: ["vue3", "dotnet"]
 search_globs: ["*.vue", "*.ts", "*.js", "*.cs", "*.csproj"]
 layers:
-  ui: "ultron-ui/"
-  api: "Ultron.Api/"
+  ui: "sample-ui/"
+  api: "Sample.Api/"
 ---
 Free-form notes for agents: conventions, gotchas, owners.
 ```
@@ -651,7 +651,7 @@ Editing rule: change only text that is false, unimplementable, or contrary to th
 - Reword "Fail-Fast Loop Breaker": `/debrief` reports agents whose recent metric files show repeated failures; the user decides what to do (automated quarantine is deferred).
 - "Kusto Intake Hook" → "Production Telemetry Routing": notes in `raw/telemetry/` are critical and route to SystemMaintenance.
 - Directory map and script list updated to §5. Codebase Map becomes: "Codebases are defined in `system/codebases/`. Read the relevant file before touching code." Add `@system/config.md`.
-- No Ultron/Vue/.NET/Kusto names.
+- No codebase/Vue/.NET/Kusto names.
 
 **Commands**
 
@@ -670,7 +670,7 @@ When a command receives a `<run_id>` (headless), it writes only to `wiki/.stagin
 | `/backup` | `verify_setup.sh` (blocks on failure); `system_health.bats` (report only); `git status`; stage; commit (hook lints); push per `remote_mode`: `private` → `origin` (refusing if `origin` ≡ template; `git push -u origin HEAD` when no upstream), `none` → skip, `keep` → push `origin`. |
 | `/impact <component> [--repo name]` | Search each (or the named) codebase with its `search_globs`; use `layers` to match API routes to UI consumers, across repos; cross-reference wiki via `related "<component>"`; group results by repo; read-only. |
 
-**Personas:** CodingAgent keeps writing metric files, now as `system/logs/metrics/CodingAgent-<epoch>.json` with an `agent` field (reported by `/debrief`). All personas lose Ultron-specific wording.
+**Personas:** CodingAgent keeps writing metric files, now as `system/logs/metrics/CodingAgent-<epoch>.json` with an `agent` field (reported by `/debrief`). All personas lose codebase-specific wording.
 
 **Templates:** each declares its `type:`. `wiki-concept.md` links `[[Index]]` and `[[{{source_stem}}]]`; `compilation-metric.json` gains `"agent"`. `daily-briefing.md` replaces the hardcoded `(08:00)`/`(17:00)` with `{{brief_time}}`/`{{debrief_time}}`, filled from config by `/brief`; the Evening section is just `![[{{date}}.debrief]]`, so the debrief lives in its own file.
 

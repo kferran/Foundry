@@ -47,9 +47,9 @@ mkrepo() {  # <path> [branch]
 @test "discover: a bare repo's worktrees resolve to the worktree on its HEAD branch" {
   seed="$BATS_TEST_TMPDIR/seed"
   mkrepo "$seed"
-  git clone -q --bare "$seed" "$R/ultron.git"
-  git -C "$R/ultron.git" worktree add -q "$R/worktrees/main" main
-  git -C "$R/ultron.git" worktree add -q "$R/worktrees/feat" -b feat
+  git clone -q --bare "$seed" "$R/sample.git"
+  git -C "$R/sample.git" worktree add -q "$R/worktrees/main" main
+  git -C "$R/sample.git" worktree add -q "$R/worktrees/feat" -b feat
   run "$DC" "$R/worktrees"
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 1 ]

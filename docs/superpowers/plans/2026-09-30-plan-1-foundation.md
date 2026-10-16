@@ -1047,7 +1047,7 @@ from helpers import REPO
 from vaultlib import frontmatter, schema
 
 SAMPLE = {
-    "date": "2026-09-30", "partition": "work", "codebase": "ultron", "agent_name": "CodingAgent",
+    "date": "2026-09-30", "partition": "work", "codebase": "sample", "agent_name": "CodingAgent",
     "source_stem": "SampleSource", "title": "Sample", "status": "active", "brief_time": "06:00",
     "debrief_time": "17:00", "branch_name": "fm/sample", "strategic_focus": "Stability",
     "short_feature_description": "Sample", "strategic_planning_note": "SamplePlan",

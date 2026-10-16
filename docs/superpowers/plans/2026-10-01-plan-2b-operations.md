@@ -42,7 +42,7 @@ Each was checked against the spec. Where the spec is silent or would break a rea
 - **D11 Inspect (§6.13):** `inspect_codebase.sh` is a wrapper over `inspect_codebase.py` → `vaultlib/codebase_inspect.py` (manifest parsing is Python's job, §2 goal 4). It does not `cd`, so a relative path means the caller's directory. Logging hints use `git grep` over tracked files. `logger.` and `log.` must follow a non-word character, so `catalog.` is not a hit. The output adds `path` (the repo top level) to the spec's fields.
 - **D12 Gate runner (§6.14):** `verify_setup.sh` gates every `system/tests/*.bats` except `system_health.bats`, plus pytest. It picks up Plan 2a's `lib.bats`/`headless.bats` and this plan's suites without a hand-kept list. With no bats suites at all, it fails.
 - **D13 `check_deps.sh` output (§6.2):** a missing optional item prints `optional <item> <hint>`, a present one `ok <item>`.
-- **D14 Removals (§5, §14):** the `brain-*` units, `ultron-telemetry.*` and `telemetry_enricher.sh` are deleted. The `jarvis-*` templates replace them.
+- **D14 Removals (§5, §14):** the `brain-*` units, `sample-telemetry.*` and `telemetry_enricher.sh` are deleted. The `jarvis-*` templates replace them.
 - **D15 `system/template_source`:** `https://github.com/kferran/jarvis.git`, the current `origin`. **Confirm this is the canonical template URL before Task 7 is committed.**
 - **D16 §7.3:** of §7.3's mitigations, provenance (Plan 2a) and the gitignored `raw/`/`quarantine/` already exist. This plan adds the `CLAUDE.md` rule now, because `CLAUDE.md` is appended to every headless run's system prompt. Plan 4 rewrites the rest of `CLAUDE.md`.
 
@@ -77,7 +77,7 @@ Each was checked against the spec. Where the spec is silent or would break a rea
 | `system/tests/setup.bats`, `focus.bats`, `prep.bats`, `units.bats`, `remote.bats`, `codebases.bats` | New bats suites |
 | `system/tests/python/test_codebase_inspect.py` | pytest for the inspector |
 | `system/tests/vault_integrity.bats` (modify) | Unit-template, template_source, executable and `CLAUDE.md` checks |
-| Deleted | `system/systemd/brain-*`, `system/systemd/ultron-telemetry.*`, `system/scripts/telemetry_enricher.sh` |
+| Deleted | `system/systemd/brain-*`, `system/systemd/sample-telemetry.*`, `system/scripts/telemetry_enricher.sh` |
 
 **Gating suites.** Until Task 2 lands: `python3 -m pytest system/tests/python -q` and `bats system/tests/vault_integrity.bats system/tests/scripts.bats system/tests/lib.bats system/tests/headless.bats system/tests/setup.bats`. From Task 2 on, a single command:
 
@@ -1114,7 +1114,7 @@ git commit -m "feat(prep): add brief_prep.sh and debrief_prep.sh"
 
 **Files:**
 - Create: `system/systemd/jarvis-intake.service.in`, `jarvis-intake.timer.in`, `jarvis-brief.service.in`, `jarvis-brief.timer.in`, `jarvis-debrief.service.in`, `jarvis-debrief.timer.in`, `jarvis-focus.service.in`; `system/scripts/install_units.sh`
-- Delete: `system/systemd/brain-brief.service`, `brain-brief.timer`, `brain-debrief.service`, `brain-debrief.timer`, `brain-focus-tracker.service`, `brain-intake.service`, `brain-intake.timer`, `ultron-telemetry.service`, `ultron-telemetry.timer`; `system/scripts/telemetry_enricher.sh`
+- Delete: `system/systemd/brain-brief.service`, `brain-brief.timer`, `brain-debrief.service`, `brain-debrief.timer`, `brain-focus-tracker.service`, `brain-intake.service`, `brain-intake.timer`, `sample-telemetry.service`, `sample-telemetry.timer`; `system/scripts/telemetry_enricher.sh`
 - Test: `system/tests/units.bats` (create); `system/tests/vault_integrity.bats` (append one test)
 
 **Interfaces:**
@@ -1357,8 +1357,8 @@ Expected: `exit=1`. All 17 `units.bats` tests fail: `run` gets status 127, becau
 git rm -q system/systemd/brain-brief.service system/systemd/brain-brief.timer \
   system/systemd/brain-debrief.service system/systemd/brain-debrief.timer \
   system/systemd/brain-focus-tracker.service system/systemd/brain-intake.service \
-  system/systemd/brain-intake.timer system/systemd/ultron-telemetry.service \
-  system/systemd/ultron-telemetry.timer system/scripts/telemetry_enricher.sh
+  system/systemd/brain-intake.timer system/systemd/sample-telemetry.service \
+  system/systemd/sample-telemetry.timer system/scripts/telemetry_enricher.sh
 ```
 
 - [ ] **Step 4: Write the seven unit templates**
@@ -2143,9 +2143,9 @@ mkrepo() {  # <path> [branch]
 @test "discover: a bare repo's worktrees resolve to the worktree on its HEAD branch" {
   seed="$BATS_TEST_TMPDIR/seed"
   mkrepo "$seed"
-  git clone -q --bare "$seed" "$R/ultron.git"
-  git -C "$R/ultron.git" worktree add -q "$R/worktrees/main" main
-  git -C "$R/ultron.git" worktree add -q "$R/worktrees/feat" -b feat
+  git clone -q --bare "$seed" "$R/sample.git"
+  git -C "$R/sample.git" worktree add -q "$R/worktrees/main" main
+  git -C "$R/sample.git" worktree add -q "$R/worktrees/feat" -b feat
   run "$DC" "$R/worktrees"
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 1 ]
@@ -2310,17 +2310,17 @@ def by_file(result: dict) -> dict:
 
 def test_vue_and_dotnet_pair(tmp_path):
     repo = make_repo(tmp_path / "r", {
-        "ultron-ui/package.json": '{"name": "ui", "dependencies": {"vue": "^3"}, "devDependencies": {"@angular/core": "1", "lodash": "4"}}',
-        "Ultron.Api/Ultron.Api.csproj": "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework>"
-                                        "<RootNamespace>Ultron.Api</RootNamespace></PropertyGroup></Project>",
-        "Ultron.sln": "Microsoft Visual Studio Solution File",
+        "sample-ui/package.json": '{"name": "ui", "dependencies": {"vue": "^3"}, "devDependencies": {"@angular/core": "1", "lodash": "4"}}',
+        "Sample.Api/Sample.Api.csproj": "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework>"
+                                        "<RootNamespace>Sample.Api</RootNamespace></PropertyGroup></Project>",
+        "Sample.sln": "Microsoft Visual Studio Solution File",
     })
     m = by_file(inspect_repo(repo))
-    assert m["ultron-ui/package.json"] == {"file": "ultron-ui/package.json", "dir": "ultron-ui", "kind": "npm",
+    assert m["sample-ui/package.json"] == {"file": "sample-ui/package.json", "dir": "sample-ui", "kind": "npm",
                                            "details": {"name": "ui", "notable": ["angular", "vue"]}}
-    assert m["Ultron.Api/Ultron.Api.csproj"]["details"] == {"TargetFramework": "net8.0", "RootNamespace": "Ultron.Api"}
-    assert m["Ultron.sln"]["kind"] == "dotnet-solution"
-    assert m["Ultron.sln"]["dir"] == "."
+    assert m["Sample.Api/Sample.Api.csproj"]["details"] == {"TargetFramework": "net8.0", "RootNamespace": "Sample.Api"}
+    assert m["Sample.sln"]["kind"] == "dotnet-solution"
+    assert m["Sample.sln"]["dir"] == "."
 
 
 def test_go_python_rust_maven_ruby(tmp_path):

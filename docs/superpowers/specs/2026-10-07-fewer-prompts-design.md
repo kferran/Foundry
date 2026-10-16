@@ -5,7 +5,7 @@
 
 ## 1. Problem and decisions
 
-Interactive sessions in a vault stop for permission on read-only status commands they run often: the gate, the Nightshift queue list, the telemetry and DTCC checks and the timer list. Sessions also chain shell commands, loop in the shell and redirect output, which defeats allow rules (a rule matches the literal command) and draws prompts. The owner's vault fixed both locally (vault commits d349b98 and ec89abd in `kferran/PorchOS`): seven read-only allow rules in `.claude/settings.json` and a **Bash** line in `CLAUDE.md`. Both are generic, so they belong in the template, byte for byte, so the vault's next `update_template.sh` merge is clean.
+Interactive sessions in a vault stop for permission on read-only status commands they run often: the gate, the Nightshift queue list, the telemetry and DTCC checks and the timer list. Sessions also chain shell commands, loop in the shell and redirect output, which defeats allow rules (a rule matches the literal command) and draws prompts. The owner's vault fixed both locally (vault commits d349b98 and ec89abd in `the owner's vault repository`): seven read-only allow rules in `.claude/settings.json` and a **Bash** line in `CLAUDE.md`. Both are generic, so they belong in the template, byte for byte, so the vault's next `update_template.sh` merge is clean.
 
 | Topic | Decision |
 |---|---|
@@ -55,7 +55,7 @@ Simulated with `git merge-file`: the base is the template's current `master`, "o
 - `CLAUDE.md`: no conflict; the merged file equals the vault's.
 - `.claude/settings.json`: **one conflict**, on `"Bash(systemctl --user list-timers *)"`. The vault added its 23 vault-only rules after that line, so the vault gave it a trailing comma, and the template cannot (it is the array's last element).
 
-The fix is on the vault side, and the vault owns it: before the vault merges this change, move the rules after `list-timers` to the top of the vault's `permissions.allow`, where its other vault-only rules already sit, so the template's block ends the array in both copies. Simulated, that merge is clean and keeps all 57 vault rules. The vault session (feOS) is asked to make that move. If the vault merges first anyway, the conflict is one line: keep the vault's side.
+The fix is on the vault side, and the vault owns it: before the vault merges this change, move the rules after `list-timers` to the top of the vault's `permissions.allow`, where its other vault-only rules already sit, so the template's block ends the array in both copies. Simulated, that merge is clean and keeps all 57 vault rules. The vault's Foreman session is asked to make that move. If the vault merges first anyway, the conflict is one line: keep the vault's side.
 
 ## 5. Tests
 

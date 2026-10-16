@@ -29,6 +29,6 @@ Final verification at a5248b8: `system/scripts/verify_setup.sh` exit 0 (bats cod
 - debrief_prep.sh digest heading shifts columns when a field is empty (IFS tab is whitespace).
 - install_units.sh replaces a symlinked unit with a regular file; a dangling symlink skips the ownership check.
 - install_units.sh re-points units whose owning vault is merely unmounted.
-- .claude/commands/setup.md still references the deleted brain-*/ultron-telemetry units (Plan 4 rewrites it).
+- .claude/commands/setup.md still references the deleted brain-*/sample-telemetry units (Plan 4 rewrites it).
 - brief_prep.sh `timeout 60 gcalcli` lacks `-k 5`.
 - setup_remote.sh ls-remote can still hit ssh host-key/passphrase prompts (add GIT_SSH_COMMAND='ssh -o BatchMode=yes').
