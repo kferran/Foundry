@@ -25,7 +25,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 - A notes Doc that arrives after a dropped transcript fills the meeting note's empty sections. (#224)
 - A failed Work Order found during cleanup is announced, and GitHub remotes written as `ssh://` get links in notices. (#220)
 - Session recall ranks and caps Now lines and keeps room for digests. `now.py set` rewrites a Now line in place. (#214)
-- A changelog page and a What changed section in the morning brief, showing what each update brought (release notes)
+- A changelog page and a What changed section in the morning brief, showing what each update brought. (#239)
 
 ## 2026-10-15
 - Slack gets only the alerts that need you now, and the rest wait for the brief. Notices use plain language, report only final outcomes, and link to notes in Obsidian. (#183, #213)
