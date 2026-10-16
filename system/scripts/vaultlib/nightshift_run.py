@@ -655,25 +655,54 @@ def _reconcile(ctx: Ctx, entries: list) -> None:
                     shutil.rmtree(d, ignore_errors=True)
 
 
-def tick(ctx: Ctx) -> int:
-    entries, refused = _screen(ctx)
-    if refused:
-        return 2
-    _reconcile(ctx, entries)
-    entries, _ = _screen(ctx)
-    delivering = [e for e in entries if e[1].get("state") == "delivering"]
-    if delivering:
-        path, fm, body = delivering[0]
-        return run_item(ctx, path, fm, body)
+def _plan_key(fm: dict):
+    """Two plan items on one repo and base would push competing branches from one plan: they never run together."""
+    return (fm.get("repo"), fm.get("base")) if fm.get("kind") == "plan" else None
+
+
+class _Pool:
+    """The tick's workers (parallel orders spec §3): each runs run_item on its own thread; a finish wakes the tick."""
+
+    def __init__(self, ctx: Ctx):
+        self.ctx, self.threads, self.keys, self.done, self.rc = ctx, {}, {}, threading.Event(), 0
+        self.started = set()   # one attempt per item per tick, as before: a requeued item waits for the next tick
+
+    def free(self) -> int:
+        return MAX_PARALLEL - len(self.threads)
+
+    def busy_keys(self) -> set:
+        return {k for k in self.keys.values() if k}
+
+    def start(self, entry) -> None:
+        path, fm, body = entry
+
+        def work():
+            try:
+                rc = run_item(self.ctx, path, fm, body)
+            except Exception as exc:   # one order's crash never stops the others; it is an alert and a failed tick
+                rc = 1
+                self.ctx.alert(f"worker/{fm['id']}", f"{fm['id']}: the worker stopped: {exc.__class__.__name__}: {exc}")
+            with SHARED:
+                self.rc = max(self.rc, rc)
+            self.done.set()
+
+        t = threading.Thread(target=work, name=f"order-{fm['id']}")
+        self.threads[fm["id"]], self.keys[fm["id"]] = t, _plan_key(fm)
+        self.started.add(fm["id"])
+        t.start()
+
+    def wait(self) -> None:
+        self.done.wait(timeout=5)
+        self.done.clear()
+        for iid, t in list(self.threads.items()):
+            if not t.is_alive():
+                t.join()
+                del self.threads[iid], self.keys[iid]
+
+
+def _day_health(ctx: Ctx, entries) -> tuple:
+    """The day's checks on its first tick, and this tick's stamp. Returns (health, Held line it cleared)."""
     hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
-    candidates = [e for e in entries if ns.due(e[1], ctx.local, ctx.window, 0)[0]
-                  or e[1].get("state") == "running"]
-    if not candidates:   # a held item was cancelled or finished elsewhere: drop the stale Held line
-        h = json.loads(hfile.read_text()) if hfile.is_file() else {}
-        if h.pop("held", None):
-            rep.write_health(ctx.vault, ctx.date, h)
-            rep.write(ctx.vault, ctx.date)
-        return 0
     try:
         h = json.loads(hfile.read_text()) if hfile.is_file() else {}
     except (OSError, ValueError):
@@ -687,33 +716,93 @@ def tick(ctx: Ctx) -> int:
         except (OSError, ValueError):
             old = {}
         carry = {k: old[k] for k in ("usage5", "usage5_at") if k in old}
-        rep.write_health(ctx.vault, ctx.date, health(ctx.vault, ctx.now, entries) | carry | h)
-    h = json.loads(hfile.read_text())
-    h["last_tick"] = ctx.local.strftime("%H:%M")
-    was_held = h.pop("held", None)   # the report's Held line shows only the latest tick's hold
-    rep.write_health(ctx.vault, ctx.date, h)
-    if str(h.get("sandbox", "")).startswith("FAILED"):
-        ctx.alert("sandbox", f"sandbox self-test failed: {h['sandbox']}; no items run")
-        rep.write(ctx.vault, ctx.date)
-        return 1
-    usage7 = h.get("usage7")
-    running = [e for e in entries if e[1].get("state") == "running"]
-    chosen = running[0] if running else ns.pick(entries, ctx.local, ctx.window, usage7)
-    # The 5-hour ceiling holds only a new start: running and waiting_reset items resume (pick ranks those first).
-    held = ns.five_hour_hold(h, ctx.now, ctx.max_five_hour) if chosen and chosen[1].get("state") == "queued" else ""
-    if was_held or held:
-        rep.write_health(ctx.vault, ctx.date, h | ({"held": held} if held else {}))
-        rep.write(ctx.vault, ctx.date)   # the brief and the debrief copy this file, so the Held line must be in it
-    if held or not chosen:
-        return 0
-    path, fm, body = chosen
+        with SHARED:
+            rep.write_health(ctx.vault, ctx.date, health(ctx.vault, ctx.now, entries) | carry | h)
+    with SHARED:
+        h = json.loads(hfile.read_text())
+        h["last_tick"] = ctx.local.strftime("%H:%M")
+        was_held = h.pop("held", None)   # the report's Held line shows only the latest tick's hold
+        rep.write_health(ctx.vault, ctx.date, h)
+    return h, was_held
+
+
+def _claim(ctx: Ctx, fm: dict) -> bool:
     claim = rep.item_dir(ctx.vault, fm["id"]) / f"claim-{int(fm.get('attempts') or 0) + 1}"
     try:
         claim.parent.mkdir(parents=True, exist_ok=True)
         claim.mkdir()
     except FileExistsError:
-        return 0
-    return run_item(ctx, path, fm, body)
+        return False
+    return True
+
+
+def tick(ctx: Ctx) -> int:
+    """Up to MAX_PARALLEL items at once (parallel orders spec §3). Delivering items first, then running ones resume,
+    then queued and waiting items in pick order; each finish refills its slot until nothing runs or can start."""
+    entries, refused = _screen(ctx)
+    if refused:
+        return 2
+    _reconcile(ctx, entries)
+    pool, day, skip, held_any = _Pool(ctx), None, set(), False
+    while True:
+        entries, _ = _screen(ctx)
+        idle = [e for e in entries if e[1]["id"] not in pool.started and e[1]["id"] not in skip]
+        for e in [e for e in idle if e[1].get("state") == "delivering"][:pool.free()]:
+            pool.start(e)
+        idle = [e for e in idle if e[1]["id"] not in pool.started]
+        candidates = [e for e in idle if ns.due(e[1], ctx.local, ctx.window, 0)[0] or e[1].get("state") == "running"]
+        if candidates and pool.free() and not held_any:
+            if day is None:
+                day = _day_health(ctx, entries)
+                if str(day[0].get("sandbox", "")).startswith("FAILED"):
+                    ctx.alert("sandbox", f"sandbox self-test failed: {day[0]['sandbox']}; no items run")
+                    with SHARED:
+                        rep.write(ctx.vault, ctx.date)
+                    pool.rc = max(pool.rc, 1)
+                    held_any = True   # nothing new starts this tick; delivering workers finish
+            if not held_any:
+                for e in [e for e in candidates if e[1].get("state") == "running"]:
+                    if pool.free() and (_plan_key(e[1]) is None or _plan_key(e[1]) not in pool.busy_keys()):
+                        if _claim(ctx, e[1]):
+                            pool.start(e)
+                        else:
+                            skip.add(e[1]["id"])
+                while pool.free():
+                    rest = [e for e in candidates if e[1].get("state") != "running" and e[1]["id"] not in pool.started
+                            and e[1]["id"] not in skip and (_plan_key(e[1]) is None or _plan_key(e[1]) not in pool.busy_keys())]
+                    chosen = ns.pick(rest, ctx.local, ctx.window, day[0].get("usage7"))
+                    if not chosen:
+                        break
+                    if chosen[1].get("state") == "queued":
+                        # The 5-hour ceiling holds only a new start, read afresh: a finished worker may have raised it.
+                        hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+                        with SHARED:
+                            fresh = json.loads(hfile.read_text()) if hfile.is_file() else day[0]
+                        held = ns.five_hour_hold(fresh, ctx.now, ctx.max_five_hour)
+                        if held:
+                            with SHARED:   # the brief and the debrief copy this file, so the Held line must be in it
+                                rep.write_health(ctx.vault, ctx.date, fresh | {"held": held})
+                                rep.write(ctx.vault, ctx.date)
+                            held_any = True
+                            break
+                    if _claim(ctx, chosen[1]):
+                        pool.start(chosen)
+                    else:
+                        skip.add(chosen[1]["id"])
+        if not pool.threads:
+            break
+        pool.wait()
+    if day is None:   # nothing could start: a held item was cancelled or finished elsewhere, so drop a stale Held line
+        hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+        h = json.loads(hfile.read_text()) if hfile.is_file() else {}
+        if h.pop("held", None):
+            with SHARED:
+                rep.write_health(ctx.vault, ctx.date, h)
+                rep.write(ctx.vault, ctx.date)
+    elif day[1] and not held_any:
+        with SHARED:
+            rep.write(ctx.vault, ctx.date)
+    return pool.rc
 
 
 def _add(ctx: Ctx, a) -> int:
