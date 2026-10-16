@@ -140,6 +140,16 @@ after_merge() {
 
 update_extensions
 
+# What changed (release notes spec §2.4): the lines this merge added to CHANGELOG.md, change and Action lines only,
+# for the next brief. Written on every merge, empty when it added none.
+notes="system/logs/inputs/$(date +%F)/updates.md"
+mkdir -p "$(dirname "$notes")"
+{ g diff --no-color -U0 HEAD^1 HEAD -- CHANGELOG.md 2>/dev/null || true; } \
+  | sed -n 's/^+\(- .*\|  - Action: .*\)$/\1/p' > "$notes.tmp"
+mv -f -- "$notes.tmp" "$notes"
+notes_suffix=""
+[[ ! -s "$notes" ]] || notes_suffix="; notes in today's brief"
+
 # Runs from before this update are committed with the rest of the vault, never one by one (two-machines spec §4.2).
 after_merge "commit_runs.py --init-cutover" system/scripts/commit_runs.py --init-cutover
 after_merge "the index rebuild" system/scripts/vault_index.py rebuild
@@ -161,5 +171,5 @@ else
 fi
 
 if (( unattended )); then
-  alert "template updated: ${committed}merged ${#merged[@]} change(s): $list${new_units:+; new unit available: $new_units (install with system/scripts/install_units.sh)}"
+  alert "template updated: ${committed}merged ${#merged[@]} change(s): $list${new_units:+; new unit available: $new_units (install with system/scripts/install_units.sh)}${notes_suffix}"
 fi

@@ -618,3 +618,37 @@ readme_setup() {
   [ "$status" -eq 0 ]
   grep -qE '^- [0-9:]{8} \[extensions\] .*nosuch' "system/logs/alerts_$(date +%F).md"
 }
+
+@test "an update writes the changelog lines it merged to today's updates.md and points the alert at the brief (release notes spec §2.4)" {
+  template_setup
+  printf '# Changelog\n\n## Changes\n\n## 2026-10-01\n- Old line (#1)\n' > "$W/CHANGELOG.md"
+  upstream_commit base.txt base
+  run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  printf '# Changelog\n\n## Changes\n\n## 2026-10-16\n- New line (#9)\n  - Action: run install_units.sh\n\n## 2026-10-01\n- Old line, reworded (#1)\n' > "$W/CHANGELOG.md"
+  upstream_commit note.txt note
+  run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  f="system/logs/inputs/$(date +%F)/updates.md"
+  [ "$(cat "$f")" = "$(printf '%s\n' '- New line (#9)' '  - Action: run install_units.sh' '- Old line, reworded (#1)')" ]
+  alerts | grep '\[update\]' | tail -n 1 | grep -q "notes in today's brief"
+}
+
+@test "a by-hand update that adds no changelog line writes an empty updates.md (release notes spec §2.4)" {
+  template_setup
+  upstream_commit new.txt hello
+  run "$UT"
+  [ "$status" -eq 0 ]
+  f="system/logs/inputs/$(date +%F)/updates.md"
+  [ -e "$f" ]
+  [ ! -s "$f" ]
+}
+
+@test "an unattended update that adds no changelog line has no brief pointer (release notes spec §2.4)" {
+  template_setup
+  upstream_commit new.txt hello
+  run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  run grep -c "notes in today's brief" "system/logs/alerts_$(date +%F).md"
+  [ "$output" = 0 ]
+}
