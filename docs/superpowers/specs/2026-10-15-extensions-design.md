@@ -121,7 +121,7 @@ Every shared file reads the loader in place of its per-feature `if` blocks:
 
 ## 4. Migration and the owner's vault
 
-- `update_template.sh` (and `/setup`) turns a non-empty `handoffs_projects`, an existing `system/dtcc/map.yaml` and an existing telemetry source into `extensions:` entries, once.
+- `update_template.sh` (and `/setup`) turns a non-empty `handoffs_projects` and an existing telemetry source into `extensions:` entries, once. DTCC is vault-only, so the template carries no rule for it: its cutover lists `dtcc` by hand (DTCC plan, task 4).
   - It then runs `extensions.py check`. A listed extension with no folder is reported (`[extensions] <name> …`) and skipped. Nothing fails.
 - Each move is one PR to the template: it deletes the code from core and adds it under `extensions/<name>/` with its tests. The update brings both halves together, so the owner's features keep running across the move. DTCC's move lands in the owner's vault instead (§8).
 - A live acceptance run follows each move that changes brief, debrief or ingest text or the settings.
