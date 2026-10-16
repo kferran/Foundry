@@ -92,7 +92,6 @@ if [[ "$role" != client ]]; then
   for item in bats pytest shellcheck; do report "$item" "$(present "$item")" dev; done
 fi
 for c in herdr tmux; do report "$c" "$(has "$c")" optional; done
-if [[ "$role" != client ]]; then report pdftotext "$(has pdftotext)" optional; fi
 if [[ "$role" != client ]]; then report gh "$(has gh)" optional; fi
 # Each enabled extension's deps (extensions spec §3): optional, with a hint naming the extension. A loader that
 # cannot run adds nothing here; /setup and the smoke check report it.

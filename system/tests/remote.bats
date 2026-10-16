@@ -616,5 +616,5 @@ readme_setup() {
   sed -i 's/^default_partition: "personal"$/&\nextensions: ["nosuch"]/' system/config.md
   run "$UT"
   [ "$status" -eq 0 ]
-  grep -qE '^- [0-9:]{8} \[extensions\] .*nosuch' "system/logs/alerts_$(date +%F).md"
+  grep -qE '^- [0-9:]{8} \[extensions\] .*nosuch' "system/logs/alerts_$(TZ=America/Denver date +%F).md"
 }
