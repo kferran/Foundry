@@ -358,10 +358,13 @@ def test_rendered_notes_validate_and_keep_the_doc_id():
     assert links.extract(tr.body, 1)[0] == []
 
 
-def test_empty_sections_say_none():
+def test_empty_sections_say_none_and_no_summary_from_the_source_215():
+    # #215: a drop's note with "Summary: None." read like an empty meeting; it says the source had no summary.
     m = meetings.scrub(meetings.parse_drop("call.srt", SRT.encode(), TZ, datetime(2026, 10, 5, 15, 0, tzinfo=TZ)))
     body = frontmatter.parse(meetings.render_meeting(m, "2026-10-05-1500-call", "personal")).body
-    assert "## Summary\nNone.\n\n## Decisions\nNone.\n\n## Action items\nNone.\n\n## Details\nNone.\n" in body
+    assert ("## Summary\nNo summary from the source.\n\n## Decisions\nNone.\n\n## Action items\nNone.\n\n"
+            "## Details\nNone.\n") in body
+    assert "## Summary\nNone.\n" in meetings.render_input(m, "2026-10-05-1500-call", "personal", m.start)
 
 
 # -- import (meetings spec §2.3 steps 2-9) -------------------------------------------------------
@@ -550,7 +553,7 @@ def test_a_recording_that_replaces_an_empty_note_keeps_its_attendees_188(iv):
 
 
 def test_a_populated_note_stays_canonical_when_a_later_recording_has_no_summary_188(iv):
-    # #188: a drop's sections are always None. (no model step); a first note with text is never retired for it.
+    # #188: a drop's sections are always empty (no model step); a first note with text is never retired for it.
     config(iv, meetings_partition="work")
     fetched(iv)
     tick(iv)
@@ -625,16 +628,57 @@ def test_an_empty_note_in_another_partition_is_never_retired(iv):
     assert frontmatter.parse((iv / f"wiki/work/meetings/{NAME}.md").read_text()).data.get("status", "canonical") == "canonical"
 
 
-def test_first_source_wins_a_doc_after_a_drop_is_archived_and_skipped_by_the_fetch(iv):
+DROP_NAME = "2026-10-05-1505-weekly-sync-planning"
+
+
+def fetch_skips(vault):
+    return [(r["doc"], r["skipped"]) for p in (vault / "system/logs").glob("meetings_fetch-*.jsonl")
+            for r in map(json.loads, p.read_text().splitlines())]
+
+
+def test_a_later_doc_fills_the_empty_sections_of_a_drop_note_and_keeps_its_transcript_215(iv):
+    # #215: a drop's note had every section empty, and the Gemini Doc that arrived later was only archived.
     dropped(iv, "work/2026-10-05 1505 Weekly sync - Planning.vtt", long_cues(30, ".vtt"))
     tick(iv)
+    aged(iv, "work", DROP_NAME)
+    note, tr = iv / f"wiki/work/meetings/{DROP_NAME}.md", iv / f"wiki/work/meetings/{DROP_NAME}.transcript.md"
+    before, transcript = frontmatter.parse(note.read_text()).data, sha(tr)
     config(iv, meetings_partition="work")
     fetched(iv)
     tick(iv)
-    assert len(meeting_runs(iv)) == 1
-    assert (iv / f"raw/archive/{DOC_ID}.gdoc.md").is_file()
-    log = [json.loads(line) for p in (iv / "system/logs").glob("meetings_fetch-*.jsonl") for line in p.read_text().splitlines()]
-    assert [(r["doc"], r["skipped"]) for r in log] == [(DOC_ID, True)]
+    assert len(meeting_runs(iv)) == 2
+    assert meeting_runs(iv)[1]["publish"]["published"] == [f"wiki/work/meetings/{DROP_NAME}.md"]
+    after = frontmatter.parse(note.read_text())
+    assert {k: after.data[k] for k in ("source", "transcript", "attendees")} == \
+           {k: before[k] for k in ("source", "transcript", "attendees")}
+    assert after.data.get("status", "canonical") == "canonical" and sha(tr) == transcript
+    assert "## Summary\nAvery and Blake agreed on the launch plan." in after.body
+    assert "## Decisions\n- The launch moves to Friday.\n" in after.body
+    assert "## Action items\n- [ ] [Avery Sample] Draft plan: Send the draft to the team.\n" in after.body
+    assert "## Details\n- **Plan**: Avery proposed" in after.body
+    assert not (iv / f"wiki/work/meetings/{NAME}.md").exists()
+    assert (iv / f"raw/archive/{DOC_ID}.gdoc.md").is_file() and fetch_skips(iv) == [(DOC_ID, True)]
+    assert f"filled the empty sections of wiki/work/meetings/{DROP_NAME}.md" in alerts(iv)
+
+
+def test_fill_sections_keeps_a_heading_on_its_own_line_when_a_section_was_left_bare_215():
+    note = "---\ntype: meeting\n---\n# Sync\n\n## Summary\n## Decisions\nNone.\n\n## Action items\nNone.\n"
+    filled = meetings.fill_sections(note, meetings.parse_gdoc(gdoc(), TZ))
+    assert "## Summary\nAvery and Blake agreed on the launch plan. See [[Budget]].\n\n## Decisions\n" in filled
+
+
+def test_a_later_doc_never_overwrites_a_drop_note_section_that_holds_text_215(iv):
+    dropped(iv, "work/2026-10-05 1505 Weekly sync - Planning.vtt", long_cues(30, ".vtt"))
+    tick(iv)
+    note = iv / f"wiki/work/meetings/{DROP_NAME}.md"
+    note.write_text(note.read_text().replace("No summary from the source.", "I typed this after the call."))
+    aged(iv, "work", DROP_NAME)
+    text = note.read_text()
+    config(iv, meetings_partition="work")
+    fetched(iv)
+    tick(iv)
+    assert len(meeting_runs(iv)) == 1 and note.read_text() == text
+    assert (iv / f"raw/archive/{DOC_ID}.gdoc.md").is_file() and fetch_skips(iv) == [(DOC_ID, True)]
 
 
 def test_two_docs_with_the_same_title_minutes_apart_are_two_meetings(iv):
