@@ -99,6 +99,7 @@ system/scripts/vaultlib/sources.py:slack
 system/scripts/vaultlib/telemetry.py:sentry
 system/scripts/vaultlib/telemetry_run.py:kusto
 system/scripts/vaultlib/telemetry_run.py:sentry
+system/scripts/vaultlib/telemetry_run.py:slack
 system/scripts/vaultlib/telemetry_store.py:sentry
 system/systemd/foundry-dtcc-watch.service.in:dtcc
 system/systemd/foundry-dtcc-watch.timer.in:dtcc
