@@ -8,6 +8,7 @@ import secrets
 import shutil
 import signal
 import subprocess
+import threading
 import sys
 import time as clock
 import uuid
@@ -24,6 +25,8 @@ from . import nightshift_session as ss
 
 LOCK = "system/nightshift.lock"
 POLL = 30            # seconds between session checks
+MAX_PARALLEL = 3     # Work Orders one tick runs at once (#229; owner, 2026-10-16)
+SHARED = threading.RLock()   # the files more than one worker writes: report, health, ledger, alerts
 PR_FOR_LOCAL = ""    # tests: the pull-request kind used when template_remote is a local path
 CANARY = "~/.config/foundry/nightshift-canary"  # planted by the self-test under a path every profile denies
 TOKEN_VARS = ("SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "DBUS_SESSION_BUS_ADDRESS", "CLAUDE_CODE_OAUTH_TOKEN",
@@ -101,21 +104,23 @@ class Ctx:
     def alert(self, key: str, msg: str) -> None:
         day = self.local.date().isoformat()
         seen = self.vault / rep.DIR / "alerts.json"
-        data = json.loads(seen.read_text()) if seen.is_file() else {}
-        if data.get(key) == day:
-            return
-        data[key] = day
-        seen.parent.mkdir(parents=True, exist_ok=True)
-        seen.write_text(json.dumps(data))
-        path = self.vault / "system" / "logs" / f"alerts_{day}.md"
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(f"- {self.local.strftime('%H:%M:%S')} [orders] {msg}\n")
+        with SHARED:
+            data = json.loads(seen.read_text()) if seen.is_file() else {}
+            if data.get(key) == day:
+                return
+            data[key] = day
+            seen.parent.mkdir(parents=True, exist_ok=True)
+            seen.write_text(json.dumps(data))
+            path = self.vault / "system" / "logs" / f"alerts_{day}.md"
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(f"- {self.local.strftime('%H:%M:%S')} [orders] {msg}\n")
 
     def log(self, line: dict) -> None:
         path = self.vault / "system" / "logs" / f"nightshift-{self.now.strftime('%Y-%m')}.jsonl"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps({"time": self.now.isoformat(), **line}, sort_keys=True) + "\n")
+        with SHARED:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"time": self.now.isoformat(), **line}, sort_keys=True) + "\n")
 
 
 # --- health and self-test ---------------------------------------------------------------------------
@@ -541,14 +546,19 @@ def _finish(ctx: Ctx, path: Path, fm: dict, idir: Path, cwd, out: dict) -> int:
     ni.update(path, state=out["state"], reason=out.get("reason") or None, result=out.get("result") or None,
               finished_at=finished if final else None)
     if final:
+        _report_outcome(ctx, fm, out, finished)
+    ctx.log({"item": fm["id"], "state": out["state"], "reason": out.get("reason", "")})
+    return 0 if out["state"] in ("done", "cancelled", "delivering") else 1
+
+
+def _report_outcome(ctx: Ctx, fm: dict, out: dict, finished: str) -> None:
+    with SHARED:
         rep.write_outcome(ctx.vault, {"id": fm["id"], "kind": fm["kind"], "state": out["state"], "result": out.get("result", ""),
                                       "reason": out.get("reason", ""), "started_at": fm.get("started_at") or ctx.now.isoformat(),
                                       "finished_at": finished, "report_date": ctx.date,
                                       "needs": out.get("needs", []), "notes": out.get("notes", ""),
                                       "output": fm.get("output") or ""})  # a notice links it (#157)
         rep.write(ctx.vault, ctx.date)
-    ctx.log({"item": fm["id"], "state": out["state"], "reason": out.get("reason", "")})
-    return 0 if out["state"] in ("done", "cancelled", "delivering") else 1
 
 
 def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
@@ -582,7 +592,8 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
                 f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then queue {fm['id']} again ({exc})"]})
     run = _run_session(ctx, path, fm, body, cwd, idir, resume)
-    rep.record_usage(ctx.vault, ctx.date, run.get("usage") or {}, ctx.clock_now().isoformat())
+    with SHARED:
+        rep.record_usage(ctx.vault, ctx.date, run.get("usage") or {}, ctx.clock_now().isoformat())
     if run["outcome"] == "waiting_reset":
         reset = datetime.fromtimestamp(run["reset_at"], tz=timezone.utc).astimezone(ctx.tz)
         ni.update(path, state="waiting_reset", reset_at=reset.isoformat())
