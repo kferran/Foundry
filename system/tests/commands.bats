@@ -788,6 +788,7 @@ self_edit_contract() {
 
 @test "CLAUDE.md and the settings let sessions record Now lines (Now page spec §3.2)" {
   grep -qF 'system/scripts/now.py add --partition <work|personal> --kind <owed|waiting|draft>' CLAUDE.md
+  grep -qF -- '--evidence <pull request URL, Work Order id, ticket key, rca:<note stem> or a telemetry note path>' CLAUDE.md   # #106
   grep -qF 'Before calling anything unsent or still waiting, check its evidence.' CLAUDE.md
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py add:*)")' .claude/settings.json >/dev/null
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py list:*)")' .claude/settings.json >/dev/null
@@ -1108,7 +1109,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF '.claude/skills/humanizer/SKILL.md' "$f"
   grep -qF 'Proposed code never carries a teammate'"'"'s initials marker' "$f"
   grep -qF 'marked "meaning unconfirmed". Never guess a meaning.' "$f"
-  grep -qF -- '--kind owed --statement "Review RCA draft: <title>" --evidence rca:<note stem>' "$f"
+  grep -qF -- '--kind owed --statement "Review RCA draft: <note stem>" --evidence rca:<note stem>' "$f"
   grep -qF 'Never queue it yourself.' "$f"
   grep -qF -- '- `/rca <raw/telemetry/note>`:' CLAUDE.md
   grep -qF '| `/rca <raw/telemetry/note.md>` |' FOUNDRY.md

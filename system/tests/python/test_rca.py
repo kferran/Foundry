@@ -4,7 +4,7 @@ import shutil
 import pytest
 
 from helpers import REPO, write
-from vaultlib import now, rca
+from vaultlib import cli, now, rca
 
 TODAY = "2026-10-11"
 CONFIG = ('---\ntype: config\ntimezone: "America/Denver"\nhandoffs_site: "example.atlassian.net"\nrca_project: "EX"\n'
@@ -187,6 +187,16 @@ def test_filed_writes_the_key_to_the_note_and_the_now_line(vault):
     assert 'ticket: "EX-7"' in text and 'status: "filed"' in text
     assert "_(closed: filed EX-7 2026-10-11)_" in now.read(vault, "work")
     assert rca.pending(vault) == []
+
+
+def test_filed_writes_the_ticket_and_the_status_in_one_write(vault, monkeypatch):
+    # #106: a crash between two writes would leave a ticket on a note still marked approved
+    prepare(vault)
+    path = note(vault, status="approved")
+    writes, real = [], cli.write_atomic
+    monkeypatch.setattr(cli, "write_atomic", lambda p, t: (writes.append(p), real(p, t)))
+    rca.filed(vault, "work", "2026-10-11-orders", "EX-7", TODAY)
+    assert writes.count(path) == 1
 
 
 def test_rejected_sets_the_status(vault):
