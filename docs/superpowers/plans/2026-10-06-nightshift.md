@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Template work: worktree `~/Foundry-worktrees/nightshift`, branch `feat/nightshift` (from `template/master`). Every task commits there. Nothing names Porch, Ultron, a person or a real repository beyond `kferran/jarvis` in docs.
+- Template work: worktree `~/Foundry-worktrees/nightshift`, branch `feat/nightshift` (from `template/master`). Every task commits there. Nothing names the employer, the codebase, a person or a real repository beyond `kferran/jarvis` in docs.
 - Autonomy ceiling: never merge, never deploy, never write a protected `master`/`main`, never write an issue tracker, chat or mail.
 - Sessions never hold credentials: no `~/.ssh`, `~/.config/gh`, `~/.config/foundry`, Claude credential files, `.git-credentials`, `.env*`; no MCP servers; hooks off; `--restricted`; `--permission-mode dontAsk`.
 - One item at a time; `flock` on `system/nightshift.lock`; atomic claim `system/logs/nightshift/items/<id>/claim`.

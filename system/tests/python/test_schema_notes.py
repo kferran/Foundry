@@ -6,7 +6,7 @@ from helpers import REPO
 from vaultlib import frontmatter, schema
 
 SAMPLE = {
-    "date": "2026-09-30", "partition": "work", "codebase": "ultron", "capability": "code",
+    "date": "2026-09-30", "partition": "work", "codebase": "sample", "capability": "code",
     "source_stem": "SampleSource", "title": "Sample", "status": "active", "brief_time": "06:00",
     "debrief_time": "17:00",
     "source": "raw/telemetry/sample.md", "environment": "prod",

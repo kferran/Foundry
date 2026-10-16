@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Template work happens in the worktree `~/Foundry-worktrees/dtcc-watch` on branch `feat/dtcc-watch` (based on `template/master`). Tasks 1–8 commit there. Task 9 runs in the vault `/home/kyle/Foundry` on `master`.
-- Nothing committed to the template names Porch, Ultron, EDJ, a person or a real codebase path. Examples use the invented codebase `example-app`.
+- Nothing committed to the template names the employer, the codebase, the client, a person or a real codebase path. Examples use the invented codebase `example-app`.
 - No model and no headless run in phase 1.
 - Fetch and store links only on `dtcclearning.com`, `www.dtcc.com`, `files.dtcc.com`, `developer.dtcc.com` (https).
 - At most one request per second, 30-second timeout, fixed user agent.
@@ -108,7 +108,7 @@ def test_dtcc_change_partition_must_match_folder(vault: Path):
 def test_example_map_is_generic():
     text = (REPO / "system" / "dtcc" / "map.example.yaml").read_text(encoding="utf-8")
     assert "example-app" in text
-    for word in ("ultron", "porch", "edj"):
+    for word in ("<codebase>", "<employer>", "<client>"):
         assert word not in text.lower()
 ```
 
@@ -2108,12 +2108,12 @@ Claude-Session: https://claude.ai/code/session_01UN5uVRJuDkUDmqcXGSx4XM"
 
 Before the client's next sync, the user moves its untracked copies aside: `mkdir -p ~/foundry-untracked && mv system/codebases/*.md system/telemetry/*.md ~/foundry-untracked/` on the client (keep `example.md`), then lets the sync pull. Ask the user to do this; do not reach into the client.
 
-- [ ] **Step 3: Write `system/dtcc/map.yaml`** from the approach-2 table (`system/logs/handoff/2026-10-06/approach-2.md`), with `codebases: {ultron: {ref: origin/main}}`, `hub: '[[Dtcc]]'`, products `app-sub` (pin v25-5), `msd` (codes `[MSD]`, no page), `stl` (pin v25-3), `att` (page `attachments-att`, codes `[ATT]`, `api_assets: [Document Processing]`), `far`, `pov`, `iiex` (`api_assets: [Insurance Information Exchange]`), `acats-ips`, `in-force-transactions-ift`, and `ignore: [COM, LNA, AAP, CST, PMP, RTE, MSS, PAR, RPL]`. `notes` per product: `att` → `[[DtccDocumentProcessingApi]]`, `[[DtccIat]]`; `iiex` → `[[DtccIiexRequestContract]]`, `[[IiexIntegratedDeliveryFramework]]`; in-force products → `[[InForceDtccServiceMap]]`. Then:
+- [ ] **Step 3: Write `system/dtcc/map.yaml`** from the approach-2 table (`system/logs/handoff/2026-10-06/approach-2.md`), with `codebases: {sample: {ref: origin/main}}`, `hub: '[[Dtcc]]'`, products `app-sub` (pin v25-5), `msd` (codes `[MSD]`, no page), `stl` (pin v25-3), `att` (page `attachments-att`, codes `[ATT]`, `api_assets: [Document Processing]`), `far`, `pov`, `iiex` (`api_assets: [Insurance Information Exchange]`), `acats-ips`, `in-force-transactions-ift`, and `ignore: [COM, LNA, AAP, CST, PMP, RTE, MSS, PAR, RPL]`. `notes` per product: `att` → `[[DtccDocumentProcessingApi]]`, `[[DtccIat]]`; `iiex` → `[[DtccIiexRequestContract]]`, `[[IiexIntegratedDeliveryFramework]]`; in-force products → `[[InForceDtccServiceMap]]`. Then:
 
 Run: `system/scripts/dtcc_watch.py --check`
-Expected: `map ok`, or `stale:` lines. Fix each stale path against `git -C ~/code/ultron ls-tree -r --name-only origin/main | grep <name>` until `map ok`.
+Expected: `map ok`, or `stale:` lines. Fix each stale path against `git -C ~/code/sample ls-tree -r --name-only origin/main | grep <name>` until `map ok`.
 
-- [ ] **Step 4: Knowledge pointers.** Add a `## Working DTCC items` section to `wiki/work/entities/Dtcc.md`: `dtcc-watch` for changes and `dtcc_change` notes, `ultron:dtcc-support` for production submissions, `/impact` for blast radius, the map at `system/dtcc/map.yaml`. Add to `system/codebases/ultron.md`'s body one line: "DTCC integration: see [[Dtcc]] and `system/dtcc/map.yaml`."
+- [ ] **Step 4: Knowledge pointers.** Add a `## Working DTCC items` section to `wiki/work/entities/Dtcc.md`: `dtcc-watch` for changes and `dtcc_change` notes, `sample:dtcc-support` for production submissions, `/impact` for blast radius, the map at `system/dtcc/map.yaml`. Add to `system/codebases/sample.md`'s body one line: "DTCC integration: see [[Dtcc]] and `system/dtcc/map.yaml`."
 
 - [ ] **Step 5: Dry run against the live sites**
 
@@ -2128,7 +2128,7 @@ system/scripts/install_units.sh
 systemctl --user list-timers foundry-dtcc-watch.timer --no-pager
 system/scripts/dtcc_watch.py; echo "exit=$?"
 ls wiki/work/changes/
-git add system/dtcc/map.yaml wiki/work/entities/Dtcc.md system/codebases/ultron.md wiki/work/changes
+git add system/dtcc/map.yaml wiki/work/entities/Dtcc.md system/codebases/sample.md wiki/work/changes
 git commit -m "feat(dtcc): vault map, knowledge pointers and the first watch
 
 Claude-Session: https://claude.ai/code/session_01UN5uVRJuDkUDmqcXGSx4XM"

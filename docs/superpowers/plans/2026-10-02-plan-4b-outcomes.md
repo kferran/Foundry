@@ -4,10 +4,10 @@ Recorded from the execution ledger on 2026-10-02 (plan: `2026-10-02-plan-4b-memo
 
 Final verification at f663384: `hooks_install.bats` 33/33, `verify_setup.sh` exit 0.
 
-**Next on the roadmap:** Plan 6 (Communication). Plans 9 (rename to Cerebra) and 10 (migrate Cerebro and Wong) are the last steps, by the user's decision.
+**Next on the roadmap:** Plan 6 (Communication). Plans 9 (rename to Cerebra) and 10 (migrate the two earlier systems) are the last steps, by the user's decision.
 
 ## Rulings
-- Ruling: Task 8 also adds two final roadmap rows the user requested (2026-10-02): "Rename to Cerebra (product, unit prefix, env vars, agent_owner values, team theme)" and "Migrate Cerebro and Wong into Cerebra" — both last, after everything else — user decision recorded in conversation — cost if wrong: two roadmap rows to edit.
+- Ruling: Task 8 also adds two final roadmap rows the user requested (2026-10-02): "Rename to Cerebra (product, unit prefix, env vars, agent_owner values, team theme)" and "Migrate the two earlier systems into Cerebra" — both last, after everything else — user decision recorded in conversation — cost if wrong: two roadmap rows to edit.
 - Ruling: Task 7 (live /setup 5a check) is run by the user as a manual checklist — the plan already makes it manual — cost if wrong: Task 8 waits on the user.
 - Task 2: Ruling: Important (plan-mandated) "an empty or multi-document install record makes --argjson fail, so install and --uninstall exit 1 blaming settings.json" — fix: treat any record value that is not exactly one JSON value as no record (fallback path), with empty-file and {} {} tests — §7.3a: uninstall is the escape hatch and must not depend on a file this task added — cost if wrong: none.
 - Final: Ruling: re-graded Minor 1 (uninstall exits 1 and leaves digest.md when the record can't be written) to Important, together with the T2 install variant — §7.3a: the escape hatch must not depend on the record — fix in one wave: digest step before the record update, record update best-effort (warn, continue) in uninstall, and install pre-flights the record dir (or writes the record first) so it never leaves a half install — cost if wrong: none.

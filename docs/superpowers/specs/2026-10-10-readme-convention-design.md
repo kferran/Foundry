@@ -53,4 +53,4 @@ Bound tools: bats (`remote.bats`, `commands.bats`, `vault_integrity.bats`), pyte
 
 ## 5. Rollout
 
-After merge and the vault's next update, the vault's README is the landing page. feOS writes the vault's own README (PorchOS#1), or the owner re-runs `/setup` for the stub.
+After merge and the vault's next update, the vault's README is the landing page. The vault's Foreman writes the vault's own README (the vault's issue #1), or the owner re-runs `/setup` for the stub.
