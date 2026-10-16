@@ -69,3 +69,25 @@ def test_time_column_without_a_timezone_or_with_bad_times(vault: Path):
     rows = {l.split(" | ")[0][2:]: l for l in nr.build(vault, "2026-10-07").splitlines() if l.startswith("| 2026")}
     assert "| 04:00–07:10 |" in rows["2026-10-06-a"]
     assert "| – |" in rows["2026-10-06-b"]
+
+
+def test_health_writes_from_parallel_workers_stay_whole(vault: Path):
+    # #229: up to 3 orders finish at once; two writers must not share one temp file.
+    import json
+    import threading
+    errors = []
+
+    def writer(i):
+        try:
+            for _ in range(50):
+                nr.write_health(vault, "2026-10-16", {"n": i})
+        except Exception as exc:   # a lost rename raises FileNotFoundError
+            errors.append(exc)
+
+    threads = [threading.Thread(target=writer, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert json.loads((vault / nr.DIR / "health-2026-10-16.json").read_text())["n"] in range(8)
