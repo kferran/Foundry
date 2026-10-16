@@ -124,7 +124,8 @@ items() {
   grep -qx 'calendar: held: five-hour usage 0.7 is at or above 0.6' <<< "$output"
   grep -qx 'meetings: held: five-hour usage 0.7 is at or above 0.6' <<< "$output"
   grep -qx 'dtcc: off' <<< "$output"
-  run grep -c -e calendar_fetch -e meetings_fetch "$CALLS"
+  # No check ran, so no call was logged (the log may not exist at all).
+  run grep -c -e calendar_fetch -e meetings_fetch <<< "$(cat "$CALLS" 2>/dev/null)"
   [ "$output" = 0 ]
   alerts | grep -qF '[smoke] held: five-hour usage 0.7 is at or above 0.6; the connector checks did not run'
   run "$SC"
