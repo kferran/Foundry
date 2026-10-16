@@ -28,19 +28,19 @@ jobs:
         run: system/scripts/verify_setup.sh --require-suites
   # Everything on (extensions spec §3): the private extensions repository is checked out at extensions/, every folder
   # in it is listed in a CI config, and the gate runs core's and every extension's suites together. It prints one
-  # skip line and succeeds while the repository variable or the deploy key is not set.
+  # skip line and succeeds while the deploy key is not set. The repository is FOUNDRY_EXTENSIONS_REPO, or
+  # <owner>/foundry-extensions when that variable is unset.
   gate-all-extensions:
     if: vars.FOUNDRY_CI == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      EXTENSIONS_REPO: ${{ vars.FOUNDRY_EXTENSIONS_REPO }}
       EXTENSIONS_KEY: ${{ secrets.EXTENSIONS_DEPLOY_KEY }}
     steps:
       - name: Is the extensions repository configured?
         id: cfg
         run: |
-          if [[ -n "$EXTENSIONS_REPO" && -n "$EXTENSIONS_KEY" ]]; then
+          if [[ -n "$EXTENSIONS_KEY" ]]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "extensions repository not configured: skipped"
@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v5
         if: steps.cfg.outputs.configured == 'true'
         with:
-          repository: ${{ vars.FOUNDRY_EXTENSIONS_REPO }}
+          repository: ${{ vars.FOUNDRY_EXTENSIONS_REPO || format('{0}/foundry-extensions', github.repository_owner) }}
           ssh-key: ${{ secrets.EXTENSIONS_DEPLOY_KEY }}
           path: extensions
       - name: Install the development tools
