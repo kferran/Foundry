@@ -661,6 +661,12 @@ def test_a_later_doc_fills_the_empty_sections_of_a_drop_note_and_keeps_its_trans
     assert f"filled the empty sections of wiki/work/meetings/{DROP_NAME}.md" in alerts(iv)
 
 
+def test_fill_sections_keeps_a_heading_on_its_own_line_when_a_section_was_left_bare_215():
+    note = "---\ntype: meeting\n---\n# Sync\n\n## Summary\n## Decisions\nNone.\n\n## Action items\nNone.\n"
+    filled = meetings.fill_sections(note, meetings.parse_gdoc(gdoc(), TZ))
+    assert "## Summary\nAvery and Blake agreed on the launch plan. See [[Budget]].\n\n## Decisions\n" in filled
+
+
 def test_a_later_doc_never_overwrites_a_drop_note_section_that_holds_text_215(iv):
     dropped(iv, "work/2026-10-05 1505 Weekly sync - Planning.vtt", long_cues(30, ".vtt"))
     tick(iv)

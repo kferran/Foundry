@@ -328,7 +328,7 @@ def fill_sections(note_text: str, m: Meeting):
     for i in range(1, len(parts), 2):
         body = parts[i + 1]
         if new.get(parts[i]) and EMPTY_SECTION.fullmatch(body.strip()):
-            parts[i + 1] = new[parts[i]] + body[len(body.rstrip()):]
+            parts[i + 1] = new[parts[i]] + (body[len(body.rstrip()):] or "\n\n")  # a bare section has no gap
             changed = True
     return parts[0] + "".join(f"## {h}\n{b}" for h, b in zip(parts[1::2], parts[2::2])) if changed else None
 
