@@ -24,7 +24,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 - The debrief drops the Agent Health section, which nothing ever filled. (#230)
 - A new production error posts an `[incident]` line to Slack. (#223)
 - A notes Doc that arrives after a dropped transcript fills the meeting note's empty sections. (#224)
-- A transcript dropped for a meeting whose note already has content is kept and linked from that note, and the drop is archived. (#PR)
+- A transcript dropped for a meeting whose note already has content is kept and linked from that note, and the drop is archived. (#246)
 - A failed Work Order found during cleanup is announced, and GitHub remotes written as `ssh://` get links in notices. (#220)
 - Session recall ranks and caps Now lines and keeps room for digests. `now.py set` rewrites a Now line in place. (#214)
 - A changelog page and a What changed section in the morning brief, showing what each update brought. (#239)
