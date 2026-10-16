@@ -15,6 +15,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## 2026-10-16
 - `/lint` warns when an `rca` or codebase note cites `dir/file.ext:NN` and that file is missing from the codebase or has fewer lines. (#PR)
+- `/ingest` writes about people as dated behaviour, never a verdict or a legal or medical label, and leaves a first or partial name unlinked unless a note settles who it is. (#PR)
 - Inbox triage can also watch the Slack channels you are in: with `triage_chat_enabled: true`, messages that ask you something or report a production problem become `owed` Now lines with their Slack link. (#244)
 - Up to three Work Orders run at the same time: a long research order no longer holds up the next one, and two plans on the same codebase and branch still take turns. (#241)
 - A Work Order whose start was cut short by a restart or shutdown runs on the next tick instead of waiting forever. (#248)
