@@ -224,8 +224,8 @@
 
 Order matters (Review Focus 1). Do it in one sitting, between the PR's merge and the next 05:30 update:
 1. Copy the tarball into the vault's scratch area. Do not extract it into `extensions/` yet.
-2. Run `system/scripts/update_template.sh` by hand. It merges the template, which deletes core's DTCC, and `migrate` lists `dtcc` (one `[extensions]` alert, since there is no folder yet).
-3. At once, extract the tarball at the vault root (`extensions/dtcc/`) and commit it.
+2. Run `system/scripts/update_template.sh` by hand. It merges the template, which deletes core's DTCC.
+3. At once, extract the tarball at the vault root (`extensions/dtcc/`). Add `"dtcc"` to the `extensions:` list in `system/config.md` by editing it, as `/setup` phase 6e does; the template carries no `dtcc` migration rule (ledger ruling, task 2). Run `vault_index.py validate system/config.md`, then commit.
 4. Run:
    - `system/scripts/extensions.py check` (expect no output);
    - `extensions.py allow --write`;
