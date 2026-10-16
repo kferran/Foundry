@@ -1,11 +1,22 @@
 #!/bin/bash
 # Test double for the calendar fetch's claude calls. `mcp list` prints STUB_MCP_LIST (or fails when
 # STUB_MCP_FAIL=1). Any other call records argv (one per line) to STUB_ARGS, the working directory to
-# STUB_CWD and FOUNDRY_HEADLESS to STUB_ENV, then prints the file STUB_STREAM and exits STUB_RC.
+# STUB_CWD and FOUNDRY_HEADLESS to STUB_ENV, then prints the file STUB_STREAM and exits STUB_RC. A session allowed
+# the Slack search (chat triage) records its argv to STUB_SLACK_ARGS and prints STUB_SLACK_STREAM instead, when set.
 if [[ "${1:-}" == mcp && "${2:-}" == list ]]; then
   [[ "${STUB_MCP_FAIL:-0}" == 1 ]] && exit 1
   printf '%s\n' "Checking MCP server health…" "" "${STUB_MCP_LIST:-claude.ai Google Calendar: https://calendar.example/mcp - ok Connected}"
   exit 0
+fi
+prev="" slack=0
+for a in "$@"; do
+  [[ "$prev" == --allowedTools && "$a" == *__slack_search_public_and_private ]] && slack=1
+  prev="$a"
+done
+if (( slack )) && [[ -n "${STUB_SLACK_STREAM:-}" ]]; then
+  printf '%s\n' "$@" > "${STUB_SLACK_ARGS:-/dev/null}"
+  cat "$STUB_SLACK_STREAM"
+  exit "${STUB_RC:-0}"
 fi
 printf '%s\n' "$@" > "${STUB_ARGS:-/dev/null}"
 pwd > "${STUB_CWD:-/dev/null}"

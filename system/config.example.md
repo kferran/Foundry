@@ -18,6 +18,7 @@ owner_names: []                 # your names as they appear in meeting action it
 triage_enabled: "false"         # server and standalone: every 30 minutes on workdays, mail that needs you goes to the Now page
 triage_partition: "work"        # work | personal: the Now page triage writes to
 triage_watch_senders: []        # domains or addresses whose mail archived unread still reaches the Now page, e.g. ["@example.com"]
+triage_chat_enabled: "false"    # with triage on: also the Slack channels you are in (not DMs), every tick
 slack_notify_channel: ""        # server and standalone: a Slack channel ID, or your user ID for a DM; empty is off
 slack_connector: "claude.ai Slack"  # the Slack connector a headless session loads (notify.sh --check names it)
 notify_links: "github"          # notice links: github (a GitHub file link) or obsidian (an obsidian:// link)

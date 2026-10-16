@@ -121,8 +121,11 @@ if [[ "$(config_get meetings_enabled false)" == true ]]; then
   connector meetings "${SMOKE_MEETINGS_TIMEOUT:-210}" system/scripts/meetings_fetch.sh --check
 else echo "meetings: off"; fi
 if [[ "$(config_get triage_enabled false)" == true ]]; then
-  connector triage "${SMOKE_TRIAGE_TIMEOUT:-360}" system/scripts/triage_fetch.sh --check
+  connector triage "${SMOKE_TRIAGE_TIMEOUT:-360}" system/scripts/triage_fetch.sh --check --source mail
 else echo "triage: off"; fi
+if [[ "$(config_get triage_enabled false)" == true && "$(config_get triage_chat_enabled false)" == true ]]; then
+  connector triage_chat "${SMOKE_TRIAGE_TIMEOUT:-360}" system/scripts/triage_fetch.sh --check --source chat
+else echo "triage_chat: off"; fi
 # each <source> <timeout> <connector flag> <list command> <check command…>: one line per item the list command prints
 # (its first tab-separated column), each checked with "{}" in the check command replaced by the item, as
 # "<source>/<item>" (connector health spec §2: each item has its own credential and host). A list that fails decides

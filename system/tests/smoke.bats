@@ -147,7 +147,25 @@ items() {
   grep -qx 'items/prod-a: ok' <<< "$output"
   grep -qx 'items/prod-b: ok' <<< "$output"
   [ "$(grep -c -x 'meetings_fetch.sh --check' "$CALLS")" -eq 1 ]
-  [ "$(grep -c -x 'triage_fetch.sh --check' "$CALLS")" -eq 1 ]
+  [ "$(grep -c -x 'triage_fetch.sh --check --source mail' "$CALLS")" -eq 1 ]
+  grep -qx 'triage_chat: off' <<< "$output"
+}
+
+@test "chat triage is its own line: an expired Slack login names the Slack connector, mail still reads ok" {
+  need_user_systemd
+  set_key triage_enabled '"true"'
+  set_key triage_chat_enabled '"true"'
+  cat > system/scripts/triage_fetch.sh <<'EOF'
+#!/bin/bash
+echo "triage_fetch.sh $*" >> "$CALLS"
+if [[ "$*" == *chat* ]]; then echo "triage_fetch: auth: no Slack connector reachable" >&2; exit 3; fi
+echo "triage_fetch: 0 threads need the owner"
+EOF
+  run "$SC"
+  [ "$status" -eq 1 ]
+  grep -qx 'triage: ok' <<< "$output"
+  grep -qx 'triage_chat: expired: Slack connector; renew: reconnect it at claude.ai, Settings, Connectors' <<< "$output"
+  grep -qx 'triage_fetch.sh --check --source chat' "$CALLS"
 }
 
 @test "a per-item list that fails is a failed source, never no item; an empty list is off (audit C5)" {

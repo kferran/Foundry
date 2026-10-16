@@ -109,6 +109,116 @@ ITEM='{"items": [{"thread_id": "a1", "who": "Blake", "ask": "asks how to proceed
   [ "$status" -eq 2 ]
 }
 
+# Chat triage (chat triage spec §3.2): a second session that may only search Slack.
+S=mcp__claude_ai_Slack__slack_search_public_and_private
+
+chat_on() {
+  sed -i '$d' system/config.md
+  printf '%s\n' 'triage_chat_enabled: "true"' '---' >> system/config.md
+  printf '{"kind": "tick", "epoch": 1000300, "source": "chat"}\n' >> "system/logs/triage-$(TZ=America/Denver date +%Y-%m).jsonl"
+  export STUB_SLACK_ARGS="$BATS_TEST_TMPDIR/slack_args" STUB_SLACK_STREAM="$BATS_TEST_TMPDIR/slack.jsonl"
+  export STUB_MCP_LIST="$STUB_MCP_LIST
+claude.ai Slack: https://slack.example/mcp - ok Connected"
+}
+
+# slack_says <tool> <reply json>: a session that loads the tool, searches once with this tick's input and replies.
+slack_says() {
+  local md
+  md="### Result 1 of 1
+Channel: #ops (ID: C0000000001)
+From: Blake Sample <blake@example.com> (ID: U0000000001)
+Message_ts: 1792170000.000100
+Permalink: [link](https://example.slack.com/archives/C0000000001/p1792170000000100)
+Text:
+prod checkout is down
+---
+"
+  {
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"ToolSearch","input":{}}]}}\n'
+    printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"tool_reference","tool_name":"%s"}]}]}}\n' "$S"
+    jq -cn --arg t "$1" --argjson i "$(system/scripts/triage.py query --source chat)" \
+      '{type: "assistant", message: {content: [{type: "tool_use", id: "t2", name: $t, input: $i}]}}'
+    jq -cn --arg md "$md" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "t2",
+      content: [{type: "text", text: ({results: $md, pagination_info: ""} | tojson)}]}]}}'
+    jq -cn --arg r "$2" '{type: "result", subtype: "success", is_error: false, result: $r}'
+  } > "$STUB_SLACK_STREAM"
+}
+
+CHAT='{"items": [{"channel_id": "C0000000001", "ts": "1792170000.000100", "who": "Blake", "ask": "prod checkout is down", "next_step": "look now"}]}'
+
+@test "a chat message that needs you becomes one owed Now line; mail still runs" {
+  chat_on
+  gmail_says "$G" "$Q" "$ITEM"
+  slack_says "$S" "$CHAT"
+  run "$TF"
+  [ "$status" -eq 0 ]
+  grep -qF -- '- [ ] owed: Blake: asks how to proceed.' wiki/work/Now.md
+  grep -qF -- '- [ ] owed: Blake in #ops: prod checkout is down. Next: look now' wiki/work/Now.md
+  grep -qF 'https://example.slack.com/archives/C0000000001/p1792170000000100' wiki/work/Now.md
+  [ "$(grep -c '\[triage\] 1 new: ' "$ALERTS")" -eq 2 ]
+}
+
+@test "the chat session may only search Slack, with the built input" {
+  chat_on
+  gmail_says "$G" "$Q" "$ITEM"
+  slack_says "$S" "$CHAT"
+  run "$TF"
+  [ "$status" -eq 0 ]
+  grep -qxF -- "$S" "$STUB_SLACK_ARGS"
+  grep -qxF -- mcp__claude_ai_Slack__slack_send_message "$STUB_SLACK_ARGS"
+  grep -qxF -- mcp__claude_ai_Slack__slack_read_channel "$STUB_SLACK_ARGS"
+  grep -qF -- '"only_my_channels": true' "$STUB_SLACK_ARGS"
+}
+
+@test "a failed chat session still writes the mail line and alerts once a day" {
+  chat_on
+  gmail_says "$G" "$Q" "$ITEM"
+  slack_says mcp__claude_ai_Slack__slack_read_channel "$CHAT"
+  run "$TF"
+  [ "$status" -eq 7 ]
+  grep -qF -- '- [ ] owed: Blake: asks how to proceed.' wiki/work/Now.md
+  run grep -c 'in #ops' wiki/work/Now.md
+  [ "$output" = 0 ]
+  run "$TF"
+  [ "$(grep -c '\[triage\] Chat triage failed (exit 7):' "$ALERTS")" -eq 1 ]
+}
+
+@test "a failed mail session still writes the chat line" {
+  chat_on
+  gmail_says mcp__claude_ai_Gmail__get_thread "$Q" "$ITEM"
+  slack_says "$S" "$CHAT"
+  run "$TF"
+  [ "$status" -eq 7 ]
+  grep -qF -- '- [ ] owed: Blake in #ops: prod checkout is down.' wiki/work/Now.md
+  grep -qF '[triage] Inbox triage failed (exit 7):' "$ALERTS"
+}
+
+@test "with chat off, one session runs" {
+  export STUB_SLACK_ARGS="$BATS_TEST_TMPDIR/slack_args" STUB_SLACK_STREAM="$BATS_TEST_TMPDIR/slack.jsonl"
+  gmail_says "$G" "$Q" "$ITEM"
+  slack_says "$S" "$CHAT"
+  run "$TF"
+  [ "$status" -eq 0 ]
+  [ ! -e "$STUB_SLACK_ARGS" ]
+}
+
+@test "--check prints both counts and --source picks one" {
+  chat_on
+  gmail_says "$G" "$Q" "$ITEM"
+  slack_says "$S" "$CHAT"
+  run "$TF" --check
+  [ "$status" -eq 0 ]
+  [ "$output" = "triage_fetch: 1 threads need the owner
+triage_fetch: 1 chat messages need the owner" ]
+  run "$TF" --check --source chat
+  [ "$status" -eq 0 ]
+  [ "$output" = "triage_fetch: 1 chat messages need the owner" ]
+  [ ! -e wiki/work/Now.md ]
+  sed -i '/^triage_chat_enabled/d' system/config.md
+  run "$TF" --check --source chat
+  [ "$status" -eq 2 ]
+}
+
 @test "a bad triage_partition stops before any session and alerts once a day" {
   sed -i 's/^triage_partition: "work"$/triage_partition: "shared"/' system/config.md
   gmail_says "$G" "$Q" "$ITEM"

@@ -69,9 +69,18 @@ def test_report_lists_every_source_with_its_state_since_date_and_renewal(vault):
         "renew: reconnect it at claude.ai, Settings, Connectors",
         "- meetings: off",
         "- triage: ok",
+        "- triage_chat: off",
         "- items/a: failed: network: example.invalid (URLError) (since 2026-10-12)",
         "- notify: off",
     ]
+
+
+def test_chat_triage_is_its_own_source_with_the_slack_credential(vault):
+    # Chat triage spec §3.3.
+    write(vault, "system/config.md", '---\ntype: config\ntriage_enabled: "true"\ntriage_chat_enabled: "true"\n---\n')
+    assert sources.credential(vault, "triage_chat", "auth: no Slack connector reachable")[0] == "Slack connector"
+    smoke(vault, ("2026-10-13", "triage_chat", 0, "1 chat messages"))
+    assert "- triage_chat: ok" in sources.report(vault, "2026-10-13", {})
 
 
 def test_report_without_a_smoke_reading_says_unknown(vault):

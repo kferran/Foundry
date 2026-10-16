@@ -1069,6 +1069,13 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   [[ "$(setup_section '6b. Meetings')" == *'`triage_watch_senders`'* ]]
 }
 
+@test "chat triage: /setup asks for it; the manual, the config schema and the example describe it (#222)" {
+  [[ "$(setup_section '6b. Meetings')" == *'`triage_chat_enabled`'* ]]
+  grep -qF 'triage_chat_enabled: {kind: bool, default: "false"}' system/schemas/config.md
+  grep -qF 'triage_chat_enabled: "false"' system/config.example.md
+  grep -qF '`triage_chat_enabled: true`' FOUNDRY.md
+}
+
 @test "/rca is the telemetry extension's skill: CLAUDE.md and the manual point there, and core holds no rca command" {
   [ ! -e .claude/commands/rca.md ]
   grep -qF 'Extension skills, such as `/rca <raw/telemetry/note>` from the telemetry extension' CLAUDE.md
