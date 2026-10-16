@@ -262,6 +262,8 @@ def test_a_long_message_is_cut_with_a_count(vault):
 @pytest.mark.parametrize("remote,url", [
     ("git@github.com:owner/vault.git", "https://github.com/owner/vault/blob/master/briefings/x.md"),
     ("https://github.com/owner/vault.git", "https://github.com/owner/vault/blob/master/briefings/x.md"),
+    ("ssh://git@github.com/owner/vault.git", "https://github.com/owner/vault/blob/master/briefings/x.md"),  # #28
+    ("ssh://git@github.com/owner/vault", "https://github.com/owner/vault/blob/master/briefings/x.md"),
     ("git@gitlab.example.com:owner/vault.git", ""),
     ("", ""),
 ])

@@ -4,6 +4,7 @@ import re
 
 TAGS = {
     "foreman": ("a session's message to the owner", "now"),
+    "incident": ("a new or returning production error group (telemetry)", "now"),
     "orders": ("a Work Order that needs the owner, the self-test, the sandbox", "now"),
     "sync": ("sync blocked, a failed merge or push", "now"),
     "update": ("the daily template update", "now"),

@@ -63,7 +63,7 @@ def link(vault, rel: str) -> str:
     otherwise a GitHub file link, or "" when origin is not on github.com."""
     if config(vault).get("notify_links") == "obsidian":
         return "obsidian://open?file=" + quote(rel.removesuffix(".md"), safe="")
-    m = re.match(r"^(?:git@github\.com:|https://github\.com/)([^/]+/[^/]+?)(?:\.git)?/?$", _git(vault, "remote", "get-url", "origin"))
+    m = re.match(r"^(?:git@github\.com:|https://github\.com/|ssh://git@github\.com/)([^/]+/[^/]+?)(?:\.git)?/?$", _git(vault, "remote", "get-url", "origin"))
     branch = _git(vault, "symbolic-ref", "--short", "HEAD")
     return f"https://github.com/{m.group(1)}/blob/{branch}/{quote(rel)}" if m and branch else ""
 

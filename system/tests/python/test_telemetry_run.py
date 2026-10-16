@@ -161,6 +161,59 @@ def test_sentry_issue_resolved_in_sentry_resolves_note(v, monkeypatch):
     assert 'status: "resolved"' in (v / "raw/telemetry/prod-sentry-s-101.md").read_text()
 
 
+def _issue(i, status="unresolved"):
+    return {"id": str(i), "shortId": f"API-{i}", "permalink": f"https://sentry.example.com/i/{i}/", "project": "api",
+            "level": "error", "status": status, "substatus": "new", "firstSeen": "2026-10-05T10:00:00Z",
+            "lastSeen": "2026-10-05T11:00:00Z", "count": "4", "type": f"KeyError{i}", "culprit": "a.py in f",
+            "environment": "api"}
+
+
+def _incidents(v):
+    path = v / f"system/logs/alerts_{DAY}.md"
+    return [l for l in path.read_text().splitlines() if "[incident]" in l] if path.exists() else []
+
+
+def test_a_new_production_error_pushes_one_incident_line_and_the_first_run_pushes_none(v, monkeypatch):
+    # incident push (#158 follow-up): Slack hears about a new production error group at the next tick
+    write(v, "system/telemetry/prod-sentry.md", SEN)
+    monkeypatch.setattr(sentry, "project_ids", lambda *a: {"api": "7"})
+    monkeypatch.setattr(sentry, "issues", lambda *a: [_issue(101)])
+    telemetry_run.main([], v, NOW)                       # first run: every existing group is new, none is pushed
+    assert _incidents(v) == []
+    monkeypatch.setattr(sentry, "issues", lambda *a: [_issue(101), _issue(102)])
+    telemetry_run.main([], v, NOW + timedelta(minutes=10))
+    assert [l.split(" ", 2)[2] for l in _incidents(v)] == [
+        "[incident] prod-sentry: new production error in api: KeyError102 (4 events) raw/telemetry/prod-sentry-s-102.md"]
+    telemetry_run.main([], v, NOW + timedelta(minutes=20))
+    assert len(_incidents(v)) == 1
+
+
+def test_a_source_outside_production_pushes_nothing(v, monkeypatch):
+    write(v, "system/telemetry/prod-sentry.md", SEN.replace('environment: "prod"', 'environment: "staging"'))
+    monkeypatch.setattr(sentry, "project_ids", lambda *a: {"api": "7"})
+    monkeypatch.setattr(sentry, "issues", lambda *a: [])
+    telemetry_run.main([], v, NOW)
+    monkeypatch.setattr(sentry, "issues", lambda *a: [_issue(102)])
+    telemetry_run.main([], v, NOW + timedelta(minutes=10))
+    assert _incidents(v) == []
+
+
+def test_a_resolved_production_error_that_comes_back_pushes_and_a_burst_is_capped(v, monkeypatch):
+    write(v, "system/telemetry/prod-sentry.md", SEN)
+    monkeypatch.setattr(sentry, "project_ids", lambda *a: {"api": "7"})
+    monkeypatch.setattr(sentry, "issues", lambda *a: [_issue(101)])
+    telemetry_run.main([], v, NOW)
+    monkeypatch.setattr(sentry, "issues", lambda *a: [])
+    monkeypatch.setattr(sentry, "issue_status", lambda *a: "resolved")
+    telemetry_run.main([], v, NOW + timedelta(minutes=10))
+    monkeypatch.setattr(sentry, "issues", lambda *a: [_issue(101)] + [_issue(i) for i in range(201, 206)])
+    telemetry_run.main([], v, NOW + timedelta(minutes=20))
+    got = [l.split(" ", 2)[2] for l in _incidents(v)]
+    assert got[0] == ("[incident] prod-sentry: a resolved production error is back in api: KeyError101 (4 events) "
+                      "raw/telemetry/prod-sentry-s-101.md")
+    assert len(got) == 4 and got[3] == "[incident] prod-sentry: and 3 more new production errors (see the brief)"
+
+
 def test_dry_run_and_check_write_nothing(v, monkeypatch, capsys):
     write(v, "system/telemetry/prod-adx.md", ADX.format(covers=""))
     monkeypatch.setattr(kusto, "query", lambda *a, **k: [LOG_ROW])
