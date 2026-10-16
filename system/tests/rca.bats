@@ -71,6 +71,7 @@ jira_errs() {
   jira_errs '500 Internal Server Error'
   run "$RF" work "$STEM"
   [ "$status" -eq 6 ]
+  [[ "$output" == 'rca_file: connector: the connector returned an error: '*'500 Internal Server Error'*'; the create tool was called, so check Jira before deleting '* ]]   # #106
   [ -e "system/logs/rca/work-$STEM.attempt" ]
   grep -q '^- \[x\] owed: Review RCA draft: Orders fail (since' wiki/work/Now.md
 }
@@ -86,6 +87,28 @@ jira_errs() {
   grep -qF '[rca] filed EX-7 for' "$ALERTS"
   grep -qxF -- "$C" "$STUB_ARGS"
   grep -qxF -- mcp__claude_ai_Atlassian__editJiraIssue "$STUB_ARGS"
+  [ ! -e "system/logs/rca/work-$STEM.key" ]   # #106
+  [ ! -e "system/logs/rca/work-$STEM.attempt" ]
+}
+
+@test "the session is checked against the arguments sent, so a note edited during it still files (#106)" {
+  printf '#!/bin/bash\n[[ "$1" == mcp ]] || sed -i "s/^\\*\\*Summary:\\*\\* Orders fail$/**Summary:** Orders fail, edited/" "%s"\nexec "%s" "$@"\n' \
+    "$V/wiki/work/rca/$STEM.md" "$REPO/system/tests/stub_claude_calendar" > "$BATS_TEST_TMPDIR/claude"
+  chmod +x "$BATS_TEST_TMPDIR/claude"
+  jira_says "$C" "$ARGS"
+  CLAUDE_BIN="$BATS_TEST_TMPDIR/claude" run "$RF" work "$STEM"
+  [ "$status" -eq 0 ]
+  [ "$output" = "EX-7" ]
+  grep -qx '\*\*Summary:\*\* Orders fail, edited' "wiki/work/rca/$STEM.md"
+}
+
+@test "writing back a key by hand clears the markers, as the exit 5 message says (#106)" {
+  mkdir -p system/logs/rca
+  touch "system/logs/rca/work-$STEM.attempt"
+  run system/scripts/rca.py filed work "$STEM" EX-5
+  [ "$status" -eq 0 ]
+  grep -qx 'ticket: "EX-5"' "wiki/work/rca/$STEM.md"
+  [ ! -e "system/logs/rca/work-$STEM.attempt" ]
 }
 
 @test "another tool or other arguments are refused, write nothing and alert once a day" {

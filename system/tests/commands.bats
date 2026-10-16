@@ -1119,6 +1119,11 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'rca_project: ""' system/config.example.md
 }
 
+@test "/rca: the hotfix alert line and the within-minutes approval text (#106)" {
+  grep -qF 'With `hotfix_candidate: true`, also run `system/scripts/alert.py rca "HOTFIX candidate: <title>"`.' .claude/commands/rca.md
+  grep -qF 'approves filing, and the intake tick files it within minutes.' .claude/commands/rca.md
+}
+
 @test "FOUNDRY.md defines the fix lane, its safety surfaces and the promotion rule (fast lane spec §2)" {
   grep -qF '**Two lanes.**' FOUNDRY.md
   grep -qF 'clear from one sentence' FOUNDRY.md
