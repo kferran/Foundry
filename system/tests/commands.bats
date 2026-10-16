@@ -45,10 +45,6 @@ headless_contract() {
   [ "$(wc -l < "$f")" -le 120 ]   # CLAUDE.md prune spec §2: the next imported block has to displace something
 }
 
-@test "impact.md names the plan note and the test commands of an intent proposal (CLAUDE.md prune spec §3.2)" {
-  grep -qF 'the plan note' .claude/commands/impact.md
-  grep -qF 'test commands' .claude/commands/impact.md
-}
 
 @test "ingest: headless contract, allowlisted index calls, decisions file" {
   f=.claude/commands/ingest.md
@@ -116,15 +112,13 @@ headless_contract() {
   headless_contract "$f"
   headless_allowlist "$f"
   grep -qF 'briefings/<date>.debrief.md' "$f"
-  grep -qx '### 3. Agent Health' system/templates/daily-debrief.md
   grep -qx '### 4. Unavailable Sources' system/templates/daily-debrief.md
 }
 
-@test "a Workcell writes metrics named by its file stem where /debrief reads them" {
-  grep -qF 'system/logs/metrics/coding-<epoch>.json' system/agents/workcells/coding.md
-  grep -qF '"agent": "coding"' system/agents/workcells/coding.md
-  grep -qF 'system/logs/metrics/*.json' .claude/commands/debrief.md
-  [ "$(jq -r .agent system/templates/compilation-metric.json)" = '{{workcell}}' ]
+@test "nothing writes or reads agent metrics, and no plan_gate note type is left (extensions spec §2.7)" {
+  run grep -rliE 'agent health|agent metrics|completion metric|logs/metrics|compilation-metric|plan_gate|intent-shaper|intent proposal' \
+    system/agents system/templates system/schemas .claude/commands FOUNDRY.md CLAUDE.md
+  [ "$status" -eq 1 ]
 }
 
 @test "every command has frontmatter with a description" {
@@ -666,7 +660,6 @@ self_edit_contract() {
   d=.claude/commands/debrief.md
   run grep -ci 'focus' "$d"
   [ "$status" -eq 1 ]
-  grep -qF 'Omit **3. Agent Health** when `system/logs/metrics/` holds no file' "$d"
   grep -qF 'Before today'"'"'s meetings' FOUNDRY.md
   grep -qF 'imported since the previous weekday brief' FOUNDRY.md
 }

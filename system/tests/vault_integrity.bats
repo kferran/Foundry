@@ -28,7 +28,7 @@ setup() {
 }
 
 @test "a schema note exists for every template type" {
-  for t in wiki-concept:concept now:concept rca:rca daily-briefing:briefing daily-debrief:debrief intent-shaper:plan_gate; do
+  for t in wiki-concept:concept now:concept rca:rca daily-briefing:briefing daily-debrief:debrief; do
     file="system/templates/${t%%:*}.md"
     type="${t##*:}"
     grep -q "^type: $type\$" "$file"

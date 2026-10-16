@@ -1,5 +1,5 @@
 ---
-description: The Foreman writes the evening debrief from git activity, session digests, headless runs and agent metrics.
+description: The Foreman writes the evening debrief from git activity, session digests and headless runs.
 argument-hint: [YYYY-MM-DD]
 ---
 
@@ -30,7 +30,6 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - Today's meetings: `system/scripts/vault_index.py query "SELECT path, title, partition FROM v_meeting WHERE date = '<date>'"`.
 - Headless runs: the lines of `system/logs/runs-<YYYY-MM>.jsonl` whose `started_at` begins with the date: `command`, `exit`, `.publish.status`, `.publish.published`, `.publish.rejected`, `.publish.conflicts` (the publish lists sit under `publish`, not at the top level).
 - Telemetry runs: the lines of `system/logs/telemetry-<YYYY-MM>.jsonl` whose `started_at` begins with the date: per `source`, the sums of `new`, `updated`, `resolved`, and any line with `exit` 1 and its `error`.
-- Agent metrics: Glob `system/logs/metrics/*.json`; each file has `agent`, `timestamp` and `verification_gates.test_suite_passed`.
 
 ## Write the debrief
 
@@ -38,7 +37,6 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - Otherwise create it from `system/templates/daily-debrief.md`, replacing `{{date}}`.
 - **1. Execution Logs & Results:** what got done, per repo from `git.md`, and the Outcome and Follow-ups of each digest, summarized across partitions (the debrief may cite any partition). List today's meetings, each as a link to its meeting note.
 - **2. System State Deltas:** headless runs (published, rejected, conflicts), telemetry runs per source (groups new, updated, resolved; failures), alerts, and quarantine: the rows of `quarantine.md` whose since date is today, the inputs today's `retry` ledger lines restored, and how many rows it still holds ("Quarantine: none" when the file says `none`).
-- **3. Agent Health:** every agent whose 3 most recent metric files all show `test_suite_passed: false`, with the files. Report only; the user decides what to do. Otherwise "No repeated failures." Omit **3. Agent Health** when `system/logs/metrics/` holds no file (no Workcell has run); the other sections keep their numbers.
 - **4. Unavailable Sources:** one bullet per missing source, or "None."
 - **5. Work Orders:** the `## Items` table and every `- [ ] ` line under "## Needs you" from `orders.md`, verbatim. Write "No Work Orders ran today." when the file is empty or says "Nothing ran." In both cases, copy its `> Held:` line verbatim when there is one. When an existing debrief has no 5. Work Orders section, add it at the end.
 - **6. Delivered Today:** what you delivered, as `type — what — link` lines under one bold label per type (**Decisions**, **Docs**, **Analyses**, **Messages**, **Code**, **Reviews**, **Handoffs**), from the `## Delivered` bullets of each digest in `digests.md`, the briefing's `delivered:` lines and the lines of `prs.md`, each once; or "Nothing recorded." When an existing debrief has no 6. Delivered Today section, add it after 5. Work Orders.
