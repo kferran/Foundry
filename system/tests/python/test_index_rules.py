@@ -139,7 +139,7 @@ def test_orphans(vault):
 def test_a_note_at_the_vault_root_is_flagged_so_it_reaches_the_inbox(vault):
     # Obsidian on a client creates "Untitled.md" at the root, where nothing ingests it (live vault, 2026-10-15).
     write(vault, "Untitled.md", "a thought typed on the phone\n")
-    for name in ("README.md", "README.local.md", "FOUNDRY.md", "CLAUDE.md"):
+    for name in ("README.md", "README.local.md", "FOUNDRY.md", "CLAUDE.md", "CHANGELOG.md"):
         write(vault, name, "# doc\n")
     assert issues(build(vault), "root-note") == [("Untitled.md", "warning", "root-note")]
 

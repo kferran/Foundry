@@ -21,7 +21,7 @@ NAME_EXCLUDED = ("system/tests/", "system/templates/", "system/schemas/", "syste
                  "system/quarantine/", "wiki/.staging/",  # run copies keep their note names
                  "system/codebases/", "system/telemetry/", "system/nightshift/")  # named after what they configure
 SKIP_FILES = ("system/index.db", "system/index.lock")
-ROOT_DOCS = {"README.md", "README.local.md", "FOUNDRY.md", "CLAUDE.md"}   # the only Markdown files the root holds
+ROOT_DOCS = {"README.md", "README.local.md", "FOUNDRY.md", "CLAUDE.md", "CHANGELOG.md"}   # the only Markdown files the root holds
 TABLES = ("files", "notes", "fields", "links", "tags", "issues", "notes_fts")
 ISSUE_ROWS = "SELECT path, line, severity, code, message FROM issues ORDER BY severity, path, line"
 

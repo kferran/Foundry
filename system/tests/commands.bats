@@ -1102,6 +1102,13 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'slack_notify_channel: ""' system/config.example.md
 }
 
+@test "CHANGELOG.md has What's next and dated changes with PR numbers (release notes spec §2.1)" {
+  grep -qx "## What's next" CHANGELOG.md
+  grep -qx '## Changes' CHANGELOG.md
+  grep -qE '^## [0-9]{4}-[0-9]{2}-[0-9]{2}$' CHANGELOG.md
+  grep -qE '^- .*\(#[0-9]+[^)]*\)$' CHANGELOG.md
+}
+
 @test "release notes: the brief prints What changed from updates.md; the manual has the changelog rule (release notes spec §2)" {
   f=.claude/commands/brief.md
   grep -qF 'system/logs/inputs/<date>/updates.md' "$f"
