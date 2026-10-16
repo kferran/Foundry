@@ -114,10 +114,10 @@ The roadmap puts this before step 3 because step 3 moves ingest's neighbours and
 ### Phase 4: simplify step 3, extensions
 
 **Grilled 2026-10-15.** Decisions and the contract are in `specs/2026-10-15-extensions-design.md`. In short:
-- Seven extensions go to one extensions repository, and Work Orders stay in core.
-- Jira handoffs move first.
+- Three vendor-specific extensions go to one extensions repository: Jira handoffs, DTCC, and telemetry with RCA (narrowed by the owner, 2026-10-16, spec §7). Meetings, inbox triage, Slack notices, two-machine sync and Work Orders stay in core.
+- Jira handoffs move first. The loader merged as #226.
 - One `extensions:` list turns them on.
-- The "done when" below is revised there: no feature code in core, about 8,800 lines, 12 schemas or fewer.
+- The "done when" below is revised there: no vendor names in core (the core-clean test), 14 schemas or fewer, a line budget set after the three moves.
 
 The questions the grill answered:
 

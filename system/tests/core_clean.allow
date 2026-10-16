@@ -2,43 +2,30 @@
 .claude/commands/brief.md:dtcc
 .claude/commands/brief.md:jira
 .claude/commands/brief.md:sentry
-.claude/commands/brief.md:slack
 .claude/commands/rca.md:jira
 .claude/commands/setup.md:atlassian
 .claude/commands/setup.md:azure
-.claude/commands/setup.md:gemini
-.claude/commands/setup.md:google drive
 .claude/commands/setup.md:jira
 .claude/commands/setup.md:sentry
 .claude/commands/setup.md:sentry.io
-.claude/commands/setup.md:slack
 .claude/settings.json:dtcc
 .claude/skills/dtcc-watch/SKILL.md:dtcc
 CLAUDE.md:dtcc
-CLAUDE.md:gemini
 CLAUDE.md:jira
 FOUNDRY.md:atlassian
 FOUNDRY.md:azure
 FOUNDRY.md:dtcc
-FOUNDRY.md:gemini
-FOUNDRY.md:google drive
 FOUNDRY.md:jira
 FOUNDRY.md:sentry
-FOUNDRY.md:slack
 system/agents/workcells/maintenance.md:sentry
 system/config.example.md:atlassian
 system/config.example.md:atlassian.net
-system/config.example.md:gemini
-system/config.example.md:google drive
 system/config.example.md:jira
-system/config.example.md:slack
 system/dtcc/map.example.yaml:dtcc
 system/headless.settings.json:azure
 system/schemas/config.md:atlassian
 system/schemas/config.md:jira
-system/schemas/config.md:slack
 system/schemas/dtcc_change.md:dtcc
-system/schemas/meeting.md:gemini
 system/schemas/production_error.md:sentry
 system/schemas/rca.md:jira
 system/schemas/telemetry_source.md:sentry
@@ -48,20 +35,11 @@ system/scripts/brief_prep.sh:jira
 system/scripts/check_deps.sh:azure
 system/scripts/dtcc_watch.py:dtcc
 system/scripts/install_units.sh:dtcc
-system/scripts/install_units.sh:slack
 system/scripts/jira_fetch.sh:atlassian
 system/scripts/jira_fetch.sh:jira
 system/scripts/jira_handoffs.py:atlassian
 system/scripts/jira_handoffs.py:atlassian.net
 system/scripts/jira_handoffs.py:jira
-system/scripts/lib_prep.sh:google drive
-system/scripts/meeting_import.py:gemini
-system/scripts/meetings_extract.py:gemini
-system/scripts/meetings_extract.py:google drive
-system/scripts/meetings_fetch.sh:gemini
-system/scripts/meetings_fetch.sh:google drive
-system/scripts/notify.py:slack
-system/scripts/notify.sh:slack
 system/scripts/rca.py:jira
 system/scripts/rca_file.sh:atlassian
 system/scripts/rca_file.sh:jira
@@ -69,7 +47,6 @@ system/scripts/smoke_check.sh:dtcc
 system/scripts/telemetry_fetch.py:sentry
 system/scripts/vaultlib/alerts.py:dtcc
 system/scripts/vaultlib/alerts.py:jira
-system/scripts/vaultlib/alerts.py:slack
 system/scripts/vaultlib/dtcc_diff.py:dtcc
 system/scripts/vaultlib/dtcc_fetch.py:dtcc
 system/scripts/vaultlib/dtcc_fetch.py:dtcclearning.com
@@ -81,31 +58,22 @@ system/scripts/vaultlib/http.py:kusto
 system/scripts/vaultlib/http.py:sentry
 system/scripts/vaultlib/index.py:dtcc
 system/scripts/vaultlib/index.py:sentry
-system/scripts/vaultlib/intake.py:gemini
 system/scripts/vaultlib/kusto.py:azure
-system/scripts/vaultlib/meetings.py:gemini
 system/scripts/vaultlib/nightshift_session.py:azure
-system/scripts/vaultlib/notify.py:slack
 system/scripts/vaultlib/rca.py:atlassian
 system/scripts/vaultlib/rca.py:atlassian.net
 system/scripts/vaultlib/rca.py:jira
-system/scripts/vaultlib/redact.py:slack
 system/scripts/vaultlib/sentry.py:sentry
 system/scripts/vaultlib/sources.py:atlassian
 system/scripts/vaultlib/sources.py:azure
 system/scripts/vaultlib/sources.py:dtcc
 system/scripts/vaultlib/sources.py:sentry
-system/scripts/vaultlib/sources.py:slack
 system/scripts/vaultlib/telemetry.py:sentry
 system/scripts/vaultlib/telemetry_run.py:kusto
 system/scripts/vaultlib/telemetry_run.py:sentry
-system/scripts/vaultlib/telemetry_run.py:slack
 system/scripts/vaultlib/telemetry_store.py:sentry
 system/systemd/foundry-dtcc-watch.service.in:dtcc
 system/systemd/foundry-dtcc-watch.timer.in:dtcc
-system/systemd/foundry-meetings.service.in:google drive
-system/systemd/foundry-notify.service.in:slack
-system/systemd/foundry-notify.timer.in:slack
 system/systemd/foundry-smoke.service.in:dtcc
 system/telemetry/example.md:kusto
 system/telemetry/example.md:sentry
