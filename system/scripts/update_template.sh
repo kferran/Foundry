@@ -44,7 +44,10 @@ g remote get-url template >/dev/null 2>&1 || die 1 "no template remote; run syst
 # update_extensions: extensions/ is tracked and arrives with the merge (extensions spec §3). The skill links are
 # re-made, and each listed extension that cannot load is alerted once a day as "[extensions] <reason>".
 update_extensions() {
-  local reason
+  local reason moved
+  # A feature that moved out of core is listed once when its old switch is set (extensions spec §4).
+  moved="$( [[ ! -f system/scripts/extensions.py ]] || system/scripts/extensions.py migrate 2>/dev/null 9>&- || true)"
+  [[ -z "$moved" ]] || echo "update_template: extensions: $(paste -sd ',' <<< "$moved" | sed 's/,/, /g')"
   [[ ! -f system/scripts/extensions.py ]] || system/scripts/extensions.py link > /dev/null 2>&1 9>&- || true
   [[ ! -f system/scripts/extensions.py ]] || while IFS= read -r reason; do
     [[ -n "$reason" ]] || continue

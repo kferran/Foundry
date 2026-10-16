@@ -120,9 +120,6 @@ connector calendar "${SMOKE_CALENDAR_TIMEOUT:-210}" system/scripts/calendar_fetc
 if [[ "$(config_get meetings_enabled false)" == true ]]; then
   connector meetings "${SMOKE_MEETINGS_TIMEOUT:-210}" system/scripts/meetings_fetch.sh --check
 else echo "meetings: off"; fi
-if [[ -n "$(config_get handoffs_projects "")" ]]; then
-  connector handoffs "${SMOKE_HANDOFFS_TIMEOUT:-360}" system/scripts/jira_fetch.sh --check
-else echo "handoffs: off"; fi
 if [[ "$(config_get triage_enabled false)" == true ]]; then
   connector triage "${SMOKE_TRIAGE_TIMEOUT:-360}" system/scripts/triage_fetch.sh --check
 else echo "triage: off"; fi

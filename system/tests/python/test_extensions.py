@@ -246,3 +246,31 @@ def test_link_leaves_a_real_folder_of_the_same_name_alone(ext):
     assert run(ext, "link").stdout == ""
     assert not real.is_symlink()
     assert (real / "SKILL.md").read_text() == "owner's\n"
+
+
+# enable and migrate (extensions spec §4): the one-time move of a feature's old switch into the extensions list.
+def test_enable_adds_a_name_once_and_keeps_the_rest_of_config(vault):
+    write(vault, "system/config.md", '---\ntype: config\ntimezone: "UTC"\n---\nbody\n')
+    assert extensions.enable(vault, "handoffs") is True
+    assert extensions.enable(vault, "handoffs") is False
+    assert extensions.enable(vault, "demo") is True
+    text = (vault / "system/config.md").read_text()
+    assert text == '---\ntype: config\ntimezone: "UTC"\nextensions: ["handoffs", "demo"]\n---\nbody\n'
+    assert extensions.listed(vault) == ["handoffs", "demo"]
+
+
+def test_migrate_lists_handoffs_once_when_handoffs_projects_is_set(vault):
+    write(vault, "system/config.md", '---\ntype: config\nhandoffs_projects: ["EX"]\n---\n')
+    assert run(vault, "migrate").stdout == "enabled handoffs\n"
+    assert extensions.listed(vault) == ["handoffs"]
+    # the owner turns it off again: the migration never re-adds it
+    write(vault, "system/config.md", '---\ntype: config\nhandoffs_projects: ["EX"]\nextensions: []\n---\n')
+    assert run(vault, "migrate").stdout == ""
+    assert extensions.listed(vault) == []
+
+
+def test_migrate_does_nothing_without_the_old_switch(vault):
+    write(vault, "system/config.md", '---\ntype: config\nhandoffs_projects: []\n---\n')
+    assert run(vault, "migrate").stdout == ""
+    assert extensions.listed(vault) == []
+    assert not (vault / "system/logs/extensions-migrated").exists()

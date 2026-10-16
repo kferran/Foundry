@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What each enabled extension gives the shared scripts, as lines bash can read (extensions spec §3).
 
-Usage: extensions.py list | check | field <name> <key> | smoke | brief | units <role> | allow [--write | --remove <name>] | ignore | link
+Usage: extensions.py list | check | field <name> <key> | smoke | brief | units <role> | allow [--write | --remove <name>] | ignore | link | migrate
 Exit: 0; 1 from `check` when an extension cannot load; 2 usage.
 """
 import json
@@ -73,6 +73,8 @@ def main(argv: list) -> int:
         out = extensions.link(VAULT)
     elif cmd == "ignore" and not args:
         out = extensions.ignore(VAULT)
+    elif cmd == "migrate" and not args:
+        out = [f"enabled {n}" for n in extensions.migrate(VAULT)]
     else:
         return usage()
     for line in out:

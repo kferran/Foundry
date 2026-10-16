@@ -1,6 +1,5 @@
 # file:term pairs core may still name (core-clean test, extensions spec §6). A move into extensions/ deletes its lines; the list is empty when phase 4 is done.
 .claude/commands/brief.md:dtcc
-.claude/commands/brief.md:jira
 .claude/commands/brief.md:sentry
 .claude/commands/rca.md:jira
 .claude/commands/setup.md:atlassian
@@ -29,17 +28,10 @@ system/schemas/dtcc_change.md:dtcc
 system/schemas/production_error.md:sentry
 system/schemas/rca.md:jira
 system/schemas/telemetry_source.md:sentry
-system/scripts/brief_prep.sh:atlassian
 system/scripts/brief_prep.sh:dtcc
-system/scripts/brief_prep.sh:jira
 system/scripts/check_deps.sh:azure
 system/scripts/dtcc_watch.py:dtcc
 system/scripts/install_units.sh:dtcc
-system/scripts/jira_fetch.sh:atlassian
-system/scripts/jira_fetch.sh:jira
-system/scripts/jira_handoffs.py:atlassian
-system/scripts/jira_handoffs.py:atlassian.net
-system/scripts/jira_handoffs.py:jira
 system/scripts/rca.py:jira
 system/scripts/rca_file.sh:atlassian
 system/scripts/rca_file.sh:jira

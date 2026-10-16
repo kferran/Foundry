@@ -45,7 +45,6 @@
       "Bash(system/scripts/install_hooks.sh --dry-run)",
       "Bash(system/scripts/setup_remote.sh --detect)",
       "Bash(system/scripts/meetings_fetch.sh --check)",
-      "Bash(system/scripts/jira_fetch.sh --check)",
       "Bash(system/scripts/triage_fetch.sh --check)",
       "Bash(bats system/tests/system_health.bats)",
       "Bash(git status:*)",

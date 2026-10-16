@@ -1,4 +1,7 @@
 # Shared setup for shell suites. Usage: load helpers; make_vault
+# An extension's suite loads this file from extensions/<name>/tests/ (extensions spec §3), so the repository root is
+# found from this file's own folder, never from the test's.
+FOUNDRY_TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # need_env <reason> <command…>: a test that needs what a container or a root runner lacks skips with
 # "environment: <reason>" when the command fails; under the gate's --require-suites (FOUNDRY_REQUIRE_ENV=1, as
@@ -20,7 +23,7 @@ user_systemd() {  # systemd-analyze can verify a user unit (needs a user systemd
 need_user_systemd() { need_env "no user systemd instance" user_systemd; }
 need_non_root() { need_env "root ignores file modes" test "$(id -u)" -ne 0; }
 make_vault() {
-  REPO="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
+  REPO="$(cd "$FOUNDRY_TESTS_DIR/../.." && pwd)"
   V="$BATS_TEST_TMPDIR/vault"
   unset VAULT_ROOT
   cp -r "$REPO/system/tests/fixtures/vault" "$V"

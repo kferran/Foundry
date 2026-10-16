@@ -15,7 +15,7 @@ import re
 import sys
 from pathlib import Path
 
-VAULT = Path(__file__).resolve().parents[2]
+VAULT = Path(__file__).resolve().parents[3]   # extensions/handoffs/scripts/
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
 from vaultlib import frontmatter  # noqa: E402
 from vaultlib.stream import blocks, messages  # noqa: E402

@@ -105,6 +105,58 @@ def ignore(vault: Path) -> list:
     return [p for _, d in enabled(vault) for p in _strs(d.get("index_ignore"))]
 
 
+# Turning an extension on (extensions spec §4). config.md is edited as text: only the `extensions:` line changes, or
+# one is added before the frontmatter's closing line, so the owner's comments and order stay as they are.
+def enable(vault: Path, name: str) -> bool:
+    """Add `name` to the extensions list. Returns False when it is already listed or config.md has no frontmatter."""
+    path = Path(vault) / "system" / "config.md"
+    names = listed(Path(vault))
+    if name in names or not path.is_file():
+        return False
+    lines = path.read_text(encoding="utf-8").split("\n")
+    if not lines or lines[0] != "---" or "---" not in lines[1:]:
+        return False
+    end = lines.index("---", 1)
+    new = "extensions: [" + ", ".join(json.dumps(n) for n in [*names, name]) + "]"
+    at = next((i for i in range(1, end) if lines[i].startswith("extensions:")), None)
+    if at is None:
+        lines.insert(end, new)
+    else:
+        lines[at] = new
+    _save(path, "\n".join(lines))
+    return True
+
+
+# One rule per feature that moved out of core: the old switch that means the owner used it. Each runs once per vault
+# (system/logs/extensions-migrated), so an extension the owner turns off later stays off.
+MIGRATIONS = {
+    "handoffs": lambda cfg: bool(cfg.get("handoffs_projects")),
+}
+MIGRATED = Path("system/logs/extensions-migrated")
+
+
+def migrate(vault: Path) -> list:
+    """Enable each moved feature whose old switch is set and that was never migrated. Returns the names enabled."""
+    vault = Path(vault)
+    path = vault / "system" / "config.md"
+    try:
+        cfg = frontmatter.parse(path.read_text(encoding="utf-8")).data or {}
+    except (OSError, UnicodeDecodeError):
+        return []
+    log = vault / MIGRATED
+    done = set(log.read_text(encoding="utf-8").split()) if log.is_file() else set()
+    out = []
+    for name, used in MIGRATIONS.items():
+        if name in done or not used(cfg):
+            continue
+        if enable(vault, name):
+            out.append(name)
+        done.add(name)
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("".join(f"{n}\n" for n in sorted(done)), encoding="utf-8")
+    return out
+
+
 # The allow rules (extensions spec §3). The settings file is edited as text, whole lines only: a rule goes right
 # after the `"allow": [` line, written as `      "<rule>",`. Rewriting the file with a JSON tool would reformat it and
 # break every later template merge. system/logs/extensions-allow.json maps each rule written to its extension, so a
