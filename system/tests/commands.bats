@@ -1154,6 +1154,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'sections/<name>.prompt.md' "$f"
   grep -qF 'sections/<name>.md' "$f"
   grep -qF 'Omit a section whose data file is missing or empty.' "$f"
+  grep -qF -- "  - every line an extension's section asks to add, as its section says;" "$f"
 }
 
 @test "/setup phase 6e turns tracked extensions on: show, ask, write, allow rules, links, units, smoke; a failure never blocks (extensions spec §3)" {

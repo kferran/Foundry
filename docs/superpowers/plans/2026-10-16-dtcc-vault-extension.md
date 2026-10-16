@@ -37,6 +37,8 @@
 
 ### Task 1: generic hooks in core
 
+**Ruling during task 2:** the `dtcc` migration rule and the `(vault, cfg)` signature below were built, then dropped. The rule named DTCC in core, and the telemetry PR makes the signature change. Only `{{PRE_BRIEF_TIME}}` ships from this task; Review Focus 2 and 5 move to Task 4's checks.
+
 **Files:**
 - Modify: `system/scripts/install_units.sh` (the `dtcc_time` lines near 203 and the `render` sed list).
 - Modify: `system/systemd/foundry-dtcc-watch.timer.in` (uses `{{PRE_BRIEF_TIME}}`; task 2 moves it).
@@ -222,17 +224,27 @@
 
 ### Task 4: cutover in the owner's vault (the vault's Foreman session, on the owner's OK)
 
-Order matters (Review Focus 1). Do it in one sitting, between the PR's merge and the next 05:30 update:
+Order matters (Review Focus 1). `system/config.md` and the skill links are per machine (the config is gitignored; links go in `.git/info/exclude`), so each machine gets its own step. Do it in one sitting.
+
+**Before the PR merges, on the server:**
+0. `systemctl --user stop foundry-update.timer`, so the 05:30 update cannot merge the template before the extension is in place. Note whether `foundry-dtcc-watch.timer` is enabled now (`systemctl --user is-enabled foundry-dtcc-watch.timer`).
+
+**After the PR merges, on the server (the machine that runs the units):**
 1. Copy the tarball into the vault's scratch area. Do not extract it into `extensions/` yet.
-2. Run `system/scripts/update_template.sh` by hand. It merges the template, which deletes core's DTCC.
-3. At once, extract the tarball at the vault root (`extensions/dtcc/`). Add `"dtcc"` to the `extensions:` list in `system/config.md` by editing it, as `/setup` phase 6e does; the template carries no `dtcc` migration rule (ledger ruling, task 2). Run `vault_index.py validate system/config.md`, then commit.
+2. Run `system/scripts/update_template.sh` by hand. It merges the template, which deletes core's DTCC. Its unit re-render (`install_units.sh --update`) removes the core DTCC units, since the template no longer ships them.
+3. At once, extract the tarball at the vault root (`extensions/dtcc/`). Add `"dtcc"` to the `extensions:` list in `system/config.md` by editing it, as `/setup` phase 6e does; the template carries no `dtcc` migration rule (ledger ruling, task 2). Run `vault_index.py validate system/config.md`, then commit and sync.
 4. Run:
    - `system/scripts/extensions.py check` (expect no output);
    - `extensions.py allow --write`;
    - `extensions.py link`;
-   - `install_units.sh`. The re-rendered `foundry-dtcc-watch.service` now runs `extensions/dtcc/scripts/dtcc_watch.py`.
+   - `install_units.sh`, which installs `foundry-dtcc-watch.service` and `.timer` from the extension, running `extensions/dtcc/scripts/dtcc_watch.py`. If step 0 found the timer disabled, disable it again (`install_units.sh` enables an extension's timer).
 5. `extensions/dtcc/scripts/dtcc_watch.py --check` exits 0. `vault_index.py issues` shows 0 errors, with every existing `dtcc_change` note validating against the extension's schema.
-6. The next morning's brief has its DTCC lines (or none when nothing changed), and the Sources line counts `dtcc`.
+6. `systemctl --user start foundry-update.timer`.
+
+**On every other machine (a laptop client), after its sync brings the commit:**
+7. Add `"dtcc"` to its own `system/config.md` `extensions:` list, then run `system/scripts/extensions.py link`, so `/dtcc-watch` works there. No units: a client installs none.
+
+**The next morning:** the brief has its DTCC Now lines (or none when nothing changed), and the Sources line counts `dtcc`.
 
 ### Live acceptance (before the PR opens, in a throwaway clone)
 
