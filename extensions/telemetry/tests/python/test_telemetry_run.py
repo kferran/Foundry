@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from helpers import write
-from vaultlib import http, kusto, sentry, telemetry_run
+from telemetrylib import http, kusto, sentry, telemetry_run
 
 NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 DAY = NOW.astimezone().strftime("%Y-%m-%d")

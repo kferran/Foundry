@@ -25,12 +25,6 @@ fields:
   order_max_five_hour: {kind: string, default: "0.6"}
   nightshift_workspace: {kind: string}
   nightshift_window: {kind: string}
-  handoffs_site: {kind: string}
-  rca_project: {kind: string}
-  rca_issue_type: {kind: string, default: "Bug"}
-  rca_labels: {kind: list, of: string}
-  rca_assignee: {kind: string}
-  rca_extra_fields: {kind: map, of: string}
   triage_enabled: {kind: bool, default: "false"}
   triage_partition: {kind: enum, values: [work, personal]}
   triage_watch_senders: {kind: list, of: string}
@@ -45,10 +39,6 @@ fields:
 The per-user global configuration written by `/setup` (gitignored). `system/config.example.md` is the committed example.
 
 `run_window` is the window for Work Orders queued with `--window`, as `HH:MM-HH:MM`; empty (the default) or `00:00-24:00` means always. `order_max_five_hour` is the 5-hour usage fraction at or above which no new Work Order starts.
-
-`handoffs_site` (the Jira site's host name) is where approved `/rca` drafts are filed, and the site the handoffs extension reads (its `handoffs_projects` key is in the extension's config fragment, extensions spec §3).
-
-`rca_project` (a Jira project key) turns on filing approved `/rca` drafts to `handoffs_site`, as `rca_issue_type` (default `Bug`) with `rca_labels`, the project's required fields in `rca_extra_fields` (Jira field id to value; a value written as JSON is sent as JSON, #175) and, when set, the Atlassian account ID `rca_assignee` (RCA spec §3.4); filing stays off while `rca_project` is empty.
 
 `triage_enabled` turns on inbox triage on a standalone machine or a server (inbox triage spec): every 30 minutes on workdays, mail that needs the owner becomes an `owed` line on the Now page of `triage_partition` (default `work`). `triage_watch_senders` lists domains (`@example.com`) or addresses whose unread mail outside the inbox from the last two days also becomes an `owed` line: mail from them archived unread is not missed.
 

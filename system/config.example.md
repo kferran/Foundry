@@ -15,12 +15,6 @@ sync_interval_minutes: "5"      # server only: minutes between vault syncs (1-60
 meetings_enabled: "false"       # server and standalone: fetch Gemini notes from Google Drive on workdays
 meetings_partition: ""          # work | personal: where fetched meetings go (empty: default_partition, or personal when that is shared)
 owner_names: []                 # your names as they appear in meeting action items, e.g. ["Avery Sample"]
-handoffs_site: ""               # server and standalone: your Jira site's host name, e.g. example.atlassian.net
-rca_project: ""                 # Jira project key approved /rca drafts are filed to, e.g. "EX"; empty is off
-rca_issue_type: "Bug"           # the issue type /rca files
-rca_labels: []                  # labels /rca puts on each ticket, e.g. ["production-finding"]
-rca_assignee: ""                # Atlassian account ID to assign /rca tickets to; empty leaves them unassigned
-rca_extra_fields: {}            # a required custom field per Jira field id, e.g. {customfield_10042: '{"id": "10042"}'}; JSON values are sent as JSON
 triage_enabled: "false"         # server and standalone: every 30 minutes on workdays, mail that needs you goes to the Now page
 triage_partition: "work"        # work | personal: the Now page triage writes to
 triage_watch_senders: []        # domains or addresses whose mail archived unread still reaches the Now page, e.g. ["@example.com"]

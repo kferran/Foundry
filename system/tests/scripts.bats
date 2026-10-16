@@ -356,9 +356,10 @@ TOKEN="AKIA""IOSFODNN7EXAMPLE"
 }
 
 @test "every tag an alert writer uses is in the registry (alert tags spec §4)" {
-  # The printf and f-string writer forms, and a tag passed by name (telemetry_run.py's _alert(..., tag="incident")).
+  # The printf and f-string writer forms, and a tag passed by name (telemetry_run.py's _alert(..., tag="incident")), in
+  # core and in every tracked extension's code.
   run grep -rhoE -e "printf -- '- %s \[[a-z_]+\]" -e 'f"- \{[^"]*\} \[[a-z_]+\]' -e 'tag(: str)? ?= ?"[a-z_]+"' \
-    "$REPO/system/scripts" "$REPO/system/hooks"
+    --exclude-dir=tests "$REPO/system/scripts" "$REPO/system/hooks" "$REPO/extensions"
   [ "$status" -eq 0 ]
   used="$(sed -E 's/.*[["]([a-z_]+)[]"]$/\1/' <<< "$output" | sort -u)"
   known="$(PYTHONPATH="$REPO/system/scripts" python3 -c 'from vaultlib.alerts import TAGS; print("\n".join(sorted(TAGS)))')"

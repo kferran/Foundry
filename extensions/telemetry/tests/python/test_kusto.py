@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from vaultlib import http, kusto
+from telemetrylib import http, kusto
 
 V2 = [
     {"FrameType": "DataSetHeader"},

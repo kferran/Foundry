@@ -17,7 +17,6 @@ setup() {
   stub meetings_fetch.sh 0 "meetings_fetch: the search listed 0 Docs" 1
   stub triage_fetch.sh 0 "triage_fetch: 0 threads need you" 1
   stub dtcc_watch.py 0 "map ok" 1
-  stub telemetry_fetch.py 0 "telemetry_fetch: prod-sentry: ok" 1
   # Units (#166): an empty unit directory, and a systemctl that answers from $STUB_TIMERS lines
   # "<timer>|<LastTriggerUSec>|<SubState>"; a timer with no line is not enabled. Other verbs succeed silently.
   cp -r "$REPO/system/systemd" system/systemd
@@ -45,16 +44,12 @@ timer() {
 }
 
 # stub <script> <exit> <message> [stream]: the vault's copy of a fetch records its call, prints the message to stderr
-# (or the stream given) and exits with the code. telemetry_fetch.py --list prints the sources in STUB_SOURCES.
+# (or the stream given) and exits with the code.
 stub() {
   local f="system/scripts/$1" fd="${4:-2}"
   cat > "$f" <<EOF
 #!/bin/bash
 echo "$1 \$*" >> "\$CALLS"
-if [[ "$1" == telemetry_fetch.py ]] && [[ "\$1" == --list ]]; then
-  [[ -z "\${STUB_SOURCES:-}" ]] || printf '%s\n' "\$STUB_SOURCES"
-  exit "\${STUB_LIST_RC:-0}"
-fi
 [[ -z "$3" ]] || echo "$3" >&$fd
 exit $2
 EOF
@@ -63,6 +58,12 @@ EOF
 
 set_key() { sed -i "s/^$1:.*/$1: $2/;t;\$i $1: $2" system/config.md; }
 alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
+# items <row…>: the fixture extension checked per item, on, listing these "item<tab>credential<tab>renewal" rows.
+items() {
+  use_extension items
+  mkdir -p system/logs
+  printf '%s\n' "$@" > system/logs/items.list
+}
 
 @test "every configured source reads ok and the rest off; the version is recorded, nothing is alerted" {
   need_user_systemd
@@ -72,14 +73,12 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   [ "${lines[1]}" = "calendar: ok" ]
   [ "${lines[2]}" = "meetings: off" ]
   [ "${lines[3]}" = "triage: off" ]
-  [ "${lines[4]}" = "telemetry: off" ]
-  [ "${lines[5]}" = "dtcc: off" ]
+  [ "${lines[4]}" = "dtcc: off" ]
   [ "$(cat system/logs/claude.version)" = "1.0.0 (Claude Code)" ]
   [ -z "$(alerts)" ]
   [ "$(jq -r 'select(.source == "calendar") | .exit' "$LOG")" = 0 ]
   grep -qx 'calendar_fetch.sh --check' "$CALLS"
-  grep -qx 'telemetry_fetch.py --list' "$CALLS"
-  run grep -c -e meetings_fetch -e triage_fetch -e dtcc_watch -e 'telemetry_fetch.py --check' "$CALLS"
+  run grep -c -e meetings_fetch -e triage_fetch -e dtcc_watch "$CALLS"
   [ "$output" = 0 ]
 }
 
@@ -124,7 +123,7 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   grep -qx 'version: ok' <<< "$output"
   grep -qx 'calendar: held: five-hour usage 0.7 is at or above 0.6' <<< "$output"
   grep -qx 'meetings: held: five-hour usage 0.7 is at or above 0.6' <<< "$output"
-  grep -qx 'telemetry: off' <<< "$output"
+  grep -qx 'dtcc: off' <<< "$output"
   run grep -c -e calendar_fetch -e meetings_fetch "$CALLS"
   [ "$output" = 0 ]
   alerts | grep -qF '[smoke] held: five-hour usage 0.7 is at or above 0.6; the connector checks did not run'
@@ -143,38 +142,45 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   [ "$(alerts | grep -c '\[smoke\]')" -eq 2 ]
 }
 
-@test "enabled features are each checked once; the telemetry sources come from --list" {
+@test "enabled features are each checked once; an extension's per-item source checks each listed item" {
   need_user_systemd
   set_key meetings_enabled '"true"'
   set_key triage_enabled '"true"'
   mkdir -p system/dtcc
   printf 'partition: work\n' > system/dtcc/map.yaml
-  STUB_SOURCES=$'prod-sentry\nprod-adx' run "$SC"
+  items prod-a prod-b
+  run "$SC"
   [ "$status" -eq 0 ]
-  grep -qx 'telemetry/prod-sentry: ok' <<< "$output"
-  grep -qx 'telemetry/prod-adx: ok' <<< "$output"
+  grep -qx 'items/prod-a: ok' <<< "$output"
+  grep -qx 'items/prod-b: ok' <<< "$output"
   grep -qx 'dtcc: ok' <<< "$output"
   [ "$(grep -c -x 'meetings_fetch.sh --check' "$CALLS")" -eq 1 ]
   [ "$(grep -c -x 'triage_fetch.sh --check' "$CALLS")" -eq 1 ]
   [ "$(grep -c -x 'dtcc_watch.py --check' "$CALLS")" -eq 1 ]
-  grep -qx 'telemetry_fetch.py --check prod-sentry' "$CALLS"
-  grep -qx 'telemetry_fetch.py --check prod-adx' "$CALLS"
 }
 
-@test "a telemetry source list that fails is a failed source, never no source (audit C5)" {
-  STUB_LIST_RC=1 run "$SC"
-  [ "$status" -eq 1 ]
-  grep -q '^telemetry: failed: ' <<< "$output"
-  run grep -c 'telemetry_fetch.py --check' "$CALLS"
-  [ "$output" = 0 ]
-}
-
-@test "failing telemetry sources each get their own line; the Python scripts' reasons come from stdout" {
-  printf '#!/bin/bash\necho "telemetry_fetch.py $*" >> "$CALLS"\n[[ "$1" == --list ]] && { printf "prod-sentry\\nprod-adx\\n"; exit 0; }\necho "telemetry_fetch: $2: connector: HTTP 503"\nexit 1\n' > system/scripts/telemetry_fetch.py
+@test "a per-item list that fails is a failed source, never no item; an empty list is off (audit C5)" {
+  items prod-a
+  touch system/logs/items.fail
   run "$SC"
   [ "$status" -eq 1 ]
-  grep -qx 'telemetry/prod-sentry: failed: connector: HTTP 503' <<< "$output"
-  grep -qx 'telemetry/prod-adx: failed: connector: HTTP 503' <<< "$output"
+  grep -qx 'items: failed: items_list.sh failed (exit 1): other: the list broke' <<< "$output"
+  run grep -c '^items/' <<< "$output"
+  [ "$output" = 0 ]
+  rm system/logs/items.fail
+  : > system/logs/items.list
+  run "$SC"
+  grep -qx 'items: off' <<< "$output"
+}
+
+@test "failing items each get their own line, the reason without the item's name; the others still read ok" {
+  items prod-a prod-b prod-c
+  printf 'prod-a\tconnector: HTTP 503\nprod-b\tconnector: HTTP 503\n' > system/logs/items.bad
+  run "$SC"
+  [ "$status" -eq 1 ]
+  grep -qx 'items/prod-a: failed: connector: HTTP 503' <<< "$output"
+  grep -qx 'items/prod-b: failed: connector: HTTP 503' <<< "$output"
+  grep -qx 'items/prod-c: ok' <<< "$output"
 }
 
 @test "an auth failure names the credential and its renewal, one alert a day per credential (connector health spec §2)" {
@@ -198,27 +204,26 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   [ "$(alerts | grep -c '\[smoke\] expired')" -eq 2 ]
 }
 
-@test "a telemetry auth failure names the credential of the source's kind" {
-  printf '#!/bin/bash\n[[ "$1" == --list ]] && { echo prod-adx; exit 0; }\necho "telemetry_fetch: $2: auth: run az login"\nexit 1\n' > system/scripts/telemetry_fetch.py
-  mkdir -p system/codebases system/telemetry
-  printf -- '---\ntype: codebase\nname: "shop"\npath: "~"\npartition: "work"\nsearch_globs: ["*"]\n---\n' > system/codebases/shop.md
-  printf -- '---\ntype: telemetry_source\nname: "prod-adx"\ncodebase: "shop"\nenvironment: "prod"\nkind: "adx"\nadx_cluster: "https://example.kusto.windows.net"\nadx_database: "prod"\nadx_signals: ["logs"]\n---\n' > system/telemetry/prod-adx.md
+@test "an item's auth failure names the credential its list gives" {
+  items $'prod-a\tItem token\twrite a new token'
+  printf 'prod-a\tauth: HTTP 401\n' > system/logs/items.bad
   run "$SC"
   [ "$status" -eq 1 ]
-  grep -qx 'telemetry/prod-adx: expired: Azure CLI; renew: az login on the server' <<< "$output"
-  alerts | grep -qF '[smoke] expired Azure CLI: renew: az login on the server (telemetry/prod-adx: auth: run az login)'
+  grep -qx 'items/prod-a: expired: Item token; renew: write a new token' <<< "$output"
+  alerts | grep -qF '[smoke] expired Item token: renew: write a new token (items/prod-a: auth: HTTP 401)'
 }
 
 @test "a network failure reads unreachable and alerts only when the previous check failed the same way" {
-  printf '#!/bin/bash\n[[ "$1" == --list ]] && { echo prod-adx; exit 0; }\necho "telemetry_fetch: $2: network: example.kusto.windows.net (URLError)"\nexit 1\n' > system/scripts/telemetry_fetch.py
+  items prod-a
+  printf 'prod-a\tnetwork: example.invalid (URLError)\n' > system/logs/items.bad
   run "$SC"
   [ "$status" -eq 1 ]
-  grep -qx 'telemetry/prod-adx: unreachable: example.kusto.windows.net' <<< "$output"
+  grep -qx 'items/prod-a: unreachable: example.invalid' <<< "$output"
   run grep -c 'unreachable' <<< "$(alerts)"
   [ "$output" = 0 ]
   run "$SC"
-  [ "$(alerts | grep -c '\[smoke\] unreachable example.kusto.windows.net:')" -eq 1 ]
-  alerts | grep -qF "since $(TZ=America/Denver date +%F); check the VPN or network route to example.kusto.windows.net"
+  [ "$(alerts | grep -c '\[smoke\] unreachable example.invalid:')" -eq 1 ]
+  alerts | grep -qF "since $(TZ=America/Denver date +%F); check the VPN or network route to example.invalid"
   run "$SC"
   [ "$(alerts | grep -c 'unreachable')" -eq 1 ]
 }

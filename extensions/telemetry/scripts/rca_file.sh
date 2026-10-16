@@ -7,7 +7,7 @@
 # run.lock busy, 5 an earlier session called the create tool and saved no key, 6 connector error, 7 unexpected tool,
 # 127 no claude.
 set -euo pipefail
-VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 cd "$VAULT_ROOT"
 # shellcheck source=lib_config.sh
 source system/scripts/lib_config.sh
@@ -63,7 +63,7 @@ created="system/logs/rca/$partition-$stem.key"
 attempt="system/logs/rca/$partition-$stem.attempt"
 writeback() {  # <key>
   local wrc=0
-  system/scripts/rca.py filed "$partition" "$stem" "$1" 2> "$work/filed.err" || wrc=$?
+  extensions/telemetry/scripts/rca.py filed "$partition" "$stem" "$1" 2> "$work/filed.err" || wrc=$?
   (( wrc == 0 )) || fail "$wrc" "filed $1, but the note was not updated: $(sed 's/^rca: //' "$work/filed.err" | head -n 1)"
   logline 0 "" "$1"
   printf -- '- %s [rca] filed %s for %s\n' "$(date +%H:%M:%S)" "$1" "$stem" >> "system/logs/alerts_$(date +%F).md"
@@ -75,10 +75,10 @@ trap 'rm -rf -- "$work"' EXIT  # the session's directory is under it: a stopped 
 if [[ -s "$created" ]]; then
   writeback "$(head -n 1 "$created")"
 fi
-[[ ! -e "$attempt" ]] || fail 5 "an earlier session called the create tool and saved no key: find the ticket in Jira and run system/scripts/rca.py filed $partition $stem <key>, or delete $attempt to file again"
+[[ ! -e "$attempt" ]] || fail 5 "an earlier session called the create tool and saved no key: find the ticket in Jira and run extensions/telemetry/scripts/rca.py filed $partition $stem <key>, or delete $attempt to file again"
 
 arc=0
-args="$(system/scripts/rca.py args "$partition" "$stem" 2>&1)" || arc=$?
+args="$(extensions/telemetry/scripts/rca.py args "$partition" "$stem" 2>&1)" || arc=$?
 (( arc == 0 )) || fail "$arc" "${args#rca: }"
 CONNECTOR_SERVER="claude.ai Atlassian" CONNECTOR_PREFIX="$PREFIX" CONNECTOR_TOOL="$TOOL" CONNECTOR_OTHERS=("${OTHER_TOOLS[@]}")
 CONNECTOR_TIMEOUT="${RCA_TIMEOUT:-300}" CONNECTOR_TURNS=8
@@ -97,20 +97,20 @@ fi
 # The tool-use check runs on every session, a timed-out one included: a ticket may exist even when claude failed.
 prc=0
 printf '%s' "$args" > "$work/args.json"  # the check compares against what was sent, not the note as it is now
-key="$(system/scripts/rca.py extract "$work/args.json" < "$work/out.jsonl" 2> "$work/check.err")" || prc=$?
+key="$(extensions/telemetry/scripts/rca.py extract "$work/args.json" < "$work/out.jsonl" 2> "$work/check.err")" || prc=$?
 connector_outcome "$prc" "$work"
 if (( CONNECTOR_EXIT != 0 )); then
   reason="$CONNECTOR_REASON"
   # Jira refused every create call with a client error, so nothing exists: clear the marker and hand the draft
   # back to you with the reason on its Now line, so no tick retries it until you tick it again (#175).
-  if rejection="$(system/scripts/rca.py rejected < "$work/out.jsonl")"; then
+  if rejection="$(extensions/telemetry/scripts/rca.py rejected < "$work/out.jsonl")"; then
     rm -f -- "$attempt"
     msg="Jira refused the ticket, nothing was created; fix the setting and tick the line again: $rejection"
-    system/scripts/rca.py reopen "$partition" "$stem" "$rejection" 2> "$work/reopen.err" \
+    extensions/telemetry/scripts/rca.py reopen "$partition" "$stem" "$rejection" 2> "$work/reopen.err" \
       || msg="$msg; the Now line was not reopened: $(sed 's/^rca: //' "$work/reopen.err" | head -n 1)"
     fail 6 "$msg"
   fi
-  if system/scripts/rca.py called < "$work/out.jsonl"; then
+  if extensions/telemetry/scripts/rca.py called < "$work/out.jsonl"; then
     reason="$reason; the create tool was called, so check Jira before deleting $attempt"
   else
     rm -f -- "$attempt"

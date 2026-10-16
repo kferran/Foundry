@@ -106,16 +106,6 @@ if [[ "$role" != client && -n "$(config_get slack_notify_channel "")" ]]; then
   UNITS+=(foundry-notify.service foundry-notify.timer)
   ENABLE+=(foundry-notify.timer)
 fi
-# Error telemetry (Plan 11): standalone and server, only when a source is enabled. A list that fails decides
-# nothing: read as "no sources", it would make --update delete the owned telemetry units (audit C5).
-if [[ "$role" != client ]]; then
-  sources="$(system/scripts/telemetry_fetch.py --list 2>/dev/null)" \
-    || die 1 "telemetry_fetch.py --list failed, so the telemetry units cannot be decided; nothing was changed"
-  if [[ -n "$sources" ]]; then
-    UNITS+=(foundry-telemetry.service foundry-telemetry.timer)
-    ENABLE+=(foundry-telemetry.timer)
-  fi
-fi
 # Work Orders and the template update: standalone and server, while their keys are true (Nightshift spec §2,
 # #87). An absent key is true, so a vault made before they were opt-in keeps both (express install spec §2).
 if [[ "$role" != client && "$(config_get orders_enabled true)" == true ]]; then
@@ -133,7 +123,7 @@ if [[ "$role" != client ]] && [[ -f system/dtcc/map.yaml ]]; then
   ENABLE+=(foundry-dtcc-watch.timer)
 fi
 # Extension units (extensions spec §3): extensions/<name>/units/<unit>.{service,timer}.in for each unit an enabled
-# extension lists for this role. A list that fails decides nothing, like telemetry's: nothing is changed.
+# extension lists for this role. A list that fails decides nothing (audit C5): nothing is changed.
 declare -A EXT_TEMPLATE=()
 if [[ "$role" != client ]]; then
   ext_units="$(system/scripts/extensions.py units "$role" 2>/dev/null)" \

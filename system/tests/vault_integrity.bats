@@ -20,7 +20,7 @@ setup() {
 @test "vault scripts and hook are executable" {
   for s in vault_index.py lint_vault.sh check_deps.sh verify_setup.sh \
            brief_prep.sh debrief_prep.sh install_units.sh setup_remote.sh update_template.sh \
-           discover_codebases.sh inspect_codebase.sh inspect_codebase.py now.py triage.py triage_fetch.sh rca.py rca_file.sh \
+           discover_codebases.sh inspect_codebase.sh inspect_codebase.py now.py triage.py triage_fetch.sh \
            notify.py notify.sh secret_scan.py; do
     [ -x "system/scripts/$s" ]
   done
@@ -28,7 +28,7 @@ setup() {
 }
 
 @test "a schema note exists for every template type" {
-  for t in wiki-concept:concept now:concept rca:rca daily-briefing:briefing daily-debrief:debrief; do
+  for t in wiki-concept:concept now:concept daily-briefing:briefing daily-debrief:debrief; do
     file="system/templates/${t%%:*}.md"
     type="${t##*:}"
     grep -q "^type: $type\$" "$file"
@@ -99,7 +99,7 @@ setup() {
 }
 
 @test "interactive settings end with the routine-command rules a vault merges against, in order" {
-  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(system/scripts/telemetry_fetch.py --list)","Bash(system/scripts/telemetry_fetch.py --check *)","Bash(system/scripts/dtcc_watch.py --check)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/dtcc_watch.py)","Bash(system/scripts/dtcc_watch.py --status)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/triage_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(git show:*)","Bash(system/scripts/now.py review:*)"]'
+  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(system/scripts/dtcc_watch.py --check)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/dtcc_watch.py)","Bash(system/scripts/dtcc_watch.py --status)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/triage_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(git show:*)","Bash(system/scripts/now.py review:*)"]'
   run jq -c '.permissions.allow | .[index("Bash(system/scripts/vault_index.py recall:*)"):]' .claude/settings.json
   [ "$output" = "$want" ]
 }
@@ -143,7 +143,7 @@ boundary_rules() {
 @test "unit templates: only *.in files, services carry {{VAULT_ROOT}}, no machine paths" {
   shopt -s nullglob
   files=(system/systemd/*.in system/systemd/dropins/*.in)
-  [ "${#files[@]}" -eq 25 ]
+  [ "${#files[@]}" -eq 23 ]
   [ -z "$(find system/systemd -type f ! -name '*.in')" ]
   for f in system/systemd/*.service.in system/systemd/dropins/*.in; do
     grep -q '{{VAULT_ROOT}}' "$f"

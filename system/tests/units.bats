@@ -382,44 +382,6 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   [ ! -e "$UD/foundry-notify.timer" ]
 }
 
-@test "a vault with an enabled telemetry source gets the telemetry timer; one without does not" {
-  run "$IU"
-  [ "$status" -eq 0 ]
-  [ ! -e "$UD/foundry-telemetry.timer" ]
-  mkdir -p "$V/system/telemetry" "$V/system/codebases"
-  printf -- '---\ntype: codebase\nname: "x"\npath: "~"\npartition: "work"\nsearch_globs: ["*"]\n---\n' > "$V/system/codebases/x.md"
-  printf -- '---\ntype: telemetry_source\nname: "p"\ncodebase: "x"\nenvironment: "prod"\nkind: "adx"\nadx_cluster: "https://e"\nadx_database: "d"\n---\n' > "$V/system/telemetry/p.md"
-  run "$IU"
-  [ "$status" -eq 0 ]
-  grep -q '^OnUnitActiveSec=1h$' "$UD/foundry-telemetry.timer"
-  grep -q 'telemetry_fetch.py' "$UD/foundry-telemetry.service"
-  grep -q 'enable --now .*foundry-telemetry.timer' "$STUB_SYSTEMCTL_LOG"
-}
-
-@test "a telemetry source list that fails stops the install and keeps the telemetry units (audit C5)" {
-  mkdir -p "$V/system/telemetry" "$V/system/codebases"
-  printf -- '---\ntype: codebase\nname: "x"\npath: "~"\npartition: "work"\nsearch_globs: ["*"]\n---\n' > "$V/system/codebases/x.md"
-  printf -- '---\ntype: telemetry_source\nname: "p"\ncodebase: "x"\nenvironment: "prod"\nkind: "adx"\nadx_cluster: "https://e"\nadx_database: "d"\n---\n' > "$V/system/telemetry/p.md"
-  run "$IU"
-  [ -e "$UD/foundry-telemetry.timer" ]
-  printf '#!/bin/bash\necho "telemetry_fetch: index locked" >&2\nexit 1\n' > "$V/system/scripts/telemetry_fetch.py"
-  run "$IU" --update
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"telemetry_fetch.py --list failed"* ]]
-  [ -e "$UD/foundry-telemetry.timer" ]
-}
-
-@test "a server gets no sync drop-in for the telemetry service" {
-  "$V/system/scripts/vault_index.py" set "$V/system/config.md" machine_role server
-  mkdir -p "$V/system/telemetry" "$V/system/codebases"
-  printf -- '---\ntype: codebase\nname: "x"\npath: "~"\npartition: "work"\nsearch_globs: ["*"]\n---\n' > "$V/system/codebases/x.md"
-  printf -- '---\ntype: telemetry_source\nname: "p"\ncodebase: "x"\nenvironment: "prod"\nkind: "adx"\nadx_cluster: "https://e"\nadx_database: "d"\n---\n' > "$V/system/telemetry/p.md"
-  run "$IU"
-  [ "$status" -eq 0 ]
-  [ -e "$UD/foundry-telemetry.timer" ]
-  [ ! -e "$UD/foundry-telemetry.service.d" ]
-}
-
 @test "standalone and server get the nightshift timer every 15 minutes" {
   run "$IU"
   [ "$status" -eq 0 ]

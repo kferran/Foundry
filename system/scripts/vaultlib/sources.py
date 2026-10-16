@@ -5,21 +5,19 @@ failure names the credential to renew and how; a source's failed readings in sys
 the date it has been failing since.
 """
 import json
+import subprocess
 from pathlib import Path
 
-from . import extensions, frontmatter, telemetry
+from . import extensions, frontmatter
 
 CLASSES = ("auth", "network", "timeout", "connector", "claude", "other")
 CONNECT = "reconnect it at claude.ai, Settings, Connectors"
-# source -> (credential, renewal). telemetry/<name> is looked up by the source's kind.
+# source -> (credential, renewal); an extension's sources come from its manifest.
 CREDENTIALS = {
     "calendar": ("Google connector", CONNECT),
     "meetings": ("Google connector", CONNECT),
     "triage": ("Google connector", CONNECT),
-    "rca":("Atlassian connector", CONNECT),
     "notify": ("Slack connector", CONNECT),
-    "adx": ("Azure CLI", "az login on the server"),
-    "sentry": ("Sentry token", "write a new token to ~/.config/foundry/sentry.token (mode 0600)"),
 }
 CLAUDE = ("claude login", "claude, then /login, on the server")
 
@@ -47,8 +45,24 @@ def _extension_sources(vault: Path) -> dict:
     return out
 
 
-def _telemetry(vault: Path) -> dict:
-    return {s.name: s for s in telemetry.load_sources(vault) if s.enabled}
+def _each(vault: Path) -> dict:
+    """source -> [(source/item, credential, renewal)] for each smoke row an enabled extension checks per item (its
+    `each` list command prints "item[<tab>credential<tab>renewal]" lines), or None when the list did not run."""
+    out = {}
+    for name, data in extensions.enabled(vault):
+        for s in data.get("smoke") or []:
+            if not isinstance(s, dict) or not s.get("each"):
+                continue
+            source, words = str(s.get("source") or name), str(s["each"]).split()
+            try:
+                r = subprocess.run([str(vault / "extensions" / name / words[0]), *words[1:]], cwd=vault,
+                                   capture_output=True, text=True, timeout=60)
+            except (OSError, subprocess.TimeoutExpired):
+                out[source] = None
+                continue
+            rows = [(line.split("\t") + ["", ""])[:3] for line in r.stdout.splitlines() if line.strip()]
+            out[source] = None if r.returncode else [(f"{source}/{a}", b, c) for a, b, c in rows]
+    return out
 
 
 def credential(vault: Path, source: str, reason: str):
@@ -59,10 +73,11 @@ def credential(vault: Path, source: str, reason: str):
         return CLAUDE
     if cls != "auth":
         return None
-    if source.startswith("telemetry/"):
-        src = _telemetry(vault).get(source.split("/", 1)[1])
-        return CREDENTIALS.get(src.kind) if src else None
-    return CREDENTIALS.get(source) or _extension_sources(vault).get(source) or None
+    found = CREDENTIALS.get(source) or _extension_sources(vault).get(source)
+    if found is None and "/" in source:
+        rows = _each(vault).get(source.split("/", 1)[0]) or []
+        found = next(((c, r) for n, c, r in rows if n == source and c), None)
+    return found or None
 
 
 def _records(paths):
@@ -117,8 +132,12 @@ def report(vault: Path, day: str, given: dict) -> list:
     check, and notify from its own log."""
     vault, config = Path(vault), _config(Path(vault))
     order = ["calendar", "meetings", "triage"]
-    order += [f"telemetry/{n}" for n in _telemetry(vault)] or ["telemetry"]
     ext = list(_extension_sources(vault))
+    # A per-item source lists its items; with none it reads off, and a list that did not run is one line read from
+    # the smoke check.
+    each = _each(vault)
+    for source, rows in each.items():
+        ext += [n for n, _, _ in rows] if rows else [source]
     # A listed extension with no folder reads as failed, once per name (its sources are not known without it).
     loaded = {n for n, _ in extensions.enabled(vault)}
     missing = [n for n in extensions.listed(vault)
@@ -128,7 +147,7 @@ def report(vault: Path, day: str, given: dict) -> list:
     off = {
         "meetings": str(config.get("meetings_enabled", "false")).lower() != "true",
         "triage": str(config.get("triage_enabled", "false")).lower() != "true",
-        "telemetry": True,
+        **{source: True for source, rows in each.items() if rows == []},
         "dtcc": not (vault / "system" / "dtcc" / "map.yaml").is_file(),
         "notify": not config.get("slack_notify_channel"),
     }

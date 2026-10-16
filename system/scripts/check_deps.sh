@@ -58,7 +58,6 @@ hint() {
     pyyaml) pkg_pacman=python-yaml pkg_apt=python3-yaml ;;
     pytest) pkg_pacman=python-pytest pkg_apt=python3-pytest ;;
     shellcheck) pkg_pacman=shellcheck pkg_apt=shellcheck ;;
-    az) pkg_pacman=azure-cli pkg_apt=azure-cli ;;
   esac
   case "$pm" in
     pacman) echo "sudo pacman -S $pkg_pacman" ;;
@@ -93,7 +92,6 @@ if [[ "$role" != client ]]; then
   for item in bats pytest shellcheck; do report "$item" "$(present "$item")" dev; done
 fi
 for c in herdr tmux; do report "$c" "$(has "$c")" optional; done
-if [[ "$role" != client ]]; then report az "$(has az)" optional; fi
 if [[ "$role" != client ]]; then report pdftotext "$(has pdftotext)" optional; fi
 if [[ "$role" != client ]]; then report gh "$(has gh)" optional; fi
 # Each enabled extension's deps (extensions spec §3): optional, with a hint naming the extension. A loader that

@@ -1,12 +1,13 @@
 #!/usr/bin/env bats
 # RCA-to-Jira (RCA spec §3.3): rca_file.sh with a stubbed claude.
-load helpers
+load "$BATS_TEST_DIRNAME/../../../system/tests/helpers"
 
 C=mcp__claude_ai_Atlassian__createJiraIssue
 STEM=2026-10-11-orders
 
 setup() {
   make_vault
+  use_extension handoffs telemetry
   cd "$V"
   export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_calendar"
   unset CLAUDE_CONFIG_DIR
@@ -20,9 +21,9 @@ setup() {
     > "wiki/work/rca/$STEM.md"
   printf -- '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-11"\npartition: work\n---\n# Now\n\n## Needs you\n- [x] owed: Review RCA draft: %s (since 2026-10-11, rca:%s)\n\n## Waiting\n' "$STEM" "$STEM" \
     > wiki/work/Now.md
-  RF="$V/system/scripts/rca_file.sh"
+  RF="$V/extensions/telemetry/scripts/rca_file.sh"
   ALERTS="system/logs/alerts_$(TZ=America/Denver date +%F).md"
-  ARGS="$(system/scripts/rca.py args work "$STEM")"
+  ARGS="$(extensions/telemetry/scripts/rca.py args work "$STEM")"
 }
 
 # jira_says <tool> <args json> [key]: a session that loads the tool and calls it once.
@@ -59,7 +60,7 @@ jira_errs() {
   grep -qF 'Jira refused the ticket, nothing was created' "$ALERTS"
   sed -i '$d' system/config.md
   printf '%s\n' "rca_extra_fields: {customfield_10042: '{\"id\": \"10042\"}'}" '---' >> system/config.md
-  ARGS="$(system/scripts/rca.py args work "$STEM")"
+  ARGS="$(extensions/telemetry/scripts/rca.py args work "$STEM")"
   [ "$(jq -c .additional_fields <<< "$ARGS")" = '{"customfield_10042":{"id":"10042"}}' ]
   jira_says "$C" "$ARGS"
   run "$RF" work "$STEM"
@@ -105,7 +106,7 @@ jira_errs() {
 @test "writing back a key by hand clears the markers, as the exit 5 message says (#106)" {
   mkdir -p system/logs/rca
   touch "system/logs/rca/work-$STEM.attempt"
-  run system/scripts/rca.py filed work "$STEM" EX-5
+  run extensions/telemetry/scripts/rca.py filed work "$STEM" EX-5
   [ "$status" -eq 0 ]
   grep -qx 'ticket: "EX-5"' "wiki/work/rca/$STEM.md"
   [ ! -e "system/logs/rca/work-$STEM.attempt" ]

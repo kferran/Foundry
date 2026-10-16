@@ -4,7 +4,8 @@ import shutil
 import pytest
 
 from helpers import REPO, write
-from vaultlib import cli, now, rca
+from telemetrylib import rca
+from vaultlib import cli, now
 
 TODAY = "2026-10-11"
 CONFIG = ('---\ntype: config\ntimezone: "America/Denver"\nhandoffs_site: "example.atlassian.net"\nrca_project: "EX"\n'
@@ -204,3 +205,47 @@ def test_rejected_sets_the_status(vault):
     path = note(vault)
     rca.rejected(vault, "work", "2026-10-11-orders")
     assert 'status: "rejected"' in path.read_text()
+
+
+# -- the intake tick (extensions spec §3, `tick`) -------------------------------
+def tick_draft(vault, stem, mark):
+    write(vault, f"wiki/work/rca/{stem}.md", '---\ntype: rca\ntitle: "T"\npartition: work\ncreated_at: "2026-10-11"\n'
+          'source: "raw/telemetry/a.md"\nrc_confidence: 3\nfix_confidence: 3\nstatus: draft\n---\n# T\n')
+    page = vault / "wiki/work/Now.md"
+    old = page.read_text() if page.exists() else ('---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-11"\n'
+                                                  'partition: work\n---\n# Now\n\n## Needs you\n\n## Waiting\n')
+    page.write_text(old.replace("## Needs you\n", f"## Needs you\n- [{mark}] owed: Review RCA draft: {stem} "
+                                                  f"(since 2026-10-11, rca:{stem})\n"))
+
+
+def test_the_tick_is_off_without_rca_project(vault):
+    prepare(vault, CONFIG.replace('rca_project: "EX"\n', ""))
+    tick_draft(vault, "a", "-")
+    rca.tick(vault)
+    assert "status: draft" in (vault / "wiki/work/rca/a.md").read_text()
+
+
+def test_the_tick_rejects_dropped_drafts_and_files_ticked_ones_up_to_the_cap(vault):
+    prepare(vault)
+    stub = vault / "extensions/telemetry/scripts/rca_file.sh"
+    stub.write_text(f'#!/bin/bash\necho "$*" >> {vault}/filer.calls\n')
+    stub.chmod(0o755)
+    tick_draft(vault, "dropped", "-")
+    for n in range(4):
+        tick_draft(vault, f"ticked{n}", "x")
+    rca.tick(vault)
+    assert 'status: "rejected"' in (vault / "wiki/work/rca/dropped.md").read_text()
+    calls = (vault / "filer.calls").read_text().splitlines()
+    assert len(calls) == rca.PER_TICK == 3
+    for call in calls:
+        assert 'status: "approved"' in (vault / f"wiki/work/rca/{call.split()[1]}.md").read_text()
+
+
+def test_a_busy_run_lock_ends_the_tick_with_nothing_changed(vault):
+    import fcntl
+    prepare(vault)
+    tick_draft(vault, "dropped", "-")
+    with open(vault / "system" / "run.lock", "a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        rca.tick(vault)
+    assert "status: draft" in (vault / "wiki/work/rca/dropped.md").read_text()

@@ -3,8 +3,8 @@
 import sys
 from pathlib import Path
 
-VAULT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(VAULT / "system" / "scripts"))
-from vaultlib import telemetry_run  # noqa: E402
+VAULT = Path(__file__).resolve().parents[3]
+sys.path[:0] = [str(VAULT / "system" / "scripts"), str(Path(__file__).resolve().parent)]
+from telemetrylib import telemetry_run  # noqa: E402
 
 sys.exit(telemetry_run.main(sys.argv[1:], VAULT))

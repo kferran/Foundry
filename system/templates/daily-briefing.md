@@ -21,7 +21,6 @@ status: "{{status}}"
 <!-- From projects.md. Tick items on each project's own page; this section is rewritten every brief. -->
 
 ## 🛑 Blockers
-- **Telemetry**:
 - **Friction**:
 - **Pipeline**:
 - **Communication Debt**:
