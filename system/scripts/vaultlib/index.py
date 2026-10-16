@@ -114,7 +114,7 @@ class Index:
         ignored = tuple(p.strip("/") + "/" for p in extmod.ignore(self.vault) if p.strip("/"))
         for root, dirs, files in os.walk(self.vault):
             dirs[:] = [d for d in dirs if not d.startswith(".") and d not in PRUNE]
-            if Path(root) == self.vault:   # extensions/ is a clone of another repository, never indexed
+            if Path(root) == self.vault:   # extensions/ holds code and manifests, never notes
                 dirs[:] = [d for d in dirs if d != "extensions"]
             for name in files:
                 if name.startswith("."):

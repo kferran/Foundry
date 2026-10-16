@@ -1,4 +1,4 @@
-# file:term pairs core may still name (core-clean test, extensions spec §6). A move to the extensions repository deletes its lines; the list is empty when phase 4 is done.
+# file:term pairs core may still name (core-clean test, extensions spec §6). A move into extensions/ deletes its lines; the list is empty when phase 4 is done.
 .claude/commands/brief.md:dtcc
 .claude/commands/brief.md:jira
 .claude/commands/brief.md:sentry

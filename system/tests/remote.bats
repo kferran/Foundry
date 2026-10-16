@@ -576,7 +576,7 @@ readme_setup() {
   git merge --abort
 }
 
-@test "a template update brings a tracked extension, keeps a vault-only one and links the enabled skills (extensions spec §3, §7)" {
+@test "a template update brings a tracked extension, keeps a vault-only one and links the enabled skills (extensions spec §3, §8)" {
   template_setup
   mkdir -p extensions/local
   printf -- '---\nname: local\ncontract: 1\n---\nA vault-only extension.\n' > extensions/local/extension.md

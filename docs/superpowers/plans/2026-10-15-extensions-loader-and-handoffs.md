@@ -366,7 +366,7 @@ index_ignore: []
 with a Bash timeout of at least 400000 ms; a Jira failure never blocks setup)
 ```
 
-- [ ] **Step 1:** Move the tests first and adapt their paths. Run them against a template checkout that has PR A, with `extensions/` this repository. Red until the scripts move.
+- [ ] **Step 1:** Move the tests first and adapt their paths. Run them in the template with the extension under `extensions/handoffs/`. Red until the scripts move.
 - [ ] **Step 2:** Move the scripts and write `prep.sh` and `section.md`. `prep.sh` keeps today's `case "$rc"` unavailable lines word for word, under `PREP_NAME=brief_prep`.
 - [ ] **Step 3:** Green. Run the full core gate with `extensions: ["handoffs"]`.
 - [ ] **Step 4: Commit.** `feat(handoffs): Jira handoffs as an extension (extensions spec §2.6)`
@@ -386,25 +386,25 @@ with a Bash timeout of at least 400000 ms; a Jira failure never blocks setup)
   - `.claude/settings.json`: the `jira_fetch.sh --check` rule.
   - `brief.md`: lines 35 and 67.
   - `setup.md` 6c: the handoffs half. The RCA filing half stays as `## 6c. RCA filing` until telemetry moves.
-  - `FOUNDRY.md`: the handoffs paragraph, which now points at the extensions README.
-  - The handoffs cases in `prep.bats`, `smoke.bats`, `commands.bats` and `test_sources.py`, which move to B1.
+  - `FOUNDRY.md`: the handoffs paragraph, which now points at `extensions/handoffs/extension.md`.
+  - The handoffs cases in `prep.bats`, `smoke.bats`, `commands.bats` and `test_sources.py`, which move to `extensions/handoffs/tests/` (task 12).
 - **Keep** `handoffs_site` readable by `vaultlib/rca.py`. RCA still files to that site, and the telemetry move later declares `requires: [handoffs]`.
 - **Migration** in `update_template.sh` (one function, `migrate_extensions`, which later moves extend): when `handoffs_projects` is a non-empty list and `extensions` does not list `handoffs`, add it with `vault_index.py set`. Each migration runs once, recorded in `system/logs/extensions-migrated`.
-  - If `extensions/` is missing, alert once a day: `[extensions] handoffs is listed but extensions/ has no folder for it; set extensions_remote and run /setup phase 6e`.
+  - A listed extension whose folder is missing is alerted once a day with the loader's own `check` reason (`update_extensions`).
 - Delete the core-clean allowlist lines for these files.
 
 Tests:
 - `update.bats`: `the update lists handoffs once when handoffs_projects is set, and never twice`.
 - `vault_integrity.bats`: the allowlist shrank.
 
-- [ ] **Steps 1–5:** red, implement, green, then commit `refactor(handoffs)!: Jira handoffs move to the extensions repository`.
+- [ ] **Steps 1–5:** red, implement, green, then commit `refactor(handoffs)!: Jira handoffs move into extensions/handoffs/`.
 
 ### B acceptance (live, on the owner's host)
 
-1. Set `extensions_remote` in a throwaway clone, then run `/setup` phase 6e: it clones the repository, lists handoffs, writes the allow rule and runs the smoke entry.
+1. In a throwaway clone, run `/setup` phase 6e: it lists handoffs, writes the allow rule and runs the smoke entry.
 2. The smoke check prints `handoffs: ok` (or the same class line as master).
 3. A headless `/brief` prints the 🧾 Handoffs to chase section and the Sources entry exactly as master did.
-4. The update on the owner's live vault: `extensions:` gains `handoffs` once; after the clone the next brief keeps its handoffs section.
+4. The update on the owner's live vault: `extensions:` gains `handoffs` once, and the next brief keeps its handoffs section.
 
 ## PR C: leftovers (template, independent)
 

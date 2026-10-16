@@ -128,7 +128,7 @@ Every shared file reads the loader in place of its per-feature `if` blocks:
 
 ## 5. Tests
 
-- **Core alone:** the gate runs with `extensions/` absent, and every suite passes with no feature skipped for being absent.
+- **Core alone:** the gate runs with no extension listed (it runs only the suites of listed extensions), and every core suite passes with no feature skipped for being absent.
 - **Everything on:** CI enables every tracked extension and runs the core gate plus each extension's `tests/`. With no extension tracked it prints one skip line.
 - **Core is clean:** a bats test fails when a core file (outside `extensions.py` and the docs) names DTCC, Sentry, ADX, Kusto, Azure, Jira or Atlassian, or one of their domains. Slack, Gemini and Google Drive stay in core with the features that use them (§7). It extends the owner-leak test.
 - **Loader:** a manifest with a missing `requires`, an unknown key, or a listed extension with no folder is reported by `extensions.py check`.
