@@ -674,21 +674,27 @@ class Intake:
 
     def _link_transcript(self, path: Path, rel: str, m, twin: Path, partition: str) -> None:
         """Publish the drop's transcript beside the populated twin, link it from the twin's head (above the sections,
-        so emptiness and #215 filling read them as before), then archive the drop. A drop whose transcript is already
-        there (the same file dropped again, or a tick that stopped after its publish) is only archived."""
+        so emptiness and #215 filling read them as before), then archive the drop. When the drop's transcript is already
+        there (the same file dropped again, or a run whose note was held back), only a missing link is added."""
+        text, name = twin.read_text(encoding="utf-8"), None
         for tr in twin.parent.glob("*.transcript.md"):
             try:
                 if (frontmatter.parse(tr.read_text(encoding="utf-8")).data or {}).get("source") == m.source:
-                    return self._archive_duplicate(path, rel, m, twin, linked=True)
+                    name = tr.name[:-len(".transcript.md")]
+                    break
             except (OSError, UnicodeDecodeError):
                 continue
+        if name is not None and f"[[{name}.transcript]]" in text:
+            return self._archive_duplicate(path, rel, m, twin, linked=True)
         if time.time() - twin.stat().st_mtime < publish.RECENT_SECONDS:
             return  # the gate refuses a target modified in the last 60 s: the next tick links it
-        name, stem = self._free_name(meetings.note_name(m)), twin.name[:-3]
-        head, sep, rest = twin.read_text(encoding="utf-8").partition("\n## ")
-        note = f"{head.rstrip()}\n\nAnother transcript: [[{name}.transcript]]\n{sep}{rest}"
-        targets = [twin.relative_to(self.vault).as_posix(), f"wiki/{partition}/meetings/{name}.transcript.md"]
-        texts = [note, meetings.render_transcript(m, stem, partition)]
+        targets, texts = [twin.relative_to(self.vault).as_posix()], []
+        if name is None:
+            name = self._free_name(meetings.note_name(m))
+            targets.append(f"wiki/{partition}/meetings/{name}.transcript.md")
+            texts.append(meetings.render_transcript(m, twin.name[:-3], partition))
+        head, sep, rest = text.partition("\n## ")
+        texts.insert(0, f"{head.rstrip()}\n\nAnother transcript: [[{name}.transcript]]\n{sep}{rest}")
         if self._published(self._publish_run(rel, partition, targets, texts, targets[:1]), path, rel):
             self._archive_duplicate(path, rel, m, twin, linked=True)
 

@@ -595,6 +595,28 @@ def test_a_drop_for_a_populated_note_links_its_transcript_from_that_note_216(iv)
     assert len(meeting_runs(iv)) == 2 and not again.exists() and note.read_text().count("Another transcript:") == 1
 
 
+def test_a_transcript_published_without_its_link_gets_the_link_on_the_next_tick_216(iv):
+    # The gate held back the note (saved meanwhile) but published the transcript: the next tick adds only the link.
+    config(iv, meetings_partition="work")
+    fetched(iv)
+    tick(iv)
+    aged(iv, "work", NAME)
+    note = iv / f"wiki/work/meetings/{NAME}.md"
+    text = note.read_text()
+    src = long_cues(30, ".srt")
+    dropped(iv, "work/2026-10-05 1500 Weekly sync - Planning.srt", src)
+    tick(iv)
+    tr = iv / f"wiki/work/meetings/{NAME}-2.transcript.md"
+    transcript = sha(tr)
+    note.write_text(text)  # the held-back note: the transcript is on disk, the link line is not
+    aged(iv, "work", NAME)
+    again = dropped(iv, "work/2026-10-05 1500 Weekly sync - Planning.srt", src)
+    tick(iv)
+    assert not again.exists() and sha(tr) == transcript
+    assert note.read_text().count(f"Another transcript: [[{NAME}-2.transcript]]") == 1
+    assert meeting_runs(iv)[-1]["publish"]["published"] == [f"wiki/work/meetings/{NAME}.md"]
+
+
 def test_a_drop_for_a_populated_note_in_another_partition_is_only_archived_216(iv):
     config(iv, meetings_partition="work")
     fetched(iv)
