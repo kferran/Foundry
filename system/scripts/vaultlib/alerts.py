@@ -17,7 +17,6 @@ TAGS = {
     "meetings": ("the meetings fetch", "brief"),
     "handoffs": ("the Jira handoffs fetch", "brief"),
     "telemetry": ("the telemetry fetch", "brief"),
-    "dtcc": ("the DTCC watcher", "brief"),
     "memory": ("the memory hooks", "brief"),
     "extensions": ("an extension that will not load, once a day", "brief"),
     "notify": ("the notifier itself", "never"),

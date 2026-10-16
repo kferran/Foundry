@@ -456,13 +456,6 @@ codebase() {  # <name> <path>
   [ "$(cat "$IN/yesterday.md")" = 'none: no debrief found from 2026-09-24 to 2026-09-30' ]
 }
 
-@test "brief_prep: dtcc.md is written, empty without a map" {
-  run "$BP" 2026-10-01
-  [ "$status" -eq 0 ]
-  [ -e "$IN/dtcc.md" ]
-  [ ! -s "$IN/dtcc.md" ]
-}
-
 @test "brief_prep: projects.md lists active projects with their next actions" {
   mkdir -p wiki/work/concepts
   printf -- '---\ntype: concept\ntags: []\ncompiled_at: 2026-10-01\npartition: work\n---\n# Active Projects\n## Active\n- [[Alpha]]: focus\n' > wiki/work/ActiveProjects.md

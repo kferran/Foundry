@@ -1,9 +1,9 @@
 import pytest
 
 from helpers import REPO
-from vaultlib import dtcc_fetch as df
+from dtcclib import dtcc_fetch as df
 
-FX = REPO / "system" / "tests" / "fixtures" / "dtcc"
+FX = REPO / "extensions" / "dtcc" / "tests" / "fixtures"
 
 
 def test_allowed_hosts():

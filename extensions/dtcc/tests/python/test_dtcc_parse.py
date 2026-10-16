@@ -1,7 +1,7 @@
 from helpers import REPO
-from vaultlib import dtcc_parse as dp
+from dtcclib import dtcc_parse as dp
 
-FX = REPO / "system" / "tests" / "fixtures" / "dtcc"
+FX = REPO / "extensions" / "dtcc" / "tests" / "fixtures"
 
 
 def fx(name):

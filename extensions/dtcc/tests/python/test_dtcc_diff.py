@@ -1,4 +1,4 @@
-from vaultlib import dtcc_diff as dd
+from dtcclib import dtcc_diff as dd
 
 
 def doc(title, date, section="S"):

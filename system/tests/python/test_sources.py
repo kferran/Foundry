@@ -66,7 +66,6 @@ def test_report_lists_every_source_with_its_state_since_date_and_renewal(vault):
         "- meetings: off",
         "- triage: ok",
         "- telemetry/prod-adx: failed: network: example.kusto.windows.net (URLError) (since 2026-10-12)",
-        "- dtcc: off",
         "- notify: off",
     ]
 
@@ -90,7 +89,7 @@ def test_report_lists_enabled_extension_sources_and_off_when_not_listed(vault):
     smoke(vault, ("2026-10-01", "demo", 0, ""))
     out = sources.report(vault, "2026-10-01", {})
     assert "- demo: ok" in out
-    assert out.index("- demo: ok") < out.index("- dtcc: off")
+    assert out.index("- demo: ok") < out.index("- notify: off")
     _demo_off = [ln for ln in sources.report(vault, "2026-10-01", {}) if ln.startswith("- demo")]
     assert _demo_off == ["- demo: ok"]
 

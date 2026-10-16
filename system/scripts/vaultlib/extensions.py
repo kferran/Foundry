@@ -130,8 +130,7 @@ def enable(vault: Path, name: str) -> bool:
 # One rule per feature that moved out of core: the old switch that means the owner used it. Each runs once per vault
 # (system/logs/extensions-migrated), so an extension the owner turns off later stays off.
 MIGRATIONS = {
-    "handoffs": lambda vault, cfg: bool(cfg.get("handoffs_projects")),
-    "dtcc": lambda vault, cfg: (vault / "system" / "dtcc" / "map.yaml").is_file(),
+    "handoffs": lambda cfg: bool(cfg.get("handoffs_projects")),
 }
 MIGRATED = Path("system/logs/extensions-migrated")
 
@@ -148,7 +147,7 @@ def migrate(vault: Path) -> list:
     done = set(log.read_text(encoding="utf-8").split()) if log.is_file() else set()
     out = []
     for name, used in MIGRATIONS.items():
-        if name in done or not used(vault, cfg):
+        if name in done or not used(cfg):
             continue
         if enable(vault, name):
             out.append(name)

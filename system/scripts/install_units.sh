@@ -127,11 +127,6 @@ if [[ "$role" != client && "$(config_get update_enabled true)" == true ]]; then
   UNITS+=(foundry-update.service foundry-update.timer)
   ENABLE+=(foundry-update.timer)
 fi
-# DTCC watcher: standalone and server, only when the vault has a map (DTCC watcher spec §7).
-if [[ "$role" != client ]] && [[ -f system/dtcc/map.yaml ]]; then
-  UNITS+=(foundry-dtcc-watch.service foundry-dtcc-watch.timer)
-  ENABLE+=(foundry-dtcc-watch.timer)
-fi
 # Extension units (extensions spec §3): extensions/<name>/units/<unit>.{service,timer}.in for each unit an enabled
 # extension lists for this role. A list that fails decides nothing, like telemetry's: nothing is changed.
 declare -A EXT_TEMPLATE=()

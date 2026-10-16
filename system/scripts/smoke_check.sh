@@ -155,9 +155,6 @@ else
     if [[ "$conn" == 1 ]]; then connector "$src" "$t" "${words[@]}"; else check "$src" "$t" "${words[@]}"; fi
   done <<< "$ext_rows"
 fi
-if [[ -f system/dtcc/map.yaml ]]; then
-  check dtcc "${SMOKE_DTCC_TIMEOUT:-60}" system/scripts/dtcc_watch.py --check
-else echo "dtcc: off"; fi
 
 # Timers (#166): each enabled timer this vault installed fired by its next tick after systemd's LastTrigger plus a
 # grace of one interval, at most 2 hours (every template timer runs at most 15 minutes, hourly or daily apart, so

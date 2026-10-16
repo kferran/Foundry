@@ -7,9 +7,9 @@ import pytest
 
 from helpers import REPO, concept, write
 from test_dtcc_map import repo
-from vaultlib import dtcc_run
+from dtcclib import dtcc_run
 
-FX = REPO / "system" / "tests" / "fixtures" / "dtcc"
+FX = REPO / "extensions" / "dtcc" / "tests" / "fixtures"
 NOW = datetime(2026, 10, 6, 11, 30, tzinfo=timezone.utc)
 MAP = """partition: work
 hub: '[[Dtcc]]'

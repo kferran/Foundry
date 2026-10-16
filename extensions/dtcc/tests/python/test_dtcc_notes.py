@@ -34,10 +34,10 @@ def test_dtcc_change_partition_must_match_folder(vault: Path):
 
 
 def test_example_map_is_generic():
-    text = (REPO / "system" / "dtcc" / "map.example.yaml").read_text(encoding="utf-8")
+    text = (REPO / "extensions" / "dtcc" / "map.example.yaml").read_text(encoding="utf-8")
     assert "example-app" in text  # owner names are checked by the forbidden-names test (vault_integrity.bats)
 
-from vaultlib import dtcc_notes
+from dtcclib import dtcc_notes
 
 
 def fm(**extra):
@@ -71,3 +71,8 @@ def test_create_refuses_an_invalid_note(vault: Path):
     with pytest.raises(ValueError):
         dtcc_notes.create(vault, "wiki/work/changes/dtcc-x.md", text, schema.load_schemas(vault))
     assert not (vault / "wiki/work/changes/dtcc-x.md").exists()
+
+
+def test_the_extension_owns_the_dtcc_change_schema():
+    schemas = schema.load_schemas(REPO)
+    assert schemas["dtcc_change"].source == "extensions/dtcc/schemas/dtcc_change.md"

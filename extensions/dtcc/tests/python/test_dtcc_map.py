@@ -2,7 +2,7 @@ import subprocess
 from pathlib import Path
 
 from helpers import concept, write
-from vaultlib import dtcc_map
+from dtcclib import dtcc_map
 
 MAP = """partition: work
 hub: '[[Dtcc]]'

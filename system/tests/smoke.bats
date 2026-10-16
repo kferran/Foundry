@@ -16,7 +16,6 @@ setup() {
   stub calendar_fetch.sh 0 "calendar_fetch: the connector listed 1 events" 1
   stub meetings_fetch.sh 0 "meetings_fetch: the search listed 0 Docs" 1
   stub triage_fetch.sh 0 "triage_fetch: 0 threads need you" 1
-  stub dtcc_watch.py 0 "map ok" 1
   stub telemetry_fetch.py 0 "telemetry_fetch: prod-sentry: ok" 1
   # Units (#166): an empty unit directory, and a systemctl that answers from $STUB_TIMERS lines
   # "<timer>|<LastTriggerUSec>|<SubState>"; a timer with no line is not enabled. Other verbs succeed silently.
@@ -73,13 +72,12 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   [ "${lines[2]}" = "meetings: off" ]
   [ "${lines[3]}" = "triage: off" ]
   [ "${lines[4]}" = "telemetry: off" ]
-  [ "${lines[5]}" = "dtcc: off" ]
   [ "$(cat system/logs/claude.version)" = "1.0.0 (Claude Code)" ]
   [ -z "$(alerts)" ]
   [ "$(jq -r 'select(.source == "calendar") | .exit' "$LOG")" = 0 ]
   grep -qx 'calendar_fetch.sh --check' "$CALLS"
   grep -qx 'telemetry_fetch.py --list' "$CALLS"
-  run grep -c -e meetings_fetch -e triage_fetch -e dtcc_watch -e 'telemetry_fetch.py --check' "$CALLS"
+  run grep -c -e meetings_fetch -e triage_fetch -e 'telemetry_fetch.py --check' "$CALLS"
   [ "$output" = 0 ]
 }
 
@@ -103,14 +101,10 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   grep -qx 'calendar: failed: no output' <<< "$output"
 }
 
-@test "a reason keeps the Python checks' own first word and drops only the script's prefix" {
-  mkdir -p system/dtcc
-  printf 'partition: work\n' > system/dtcc/map.yaml
-  stub dtcc_watch.py 1 "stale: shop: src/x is missing at main" 1
+@test "a reason drops only the script's prefix" {
   stub calendar_fetch.sh 6 $'claude: some noise\nmore noise\ncalendar_fetch: no Google Calendar connector'
   run "$SC"
   [ "$status" -eq 1 ]
-  grep -qx 'dtcc: failed: stale: shop: src/x is missing at main' <<< "$output"
   grep -qx 'calendar: failed: no Google Calendar connector' <<< "$output"
 }
 
@@ -147,16 +141,12 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   need_user_systemd
   set_key meetings_enabled '"true"'
   set_key triage_enabled '"true"'
-  mkdir -p system/dtcc
-  printf 'partition: work\n' > system/dtcc/map.yaml
   STUB_SOURCES=$'prod-sentry\nprod-adx' run "$SC"
   [ "$status" -eq 0 ]
   grep -qx 'telemetry/prod-sentry: ok' <<< "$output"
   grep -qx 'telemetry/prod-adx: ok' <<< "$output"
-  grep -qx 'dtcc: ok' <<< "$output"
   [ "$(grep -c -x 'meetings_fetch.sh --check' "$CALLS")" -eq 1 ]
   [ "$(grep -c -x 'triage_fetch.sh --check' "$CALLS")" -eq 1 ]
-  [ "$(grep -c -x 'dtcc_watch.py --check' "$CALLS")" -eq 1 ]
   grep -qx 'telemetry_fetch.py --check prod-sentry' "$CALLS"
   grep -qx 'telemetry_fetch.py --check prod-adx' "$CALLS"
 }
@@ -228,7 +218,7 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null || true; }
   SMOKE_CALENDAR_TIMEOUT=1 run "$SC"
   [ "$status" -eq 1 ]
   grep -qx 'calendar: failed: timed out after 1s' <<< "$output"
-  grep -qx 'dtcc: off' <<< "$output"
+  grep -qx 'meetings: off' <<< "$output"
   [ "$(jq -r 'select(.source == "calendar") | .exit' "$LOG")" = 124 ]
 }
 

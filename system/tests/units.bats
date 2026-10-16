@@ -468,16 +468,10 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
 @test "a unit template's {{PRE_BRIEF_TIME}} is 30 minutes before the brief (extensions spec §3)" {
   run grep -c 'DTCC_TIME' "$REPO/system/scripts/install_units.sh"
   [ "$output" = 0 ]
+  use_extension demo
   run "$IU"
   [ "$status" -eq 0 ]
-  [ ! -e "$UD/foundry-dtcc-watch.timer" ]
-  mkdir -p "$V/system/dtcc"
-  printf 'partition: work\n' > "$V/system/dtcc/map.yaml"
-  run "$IU"
-  [ "$status" -eq 0 ]
-  grep -q '^OnCalendar=\*-\*-\* 05:30:00 ' "$UD/foundry-dtcc-watch.timer"
-  grep -q 'dtcc_watch.py' "$UD/foundry-dtcc-watch.service"
-  grep -q 'enable --now .*foundry-dtcc-watch.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -qx 'OnCalendar=\*-\*-\* 05:30:00' "$UD/foundry-demo.timer"
 }
 
 @test "the update time follows brief_time and wraps past midnight (#117)" {

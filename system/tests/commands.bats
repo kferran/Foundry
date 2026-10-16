@@ -1130,7 +1130,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF '| `foreman`, `incident`, `orders`, `sync`, `update`, `rca`, `intake` | Slack at the next tick |' FOUNDRY.md
   grep -qF 'An `incident` line is a new production error group, or a resolved one that came back' FOUNDRY.md
   grep -qF 'an `[incident]` line (Telemetry lists those groups)' .claude/commands/brief.md
-  grep -qF '| `commit_runs`, `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `dtcc`, `memory`, `extensions` | the next brief |' FOUNDRY.md
+  grep -qF '| `commit_runs`, `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `memory`, `extensions` | the next brief |' FOUNDRY.md
   grep -qF 'system/scripts/alert.py foreman "<one line>"' FOUNDRY.md
   grep -qF 'To tell the user something now, outside the brief: `system/scripts/alert.py foreman "<one line>"`.' CLAUDE.md
   grep -qF 'grouped by tag' .claude/commands/brief.md

@@ -3,7 +3,7 @@ import json
 import re
 from pathlib import Path
 
-from . import frontmatter, schema
+from vaultlib import frontmatter, schema
 
 FIELDS = ("type", "partition", "detected_at", "kind", "key", "product", "title", "source_url", "codebase", "paths",
           "owner", "pinned", "published", "deadlines", "impact", "capability")

@@ -8,4 +8,4 @@ Environment="TZ={{TZ}}"
 Environment="PATH={{UNIT_PATH}}"
 TimeoutStartSec=15min
 SuccessExitStatus=1 4
-ExecStart="{{VAULT_ROOT}}/system/scripts/dtcc_watch.py"
+ExecStart="{{VAULT_ROOT}}/extensions/dtcc/scripts/dtcc_watch.py"

@@ -101,7 +101,7 @@ def test_only_the_now_tags_reach_slack(vault):
     # alert tags spec §2: diagnostics wait for the brief; an untagged line or an unknown tag waits too
     prepare(vault)
     for tag in ("foreman", "orders", "sync", "update", "rca", "intake", "commit_runs", "smoke", "calendar",
-                "meetings", "handoffs", "telemetry", "dtcc", "memory", "extensions", "Sync", "nosuch"):
+                "meetings", "handoffs", "telemetry", "memory", "extensions", "Sync", "nosuch"):
         alert(vault, f"[{tag}] x")
     alert(vault, "no tag at all")
     got, _ = lines(vault)

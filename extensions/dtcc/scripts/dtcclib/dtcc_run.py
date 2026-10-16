@@ -12,7 +12,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import dtcc_diff as dd
-from . import dtcc_map, dtcc_notes, frontmatter, schema
+from . import dtcc_map, dtcc_notes
+from vaultlib import frontmatter, schema
 from . import dtcc_parse as dp
 from .dtcc_fetch import BASE, MARKET, RELEASE, RSS, Fetcher, FetchError, PdfUnavailable, allowed
 

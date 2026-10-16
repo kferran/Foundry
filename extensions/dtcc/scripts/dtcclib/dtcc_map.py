@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from . import frontmatter, schema, yamlload
+from vaultlib import frontmatter, schema, yamlload
 
 MAP = "system/dtcc/map.yaml"
 PIN = re.compile(r"^v\d\d-\d+$")
