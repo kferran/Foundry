@@ -1,5 +1,4 @@
 """Inbox document conversion (#166). Fixtures are built here from XML strings; no binary blobs in the repo."""
-import shutil
 import subprocess
 import zipfile
 
@@ -174,15 +173,13 @@ def pdf(pages) -> bytes:
     return (out + f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n").encode("latin-1")
 
 
-@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="environment: pdftotext is not installed")
-def test_real_pdftotext_numbers_pages(tmp_path):
+def test_real_pdftotext_numbers_pages(tmp_path, needs_pdftotext):
     (tmp_path / "two.pdf").write_bytes(pdf(["Hello page one", "Second page text"]))
     out = convert.convert(tmp_path / "two.pdf")
     assert "## Page 1\n\nHello page one\n\n## Page 2\n\nSecond page text" in out
 
 
-@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="environment: pdftotext is not installed")
-def test_corrupt_pdf_is_a_conversion_error(tmp_path):
+def test_corrupt_pdf_is_a_conversion_error(tmp_path, needs_pdftotext):
     (tmp_path / "x.pdf").write_bytes(b"not a pdf at all")
     with pytest.raises(convert.ConversionError, match="pdftotext failed|no text layer"):
         convert.convert(tmp_path / "x.pdf")

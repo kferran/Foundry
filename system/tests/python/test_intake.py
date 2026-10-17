@@ -429,7 +429,7 @@ def test_unreadable_document_is_quarantined_without_a_run(iv):
     Intake(iv, now=later()).run()
     assert calls(iv) == []
     assert (iv / "system/quarantine/poisoned/locked.docx.origin.json").is_file()
-    assert "not converted: not a readable docx file, encrypted or corrupt" in \
+    assert "not converted (not a readable docx file, encrypted or corrupt" in \
         next((iv / "system/logs").glob("alerts_*.md")).read_text()
 
 
@@ -442,6 +442,20 @@ def test_pdf_without_pdftotext_is_quarantined(iv, monkeypatch):
     assert (iv / "system/quarantine/poisoned/report.pdf").is_file()
     assert "pdftotext is not installed" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
     assert (iv / "raw/archive/after.md").exists()
+
+
+def test_conversion_alert_keeps_the_shape_slack_notices_parse(iv, monkeypatch):
+    from vaultlib import convert, notify
+
+    def fail(_):
+        raise convert.ConversionError("pdftotext failed (exit 1: Syntax Error: Couldn't find trailer dictionary)")
+    monkeypatch.setattr(convert, "_pdf", fail)
+    write(iv, "raw/inbox/scan.pdf", "%PDF-1.4\n")
+    Intake(iv, now=later()).run()
+    line = next((iv / "system/logs").glob("alerts_*.md")).read_text().splitlines()[-1]
+    m = notify.POISONED.search(line[2:])
+    assert m and m.group("origin") == "raw/inbox/scan.pdf"
+    assert m.group("dest") == "system/quarantine/poisoned/scan.pdf"
 
 
 def test_non_utf8_briefing_does_not_stop_inbox(iv):

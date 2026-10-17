@@ -35,6 +35,11 @@ def needs_bwrap():
 
 
 @pytest.fixture
+def needs_pdftotext():
+    need_env(shutil.which("pdftotext") is not None, "pdftotext is not installed")
+
+
+@pytest.fixture
 def vault(tmp_path: Path) -> Path:
     root = tmp_path / "vault"
     shutil.copytree(FIXTURE, root)

@@ -370,7 +370,8 @@ class Intake:
             try:
                 source = convertmod.convert(path)
             except convertmod.ConversionError as exc:
-                self.poison(path, f"raw/inbox/{path.name}", sha, reason=f"immediately, not converted: {exc}")
+                why = str(exc).replace(": ", ", ")  # notify.py reads the reason up to the first ": "
+                self.poison(path, f"raw/inbox/{path.name}", sha, reason=f"immediately, not converted ({why})")
                 return True
             copy = staging / f"{path.name}.md"
         else:
