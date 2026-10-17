@@ -520,7 +520,18 @@ def test_secrets_scan_alerts_once_per_new_group_naming_group_and_shape_never_the
     assert telemetry_run.main([], v, NOW + timedelta(days=1)) == 0
     files = [p for p in (v / "system/logs").glob("alerts_*.md")]
     assert sum("credential shape" in p.read_text() for p in files) == 1
-    assert all("hunter2xyz" not in p.read_text() for p in v.rglob("*") if p.is_file() and p.suffix in (".md", ".json"))
+    written = [p for p in v.rglob("*") if p.is_file() and p.suffix in (".md", ".json", ".jsonl")]
+    assert any(p.suffix == ".jsonl" for p in written)
+    assert all("hunter2xyz" not in p.read_text() for p in written)
+
+
+def test_secrets_scan_alerts_at_most_three_groups_a_run_then_counts_the_rest(v, monkeypatch):
+    write(v, "system/telemetry/prod-adx.md", ADX.format(covers='secrets_scan: "true"\n'))
+    monkeypatch.setattr(kusto, "query", lambda *a, **k: [dict(SECRET_ROW, scope=f"S{i}") for i in range(5)])
+    assert telemetry_run.main([], v, NOW) == 0
+    got = _secret_alerts(v)
+    assert len(got) == 4 and all(" a log line in raw/telemetry/prod-adx-a-" in l for l in got[:3])
+    assert got[3] == "[telemetry] prod-adx: and 2 more new groups hold a credential shape (see raw/telemetry/)"
 
 
 def test_secrets_scan_is_off_by_default_and_ignores_a_line_redacted_upstream(v, monkeypatch):
