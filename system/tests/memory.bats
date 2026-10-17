@@ -434,6 +434,9 @@ keep() { hook memory_keep.sh "$(jq -cn --arg s "$1" --arg t "$T" --arg e "${2:-S
   [ "$status" -eq 0 ]
   hook memory_keep.sh 'not json'
   [ "$status" -eq 0 ]
+  printf 'subagent\n' > "$T"
+  hook memory_keep.sh "$(jq -cn --arg t "$T" '{session_id: "kp-4", agent_id: "a1", transcript_path: $t, hook_event_name: "PreCompact"}')"
+  [ "$status" -eq 0 ]
   mkfifo "$BATS_TEST_TMPDIR/stdin"  # held open for writing by the shell itself, so the hook never sees end of input
   run bash -c 'exec 3<>"$2"; "$1" < "$2"' _ "$H/memory_keep.sh" "$BATS_TEST_TMPDIR/stdin"
   [ "$status" -eq 0 ]

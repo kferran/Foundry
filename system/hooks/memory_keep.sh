@@ -11,6 +11,8 @@ main() {
   input="$(timeout 2 cat)"  # Claude Code closes stdin; a stdin left open never holds the session
   sid="$(jq -r '.session_id // empty' <<< "$input" 2>/dev/null)"
   mem_valid_sid "$sid" || return 0
+  # A subagent's event carries the parent's session_id beside its own transcript, which must not take the copy's name.
+  [[ -z "$(jq -r '.agent_id // empty' <<< "$input")" ]] || return 0
   [[ -e "$MEM_SESSIONS/$sid.json" ]] || return 0  # only sessions the memory hooks froze in scope
   src="$(jq -r '.transcript_path // empty' <<< "$input")"
   [[ -f "$src" && ! -L "$src" ]] || { mem_log "keep: no transcript for $sid"; return 0; }
