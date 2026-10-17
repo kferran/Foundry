@@ -910,8 +910,8 @@ self_edit_contract() {
   grep -qF '`COREPACK_HOME`, writable during the install and read-only during verify' FOUNDRY.md   # #189
   grep -qF 'without `--ignore-scripts`' FOUNDRY.md
   grep -qF '`Fix the failing check: order_install: <command>: exit <code>`' FOUNDRY.md
-  grep -q '^  order_toolchain: {kind: list, of: string}$' system/schemas/codebase.md
-  grep -q '^  order_install: {kind: string}$' system/schemas/codebase.md
+  grep -q '^  order_toolchain: {kind: list, of: string' system/schemas/codebase.md
+  grep -q '^  order_install: {kind: string' system/schemas/codebase.md
   grep -qF 'order_toolchain' system/codebases/example.md
   grep -qF 'order_install' system/codebases/example.md
 }
@@ -929,8 +929,8 @@ self_edit_contract() {
   grep -qF '"tonight" means `--at 22:00`' "$f"
   grep -qF '"hold" means do not queue' "$f"
   grep -qF -- '`--window`' "$f"
-  grep -q '^  order_max_five_hour: {kind: string, default: "0.6"}$' system/schemas/config.md
-  grep -q '^  run_window: {kind: string}$' system/schemas/config.md
+  grep -q '^  order_max_five_hour: {kind: string, default: "0.6"' system/schemas/config.md
+  grep -q '^  run_window: {kind: string' system/schemas/config.md
   grep -qF '`order_max_five_hour`' FOUNDRY.md
   grep -qF 'By default `run_window` is empty and the window is always open' FOUNDRY.md
 }
@@ -1097,11 +1097,11 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   [[ "$sec" == *'`triage_partition`'* ]]
   grep -qF '**Inbox triage.**' FOUNDRY.md
   grep -qF 'The links and dates come from the search results, never from the model'"'"'s words.' FOUNDRY.md
-  grep -qF 'triage_enabled: {kind: bool, default: "false"}' system/schemas/config.md
-  grep -qF 'triage_partition: {kind: enum, values: [work, personal]}' system/schemas/config.md
+  grep -qF 'triage_enabled: {kind: bool, default: "false"' system/schemas/config.md
+  grep -qF 'triage_partition: {kind: enum, values: [work, personal]' system/schemas/config.md
   grep -qF 'triage_enabled: "false"' system/config.example.md
   # Watched senders (#135): their unread mail outside the inbox always needs the owner.
-  grep -qF 'triage_watch_senders: {kind: list, of: string}' system/schemas/config.md
+  grep -qF 'triage_watch_senders: {kind: list, of: string' system/schemas/config.md
   grep -qF 'triage_watch_senders: []' system/config.example.md
   grep -qF 'is not in the inbox: the owner archived it unread' system/scripts/triage_fetch.sh
   grep -qF '`triage_watch_senders`' FOUNDRY.md
@@ -1110,7 +1110,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
 
 @test "chat triage: /setup asks for it; the manual, the config schema and the example describe it (#222)" {
   [[ "$(setup_section '6b. Meetings')" == *'`triage_chat_enabled`'* ]]
-  grep -qF 'triage_chat_enabled: {kind: bool, default: "false"}' system/schemas/config.md
+  grep -qF 'triage_chat_enabled: {kind: bool, default: "false"' system/schemas/config.md
   grep -qF 'triage_chat_enabled: "false"' system/config.example.md
   grep -qF '`triage_chat_enabled: true`' FOUNDRY.md
 }
@@ -1158,11 +1158,11 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
 @test "Slack notices: /setup phase 6d asks, checks the connector and tests only on yes; the manual and the schema describe them (#28)" {
   grep -qF '## 6d. Slack notices' .claude/commands/setup.md
   grep -qF '`slack_connector` defaults to `claude.ai Slack`' .claude/commands/setup.md
-  grep -qF 'slack_connector: {kind: string, default: "claude.ai Slack"}' system/schemas/config.md
+  grep -qF 'slack_connector: {kind: string, default: "claude.ai Slack"' system/schemas/config.md
   grep -qF 'only on yes, run `system/scripts/notify.sh --check`' .claude/commands/setup.md
   grep -qF '**Slack notices.** With `slack_notify_channel` set' FOUNDRY.md
   grep -qF 'No note text from `wiki/` is sent.' FOUNDRY.md
-  grep -qF 'slack_notify_channel: {kind: string}' system/schemas/config.md
+  grep -qF 'slack_notify_channel: {kind: string' system/schemas/config.md
   grep -qF 'slack_notify_channel: ""' system/config.example.md
 }
 
