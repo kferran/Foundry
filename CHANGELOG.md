@@ -14,6 +14,8 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-17
+- With the memory hooks installed, each session's transcript is copied outside the vault when the context is compacted and when the session ends (`transcript_keep_dir`, default `~/.local/state/foundry/transcripts`), so a digest the Stop hook missed can be recovered; a copy never shrinks, and copies older than `transcript_keep_days` (default 90) are deleted. (#262)
+  - Action: run `system/scripts/install_hooks.sh --dry-run`, then `system/scripts/install_hooks.sh` (or re-run `/setup`'s memory step) to add the two new hook entries.
 - A telemetry source can set `secrets_scan: "true"` (off by default) to raise one alert per new error group whose log line holds a credential shape, sent to Slack at once, naming the group's note and the shape, never the value; at most three a run per source, then one line counting the rest. (#261)
 - The first brief after two or more days with no session opens with "While you were away": counts of the pull requests merged and still open, Work Orders done and failed, Now lines added and closed, alerts held, and Decided for you lines over those days (up to 14). (#264)
 - Every field in `system/schemas/` names the files that read it (`readers:`), and a test fails when a named reader is missing or never mentions the field; a field nothing reads (`readers: []`) only warns for now. (#256)
