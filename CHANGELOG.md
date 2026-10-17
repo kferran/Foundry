@@ -14,6 +14,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-16
+- The brief and debrief list what they decided for you (the question, the option taken, the alternatives, how to reverse it); counts read `n of N` and a zero reads `none by HH:MM`; the debrief opens with a `signals: N (<date>)` line; a session in the vault names its uncommitted files outside `raw/`. (#PR)
 - Inbox triage can also watch the Slack channels you are in: with `triage_chat_enabled: true`, messages that ask you something or report a production problem become `owed` Now lines with their Slack link. (#244)
 - Up to three Work Orders run at the same time: a long research order no longer holds up the next one, and two plans on the same codebase and branch still take turns. (#241)
 - A Work Order whose start was cut short by a restart or shutdown runs on the next tick instead of waiting forever. (#248)

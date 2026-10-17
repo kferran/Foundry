@@ -216,6 +216,31 @@ codebase() {  # <name> <path>
   grep -qx 'No session digests.' "$IN/digests.md"
 }
 
+@test "debrief_prep: a zero for today reads none by HH:MM (#166)" {
+  run "$DP"
+  [ "$status" -eq 0 ]
+  d="$(ls system/logs/inputs)"  # today in the vault's timezone, never this machine's
+  grep -qE '^No session digests by [0-9]{2}:[0-9]{2}\.$' "system/logs/inputs/$d/digests.md"
+  grep -qE '^No commits by [0-9]{2}:[0-9]{2}\.$' "system/logs/inputs/$d/git.md"
+}
+
+@test "debrief_prep: heartbeat.md counts the day's commits, digests, pull requests, alerts and headless runs (#166)" {
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/heartbeat.md")" = 'signals: 0 (2026-10-01)' ]
+
+  commit_at "$V" 2026-10-01T10:00:00-06:00 "one"
+  commit_at "$V" 2026-10-01T11:00:00-06:00 "two"
+  digest raw/work/notes/w1.md work 2026-10-01T09:00:00-06:00 "## Outcome
+Done."
+  printf -- '- 10:00:00 [sync] one\n- 11:00:00 [intake] two\n' > system/logs/alerts_2026-10-01.md
+  printf '{"run_id":"a","command":"ingest","started_at":"2026-10-01T09:00:00-06:00"}\n{"run_id":"b","command":"brief","started_at":"2026-09-30T06:00:00-06:00"}\n' \
+    > system/logs/runs-2026-10.jsonl
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/heartbeat.md")" = 'signals: 6 (2026-10-01)' ]
+}
+
 @test "debrief_prep: orders.md copies the open Work Orders report, empty when there is none" {
   run "$DP" 2026-10-01
   [ "$status" -eq 0 ]

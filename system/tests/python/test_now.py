@@ -101,7 +101,7 @@ def test_an_invalid_due_on_the_page_counts_as_no_clock(vault):
     prepare(vault)  # #166 clock spec §5, review finding 1: --due sets a clock on it, never "would loosen"
     write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-02-01\"\npartition: work\n"
           "---\n# Now\n\n## Needs you\n- [ ] owed: Pick format [due:: 2026-02-30] (since 2026-02-01)\n\n## Waiting\n")
-    assert now.overdue(vault, "2026-03-05") == "1 open line carries no clock."
+    assert now.overdue(vault, "2026-03-05") == "1 of 1 open line carries no clock."
     assert now.add(vault, "work", "owed", "Pick format", "2026-02-01", due="2026-03-01") == (
         "tightened", "- [ ] owed: Pick format [due:: 2026-03-01] (since 2026-02-01)")
 
@@ -367,7 +367,7 @@ OVERDUE = ("**1 to 7 days over**\n"
            "**More than 30 days over**\n"
            "- owed: Thirty-one days [due:: 2026-09-19] (since 2026-09-01)\n"
            "\n"
-           "2 open lines carry no clock.")
+           "2 of 8 open lines carry no clock.")
 
 
 def overdue_pages(vault):

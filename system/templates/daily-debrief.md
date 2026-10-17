@@ -14,3 +14,5 @@ date: "{{date}}"
 ### 5. Work Orders
 
 ### 6. Delivered Today
+
+### 7. Decided for you

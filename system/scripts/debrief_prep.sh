@@ -11,6 +11,9 @@ source system/scripts/lib_config.sh
 # shellcheck source=lib_prep.sh
 source system/scripts/lib_prep.sh
 prep_init debrief_prep "$@"
+# A zero says when it was counted (#166): "No commits by 17:00." for today, plain for a past day.
+by=""
+[[ "$PREP_DATE" != "$(date +%F)" ]] || by=" by $(date +%H:%M)"
 
 # These functions run inside prep_write's `||` context, where bash disables errexit, so every
 # failure must return explicitly.
@@ -27,7 +30,7 @@ repo_log() {  # <name> <path> [all]
   log="$(git -C "$2" log --branches --no-merges "${author[@]}" \
     --since="${PREP_DATE}T00:00:00" --until="${PREP_DATE}T23:59:59" \
     --date=format-local:%H:%M --format='- %ad %h %s')" || return 1
-  printf '## %s\n\n%s\n\n' "$1" "${log:-No commits.}"
+  printf '## %s\n\n%s\n\n' "$1" "${log:-No commits$by.}"
 }
 
 git_md() {
@@ -50,7 +53,7 @@ digests_md() {
     "SELECT path, partition, codebase, created_at FROM v_session_digest WHERE substr(created_at, 1, 10) = '$PREP_DATE' ORDER BY created_at, path")" || return 1
   jq -e '.rows | type == "array"' >/dev/null 2>&1 <<< "$rows" || return 1
   if [[ "$(jq '.rows | length' <<< "$rows")" == 0 ]]; then
-    echo "No session digests."
+    echo "No session digests$by."
     return 0
   fi
   while IFS=$'\t' read -r path partition codebase created; do
@@ -107,4 +110,10 @@ case "$rc" in
 esac
 
 prep_meetings
+# The heartbeat (#166): the day's commits, digests, pull requests, alerts and headless runs, so a quiet day (0) and a
+# run that read nothing look different.
+signals="$( { grep -h '^- ' "$PREP_DIR/git.md" "$PREP_DIR/prs.md" "system/logs/alerts_$PREP_DATE.md"
+  grep -hE '^## [^ ]+\.md \(' "$PREP_DIR/digests.md"
+  grep -hF "\"started_at\":\"$PREP_DATE" "system/logs/runs-${PREP_DATE:0:7}.jsonl"; } 2>/dev/null | wc -l)" || true
+printf 'signals: %s (%s)\n' "$signals" "$PREP_DATE" > "$PREP_DIR/heartbeat.md"
 exit 0

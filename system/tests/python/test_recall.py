@@ -287,3 +287,24 @@ def test_a_budget_smaller_than_the_marker_never_overflows(cli, vault):
     head = cli("recall", "--cwd", str(vault), "--budget-chars", "9500").stdout.split("\n### Now")[0]
     out = cli("recall", "--cwd", str(vault), "--budget-chars", str(len(head) + 5)).stdout
     assert len(out) <= len(head) + 5
+
+
+def test_vault_recall_names_uncommitted_files_outside_raw_and_the_other_partition(cli, vault):
+    # #166: "N uncommitted files outside raw/" with the first three paths; raw/ and the other partition's wiki stay out.
+    config(vault, "personal")
+    write(vault, ".gitignore", "system/index.*\n__pycache__/\n")
+    repo(vault)
+
+    def commit_all():
+        for args in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "x"]):
+            subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
+
+    commit_all()
+    assert "uncommitted" not in cli("recall", "--cwd", str(vault)).stdout
+    for path in ("raw/personal/notes/d.md", "wiki/work/x.md", "a.md", "b.md", "c.md", "d.md"):
+        write(vault, path, "x\n")
+    out = cli("recall", "--cwd", str(vault), env={"GIT_DIR": "/nonexistent"}).stdout  # an inherited GIT_DIR (#173)
+    assert "\n4 uncommitted files outside raw/: a.md, b.md, c.md, …\n" in out
+    assert "wiki/work" not in out
+    commit_all()
+    assert "uncommitted" not in cli("recall", "--cwd", str(vault)).stdout

@@ -604,7 +604,7 @@ self_edit_contract() {
 @test "brief: one Sources line from sources.md; mail and chat are a source, the skipped line is gone (connector health spec §2)" {
   f=.claude/commands/brief.md
   grep -qF '`system/logs/inputs/<date>/sources.md`' "$f"
-  grep -qF '`Sources: <n> ok`' "$f"
+  grep -qF '`Sources: <n> of <N> ok`' "$f"
   grep -qF '`Sources: all <n> ok.`' "$f"
   grep -qF 'mail and chat: off (no connector in this session)' "$f"
   grep -qF 'an alert about a source the Sources line already shows' "$f"
@@ -786,6 +786,32 @@ self_edit_contract() {
   grep -F '| `/brief [date]` |' FOUNDRY.md | grep -qF 'Overdue'
 }
 
+@test "brief and debrief counts print their denominator and a zero reads none by HH:MM (#166)" {
+  for f in .claude/commands/brief.md .claude/commands/debrief.md; do
+    grep -qF -- '- **Counts:**' "$f"
+    grep -qF '`<n> of <N>`' "$f"
+    grep -qF '`none by <HH:MM>`' "$f"
+  done
+  grep -qF '`Sources: <n> of <N> ok`' .claude/commands/brief.md
+}
+
+@test "brief and debrief list what the run decided for the user (#166)" {
+  grep -qxF '## 🤖 Decided for you' system/templates/daily-briefing.md
+  [ "$(grep '^## ' system/templates/daily-briefing.md | grep -A1 -xF '## 🤖 Decided for you' | tail -n 1)" = '## 📝 Notes' ]
+  [ "$(grep '^### ' system/templates/daily-debrief.md | tail -n 1)" = '### 7. Decided for you' ]
+  grep -qF -- '- **🤖 Decided for you:**' .claude/commands/brief.md
+  grep -qF -- '- **7. Decided for you:**' .claude/commands/debrief.md
+  for f in .claude/commands/brief.md .claude/commands/debrief.md; do
+    grep -qF '`- <question>: took <option>; alternatives: <others>; reverse: <how>`' "$f"
+    grep -qF '`- <question>: open, yours to decide; options: <options>`' "$f"
+  done
+}
+
+@test "the debrief prints the heartbeat line first (#166)" {
+  grep -qF 'system/logs/inputs/<date>/heartbeat.md' .claude/commands/debrief.md
+  grep -qF '`signals: unknown (<date>)`' .claude/commands/debrief.md
+}
+
 @test "the README says update_template.sh lists new units and never installs them (#35)" {
   grep -qF 'A unit the update adds is listed as `new unit available: <unit>` and left out' FOUNDRY.md
 }
@@ -926,7 +952,7 @@ self_edit_contract() {
   grep -qF -- '- **5. Work Orders:** the `## Items` table and every `- [ ] ` line under "## Needs you" from `orders.md`' "$d"
   grep -qF 'No Work Orders ran today.' "$d"
   grep -qx '### 5. Work Orders' system/templates/daily-debrief.md
-  [ "$(grep '^### ' system/templates/daily-debrief.md | tail -n 2 | head -n 1)" = '### 5. Work Orders' ]
+  [ "$(grep '^### ' system/templates/daily-debrief.md | tail -n 3 | head -n 1)" = '### 5. Work Orders' ]
 }
 
 # commands_section: the body of CLAUDE.md's Commands section.
@@ -986,7 +1012,7 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF -- '- `system/logs/inputs/<date>/prs.md`:' "$d"
   grep -qF -- '- `briefings/<date>.md`: the lines in its 📝 Notes section that start with `delivered:`.' "$d"
   grep -qF -- '- **6. Delivered Today:**' "$d"
-  [ "$(grep '^### ' system/templates/daily-debrief.md | tail -n 1)" = '### 6. Delivered Today' ]
+  [ "$(grep '^### ' system/templates/daily-debrief.md | tail -n 2 | head -n 1)" = '### 6. Delivered Today' ]
   grep -qF 'add a `delivered: <type> — <what> — <link>` line to the 📝 Notes section of today'"'"'s briefing' system/agents/foreman.md
 }
 
