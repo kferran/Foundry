@@ -67,7 +67,7 @@ These follow from the target and were not grilled:
 - Telemetry: Recurring stays one line per environment, and an environment with no groups is left out.
 
 ### 3.7 Size tests
-- A fixture vault at the live vault's size (8 projects with 6 decisions each, 25 handoffs, 12 waiting owners, 95 open and 200 closed Now lines). A bats test runs the brief prep on it and fails when the input files the brief reads add up to more than 8 KB.
+- A fixture vault at the live vault's size (`system/tests/fixtures/brief_size.py`: 8 projects with 5 next actions and 6 decisions each, 12 waiting owners, 95 open and 200 closed Now lines, every third item past the 160-character cut). A bats test runs the brief prep on it and fails when the inputs the brief prints add up to more than 8 KB. `now.md` is left out: the brief reads it only to skip repeats. Handoffs are left out: the extension's own tests hold its cap. On 2026-10-17 the fixture measured 7.4 KB (projects 4.3, actions 1.8, overdue 1.2); with every item long, projects alone are 8.8 KB.
 - A bats test counts the words of `brief.md` plus every extension's `brief/section.md`, and fails above 2,500.
 - A bats test fails when the fixture's Now page is over 25 KB after `now.py archive`.
 

@@ -731,3 +731,35 @@ away_vault() {
   [ "$(head -n 1 system/logs/inputs/2026-10-10/away.md)" = '### While you were away (2026-09-26 to 2026-10-09)' ]
   grep -qxF -- '- Now lines: none' system/logs/inputs/2026-10-10/away.md
 }
+
+# --- phase A size targets (phase A spec §3.7) ---
+
+@test "brief size: the inputs the brief prints stay under 8 KB on a vault at the live size" {
+  python3 "$REPO/system/tests/fixtures/brief_size.py" "$V"
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  printed=(projects.md actions.md people.md friction.md overdue.md alerts.md quarantine.md away.md updates.md)
+  total=0
+  for f in "${printed[@]}" $(cd "$IN" && ls sections/*.md 2>/dev/null | grep -v '\.prompt\.md$'); do
+    [[ -f "$IN/$f" ]] || continue
+    echo "$f $(wc -c < "$IN/$f")"
+    total=$(( total + $(wc -c < "$IN/$f") ))
+  done
+  echo "total $total"
+  [ "$total" -le 8192 ]
+}
+
+@test "brief size: the Now page is under 25 KB after the brief prep archives it" {
+  python3 "$REPO/system/tests/fixtures/brief_size.py" "$V"
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  echo "Now.md $(wc -c < wiki/work/Now.md)"
+  [ "$(wc -c < wiki/work/Now.md)" -le 25600 ]
+  [ "$(grep -c '^- \[x\] ' wiki/work/now-archive/2026-09.md)" -eq 200 ]
+}
+
+@test "brief size: the brief prompt is at most 2,500 words with every extension's section" {
+  words="$(cat "$REPO/.claude/commands/brief.md" "$REPO"/extensions/*/brief/section.md | wc -w)"
+  echo "words $words"
+  [ "$words" -le 2500 ]
+}

@@ -183,7 +183,7 @@ def main(argv):
                 if any(o.casefold() in me for o in owners):
                     continue
                 for owner in owners or [UNASSIGNED]:
-                    others.setdefault(owner, []).append(f"- {text} ([[{Path(path).stem}]], {held})")
+                    others.setdefault(owner, []).append(f"- {cut(text)} ([[{Path(path).stem}]], {held})")
         others = merge_first_names(others)
     waiting = waiting_on(others)
     print(f"# Meeting actions for {day}\n")
