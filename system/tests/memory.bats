@@ -371,3 +371,71 @@ PY
   for _ in 1 2 3 4 5 6 7 8 9 10; do cat "$BATS_TEST_TMPDIR/big.json" | "$H/memory_activity.sh"; done
   [ "$(cat "$S/bulk-1.events")" -eq 10 ]
 }
+
+# --- transcript keep (#166): PreCompact and SessionEnd copy the transcript outside the vault, never shrinking it ---
+keep_env() {  # a temporary HOME, so the default keep directory never touches the real one
+  export HOME="$BATS_TEST_TMPDIR/home" XDG_STATE_HOME=""
+  mkdir -p "$HOME"
+  KD="$HOME/.local/state/foundry/transcripts"
+  T="$BATS_TEST_TMPDIR/host/$1.jsonl"
+  mkdir -p "${T%/*}"
+}
+keep() { hook memory_keep.sh "$(jq -cn --arg s "$1" --arg t "$T" --arg e "${2:-SessionEnd}" '{session_id: $s, transcript_path: $t, hook_event_name: $e}')"; }
+
+@test "keep: a session in scope has its transcript copied to the default directory, readable only by the owner" {
+  keep_env kp-1
+  start kp-1
+  printf '{"n":1}\n' > "$T"
+  keep kp-1 PreCompact
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(cat "$KD/kp-1.jsonl")" = '{"n":1}' ]
+  [ "$(stat -c %a "$KD/kp-1.jsonl")" = 600 ]
+  printf '{"n":2}\n' >> "$T"
+  keep kp-1
+  [ "$(wc -l < "$KD/kp-1.jsonl")" -eq 2 ]
+  [ -z "$(find "$KD" -name '.*')" ]
+}
+
+@test "keep: a larger copy is never replaced by a shorter transcript" {
+  keep_env kp-2
+  start kp-2
+  mkdir -p "$KD"
+  printf 'a\nb\nc\n' > "$KD/kp-2.jsonl"
+  printf 'a\n' > "$T"
+  keep kp-2
+  [ "$status" -eq 0 ]
+  [ "$(cat "$KD/kp-2.jsonl")" = $'a\nb\nc' ]
+}
+
+@test "keep: transcript_keep_dir moves the copies, and a directory inside the vault is refused" {
+  keep_env kp-3
+  start kp-3
+  printf 'x\n' > "$T"
+  system/scripts/vault_index.py set system/config.md transcript_keep_dir "$BATS_TEST_TMPDIR/kept"
+  keep kp-3
+  [ -f "$BATS_TEST_TMPDIR/kept/kp-3.jsonl" ]
+  system/scripts/vault_index.py set system/config.md transcript_keep_dir "$VP/raw/kept"
+  keep kp-3
+  [ "$status" -eq 0 ]
+  [ ! -e "$VP/raw/kept/kp-3.jsonl" ]
+  grep -qF 'inside the vault' system/logs/memory/hooks.log
+}
+
+@test "keep: out of scope, a missing transcript, bad input or a stdin that never closes all exit 0 and copy nothing" {
+  keep_env kp-4
+  printf 'x\n' > "$T"
+  keep kp-4
+  [ "$status" -eq 0 ]
+  [ ! -e "$KD/kp-4.jsonl" ]
+  start kp-4
+  rm -f "$T"
+  keep kp-4
+  [ "$status" -eq 0 ]
+  hook memory_keep.sh 'not json'
+  [ "$status" -eq 0 ]
+  mkfifo "$BATS_TEST_TMPDIR/stdin"  # held open for writing by the shell itself, so the hook never sees end of input
+  run bash -c 'exec 3<>"$2"; "$1" < "$2"' _ "$H/memory_keep.sh" "$BATS_TEST_TMPDIR/stdin"
+  [ "$status" -eq 0 ]
+  [ ! -e "$KD/kp-4.jsonl" ]
+}

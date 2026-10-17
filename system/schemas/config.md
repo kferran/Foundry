@@ -13,6 +13,7 @@ fields:
   digest_min_events: {kind: int, default: "5"}
   digest_min_minutes: {kind: int, default: "20"}
   recall_budget_chars: {kind: int, default: "9000"}
+  transcript_keep_dir: {kind: string}
   preferences_enabled: {kind: bool, default: "false"}
   superpowers: {kind: list, of: string}
   machine_role: {kind: enum, values: [standalone, server, client], default: "standalone"}

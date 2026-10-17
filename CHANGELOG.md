@@ -14,6 +14,8 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-17
+- With the memory hooks installed, each session's transcript is copied outside the vault when the context is compacted and when the session ends (`transcript_keep_dir`, default `~/.local/state/foundry/transcripts`), so a digest the Stop hook missed can be recovered; a copy never shrinks. (#PR)
+  - Action: run `system/scripts/install_hooks.sh --dry-run`, then `system/scripts/install_hooks.sh` (or re-run `/setup`'s memory step) to add the two new hook entries.
 - A new vault's first brief no longer fails to publish with "Now.md modified in the last 60 s": brief prep no longer writes an empty Now page, and the brief creates the page when it adds a line. (#255)
 - A vault file whose name is not valid UTF-8 (such as a Latin-1 name copied from a Windows share) no longer breaks the index, `vault_index.py` and session recall; the index skips it and prints a warning naming it. (#254)
 

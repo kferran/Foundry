@@ -163,7 +163,7 @@ boundary_rules() {
 }
 
 @test "memory hooks are executable, the library is sourced-only, and the digest text exists" {
-  for h in memory_recall.sh memory_capture.sh memory_activity.sh; do
+  for h in memory_recall.sh memory_capture.sh memory_activity.sh memory_keep.sh; do
     [ -x "system/hooks/$h" ]
   done
   [ ! -x system/hooks/lib_memory.sh ]
