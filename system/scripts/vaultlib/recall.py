@@ -2,6 +2,7 @@
 import os
 import re
 import sqlite3
+import subprocess
 from pathlib import Path
 
 from . import frontmatter, now
@@ -11,6 +12,7 @@ HARD_CAP = 9500
 DEFAULT_BUDGET = 9000
 MAX_DIGESTS = 3
 LOCK_TIMEOUT = 2.0
+GIT_TIMEOUT = 0.4   # the dirty line's git status; with the index wait it must fit the hook's 3 s
 LINE_CAP = 240   # one Now line in recall (#211): a line with chained updates must not take the budget
 KIND_ORDER = {"owed": 0, "waiting": 1, "draft": 2}
 SECTION = re.compile(r"^\s*(?:#{1,6}\s*|\*\*)?\s*(outcome|open questions|follow[- ]?ups?)\b", re.I)
@@ -89,14 +91,13 @@ def cap(line: str) -> str:
 
 
 def _open_index(vault):
-    """Refresh under a 2 s lock; when the lock is busy, read the existing index unrefreshed."""
+    """(connection or None, waited): refresh under a 2 s lock; a busy lock reads the index unrefreshed (waited)."""
     idx = Index(vault)
     try:
         idx.refresh(timeout=LOCK_TIMEOUT)
     except TimeoutError:
-        if not idx.db_path.exists():
-            return None
-    return sqlite3.connect(f"{idx.db_path.as_uri()}?mode=ro", uri=True)
+        return (sqlite3.connect(f"{idx.db_path.as_uri()}?mode=ro", uri=True) if idx.db_path.exists() else None), True
+    return sqlite3.connect(f"{idx.db_path.as_uri()}?mode=ro", uri=True), False
 
 
 def recent_digests(conn, partition, codebase=None, limit=MAX_DIGESTS) -> list:
@@ -127,11 +128,31 @@ def build(vault, scope, budget, workcell_session=False) -> str:
     # The Now block comes first; the digests keep the last third of the room when there are open lines, and the
     # Now block takes what they leave (#211, Now page spec §3.3).
     lines = now.open_lines(now.read(vault, partition)) if partition in now.PARTITIONS else []
+    rows, waited = _digest_rows(vault, partition, name)   # one index open: two lock waits could pass the hook's timeout
+    dirty = dirty_line(vault, partition) if kind == "vault" and not waited else ""
+    head += dirty if len(head) + len(dirty) <= budget else ""
     room = budget - len(head)
-    rows = _digest_rows(vault, partition, name)   # one index open: two lock waits could pass the hook's timeout
     reserve = min(len(_digests(vault, rows, room)), room // 3) if lines else room
     block = _now_block(lines, partition, room - reserve)
     return (head + block + _digests(vault, rows, room - len(block)))[:budget]
+
+
+def dirty_line(vault: Path, partition: str) -> str:
+    """#166, outside raw/ and the other partition; "" when clean or git fails or is slow (skipped after a busy index
+    wait, so the hook keeps its 3 s). No GIT_* (#173); no optional locks, so a killed git leaves no index.lock."""
+    if not (vault / ".git").exists():
+        return ""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    try:
+        out = subprocess.run(["git", "--no-optional-locks", "-C", str(vault), "status", "--porcelain", "-z",
+                              "--no-renames", "--untracked-files=all"], capture_output=True, encoding="utf-8",
+                             errors="replace", timeout=GIT_TIMEOUT, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    hidden = ("raw/",) + tuple(f"{d}/{p}/" for p in now.PARTITIONS if p != partition for d in ("wiki", "meetings/drop"))
+    paths = [e[3:] for e in out.stdout.split("\0") if len(e) > 3 and not e[3:].startswith(hidden)]
+    n = len(paths) * (out.returncode == 0)
+    return f"{n} uncommitted file{'s' * (n > 1)} outside raw/: {', '.join(paths[:3] + ['…'] * (n > 3))}\n" if n else ""
 
 
 def _now_block(lines: list, partition: str, room: int) -> str:
@@ -149,12 +170,12 @@ def _now_block(lines: list, partition: str, room: int) -> str:
     return block if len(block) <= room else ""
 
 
-def _digest_rows(vault, partition, name) -> list:
-    conn = _open_index(vault)
+def _digest_rows(vault, partition, name) -> tuple:
+    conn, waited = _open_index(vault)
     if conn is None:
-        return []
+        return [], waited
     try:
-        return recent_digests(conn, partition, name)
+        return recent_digests(conn, partition, name), waited
     finally:
         conn.close()
 

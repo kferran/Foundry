@@ -14,6 +14,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-16
+- The brief and debrief list what they decided for you (the question, the option taken, the alternatives, how to reverse it); counts read `n of N` and a zero reads `none by HH:MM`; the debrief opens with a `signals: N (<date>)` line; a session in the vault names its uncommitted files outside `raw/`. (#253)
 - `/lint` warns when an open (draft or approved) `rca` note or a codebase note cites `dir/file.ext:NN` and that file is missing from the codebase or has fewer lines. (#251)
 - `/ingest` writes about people as dated behavior, never a verdict or a legal or medical label, and leaves a first or partial name unlinked unless a note settles who it is. (#251)
 - Connector sessions fail closed when their settings cannot be built, instead of running with hooks on; a connector error's alert line stays on one line; an RCA filing stopped while it lists the servers no longer leaves a false "earlier session" block. (#252)

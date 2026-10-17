@@ -333,9 +333,10 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
 def overdue(vault, day: str) -> str:
     """The brief's Overdue block (Now clock spec §7), read-only: the open lines of both pages whose due is before day,
     grouped by days over, oldest due first, then the count of open lines with no clock; "" when there is neither."""
-    groups, clockless = ([], [], []), 0
+    groups, clockless, total = ([], [], []), 0, 0
     for partition in PARTITIONS:
         for line in open_lines(read(vault, partition)):
+            total += 1
             due = DUE.search(line)
             if not (due and is_date(due.group(1))):
                 clockless += 1
@@ -350,7 +351,8 @@ def overdue(vault, day: str) -> str:
         if lines:
             blocks.append("\n".join([heading] + [line for _, line in sorted(lines, key=lambda t: t[0])]))
     if clockless:
-        blocks.append("1 open line carries no clock." if clockless == 1 else f"{clockless} open lines carry no clock.")
+        # A count prints its denominator (#166).
+        blocks.append(f"{clockless} of {total} open line{'s' * (total > 1)} carr{'ies' if clockless == 1 else 'y'} no clock.")
     return "\n\n".join(blocks)
 
 

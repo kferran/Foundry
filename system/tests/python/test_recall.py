@@ -1,5 +1,7 @@
 """Memory recall (spec §6.17): vault_index.py recall and vaultlib/recall.py."""
 import fcntl
+import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -287,3 +289,72 @@ def test_a_budget_smaller_than_the_marker_never_overflows(cli, vault):
     head = cli("recall", "--cwd", str(vault), "--budget-chars", "9500").stdout.split("\n### Now")[0]
     out = cli("recall", "--cwd", str(vault), "--budget-chars", str(len(head) + 5)).stdout
     assert len(out) <= len(head) + 5
+
+
+def commit_all(vault):
+    for args in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "x"]):
+        subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
+
+
+def git_vault(cli, vault):
+    """A personal vault that is its own clean repository, its index built."""
+    config(vault, "personal")
+    write(vault, ".gitignore", "system/index.*\n__pycache__/\n")
+    repo(vault)
+    cli("recall", "--cwd", str(vault))
+    commit_all(vault)
+
+
+def fake_git(tmp_path, sleep="0"):
+    """A git on PATH that logs its arguments, waits `sleep` seconds, then runs the real git."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    stub = bin_dir / "git"
+    stub.write_text(f'#!/bin/sh\necho "$@" >> {tmp_path}/git.log\nsleep {sleep}\nexec {shutil.which("git")} "$@"\n')
+    stub.chmod(0o755)
+    return {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
+
+
+def test_vault_recall_names_uncommitted_files_outside_raw_and_the_other_partition(cli, vault):
+    # #166: "N uncommitted files outside raw/" with the first three paths; raw/, the other partition's wiki and its
+    # meeting drop folder stay out.
+    git_vault(cli, vault)
+    assert "uncommitted" not in cli("recall", "--cwd", str(vault)).stdout
+    for path in ("raw/personal/notes/d.md", "wiki/work/x.md", "meetings/drop/work/x.vtt", "a.md", "b.md", "c.md",
+                 "d.md"):
+        write(vault, path, "x\n")
+    out = cli("recall", "--cwd", str(vault), env={"GIT_DIR": "/nonexistent"}).stdout  # an inherited GIT_DIR (#173)
+    assert "\n4 uncommitted files outside raw/: a.md, b.md, c.md, …\n" in out
+    assert "wiki/work" not in out
+    assert "drop/work" not in out
+    commit_all(vault)
+    assert "uncommitted" not in cli("recall", "--cwd", str(vault)).stdout
+
+
+def test_dirty_line_takes_no_optional_locks_and_gives_up_on_a_slow_git(cli, vault, tmp_path):
+    # PR #253 review: a git killed by the timeout must not leave .git/index.lock, and the hook has 3 s in all.
+    git_vault(cli, vault)
+    write(vault, "a.md", "x\n")
+    assert "1 uncommitted file outside raw/: a.md" in cli("recall", "--cwd", str(vault), env=fake_git(tmp_path)).stdout
+    assert "--no-optional-locks" in (tmp_path / "git.log").read_text()
+    out = cli("recall", "--cwd", str(vault), env=fake_git(tmp_path, sleep="0.8")).stdout
+    assert out.startswith("## Foundry vault recall") and "uncommitted" not in out
+
+
+def test_dirty_line_survives_a_filename_that_is_not_utf8(cli, vault):
+    git_vault(cli, vault)
+    # The function itself: the index refresh also fails on such a name, a separate defect.
+    os.close(os.open(bytes(vault) + b"/caf\xe9.txt", os.O_CREAT | os.O_WRONLY))
+    assert recall.dirty_line(vault, "personal") == "1 uncommitted file outside raw/: caf\N{REPLACEMENT CHARACTER}.txt\n"
+
+
+def test_dirty_line_is_skipped_after_a_busy_index_wait_and_never_empties_recall(cli, vault):
+    git_vault(cli, vault)
+    write(vault, "a.md", "x\n")
+    with open(vault / "system" / "index.lock", "a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        out = cli("recall", "--cwd", str(vault)).stdout
+    assert out.startswith("## Foundry vault recall") and "uncommitted" not in out
+    head = cli("recall", "--cwd", str(vault)).stdout.split("1 uncommitted")[0]
+    out = cli("recall", "--cwd", str(vault), "--budget-chars", str(len(head) + 5)).stdout
+    assert out.startswith("## Foundry vault recall") and "uncommitted" not in out
