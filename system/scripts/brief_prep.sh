@@ -108,6 +108,10 @@ if [[ -n "$last" ]]; then
 else
   printf 'none: no debrief found from %s to %s\n' "$since" "$(date -d "$PREP_DATE -1 day" +%F)" > "$PREP_DIR/yesterday.md"
 fi
+# While you were away (#166): after two or more days with no session digest, what happened on them; empty otherwise.
+mapfile -t repos < <(github_repos)
+prep_write away.md system/scripts/away.py "$PREP_DATE" "${repos[@]}" \
+  || prep_unavailable "away: away.py failed (see $PREP_DIR/prep_errors.log)"
 
 # Briefings and debriefs dated before today move to briefings/archive/<YYYY-MM>/, after the Now seed and the
 # extension sections are written (now.py seed and a section's prep may read the archive too). The sync commit records

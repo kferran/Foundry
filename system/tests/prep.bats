@@ -614,3 +614,77 @@ gh_says() {
   run grep -c extensions "$IN/unavailable.md"
   [ "$status" -ne 0 ]
 }
+
+# away_vault: a session digest on 2026-10-06 and a Work Order's on 2026-10-08, so 2026-10-07 to 2026-10-09 have no
+# session before the 2026-10-10 brief; gh merged 2 and has 1 open.
+away_vault() {
+  digest raw/work/notes/s.md work 2026-10-06T09:00:00-06:00 "Done."
+  printf -- '---\ntype: session_digest\npartition: work\ncodebase: "vault"\nsession_id: "order-x"\ncreated_at: "2026-10-08T09:00:00-06:00"\nwork_order: "2026-10-01-a"\n---\nStale.\n' > raw/work/notes/o.md
+  gh_says
+  printf '%s\n' '#!/bin/bash' 'case "$*" in *"--merged-at 2026-10-07..2026-10-09 --repo acme/shop"*) echo 2 ;; *"--state open --repo acme/shop"*) echo 1 ;; *) exit 1 ;; esac' > "$STUBS/gh"
+}
+
+@test "brief_prep: away.md counts what happened on 3 days with no session digest (#166)" {
+  away_vault
+  mkdir -p raw/work/nightshift briefings/archive/2026-10 wiki/work
+  wo() { printf -- '---\ntype: nightshift_item\nid: "%s"\npartition: work\nkind: plan\nstate: %s\nqueued_at: "2026-10-01T09:00:00-06:00"\nfinished_at: "%s"\n---\n' "$1" "$2" "$3" > "raw/work/nightshift/$1.md"; }
+  wo 2026-10-01-a done 2026-10-07T23:00:00-06:00
+  wo 2026-10-01-b failed 2026-10-08T23:00:00-06:00
+  wo 2026-10-01-c blocked 2026-10-09T23:00:00-06:00
+  wo 2026-10-01-d done 2026-10-05T23:00:00-06:00
+  printf '%s\n' '- [ ] owed: Ship it (since 2026-10-08)' '- [ ] owed: Old one (since 2026-10-01)' \
+    '- [x] owed: Reply (since 2026-10-02) _(closed: ticked 2026-10-09)_' \
+    '- [x] owed: Earlier (since 2026-10-02) _(closed: ticked 2026-10-05)_' > wiki/work/Now.md
+  printf -- '- 10:00:00 [sync] blocked\n- 11:00:00 [smoke] slow\n' > system/logs/alerts_2026-10-08.md
+  printf -- '- 05:00:00 [smoke] today\n' > system/logs/alerts_2026-10-10.md
+  printf '## 🤖 Decided for you\n\n- a: took b\n- c: took d\n\n## 📝 Notes\n- mine\n' > briefings/archive/2026-10/2026-10-08.md
+  printf '## 🤖 Decided for you\n\nNone.\n' > briefings/2026-10-09.md
+  run "$BP" 2026-10-10
+  [ "$status" -eq 0 ]
+  [ "$(cat system/logs/inputs/2026-10-10/away.md)" = "### While you were away (2026-10-07 to 2026-10-09)
+
+- Pull requests: 2 of 3 merged, 1 of 3 still open
+- Work Orders: 1 of 3 done, 1 of 3 failed
+- Now lines: 1 of 4 added, 1 of 4 closed
+- Alerts: 1 of 2 held for the brief
+- Decided for you: 2 lines, from 2 of 3 briefings" ]
+}
+
+@test "brief_prep: away.md is empty before any digest and after a 1-day gap (#166)" {
+  run "$BP" 2026-10-10
+  [ "$status" -eq 0 ]
+  [ -e system/logs/inputs/2026-10-10/away.md ]
+  [ ! -s system/logs/inputs/2026-10-10/away.md ]
+  digest raw/work/notes/s.md work 2026-10-08T09:00:00-06:00 "Done."
+  run "$BP" 2026-10-10
+  [ "$status" -eq 0 ]
+  [ -e system/logs/inputs/2026-10-10/away.md ]
+  [ ! -s system/logs/inputs/2026-10-10/away.md ]
+}
+
+@test "brief_prep: a compiled digest in raw/<partition>/archive/ counts as a session (#166)" {
+  digest raw/work/notes/s.md work 2026-10-05T09:00:00-06:00 "Done."
+  digest raw/personal/archive/a.md personal 2026-10-09T09:00:00-06:00 "Done."
+  run "$BP" 2026-10-10
+  [ "$status" -eq 0 ]
+  [ -e system/logs/inputs/2026-10-10/away.md ]
+  [ ! -s system/logs/inputs/2026-10-10/away.md ]
+}
+
+@test "brief_prep: a source that cannot be read says unknown, the others still count (#166)" {
+  away_vault
+  printf '%s\n' '#!/bin/bash' 'exit 1' > "$STUBS/gh"
+  run "$BP" 2026-10-10
+  [ "$status" -eq 0 ]
+  grep -qxF -- '- Pull requests: unknown' system/logs/inputs/2026-10-10/away.md
+  grep -qxF -- '- Work Orders: none' system/logs/inputs/2026-10-10/away.md
+  grep -q '^away.py: Pull requests: ' system/logs/inputs/2026-10-10/prep_errors.log
+}
+
+@test "brief_prep: away.md covers at most the 14 days before (#166)" {
+  digest raw/work/notes/s.md work 2026-09-01T09:00:00-06:00 "Done."
+  run "$BP" 2026-10-10
+  [ "$status" -eq 0 ]
+  [ "$(head -n 1 system/logs/inputs/2026-10-10/away.md)" = '### While you were away (2026-09-26 to 2026-10-09)' ]
+  grep -qxF -- '- Now lines (closed lines leave the page after 7 days): none' system/logs/inputs/2026-10-10/away.md
+}
