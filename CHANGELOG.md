@@ -16,6 +16,8 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## 2026-10-17
 - With the memory hooks installed, each session's transcript is copied outside the vault when the context is compacted and when the session ends (`transcript_keep_dir`, default `~/.local/state/foundry/transcripts`), so a digest the Stop hook missed can be recovered; a copy never shrinks, and copies older than `transcript_keep_days` (default 90) are deleted. (#262)
   - Action: run `system/scripts/install_hooks.sh --dry-run`, then `system/scripts/install_hooks.sh` (or re-run `/setup`'s memory step) to add the two new hook entries.
+- `check_deps.sh` requires `socat` on a standalone machine or a server: Claude Code's sandbox, which headless runs turn on, needs it on Linux for its network proxy. Install it with `sudo apt install socat` or `sudo pacman -S socat`. (#260)
+- A `claude` version change no longer counts as a failed smoke check source: the line reads `version: changed: <old> -> <new>` and its `[smoke]` alert still lists the acceptance steps in the brief's Pipeline. (#260)
 - A new vault's first brief no longer fails to publish with "Now.md modified in the last 60 s": brief prep no longer writes an empty Now page, and the brief creates the page when it adds a line. (#255)
 - A vault file whose name is not valid UTF-8 (such as a Latin-1 name copied from a Windows share) no longer breaks the index, `vault_index.py` and session recall; the index skips it and prints a warning naming it. (#254)
 

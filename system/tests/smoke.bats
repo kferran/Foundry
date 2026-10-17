@@ -246,14 +246,17 @@ EOF
   [ "$(jq -r 'select(.source == "calendar") | .exit' "$LOG")" = 124 ]
 }
 
-@test "a claude version change is reported once with the acceptance steps, and the file follows" {
+@test "a claude version change is reported once with the acceptance steps, not as a failure, and the file follows" {
   need_user_systemd
   mkdir -p system/logs
   printf '0.9.0 (Claude Code)\n' > system/logs/claude.version
   run "$SC"
-  [ "$status" -eq 1 ]
-  grep -qx 'version: failed: claude 0.9.0 (Claude Code) -> 1.0.0 (Claude Code)' <<< "$output"
+  [ "$status" -eq 0 ]
+  grep -qx 'version: changed: claude 0.9.0 (Claude Code) -> 1.0.0 (Claude Code)' <<< "$output"
+  [ "$(jq -r 'select(.source == "version") | .exit' "$LOG")" = 0 ]
   alerts | grep -qF '[smoke] version claude 0.9.0 (Claude Code) -> 1.0.0 (Claude Code); re-run the acceptance steps (FOUNDRY.md Development)'
+  run grep -c failed <<< "$(alerts)"
+  [ "$output" = 0 ]
   [ "$(cat system/logs/claude.version)" = "1.0.0 (Claude Code)" ]
   run "$SC"
   [ "$status" -eq 0 ]
@@ -265,8 +268,8 @@ EOF
   mkdir -p system/logs
   printf '0.9.0 (Claude Code)\n' > system/logs/claude_version
   run "$SC"
-  [ "$status" -eq 1 ]
-  grep -qx 'version: failed: claude 0.9.0 (Claude Code) -> 1.0.0 (Claude Code)' <<< "$output"
+  [ "$status" -eq 0 ]
+  grep -qx 'version: changed: claude 0.9.0 (Claude Code) -> 1.0.0 (Claude Code)' <<< "$output"
   [ "$(cat system/logs/claude.version)" = "1.0.0 (Claude Code)" ]
   [ ! -e system/logs/claude_version ]
 }
