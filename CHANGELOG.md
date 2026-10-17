@@ -14,7 +14,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-17
-- The pre-commit hook refuses a `CLAUDE.md` over 16 KB, a `wiki/Index.md` over 8 KB or a Now page over 32 KB when the commit makes it larger; shrinking always passes. (#259)
+- The pre-commit hook refuses a `CLAUDE.md` over 16 KB or a `wiki/Index.md` over 8 KB when the commit makes it larger; shrinking always passes. (#259)
 - A new vault's first brief no longer fails to publish with "Now.md modified in the last 60 s": brief prep no longer writes an empty Now page, and the brief creates the page when it adds a line. (#255)
 - A vault file whose name is not valid UTF-8 (such as a Latin-1 name copied from a Windows share) no longer breaks the index, `vault_index.py` and session recall; the index skips it and prints a warning naming it. (#254)
 

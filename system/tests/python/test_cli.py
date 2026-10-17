@@ -51,38 +51,74 @@ def _git(vault, *argv):
                    check=True, capture_output=True)
 
 
-def _commit_now_page(vault, size):
-    """A work Now page of `size` bytes committed at HEAD, so the staged lint has a "before" to compare with."""
+CAP = 16 * 1024   # CLAUDE.md's write cap
+
+
+def _commit_claude_md(vault, size):
+    """A CLAUDE.md of `size` bytes committed at HEAD, so the staged lint has a "before" to compare with."""
     _git(vault, "init", "-q")
-    write(vault, "wiki/work/Now.md", "x" * size)
-    _git(vault, "add", "wiki/work/Now.md")
-    _git(vault, "commit", "-qm", "now", "--no-verify")
+    write(vault, "CLAUDE.md", "x" * size)
+    _git(vault, "add", "CLAUDE.md")
+    _git(vault, "commit", "-qm", "claude", "--no-verify")
+
+
+def _stage_claude_md(vault, size):
+    write(vault, "CLAUDE.md", "x" * size)
+    _git(vault, "add", "CLAUDE.md")
 
 
 def test_staged_write_cap_refuses_an_over_cap_file_that_grows(cli, vault):
-    from vaultlib.now import PAGE_BYTES
-    _commit_now_page(vault, PAGE_BYTES + 10)
-    write(vault, "wiki/work/Now.md", "x" * (PAGE_BYTES + 20))
-    _git(vault, "add", "wiki/work/Now.md")
+    _commit_claude_md(vault, CAP + 10)
+    _stage_claude_md(vault, CAP + 20)
     res = cli("issues", "--staged")
     assert res.returncode == 1, res.stdout
-    assert f"wiki/work/Now.md:1: error: {PAGE_BYTES + 20} bytes is over the {PAGE_BYTES}-byte cap" in res.stdout
+    assert f"CLAUDE.md:1: error: {CAP + 20} bytes is over the {CAP}-byte cap and larger than the committed {CAP + 10}" \
+        in res.stdout
 
 
 def test_staged_write_cap_passes_an_over_cap_file_that_shrinks(cli, vault):
-    from vaultlib.now import PAGE_BYTES
-    _commit_now_page(vault, PAGE_BYTES + 20)
-    write(vault, "wiki/work/Now.md", "x" * (PAGE_BYTES + 10))
-    _git(vault, "add", "wiki/work/Now.md")
+    _commit_claude_md(vault, CAP + 20)
+    _stage_claude_md(vault, CAP + 10)
     res = cli("issues", "--staged")
     assert "byte cap" not in res.stdout, res.stdout
 
 
+def test_staged_write_cap_passes_an_over_cap_file_that_keeps_its_size(cli, vault):
+    _commit_claude_md(vault, CAP + 10)
+    write(vault, "CLAUDE.md", "y" * (CAP + 10))   # same size, new content
+    _git(vault, "add", "CLAUDE.md")
+    assert "byte cap" not in cli("issues", "--staged").stdout
+
+
 def test_staged_write_cap_passes_an_under_cap_file_that_grows(cli, vault):
-    _commit_now_page(vault, 100)
-    write(vault, "wiki/work/Now.md", "x" * 200)
+    _commit_claude_md(vault, 100)
+    _stage_claude_md(vault, 200)
+    assert "byte cap" not in cli("issues", "--staged").stdout
+
+
+def test_staged_write_cap_leaves_now_pages_alone(cli, vault):
+    """Unattended writers (triage, the brief) grow the Now page; a refused sync commit would stop every sync."""
+    _git(vault, "init", "-q")
+    write(vault, "wiki/work/Now.md", "x" * (64 * 1024))
     _git(vault, "add", "wiki/work/Now.md")
     assert "byte cap" not in cli("issues", "--staged").stdout
+
+
+def test_staged_write_cap_during_a_merge_compares_with_the_larger_parent(cli, vault):
+    """The commit that resolves a merge brings the other side's larger copy: it passes; growing past both is refused."""
+    _commit_claude_md(vault, 100)
+    _git(vault, "checkout", "-q", "-b", "other")
+    write(vault, "CLAUDE.md", "x" * (CAP + 10))
+    _git(vault, "commit", "-qam", "big", "--no-verify")
+    _git(vault, "checkout", "-q", "-")
+    write(vault, "README.txt", "local\n")
+    _git(vault, "add", "README.txt")
+    _git(vault, "commit", "-qm", "local", "--no-verify")
+    _git(vault, "merge", "-q", "--no-commit", "--no-ff", "other")
+    assert "byte cap" not in cli("issues", "--staged").stdout
+    _stage_claude_md(vault, CAP + 20)
+    assert f"{CAP + 20} bytes is over the {CAP}-byte cap and larger than the committed {CAP + 10}" \
+        in cli("issues", "--staged").stdout
 
 
 def test_staged_write_cap_refuses_a_new_file_over_its_cap(cli, vault):
@@ -91,7 +127,7 @@ def test_staged_write_cap_refuses_a_new_file_over_its_cap(cli, vault):
     _git(vault, "add", "CLAUDE.md")
     res = cli("issues", "--staged")
     assert res.returncode == 1
-    assert "CLAUDE.md:1: error: 16385 bytes is over the 16384-byte cap and larger than HEAD's 0" in res.stdout
+    assert "CLAUDE.md:1: error: 16385 bytes is over the 16384-byte cap and larger than the committed 0" in res.stdout
 
 
 def test_template_files_sit_under_their_write_caps():
