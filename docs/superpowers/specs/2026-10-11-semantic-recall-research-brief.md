@@ -19,6 +19,10 @@ Which way of adding meaning-based retrieval to the Foundry's index fits its cons
 
 The findings note has: one table across the options with the columns above; a recommendation for the smallest version worth building, or a recommendation to build nothing yet and the signal that would change that (for example a `related` miss rate measured on the owner's real queries); the two or three constraints that ruled options out; and the open questions a grill would have to settle.
 
+## Go bar
+
+No recall injection is built until shadow recall (recall computed and logged for each prompt, nothing injected) has been measured against four bars: how many times it fires, the Wilson lower bound of the share of fires judged relevant, the fire rate, and the p95 hook time. The findings note proposes a threshold for each; the bars come from #166, which sets no numbers.
+
 ## Output
 
 `wiki/shared/summaries/SemanticRecallOptions.md`, a new note (`type: concept`, `partition: shared`, `tags: [index, research]`), `sources` holding vault wikilinks only, web pages under `## Web sources`.
