@@ -66,6 +66,14 @@ headless_contract() {
   grep -qF '`tags` are lowercase kebab-case' system/schemas/concept.md
 }
 
+@test "ingest: people-writing rules and the no-guessed-link rule (#166)" {
+  f=.claude/commands/ingest.md
+  grep -qF '**People.**' "$f"
+  grep -qF 'behavior' "$f"
+  grep -qF 'legal or medical' "$f"
+  grep -qF 'stays unlinked' "$f"
+}
+
 @test "ingest: retire a state heading by renaming it in place (#160)" {
   grep -qF 'Retire a heading that encodes a state (such as `(not yet merged)`) by renaming it in place and keeping its section; never delete the section.' .claude/commands/ingest.md
   grep -qF 'In that run, add or remove no heading of the same level above the renamed one' .claude/commands/ingest.md

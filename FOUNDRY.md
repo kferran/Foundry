@@ -192,7 +192,7 @@ system/
                               setup_remote.sh, update_template.sh, check_deps.sh,
                               vault_sync.sh, commit_runs.py, calendar_fetch.sh, meetings_fetch.sh, extensions.py,
                               nightshift.py, active_projects.py, ...
-  systemd/                    foundry-{intake,brief,debrief,sync,meetings,triage,notify,nightshift,update} unit templates (*.in)
+  systemd/                    foundry-{intake,brief,debrief,smoke,sync,meetings,triage,notify,nightshift,update} unit templates (*.in)
     dropins/                  foundry-sync.conf.in: sync before and after each run (server)
   tests/                      *.bats per area (system_health.bats is advisory), python/ for pytest
   jobs/                       reserved for Sub-project 2 (gitignored)

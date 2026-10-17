@@ -91,8 +91,7 @@ def cap(line: str) -> str:
 
 
 def _open_index(vault):
-    """(connection or None, waited): refresh under a 2 s lock; when the lock is busy, read the existing index
-    unrefreshed, and waited is True."""
+    """(connection or None, waited): refresh under a 2 s lock; a busy lock reads the index unrefreshed (waited)."""
     idx = Index(vault)
     try:
         idx.refresh(timeout=LOCK_TIMEOUT)
@@ -130,7 +129,6 @@ def build(vault, scope, budget, workcell_session=False) -> str:
     # Now block takes what they leave (#211, Now page spec §3.3).
     lines = now.open_lines(now.read(vault, partition)) if partition in now.PARTITIONS else []
     rows, waited = _digest_rows(vault, partition, name)   # one index open: two lock waits could pass the hook's timeout
-    # The dirty line (#166) is left out after a busy index wait (the hook has 3 s in all) and when it would not fit.
     dirty = dirty_line(vault, partition) if kind == "vault" and not waited else ""
     head += dirty if len(head) + len(dirty) <= budget else ""
     room = budget - len(head)
@@ -140,10 +138,8 @@ def build(vault, scope, budget, workcell_session=False) -> str:
 
 
 def dirty_line(vault: Path, partition: str) -> str:
-    """#166: "N uncommitted files outside raw/: a, b, c, …" for the vault's own repository, leaving out raw/ and the
-    other partition's wiki and meeting drops; "" when clean, not a repository, or git fails or is slow. GIT_* is
-    dropped so an inherited GIT_DIR cannot point git at another repository (#173); --no-optional-locks keeps a git
-    killed by the timeout from leaving .git/index.lock."""
+    """#166, outside raw/ and the other partition; "" when clean or git fails or is slow (skipped after a busy index
+    wait, so the hook keeps its 3 s). No GIT_* (#173); no optional locks, so a killed git leaves no index.lock."""
     if not (vault / ".git").exists():
         return ""
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
@@ -153,12 +149,10 @@ def dirty_line(vault: Path, partition: str) -> str:
                              errors="replace", timeout=GIT_TIMEOUT, env=env)
     except (OSError, subprocess.TimeoutExpired):
         return ""
-    hidden = ("raw/",) + tuple(x for p in now.PARTITIONS if p != partition for x in (f"wiki/{p}/", f"meetings/drop/{p}/"))
+    hidden = ("raw/",) + tuple(f"{d}/{p}/" for p in now.PARTITIONS if p != partition for d in ("wiki", "meetings/drop"))
     paths = [e[3:] for e in out.stdout.split("\0") if len(e) > 3 and not e[3:].startswith(hidden)]
-    if out.returncode != 0 or not paths:
-        return ""
-    return f"{len(paths)} uncommitted file{'s' * (len(paths) > 1)} outside raw/: " + \
-        ", ".join(paths[:3]) + (", …" if len(paths) > 3 else "") + "\n"
+    n = len(paths) * (out.returncode == 0)
+    return f"{n} uncommitted file{'s' * (n > 1)} outside raw/: {', '.join(paths[:3] + ['…'] * (n > 3))}\n" if n else ""
 
 
 def _now_block(lines: list, partition: str, room: int) -> str:
@@ -177,7 +171,6 @@ def _now_block(lines: list, partition: str, room: int) -> str:
 
 
 def _digest_rows(vault, partition, name) -> tuple:
-    """(rows, waited): waited is True when the index lock was busy."""
     conn, waited = _open_index(vault)
     if conn is None:
         return [], waited
