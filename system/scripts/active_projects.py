@@ -2,8 +2,8 @@
 """Active projects for the brief (active projects spec, issue #65).
 
 Usage: active_projects.py YYYY-MM-DD   prints projects.md: for wiki/<partition>/ActiveProjects.md in work and
-personal, the "## Active" entries in order, each with its first 3 open checkboxes and the open checkboxes under
-its "Decisions…" headings. Run from the vault root. Exit 0, 2 on a bad date, 1 on any other failure.
+personal, the "## Active" entries in order, each with its first 3 open checkboxes and the first 3 open checkboxes
+under its "Decisions…" headings. Run from the vault root. Exit 0, 2 on a bad date, 1 on any other failure.
 """
 import re
 import sys
@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from vaultlib import frontmatter  # noqa: E402
+from vaultlib.briefings import cut  # noqa: E402
 from vaultlib.index import PRIVATE  # noqa: E402
 from vaultlib.links import FENCE, Resolver, wiki_target  # noqa: E402
 
@@ -19,6 +20,7 @@ PARTITIONS = ("work", "personal")
 LIST_NAME = "ActiveProjects.md"
 MAX_ACTIVE = 10
 MAX_NEXT = 3
+MAX_DECISIONS = 3
 ENTRY = re.compile(r"^- \[\[([^\[\]\n]+?)\]\](?::\s*(.*\S))?\s*$")
 OPEN = re.compile(r"^\s*- \[ \] (.+)$")
 HEADING = re.compile(r"^(#{1,6}) (.*)$")
@@ -86,11 +88,14 @@ def page_items(text: str) -> tuple[list[str], list[str]]:
 
 
 def project_block(raw: str, focus: str, text: str) -> list[str]:
+    """At most MAX_NEXT next actions and MAX_DECISIONS decisions, each cut to one brief item (phase A spec §3.1)."""
     nxt, decisions = page_items(text)
     lines = ["", f"### [[{raw}]]" + (f": {focus}" if focus else ""), "Next:"]
-    lines += [f"- {t}" for t in nxt] or ["- None open."]
+    lines += [f"- {cut(t)}" for t in nxt] or ["- None open."]
     if decisions:
-        lines += ["Decisions waiting:", *[f"- {t}" for t in decisions]]
+        lines += ["Decisions waiting:", *[f"- {cut(t)}" for t in decisions[:MAX_DECISIONS]]]
+        if len(decisions) > MAX_DECISIONS:
+            lines.append(f"- and {len(decisions) - MAX_DECISIONS} more decisions on the page")
     return lines
 
 
