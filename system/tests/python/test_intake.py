@@ -413,6 +413,37 @@ def test_non_utf8_inbox_file_is_redacted(iv):
     assert (iv / "raw/archive/s.md").read_bytes() == b"caf\xe9\npassword=hunter2\n"
 
 
+def test_dropped_spreadsheet_is_converted_redacted_and_archived(iv):
+    from test_convert import row, xlsx
+    path = xlsx(iv / "raw/inbox/creds.xlsx", {"Keys": row(1, '<c r="A1" t="inlineStr"><is><t>password=hunter2</t></is></c>')})
+    original = path.read_bytes()
+    Intake(iv, now=later()).run()
+    staged = calls(iv)[0]["staged"]["raw/inbox/.staging/creds.xlsx.md"]
+    assert "## Sheet: Keys" in staged and "password=" in staged
+    assert "hunter2" not in staged
+    assert (iv / "raw/archive/creds.xlsx").read_bytes() == original
+
+
+def test_unreadable_document_is_quarantined_without_a_run(iv):
+    (iv / "raw/inbox/locked.docx").write_bytes(bytes.fromhex("d0cf11e0a1b11ae1") + b"\0" * 64)
+    Intake(iv, now=later()).run()
+    assert calls(iv) == []
+    assert (iv / "system/quarantine/poisoned/locked.docx.origin.json").is_file()
+    assert "not converted: not a readable docx file, encrypted or corrupt" in \
+        next((iv / "system/logs").glob("alerts_*.md")).read_text()
+
+
+def test_pdf_without_pdftotext_is_quarantined(iv, monkeypatch):
+    from vaultlib import convert
+    monkeypatch.setattr(convert.shutil, "which", lambda _: None)
+    write(iv, "raw/inbox/report.pdf", "%PDF-1.4\n")
+    write(iv, "raw/inbox/after.md", "next drop")
+    Intake(iv, now=later()).run()
+    assert (iv / "system/quarantine/poisoned/report.pdf").is_file()
+    assert "pdftotext is not installed" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
+    assert (iv / "raw/archive/after.md").exists()
+
+
 def test_non_utf8_briefing_does_not_stop_inbox(iv):
     p = iv / f"briefings/{today()}.md"
     p.parent.mkdir(parents=True, exist_ok=True)

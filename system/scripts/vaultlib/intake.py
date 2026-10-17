@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import cli, extensions as extmod, frontmatter, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
+from . import cli, convert as convertmod, extensions as extmod, frontmatter, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
 from . import triage
 
 FRESH_SECONDS = 60
@@ -366,8 +366,16 @@ class Intake:
         staging = self.vault / "raw" / "inbox" / ".staging"
         staging.mkdir(parents=True, exist_ok=True)
         copy = staging / path.name
-        raw = path.read_bytes()
-        text, _ = redactmod.redact(raw.decode("utf-8", errors="replace"))
+        if path.suffix.lower() in convertmod.SUFFIXES:  # a document goes to the same redaction as text (#166)
+            try:
+                source = convertmod.convert(path)
+            except convertmod.ConversionError as exc:
+                self.poison(path, f"raw/inbox/{path.name}", sha, reason=f"immediately, not converted: {exc}")
+                return True
+            copy = staging / f"{path.name}.md"
+        else:
+            source = path.read_bytes().decode("utf-8", errors="replace")
+        text, _ = redactmod.redact(source)
         copy.write_text(text, encoding="utf-8")
         try:
             rc = self.headless([copy.relative_to(self.vault).as_posix()], [sha])
