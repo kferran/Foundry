@@ -15,6 +15,9 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## 2026-10-17
 - A telemetry source can set `secrets_scan: "true"` (off by default) to raise one alert per new error group whose log line holds a credential shape, sent to Slack at once, naming the group's note and the shape, never the value; at most three a run per source, then one line counting the rest. (#261)
+- Every field in `system/schemas/` names the files that read it (`readers:`), and a test fails when a named reader is missing or never mentions the field; a field nothing reads (`readers: []`) only warns for now. (#256)
+- `check_deps.sh` requires `socat` on a standalone machine or a server: Claude Code's sandbox, which headless runs turn on, needs it on Linux for its network proxy. Install it with `sudo apt install socat` or `sudo pacman -S socat`. (#260)
+- A `claude` version change no longer counts as a failed smoke check source: the line reads `version: changed: <old> -> <new>` and its `[smoke]` alert still lists the acceptance steps in the brief's Pipeline. (#260)
 - A new vault's first brief no longer fails to publish with "Now.md modified in the last 60 s": brief prep no longer writes an empty Now page, and the brief creates the page when it adds a line. (#255)
 - A vault file whose name is not valid UTF-8 (such as a Latin-1 name copied from a Windows share) no longer breaks the index, `vault_index.py` and session recall; the index skips it and prints a warning naming it. (#254)
 
