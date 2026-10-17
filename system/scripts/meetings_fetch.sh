@@ -72,9 +72,8 @@ session() {
   for t in "${DRIVE_TOOLS[@]}"; do [[ "${PREFIX}__$t" == "$CONNECTOR_TOOL" ]] || CONNECTOR_OTHERS+=("$t"); done
   [[ -z "$id" ]] || args+=("$id" "$work/listing.json")
   connector_run "$prompt" "$work" || rrc=$?
-  if (( rrc != 0 )); then
+  if (( rrc != 0 )); then   # logged only: the caller prints a failed search once (#122)
     logline "$step" "${id:-search}" "$rrc" "$CONNECTOR_REASON"
-    echo "meetings_fetch: $CONNECTOR_REASON" >&2
     return "$rrc"
   fi
   # The tool-use check runs on every session, a timed-out one included.

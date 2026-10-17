@@ -20,7 +20,7 @@ prepare() {
   CONNECTOR_SERVER="claude.ai Google Calendar" CONNECTOR_PREFIX=mcp__claude_ai_Google_Calendar
   CONNECTOR_TOOL=mcp__claude_ai_Google_Calendar__list_events CONNECTOR_OTHERS=(create_event get_event)
   CONNECTOR_TIMEOUT=30 CONNECTOR_TURNS=9
-  work="$(mktemp -d -p /tmp)"
+  work="$(mktemp -d -p "$BATS_TEST_TMPDIR")"
 }
 
 arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; }
@@ -28,8 +28,9 @@ deny_list() { awk '$0 == "--disallowedTools" { p = 1; next } p' "$STUB_ARGS"; }
 
 @test "connector_run passes the prompt first, the flags, and the tool lists last" {
   prepare
-  connector_run "say hi" "$work"
+  STUB_STDIN="$BATS_TEST_TMPDIR/stdin" connector_run "say hi" "$work"
   [ "$CONNECTOR_RC" -eq 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/stdin")" = /dev/null ]
   [ "$(sed -n 1p "$STUB_ARGS")" = -p ]
   [ "$(sed -n 2p "$STUB_ARGS")" = "say hi" ]
   [ "$(arg_after --permission-mode)" = dontAsk ]
@@ -97,6 +98,19 @@ deny_list() { awk '$0 == "--disallowedTools" { p = 1; next } p' "$STUB_ARGS"; }
   [ ! -e "$STUB_ARGS" ]
 }
 
+@test "connector_run runs nothing when the session settings cannot be built (#122)" {
+  prepare
+  mkdir "$BATS_TEST_TMPDIR/bin"
+  printf '#!/bin/sh\nexit 5\n' > "$BATS_TEST_TMPDIR/bin/jq"
+  chmod +x "$BATS_TEST_TMPDIR/bin/jq"
+  run_rc=0
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" connector_run p "$work" || run_rc=$?
+  [ "$run_rc" -eq 1 ]
+  [[ "$CONNECTOR_REASON" == *"session settings"* ]]
+  [ -z "$CONFINE_SETTINGS" ]
+  [ ! -e "$STUB_ARGS" ]
+}
+
 @test "two sessions in one process list the servers once and get two directories" {
   prepare
   STUB_MCP_LIST=$'claude.ai Google Calendar: x - ok\nclaude.ai Gmail: y - ok' connector_run p "$work"
@@ -127,6 +141,8 @@ outcome() {
   outcome 6 137 4 "timed out after 30s"
   outcome 3 0 3 "no Gmail connector"
   outcome 3 2 3 "no Gmail connector; claude exited 2: unknown option --foo"
+  printf 'Error: one\nError: two\n' > "$work/claude.err"
+  outcome 3 2 3 "no Gmail connector; claude exited 2: Error: one Error: two"   # one line for the alert (#122)
   : > "$work/check.err"
   outcome 1 0 1 ""
 }

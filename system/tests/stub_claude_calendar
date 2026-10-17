@@ -1,9 +1,10 @@
 #!/bin/bash
-# Test double for the calendar fetch's claude calls. `mcp list` prints STUB_MCP_LIST (or fails when
-# STUB_MCP_FAIL=1). Any other call records argv (one per line) to STUB_ARGS, the working directory to
-# STUB_CWD and FOUNDRY_HEADLESS to STUB_ENV, then prints the file STUB_STREAM and exits STUB_RC. A session allowed
+# Test double for the calendar fetch's claude calls. `mcp list` touches STUB_MCP_PROBE when set and prints
+# STUB_MCP_LIST (or fails when STUB_MCP_FAIL=1). Any other call records argv (one per line) to STUB_ARGS, the working
+# directory to STUB_CWD, FOUNDRY_HEADLESS to STUB_ENV and, when set, stdin's target to STUB_STDIN, then prints the file STUB_STREAM and exits STUB_RC. A session allowed
 # the Slack search (chat triage) records its argv to STUB_SLACK_ARGS and prints STUB_SLACK_STREAM instead, when set.
 if [[ "${1:-}" == mcp && "${2:-}" == list ]]; then
+  [[ -z "${STUB_MCP_PROBE:-}" ]] || touch "$STUB_MCP_PROBE"
   [[ "${STUB_MCP_FAIL:-0}" == 1 ]] && exit 1
   printf '%s\n' "Checking MCP server health…" "" "${STUB_MCP_LIST:-claude.ai Google Calendar: https://calendar.example/mcp - ok Connected}"
   exit 0
@@ -20,6 +21,7 @@ if (( slack )) && [[ -n "${STUB_SLACK_STREAM:-}" ]]; then
 fi
 printf '%s\n' "$@" > "${STUB_ARGS:-/dev/null}"
 pwd > "${STUB_CWD:-/dev/null}"
+[[ -z "${STUB_STDIN:-}" ]] || readlink -f /dev/stdin > "$STUB_STDIN"
 printf '%s\n' "${FOUNDRY_HEADLESS:-}" > "${STUB_ENV:-/dev/null}"
 [[ -n "${STUB_SLEEP:-}" ]] && sleep "$STUB_SLEEP"
 [[ -n "${STUB_STREAM:-}" ]] && cat "$STUB_STREAM"

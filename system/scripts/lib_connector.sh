@@ -10,7 +10,8 @@
 #   CONNECTOR_SCHEMA   optional: a file whose JSON schema the reply must match (--json-schema)
 
 # connector_run <prompt> <work dir>: run one session in a fresh directory under <work dir>, leaving <work dir>/out.jsonl
-# and <work dir>/claude.err. Returns 127 (no claude) or 1 (a refused allow rule) with CONNECTOR_REASON set and nothing
+# and <work dir>/claude.err. Returns 127 (no claude) or 1 (a refused allow rule, or settings jq could not build) with
+# CONNECTOR_REASON set and nothing
 # run; otherwise returns 0 with CONNECTOR_RC the session's exit (124 or 137 after the timeout). The server list is
 # read once per process: a caller running several sessions pays for `claude mcp list` once.
 connector_run() {
@@ -21,9 +22,13 @@ connector_run() {
     CONNECTOR_REASON="claude not found ($claude_bin)"
     return 127
   fi
-  [[ -n "${CONFINE_SETTINGS:-}" ]] || confine_settings "$CONNECTOR_SERVER" "$work"
   for t in "${CONNECTOR_OTHERS[@]}"; do others+=("${CONNECTOR_PREFIX}__$t"); done
+  # The allow rules first: a refused rule stops before the up-to-30 s server listing.
   if ! confine_deny --strict "$CONNECTOR_PREFIX" "$CONNECTOR_TOOL" "${others[@]}"; then
+    CONNECTOR_REASON="$CONFINE_ERROR"
+    return 1
+  fi
+  if [[ -z "${CONFINE_SETTINGS:-}" ]] && ! confine_settings "$CONNECTOR_SERVER" "$work"; then
     CONNECTOR_REASON="$CONFINE_ERROR"
     return 1
   fi
@@ -58,7 +63,8 @@ connector_outcome() {
   if (( CONNECTOR_RC == 124 || CONNECTOR_RC == 137 )); then
     CONNECTOR_EXIT=4 CONNECTOR_REASON="timed out after ${CONNECTOR_TIMEOUT}s"
   elif (( CONNECTOR_RC != 0 )); then
-    CONNECTOR_REASON="$CONNECTOR_REASON; claude exited $CONNECTOR_RC: $(head -c 200 "$work/claude.err" 2>/dev/null)"
+    # Joined into one line: the reason becomes an alert line.
+    CONNECTOR_REASON="$CONNECTOR_REASON; claude exited $CONNECTOR_RC: $(head -c 200 "$work/claude.err" 2>/dev/null | paste -sd ' ')"
   fi
 }
 

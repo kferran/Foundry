@@ -82,6 +82,18 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   [ "$status" -eq 1 ]
   [[ "$output" == *"allows every tool on mcp__claude_ai_Google_Calendar"* ]]
   [ ! -e "$STUB_ARGS" ]
+  printf '{"permissions":{"allow":["mcp__claude_ai_Google_Calendar__*"]}}' > "$HOME/.claude/settings.json"
+  run "$CF" "$DAY"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"allows every tool on mcp__claude_ai_Google_Calendar"* ]]
+  [ ! -e "$STUB_ARGS" ]
+}
+
+@test "a refused rule stops the fetch before the server listing (#122)" {
+  printf '{"permissions":{"allow":["mcp__claude_ai_Google_Calendar"]}}' > "$HOME/.claude/settings.json"
+  STUB_MCP_PROBE="$BATS_TEST_TMPDIR/listed" run "$CF" "$DAY"
+  [ "$status" -eq 1 ]
+  [ ! -e "$BATS_TEST_TMPDIR/listed" ]
 }
 
 @test "the prompt names the day, the next day and the configured timezone" {
@@ -231,6 +243,22 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   [ "$(jq .exit "$log")" = 0 ]
   run "$CF" --check "$DAY"
   [ "$status" -eq 2 ]
+}
+
+@test "--check passes when the connector listed more than 100 events; a day's fetch still exits 8 (#122)" {
+  stream '{"status":"too_many","reason":"140","events":[]}' ToolSearch mcp__claude_ai_Google_Calendar__list_events
+  run "$CF" --check
+  [ "$status" -eq 0 ]
+  [ "$output" = "calendar_fetch: the connector listed more than 100 events" ]
+  run "$CF" "$DAY"
+  [ "$status" -eq 8 ]
+}
+
+@test "a failed check after a failed session names claude's exit (#122)" {
+  stream '{"status":"no_tool","reason":"","events":[]}' ToolSearch
+  STUB_RC=2 run "$CF" "$DAY"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"no Google Calendar connector reachable; claude exited 2:"* ]]
 }
 
 @test "--check fails with exit 6 when a page exceeded the result limit, even with an ok reply (#164)" {
