@@ -485,10 +485,12 @@ def test_seed_takes_the_previous_briefs_open_objectives_once(vault):
     assert now.seed(vault, "work", "2026-10-09") == 0
 
 
-def test_seed_with_no_earlier_briefing_creates_an_empty_page(vault):
+def test_seed_with_nothing_to_carry_writes_no_page(vault):
+    # An empty page written by brief prep seconds before the brief publishes would trip the gate's 60 s check; the
+    # brief creates the page itself when it has a line to add.
     prepare(vault)
     assert now.seed(vault, "work", TODAY) == 0
-    assert now.open_lines(page(vault)) == []
+    assert not now.page_path(vault, "work").exists()
     assert now.seed(vault, "shared", TODAY) == 0
 
 

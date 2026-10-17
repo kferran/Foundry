@@ -371,11 +371,14 @@ def latest_open_objectives(vault, day: str) -> list:
 
 
 def seed(vault, partition: str, day: str) -> int:
-    """Once: create a partition's missing Now page from the latest earlier briefing's open objectives."""
+    """Once: create a partition's missing Now page from the latest earlier briefing's open objectives. With none it
+    writes nothing: brief prep runs this, and a page written just before the brief publishes trips the gate's 60 s check."""
     if partition not in PARTITIONS or page_path(vault, partition).exists():
         return 0
     text = new_page(vault, partition, day)
     items = [(t, s) for t, s in latest_open_objectives(vault, day) if t]
+    if not items:
+        return 0
     for statement, since in items:
         text = _insert(text, NEEDS, render("owed", statement, since))
     write(vault, partition, text)
