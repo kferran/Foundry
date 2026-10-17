@@ -14,6 +14,7 @@ fields:
   digest_min_minutes: {kind: int, default: "20"}
   recall_budget_chars: {kind: int, default: "9000"}
   transcript_keep_dir: {kind: string}
+  transcript_keep_days: {kind: int, min: "0", default: "90"}
   preferences_enabled: {kind: bool, default: "false"}
   superpowers: {kind: list, of: string}
   machine_role: {kind: enum, values: [standalone, server, client], default: "standalone"}

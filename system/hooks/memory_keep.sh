@@ -25,10 +25,22 @@ main() {
   [[ "$dir" != "$MEM_VAULT" && "$dir" != "$MEM_VAULT"/* ]] \
     || { mem_log "keep: transcript_keep_dir is inside the vault; nothing copied"; return 0; }
   dst="$dir/$sid.jsonl" tmp="$dir/.$sid.jsonl.tmp.$$"
-  [[ -f "$dst" ]] && (( $(stat -c %s -- "$dst") > $(stat -c %s -- "$src") )) && return 0
-  if ( umask 077; timeout 20 cp -- "$src" "$tmp" ) && mv -f -- "$tmp" "$dst"; then return 0; fi
-  rm -f -- "$tmp"
-  mem_log "keep: could not copy the transcript for $sid"
+  if [[ -f "$dst" ]] && (( $(stat -c %s -- "$dst") > $(stat -c %s -- "$src") )); then
+    :  # a larger copy is kept as it is
+  elif ! { ( umask 077; timeout 20 cp -- "$src" "$tmp" ) && mv -f -- "$tmp" "$dst"; }; then
+    rm -f -- "$tmp"
+    mem_log "keep: could not copy the transcript for $sid"
+  fi
+  prune "$dir"
+}
+
+prune() {  # prune <dir>: copies not refreshed for transcript_keep_days days (default 90; 0 keeps them all)
+  local days
+  days="$(_mem_vi field system/config.md transcript_keep_days 2>/dev/null)" || days=90
+  [[ "$days" =~ ^[0-9]+$ ]] || days=90
+  (( days > 0 )) || return 0
+  # Only the copies themselves: no recursion, and -type f never matches a symlink (find does not follow them).
+  timeout 5 find "$1" -maxdepth 1 -type f -name '*.jsonl' -mtime "+$days" -delete 2>/dev/null
 }
 
 main

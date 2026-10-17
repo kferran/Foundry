@@ -442,3 +442,28 @@ keep() { hook memory_keep.sh "$(jq -cn --arg s "$1" --arg t "$T" --arg e "${2:-S
   [ "$status" -eq 0 ]
   [ ! -e "$KD/kp-4.jsonl" ]
 }
+
+@test "keep: copies older than transcript_keep_days are pruned, only at the top of the directory; 0 keeps them all" {
+  keep_env kp-5
+  start kp-5
+  printf 'x\n' > "$T"
+  mkdir -p "$KD/sub" "$BATS_TEST_TMPDIR/elsewhere"
+  printf 'old\n' > "$KD/old-1.jsonl"
+  printf 'nested\n' > "$KD/sub/old-2.jsonl"
+  printf 'target\n' > "$BATS_TEST_TMPDIR/elsewhere/old-3.jsonl"
+  ln -s "$BATS_TEST_TMPDIR/elsewhere/old-3.jsonl" "$KD/link.jsonl"
+  touch -h -d '100 days ago' "$KD/old-1.jsonl" "$KD/sub/old-2.jsonl" "$BATS_TEST_TMPDIR/elsewhere/old-3.jsonl" "$KD/link.jsonl"
+  printf 'fresh\n' > "$KD/fresh.jsonl"
+  system/scripts/vault_index.py set system/config.md transcript_keep_days 0
+  keep kp-5
+  [ -f "$KD/old-1.jsonl" ]
+  system/scripts/vault_index.py set system/config.md transcript_keep_days 90
+  keep kp-5
+  [ "$status" -eq 0 ]
+  [ ! -e "$KD/old-1.jsonl" ]
+  [ -f "$KD/fresh.jsonl" ]
+  [ -f "$KD/kp-5.jsonl" ]
+  [ -f "$KD/sub/old-2.jsonl" ]
+  [ -L "$KD/link.jsonl" ]
+  [ -f "$BATS_TEST_TMPDIR/elsewhere/old-3.jsonl" ]
+}
