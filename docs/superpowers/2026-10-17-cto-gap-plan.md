@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-17
 **Inputs:** `docs/reviews/2026-10-17-cto-assessment.md`, `2026-10-15-next-phase-plan.md`, `roadmap.md`, open issues and PRs on this repository, the live vault snapshot of 2026-10-15.
-**Status:** draft for the owner's review. Supersedes the order of phases 2–5 in the 2026-10-15 plan once approved; its phase 0 and 1 records stand.
+**Status:** approved (owner, 2026-10-17): every recommendation in §4. Supersedes the order of phases 2–5 in the 2026-10-15 plan; its phase 0 and 1 records stand.
 
 ## 1. Goal and order
 
@@ -54,7 +54,7 @@ Fast lane and owner actions. No code.
 - [ ] Roadmap: step 3 (all three moves, the core budget test), Tagging, CLAUDE.md prune, connector health, quarantine in brief, telemetry escalation, recall ranking, chat triage (#222) and parallel Work Orders (#229) marked built, with their PRs.
 - [ ] Spec status lines: `connector-health`, `quarantine-in-brief`, `alert-tags`, `note-tags` set to built.
 - [ ] Owner: queue the semantic-recall and chat-gateway research briefs with `/order add` in the vault. Phase D's grill needs the chat-gateway findings.
-- [ ] Owner: merge #259 (write-cap ratchet). Hold #257 until phase B is done. Review #258 and #262.
+- [ ] Owner: merge #259 (write-cap ratchet) once it is brought up to date with master. #257, #258 and #262 merged on 2026-10-17.
 - [ ] Owner, in the vault: run `now.py review --partition work` and close every line its evidence closes.
 - [ ] Owner, in the vault: confirm the brief's quarantine line and the Sources line on a live brief.
 
@@ -92,7 +92,7 @@ Spec and plan exist (`specs/2026-10-11-ingest-evals-design.md`, `plans/2026-10-1
 
 **Validation:** `evals.bats`, `test_eval_check.py`, and the first real run recorded under `system/logs/evals/`.
 
-**Done when:** the first real run is recorded and its pass rate is in the outcomes file. Then #257 can merge.
+**Done when:** the first real run, with cases for the formats #257 converts, is recorded and its pass rate is in the outcomes file.
 
 ### Phase C: step 4 budgets
 
@@ -157,13 +157,15 @@ Today Work Orders cannot reach the main work codebase, whose pull requests are o
 
 ## 4. Decisions for the owner
 
-| # | Decision | Recommendation |
-|---|---|---|
-| 1 | Approve this order (A and B before C, C before new features) | Approve |
-| 2 | Phase A runs before the step 4 budgets | Yes: the brief is the daily interface and is 4x its target, and phase A shrinks `brief.md` first |
-| 3 | Work-data boundary (#218): all partitions push to one private origin on a personal host | Decide before phase D; recommend a separate work origin if chat captures are wanted |
-| 4 | Phase G: Work Orders on the Bitbucket codebase | Grill it; skip if the work codebase's own tooling covers it |
-| 5 | #236, #263, Foreman v2 parked until after phase F | Park |
+| # | Decision | Recommendation | Owner (2026-10-17) |
+|---|---|---|---|
+| 1 | Approve this order (A and B before C, C before new features) | Approve | Approved |
+| 2 | Phase A runs before the step 4 budgets | Yes: the brief is the daily interface and is 4x its target, and phase A shrinks `brief.md` first | Yes |
+| 3 | Work-data boundary (#218): all partitions push to one private origin on a personal host | Decide before phase D; recommend a separate work origin if chat captures are wanted | The vault repository moves to the employer's GitHub account the week of 2026-10-19. Phase D's grill starts after the move. |
+| 4 | Phase G: Work Orders on the Bitbucket codebase | Grill it; skip if the work codebase's own tooling covers it | Grill it |
+| 5 | #236, #263, Foreman v2 parked until after phase F | Park | Parked |
+
+Since this plan was written, #257 (document conversion), #258 (the read-denied private folder) and #262 (transcript keep) merged on 2026-10-17. Phase B therefore adds eval cases for converted documents to its first run, in place of holding #257.
 
 ## 5. Tracking
 
