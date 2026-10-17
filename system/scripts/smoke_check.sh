@@ -1,6 +1,7 @@
 #!/bin/bash
 # Smoke check (smoke check spec §3.1): every configured fetch's check mode and the claude version, one line per
-# source (ok, failed: <reason>, expired: <credential>; renew: <how>, unreachable: <host>, held: <reading>, off), one
+# source (ok, failed: <reason>, expired: <credential>; renew: <how>, unreachable: <host>, held: <reading>, off, and
+# changed: <old> -> <new> for the version), one
 # [smoke] alert a day per failure (per credential for an expired one), logged to
 # system/logs/smoke-<YYYY-MM>.jsonl. Runs daily from foundry-smoke.timer, 15 minutes before the brief, on a server
 # or standalone machine. At the usage ceiling the connector checks are held; the local checks still run.
@@ -92,10 +93,10 @@ if (( vrc != 0 )) || [[ -z "$current" ]]; then
 else
   recorded="$(cat "$vfile" 2>/dev/null || true)"
   if [[ -n "$recorded" && "$recorded" != "$current" ]]; then
-    logline version 1 "claude $recorded -> $current"
-    echo "version: failed: claude $recorded -> $current"
+    # A change is news, not a failure (#122): the [smoke] line reaches the brief's Pipeline, never Slack.
+    logline version 0 "changed: claude $recorded -> $current"
+    echo "version: changed: claude $recorded -> $current"
     alert_once version "claude $recorded -> $current; re-run the acceptance steps (FOUNDRY.md Development)"
-    failed=1
   else
     report version 0 ""
   fi

@@ -36,6 +36,18 @@ def test_valid_sentry_and_adx_sources_lint_clean(vault):
     assert [i for i in issues(vault) if i[0].startswith("system/telemetry/")] == []
 
 
+def test_secrets_scan_is_a_known_bool_field(vault):
+    write(vault, "system/codebases/shop.md", CODEBASE)
+    for name, value in (("on-adx", '"true"'), ("bad-adx", '"maybe"')):
+        write(vault, f"system/telemetry/{name}.md", src(name, kind='"adx"', adx_cluster='"https://example.kusto.windows.net"',
+                                                        adx_database='"prod"', secrets_scan=value))
+    idx = Index(vault)
+    idx.refresh(full=True)
+    rows = idx.connect().execute("SELECT path, code FROM issues WHERE path LIKE 'system/telemetry/%'").fetchall()
+    assert not [r for r in rows if r[1] == "unknown-field"], rows
+    assert [p for p, _c, _m in issues(vault) if p.startswith("system/telemetry/")] == ["system/telemetry/bad-adx.md"]
+
+
 def test_mixed_kind_fields_unknown_codebase_and_bad_covers_are_errors(vault):
     write(vault, "system/codebases/shop.md", CODEBASE)
     write(vault, "system/telemetry/uat-sentry.md", src("uat-sentry", environment='"uat"', kind='"sentry"', enabled='"false"',
