@@ -94,6 +94,14 @@ alerts() { cat system/logs/alerts_*.md 2>/dev/null; }
   alerts | grep -q '\[sync\] sync failed (commit)'
 }
 
+@test "a CLAUDE.md grown past its write cap refuses the sync commit, named in the alert, exit 1 (#166)" {
+  head -c 16385 /dev/zero | tr '\0' x > CLAUDE.md
+  run "$VS"
+  [ "$status" -eq 1 ]
+  [ -z "$(git diff --cached --name-only)" ]
+  alerts | grep -qF 'the sync commit was refused: CLAUDE.md:1: error: 16385 bytes is over the 16384-byte cap'
+}
+
 refused_run() {  # a published run whose note the hook refuses
   echo 20200101T000000 > system/logs/commit_runs.since
   mkdir -p system/logs/runs/20261004T060000-brief-cd34 wiki/work/concepts
