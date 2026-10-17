@@ -422,6 +422,7 @@ def test_dropped_spreadsheet_is_converted_redacted_and_archived(iv):
     assert "## Sheet: Keys" in staged and "password=" in staged
     assert "hunter2" not in staged
     assert (iv / "raw/archive/creds.xlsx").read_bytes() == original
+    assert list((iv / "raw/inbox/.staging").glob("*.converting")) == []  # a finished conversion leaves no marker
 
 
 def test_unreadable_document_is_quarantined_without_a_run(iv):
@@ -442,6 +443,20 @@ def test_pdf_without_pdftotext_is_quarantined(iv, monkeypatch):
     assert (iv / "system/quarantine/poisoned/report.pdf").is_file()
     assert "pdftotext is not installed" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
     assert (iv / "raw/archive/after.md").exists()
+
+
+def test_conversion_that_died_is_quarantined_on_the_next_tick(iv):
+    import hashlib
+    write(iv, "raw/inbox/killer.pptx", "x")
+    write(iv, "raw/inbox/after.md", "next drop")
+    # a tick killed mid-conversion (SIGKILL, OOM) leaves its marker and runs no except or finally
+    write(iv, f"raw/inbox/.staging/{hashlib.sha256(b'x').hexdigest()}.converting", "killer.pptx")
+    os.utime(iv / "raw/inbox/killer.pptx", (0, 0))  # oldest first, as the wedged file would be
+    Intake(iv, now=later()).run()
+    assert (iv / "system/quarantine/poisoned/killer.pptx").is_file()
+    assert "not converted (conversion did not finish)" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
+    assert (iv / "raw/archive/after.md").exists()
+    assert list((iv / "raw/inbox/.staging").glob("*.converting")) == []
 
 
 def test_converter_crash_is_quarantined_and_intake_goes_on(iv, monkeypatch):

@@ -11,10 +11,14 @@ import zlib
 SUFFIXES = (".xlsx", ".docx", ".pptx", ".pdf")
 MAX_ROWS = 1000  # rows shown per sheet; the rest are counted and named
 MAX_COLS = 16384  # column XFD, the last one Excel has
-MAX_PART = 20 * 2**20  # unpacked bytes of one XML part; a larger part is refused (a zip bomb)
+# Memory: ElementTree holds about 37 bytes of RSS per byte of the densest XML (20 MB of <a b="1"/> peaked at 745 MB),
+# so a part parsed as a tree stays small; sheets and shared strings are streamed and only count toward the total.
+MAX_PART = 5 * 2**20  # unpacked bytes of one part parsed as a tree
+MAX_UNPACKED = 50 * 2**20  # unpacked bytes of every part read, a part read twice counted twice: bounds parse time
 MAX_OUT = 5 * 2**20  # characters of converted text (pdftotext: bytes); past it the drop is refused
 PDF_TIMEOUT = 120
-_spent = 0  # ponytail: per-call module state, convert() is not reentrant; pass a budget object if it ever runs threaded
+# ponytail: per-call module state, convert() is not reentrant; pass a budget object if it ever runs threaded
+_spent = _unpacked = 0
 
 
 class ConversionError(Exception):
@@ -22,8 +26,8 @@ class ConversionError(Exception):
 
 
 def convert(path) -> str:
-    global _spent
-    _spent = 0
+    global _spent, _unpacked
+    _spent = _unpacked = 0
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         return f"# {path.name}\n\n{_pdf(path)}\n"
@@ -57,16 +61,41 @@ def _attr(el, name):
     return next((v for k, v in el.attrib.items() if k.startswith("{") and _local(k) == name), None)
 
 
-def _info(z, name, optional=False):
+def _info(z, name, optional=False, streamed=False):
+    global _unpacked
     try:
         info = z.getinfo(name)
     except KeyError:
         if optional:
             return None
         raise ConversionError("a part it names is missing")
-    if info.file_size > MAX_PART:
+    if not streamed and info.file_size > MAX_PART:
         raise ConversionError(f"a part unpacks to over {MAX_PART // 2**20} MB")
+    _unpacked += info.file_size  # zipfile stops at the declared size (a lie fails its CRC), so this bounds the reads
+    if _unpacked > MAX_UNPACKED:
+        raise ConversionError(f"the parts unpack to over {MAX_UNPACKED // 2**20} MB in total")
     return info
+
+
+def _stream(z, part, tag, optional=False):
+    """Each `tag` element of a part, dropped once handled: memory holds one element whatever the part's size."""
+    info = _info(z, part, optional, streamed=True)
+    if info is None:
+        return
+    parents, inside = [], 0  # inside: open `tag` elements, whose children must stay until it is handled
+    with z.open(info) as fh:
+        for event, el in ET.iterparse(fh, events=("start", "end")):
+            hit = _local(el.tag) == tag
+            if event == "start":
+                parents.append(el)
+                inside += hit
+                continue
+            parents.pop()
+            if hit:
+                inside -= 1
+                yield el
+            if parents and (hit or not inside):
+                parents[-1].remove(el)  # its earlier siblings are gone already, so this is the only child
 
 
 def _xml(z, name, optional=False):
@@ -111,39 +140,36 @@ def _col(ref: str, default: int) -> int:
 
 
 def _cell(c, shared) -> str:
+    """The cell's text; shared strings are returned by reference and paid for in _line, once escaped."""
     kind = c.get("t")
     if kind == "inlineStr":
-        return _spend("".join(t.text or "" for t in _all(c, "t")))
+        return "".join(t.text or "" for t in _all(c, "t"))
     value = next((e.text or "" for e in c if _local(e.tag) == "v"), "")
     if kind == "s":
         try:
-            return _spend(shared[int(value)])
+            return shared[int(value)]
         except (ValueError, IndexError):
             raise ConversionError("a cell names a shared string that does not exist")
     if kind == "b":
         return "TRUE" if value == "1" else "FALSE"
-    return _spend(value)  # ponytail: dates stay Excel serial numbers; format them if drops show it matters
+    return value  # ponytail: dates stay Excel serial numbers; format them if drops show it matters
 
 
 def _line(cells) -> str:
     _spend(" | " * len(cells))
-    return "| " + " | ".join(c.replace("|", "\\|").replace("\n", " ") for c in cells) + " |"
+    return "| " + " | ".join(_spend(c.replace("|", "\\|").replace("\n", " ")) for c in cells) + " |"
 
 
 def _sheet(z, part, shared) -> str:
     rows, total = [], 0
-    with z.open(_info(z, part)) as fh:
-        for _, el in ET.iterparse(fh):  # streamed: a huge sheet is counted, never held
-            if _local(el.tag) != "row":
-                continue
-            total += 1
-            if total <= MAX_ROWS:
-                cells = {}
-                for c in el:
-                    if _local(c.tag) == "c":
-                        cells[_col(c.get("r", ""), len(cells))] = _cell(c, shared)
-                rows.append([cells.get(i, "") for i in range(max(cells) + 1)] if cells else [])
-            el.clear()
+    for el in _stream(z, part, "row"):  # a huge sheet is counted, never held
+        total += 1
+        if total <= MAX_ROWS:
+            cells = {}
+            for c in el:
+                if _local(c.tag) == "c":
+                    cells[_col(c.get("r", ""), len(cells))] = _cell(c, shared)
+            rows.append([cells.get(i, "") for i in range(max(cells) + 1)] if cells else [])
     rows = [r for r in rows if any(r)]
     if not rows:
         return "(empty)"
@@ -156,8 +182,7 @@ def _sheet(z, part, shared) -> str:
 
 
 def _xlsx(z) -> str:
-    strings = _xml(z, "xl/sharedStrings.xml", optional=True)
-    shared = [] if strings is None else ["".join(t.text or "" for t in _all(si, "t")) for si in _all(strings, "si")]
+    shared = ["".join(t.text or "" for t in _all(si, "t")) for si in _stream(z, "xl/sharedStrings.xml", "si", True)]
     sheets = _all(_xml(z, "xl/workbook.xml"), "sheet")
     parts = _targets(_rels(z, "xl/workbook.xml"), sheets)
     return "\n\n".join(_spend(f"## Sheet: {sheet.get('name', '?')}\n\n") + _sheet(z, part, shared)
@@ -203,7 +228,7 @@ def _notes(z, part, tag, mark, heading) -> str:
     root = _xml(z, part, optional=True)
     if root is None:
         return ""
-    lines = [f"[^{mark}{_attr(n, 'id')}]: " + " ".join(_paras(n)).strip()
+    lines = [_spend(f"[^{mark}{_attr(n, 'id')}]: ") + " ".join(_paras(n)).strip()
              for n in _all(root, tag) if not _attr(n, "type")]  # typed notes are Word's separators
     return f"## {heading}\n\n" + "\n".join(lines) if lines else ""
 
@@ -237,7 +262,7 @@ def _pptx(z) -> str:
     slides = _all(_xml(z, "ppt/presentation.xml"), "sldId")
     blocks = []
     for n, part in enumerate(_targets(_rels(z, "ppt/presentation.xml"), slides), 1):
-        block = f"## Slide {n}\n\n{_slide_text(_xml(z, part))}"
+        block = _spend(f"## Slide {n}\n\n") + _slide_text(_xml(z, part))
         notes = next((p for kind, p in _rels(z, part).values() if kind.endswith("/notesSlide")), None)
         text = _slide_text(_xml(z, notes)) if notes else ""
         if text:
@@ -276,4 +301,4 @@ def _pdf(path) -> str:
         pages.pop()  # pdftotext ends the last page with a form feed too
     if not any(p.strip() for p in pages):
         raise ConversionError("the pdf has no text layer (a scan needs OCR first)")
-    return "\n\n".join(f"## Page {n}\n\n{p.rstrip()}" for n, p in enumerate(pages, 1))
+    return "\n\n".join(_spend(f"## Page {n}\n\n{p.rstrip()}") for n, p in enumerate(pages, 1))

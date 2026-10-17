@@ -128,6 +128,52 @@ def test_truncated_zip_and_bad_xml_are_conversion_errors(tmp_path):
         convert.convert(missing)
 
 
+def test_streamed_sheet_may_pass_the_tree_part_cap(tmp_path, monkeypatch):
+    monkeypatch.setattr(convert, "MAX_PART", 1000)  # sheets and shared strings are streamed, not held as trees
+    monkeypatch.setattr(convert, "MAX_ROWS", 10)
+    data = "".join(row(n, f'<c r="A{n}" t="s"><v>{n % 3}</v></c>') for n in range(1, 2001))
+    out = convert.convert(xlsx(tmp_path / "big.xlsx", {"Log": data}, shared=["a" * 400, "b" * 400, "c"]))
+    assert "Rows after 10 not shown: the sheet has 2000 rows." in out
+
+
+def test_unpacked_total_is_capped_across_parts(tmp_path, monkeypatch):
+    monkeypatch.setattr(convert, "MAX_UNPACKED", 50_000)
+    notes = f'<p:notes xmlns:p="{P}"><p:cSld>' + "<p:x/>" * 1000 + "</p:cSld></p:notes>"  # ~6 KB, no text
+    slides = {f"ppt/slides/slide{i}.xml": f'<p:sld xmlns:p="{P}"/>' for i in range(30)}
+    slide_rels = {f"ppt/slides/_rels/slide{i}.xml.rels": rels(("rId1", "notesSlide", "../notesSlides/n.xml"))
+                  for i in range(30)}
+    parts = {
+        "ppt/presentation.xml": f'<p:presentation xmlns:p="{P}" xmlns:r="{R}"><p:sldIdLst>'
+                                + "".join(f'<p:sldId r:id="rId{i}"/>' for i in range(30)) + "</p:sldIdLst></p:presentation>",
+        "ppt/_rels/presentation.xml.rels": rels(*[(f"rId{i}", "slide", f"slides/slide{i}.xml") for i in range(30)]),
+        "ppt/notesSlides/n.xml": notes, **slides, **slide_rels,
+    }
+    with pytest.raises(convert.ConversionError, match="in total"):
+        convert.convert(build(tmp_path / "notes.pptx", parts))
+
+
+def test_note_ids_count_against_the_output_cap(tmp_path, monkeypatch):
+    monkeypatch.setattr(convert, "MAX_OUT", 10_000)
+    doc = f'<w:document xmlns:w="{W}"><w:body><w:p><w:r><w:t>x</w:t></w:r></w:p></w:body></w:document>'
+    notes = f'<w:footnotes xmlns:w="{W}"><w:footnote w:id="{"9" * 20_000}"><w:p/></w:footnote></w:footnotes>'
+    with pytest.raises(convert.ConversionError, match="over the output limit"):
+        convert.convert(build(tmp_path / "id.docx", {"word/document.xml": doc, "word/footnotes.xml": notes}))
+
+
+def test_escaped_cells_count_against_the_output_cap(tmp_path, monkeypatch):
+    monkeypatch.setattr(convert, "MAX_OUT", 10_000)
+    path = xlsx(tmp_path / "pipes.xlsx", {"S": row(1, f'<c r="A1" t="inlineStr"><is><t>{"|" * 6000}</t></is></c>')})
+    with pytest.raises(convert.ConversionError, match="over the output limit"):
+        convert.convert(path)
+
+
+def test_page_headings_count_against_the_output_cap(tmp_path, monkeypatch):
+    monkeypatch.setattr(convert, "MAX_OUT", 10_000)
+    path = fake_pdftotext(tmp_path, monkeypatch, r"yes x | head -n 3000 | tr '\n' '\f'")
+    with pytest.raises(convert.ConversionError, match="over the output limit"):
+        convert.convert(path)
+
+
 def test_oversized_part_is_refused(tmp_path, monkeypatch):
     monkeypatch.setattr(convert, "MAX_PART", 100)
     doc = f'<w:document xmlns:w="{W}"><w:body>' + "<w:p/>" * 100 + "</w:body></w:document>"

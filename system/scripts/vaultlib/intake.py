@@ -367,7 +367,13 @@ class Intake:
         staging.mkdir(parents=True, exist_ok=True)
         copy = staging / path.name
         if path.suffix.lower() in convertmod.SUFFIXES:  # a document goes to the same redaction as text (#166)
+            # The marker outlives a tick killed mid-conversion (SIGKILL, OOM); the next tick quarantines the file
+            # instead of dying on it again, so it cannot hold up the drops behind it.
+            marker = staging / f"{sha}.converting"
             try:
+                if marker.exists():
+                    raise convertmod.ConversionError("conversion did not finish")
+                marker.write_text(path.name, encoding="utf-8")
                 source = convertmod.convert(path)
             except Exception as exc:  # a parser bug or a memory blow-up quarantines the file, never wedges intake
                 why = str(exc) if isinstance(exc, convertmod.ConversionError) else \
@@ -376,6 +382,8 @@ class Intake:
                 why = " ".join(re.sub(r"[^\w ./,()-]", " ", why, flags=re.ASCII).split())[:80]
                 self.poison(path, f"raw/inbox/{path.name}", sha, reason=f"immediately, not converted ({why})")
                 return True
+            finally:
+                marker.unlink(missing_ok=True)
             copy = staging / f"{path.name}.md"
         else:
             source = path.read_bytes().decode("utf-8", errors="replace")
