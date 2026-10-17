@@ -97,6 +97,19 @@ deny_list() { awk '$0 == "--disallowedTools" { p = 1; next } p' "$STUB_ARGS"; }
   [ ! -e "$STUB_ARGS" ]
 }
 
+@test "connector_run runs nothing when the session settings cannot be built (#122)" {
+  prepare
+  mkdir "$BATS_TEST_TMPDIR/bin"
+  printf '#!/bin/sh\nexit 5\n' > "$BATS_TEST_TMPDIR/bin/jq"
+  chmod +x "$BATS_TEST_TMPDIR/bin/jq"
+  run_rc=0
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" connector_run p "$work" || run_rc=$?
+  [ "$run_rc" -eq 1 ]
+  [[ "$CONNECTOR_REASON" == *"session settings"* ]]
+  [ -z "$CONFINE_SETTINGS" ]
+  [ ! -e "$STUB_ARGS" ]
+}
+
 @test "two sessions in one process list the servers once and get two directories" {
   prepare
   STUB_MCP_LIST=$'claude.ai Google Calendar: x - ok\nclaude.ai Gmail: y - ok' connector_run p "$work"
@@ -127,6 +140,8 @@ outcome() {
   outcome 6 137 4 "timed out after 30s"
   outcome 3 0 3 "no Gmail connector"
   outcome 3 2 3 "no Gmail connector; claude exited 2: unknown option --foo"
+  printf 'Error: one\nError: two\n' > "$work/claude.err"
+  outcome 3 2 3 "no Gmail connector; claude exited 2: Error: one Error: two"   # one line for the alert (#122)
   : > "$work/check.err"
   outcome 1 0 1 ""
 }

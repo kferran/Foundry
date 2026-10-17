@@ -164,6 +164,16 @@ jira_errs() {
   grep -qx 'status: draft' "wiki/work/rca/$STEM.md"
 }
 
+@test "the marker is set after the server listing, just before the session (#122)" {
+  printf '#!/bin/bash\nif [[ "$1" == mcp ]]; then\n  if [[ -e "%s" ]]; then echo present; else echo absent; fi > "%s"\nfi\nexec "%s" "$@"\n' \
+    "$V/system/logs/rca/work-$STEM.attempt" "$BATS_TEST_TMPDIR/listing" "$REPO/system/tests/stub_claude_calendar" > "$BATS_TEST_TMPDIR/claude"
+  chmod +x "$BATS_TEST_TMPDIR/claude"
+  jira_says "$C" "$ARGS"
+  CLAUDE_BIN="$BATS_TEST_TMPDIR/claude" run "$RF" work "$STEM"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/listing")" = absent ]
+}
+
 @test "a refused allow rule runs no session and leaves no marker (connector runner spec §2)" {
   printf '{"permissions":{"allow":["mcp__claude_ai_Atlassian"]}}' > "$HOME/.claude/settings.json"
   run "$RF" work "$STEM"

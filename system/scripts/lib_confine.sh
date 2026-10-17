@@ -54,10 +54,16 @@ confine_deny() {
 
 # confine_settings <server name to keep> <working directory>: set CONFINE_SETTINGS to hooks off and every other
 # listed server denied by name. This only lowers cost; the deny list and the tool-use check are the boundary.
+# Returns 1 with CONFINE_SETTINGS empty and CONFINE_ERROR set when the settings cannot be built: an empty --settings
+# would leave hooks on.
 confine_settings() {
   local servers denied
   servers="$(cd "$2" && timeout -k 5 30 "${CLAUDE_BIN:-claude}" mcp list 2>/dev/null)" || servers=""
-  denied="$(awk -v keep="$1" '/: / && / - / { n = index($0, ": "); name = substr($0, 1, n - 1); if (name != keep) print name }' <<< "$servers" \
-    | jq -Rcs 'split("\n") | map(select(length > 0)) | map({serverName: .})')"
-  CONFINE_SETTINGS="$(jq -cn --argjson d "$denied" '{disableAllHooks: true, deniedMcpServers: $d}')"
+  if ! denied="$(awk -v keep="$1" '/: / && / - / { n = index($0, ": "); name = substr($0, 1, n - 1); if (name != keep) print name }' <<< "$servers" \
+        | jq -Rcs 'split("\n") | map(select(length > 0)) | map({serverName: .})')" \
+     || ! CONFINE_SETTINGS="$(jq -cn --argjson d "$denied" '{disableAllHooks: true, deniedMcpServers: $d}')" \
+     || [[ -z "$CONFINE_SETTINGS" ]]; then
+    CONFINE_SETTINGS="" CONFINE_ERROR="cannot build the session settings with jq (claude was not run)"
+    return 1
+  fi
 }
