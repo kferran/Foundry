@@ -94,8 +94,9 @@ def _target_files(vault: Path, targets):
                 dirs[:] = [d for d in dirs if not d.startswith(".")]
                 for name in files:
                     path = Path(root) / name
-                    if path.is_file() and not path.is_symlink():
-                        yield path.relative_to(vault).as_posix()
+                    rel = path.relative_to(vault).as_posix()
+                    if path.is_file() and not path.is_symlink() and not PRIVATE.match(rel):
+                        yield rel
         else:
             path = vault / t
             if path.is_file() and not path.is_symlink():

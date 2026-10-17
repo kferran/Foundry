@@ -73,6 +73,10 @@ setup() {
 @test "settings deny Read and Edit on wiki/<partition>/private/ (#166)" {
   jq -e '.permissions.deny | index("Read(/wiki/*/private/**)")' .claude/settings.json >/dev/null
   jq -e '.permissions.deny | index("Edit(/wiki/*/private/**)")' .claude/settings.json >/dev/null
+  jq -e '.permissions.deny | index("Read(/.scratch/**/wiki/*/private/**)")' .claude/settings.json >/dev/null
+  jq -e '.permissions.deny | index("Edit(/.scratch/**/wiki/*/private/**)")' .claude/settings.json >/dev/null
+  # git show <rev>:<path> or a whole commit's patch prints a private note, and no deny pattern can cover every form.
+  [ "$(jq '[.permissions.allow[] | select(test("^Bash\\(git (show|log|diff|cat-file)"))] | length' .claude/settings.json)" = "0" ]
   # --settings anchors /path at system/, so the headless file uses the path relative to the run's cwd (the vault root).
   jq -e '.permissions.deny | index("Read(wiki/*/private/**)")' system/headless.settings.json >/dev/null
   jq -e '.permissions.deny | index("Edit(wiki/*/private/**)")' system/headless.settings.json >/dev/null
@@ -108,7 +112,7 @@ setup() {
 }
 
 @test "interactive settings end with the routine-command rules a vault merges against, in order" {
-  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/triage_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(git show:*)","Bash(system/scripts/now.py review:*)"]'
+  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/triage_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(system/scripts/now.py review:*)"]'
   run jq -c '.permissions.allow | .[index("Bash(system/scripts/vault_index.py recall:*)"):]' .claude/settings.json
   [ "$output" = "$want" ]
 }

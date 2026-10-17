@@ -485,3 +485,12 @@ def test_private_folder_is_never_staged_or_published(vault):
     stage_new(vault, "wiki/work/private/New.md", concept("work", "New"))
     decide(vault, rec("wiki/work/private/New.md"))
     assert "not a publishable target" in reasons(publish.validate_run(vault, RID, now=LATER)[2])
+
+
+def test_snapshot_never_lists_a_private_note(vault):
+    """snapshot.json holds file names and hashes; a private note's name stays out of it (#166)."""
+    write(vault, "wiki/work/private/Secret.md", concept("work", "Secret"))
+    publish.snapshot(vault, RID, ["wiki/work/**"])
+    snap = json.loads((vault / "system/logs/runs" / RID / "snapshot.json").read_text())
+    assert "wiki/work/concepts/Kafka.md" in snap["files"]
+    assert not [f for f in snap["files"] if "/private/" in f]
