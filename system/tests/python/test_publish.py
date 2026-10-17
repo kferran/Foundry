@@ -474,3 +474,23 @@ def test_an_ingest_never_stages_a_note_under_meetings(run, text):
     stage_new(run, target, text)
     decide(run, rec(target))
     assert "meeting notes are written only by the meeting import" in reasons(publish.validate_run(run, RID, now=LATER)[2])
+
+
+def test_private_folder_is_never_staged_or_published(vault):
+    """A headless run can neither copy a private note out (stage) nor write one in (publish) (#166)."""
+    write(vault, "wiki/work/private/Secret.md", concept("work", "Secret"))
+    publish.snapshot(vault, RID, ["wiki/work/**"])
+    with pytest.raises(publish.PublishError, match="not a publishable target"):
+        publish.record_stage(vault, RID, "wiki/work/private/Secret.md")
+    stage_new(vault, "wiki/work/private/New.md", concept("work", "New"))
+    decide(vault, rec("wiki/work/private/New.md"))
+    assert "not a publishable target" in reasons(publish.validate_run(vault, RID, now=LATER)[2])
+
+
+def test_snapshot_never_lists_a_private_note(vault):
+    """snapshot.json holds file names and hashes; a private note's name stays out of it (#166)."""
+    write(vault, "wiki/work/private/Secret.md", concept("work", "Secret"))
+    publish.snapshot(vault, RID, ["wiki/work/**"])
+    snap = json.loads((vault / "system/logs/runs" / RID / "snapshot.json").read_text())
+    assert "wiki/work/concepts/Kafka.md" in snap["files"]
+    assert not [f for f in snap["files"] if "/private/" in f]

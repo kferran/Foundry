@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from vaultlib import frontmatter  # noqa: E402
+from vaultlib.index import PRIVATE  # noqa: E402
 from vaultlib.links import FENCE, Resolver, wiki_target  # noqa: E402
 
 PARTITIONS = ("work", "personal")
@@ -134,7 +135,7 @@ def main(argv) -> int:
     if day is None:
         print("usage: active_projects.py YYYY-MM-DD", file=sys.stderr)
         return 2
-    files = [p.as_posix() for p in Path("wiki").rglob("*.md")] if Path("wiki").is_dir() else []
+    files = [p.as_posix() for p in Path("wiki").rglob("*.md") if not PRIVATE.match(p.as_posix())] if Path("wiki").is_dir() else []
     resolver = Resolver(files, name_exclude=("wiki/.staging/",))
     notices, blocks = [], []
     for part in PARTITIONS:
