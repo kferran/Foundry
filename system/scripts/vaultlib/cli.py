@@ -171,7 +171,11 @@ def cmd_issues(args, vault, sc):
         return print_issues([r for r in rows if r[0] in keep], args.json)
     idx.refresh()
     conn = sqlite3.connect(idx.db_path)
-    rows = sorted(conn.execute(ISSUE_ROWS).fetchall() + citation_issues(conn), key=lambda r: (r[2], r[0], r[1]))
+    try:
+        cites = citation_issues(conn)
+    except Exception:  # noqa: BLE001 - a codebase path that cannot be read never stops the lint
+        cites = []
+    rows = sorted(conn.execute(ISSUE_ROWS).fetchall() + cites, key=lambda r: (r[2], r[0], r[1]))
     conn.close()
     return print_issues(rows, args.json)
 

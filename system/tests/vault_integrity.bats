@@ -212,6 +212,7 @@ boundary_rules() {
 }
 
 @test "the manual names every command, skill, Workcell and unit the tree ships (#166 manual-table drift)" {
+  [ ! -e system/config.md ] || skip "this checkout is a vault (system/config.md exists); its own commands and skills are not in the manual"
   bad=""
   units="$(grep -ohE 'foundry-(\{[a-z,]+\}|[a-z]+)' FOUNDRY.md | tr -d '{}' | sed 's/^foundry-//' | tr ',' '\n')"
   for f in .claude/commands/*.md .claude/skills/*/SKILL.md system/agents/workcells/*.md system/systemd/foundry-*.service.in; do
