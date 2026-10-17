@@ -13,12 +13,12 @@ fields:
   layers: {kind: map, of: string, readers: [system/scripts/vaultlib/index.py, .claude/commands/impact.md]}
   order_hosts: {kind: list, of: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
   order_plugins: {kind: list, of: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
-  order_pr: {kind: string, readers: [system/scripts/vaultlib/nightshift_check.py, system/scripts/vaultlib/nightshift_deliver.py, system/scripts/debrief_prep.sh]}
+  order_pr: {kind: string, readers: [system/scripts/vaultlib/nightshift_check.py, system/scripts/vaultlib/nightshift_deliver.py, system/scripts/lib_prep.sh]}
   order_toolchain: {kind: list, of: string, readers: [system/scripts/vaultlib/nightshift_check.py]}
   order_install: {kind: string, readers: [system/scripts/vaultlib/nightshift_check.py, system/scripts/vaultlib/nightshift_run.py]}
   nightshift_hosts: {kind: list, of: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
   nightshift_plugins: {kind: list, of: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
-  nightshift_pr: {kind: string, readers: [system/scripts/vaultlib/nightshift_check.py, system/scripts/vaultlib/nightshift_deliver.py, system/scripts/debrief_prep.sh]}
+  nightshift_pr: {kind: string, readers: [system/scripts/vaultlib/nightshift_check.py, system/scripts/vaultlib/nightshift_deliver.py, system/scripts/lib_prep.sh]}
 ---
 # Codebase
 One registered codebase, produced by `/setup` discovery and inspection. The body holds free-form notes for agents.

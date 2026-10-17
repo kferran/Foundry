@@ -8,7 +8,7 @@ fields:
   brief_time: {kind: time, required: true, readers: [system/scripts/install_units.sh, system/scripts/vaultlib/nightshift_run.py]}
   debrief_time: {kind: time, required: true, readers: [system/scripts/install_units.sh]}
   remote_mode: {kind: enum, values: [private, none, keep], required: true, readers: [system/scripts/vault_sync.sh, .claude/commands/backup.md]}
-  template_remote: {kind: string, readers: [system/scripts/debrief_prep.sh, system/scripts/vaultlib/nightshift_check.py]}
+  template_remote: {kind: string, readers: [system/scripts/lib_prep.sh, system/scripts/vaultlib/nightshift_check.py]}
   default_partition: {kind: enum, values: [work, personal, shared], required: true, readers: [system/scripts/run_headless.sh, system/scripts/vaultlib/recall.py]}
   digest_min_events: {kind: int, default: "5", readers: [system/hooks/lib_memory.sh]}
   digest_min_minutes: {kind: int, default: "20", readers: [system/hooks/lib_memory.sh]}
