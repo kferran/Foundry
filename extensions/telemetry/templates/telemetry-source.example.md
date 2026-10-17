@@ -5,6 +5,7 @@ codebase: "example"
 environment: "prod"
 kind: "adx"
 enabled: "false"
+secrets_scan: "false"
 adx_cluster: "https://example.westus.kusto.windows.net"
 adx_database: "production"
 adx_filter: {}

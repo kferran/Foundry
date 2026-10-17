@@ -2,6 +2,7 @@
 import hashlib
 import re
 import urllib.parse
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -39,6 +40,7 @@ class Source:
     adx_signals: list = field(default_factory=lambda: ["logs", "spans"])
     adx_group_keys: list = field(default_factory=list)
     covers: str | None = None
+    secrets_scan: bool = False
 
 
 def _fm(path: Path) -> dict:
@@ -48,8 +50,9 @@ def _fm(path: Path) -> dict:
 
 def _invalid(d: dict, vault: Path) -> str | None:
     """The first bad field of a source file, or None."""
-    if str(d.get("enabled", "true")).lower() not in ("true", "false"):
-        return "enabled"
+    for key, default in (("enabled", "true"), ("secrets_scan", "false")):
+        if str(d.get(key, default)).lower() not in ("true", "false"):
+            return key
     try:
         int(d.get("rank", "50") or 50)
     except (TypeError, ValueError):
@@ -84,7 +87,7 @@ def load_sources(vault: Path, invalid: list | None = None) -> list:
             sentry_query=d.get("sentry_query") or "is:unresolved level:[error,fatal]",
             adx_cluster=d.get("adx_cluster"), adx_database=d.get("adx_database"), adx_filter=dict(d.get("adx_filter") or {}),
             adx_signals=list(d.get("adx_signals") or ["logs", "spans"]), adx_group_keys=list(d.get("adx_group_keys") or []),
-            covers=d.get("covers")))
+            covers=d.get("covers"), secrets_scan=str(d.get("secrets_scan", "false")).lower() == "true"))
     return sorted(out, key=lambda s: (s.rank, s.name))
 
 
@@ -195,6 +198,16 @@ def mask(value, limit: int = 500) -> str:
     whitespace folded to single spaces, cut at `limit` after masking."""
     text = EMAIL.sub("<email>", redact_credentials(_text(value)))
     return " ".join(text.split())[:limit]
+
+
+MARKER = re.compile(r"\[REDACTED:(\w+)\]")
+
+
+def credential_shapes(value) -> list:
+    """The names of the credential shapes mask() redacts in one raw log line (secrets scan, #166). A marker the line
+    already held (redacted upstream) is not a new finding."""
+    raw = _text(value)
+    return sorted((Counter(MARKER.findall(redact_credentials(raw))) - Counter(MARKER.findall(raw))).keys())
 
 
 def event_id(value) -> str:
