@@ -793,6 +793,11 @@ self_edit_contract() {
     grep -qF '`none by <HH:MM>`' "$f"
   done
   grep -qF '`Sources: <n> of <N> ok`' .claude/commands/brief.md
+  # PR #253 review: the fixed lines keep their wording, and a quiet debrief still reads as quiet.
+  grep -F -- '- **Counts:**' .claude/commands/brief.md | grep -qF 'the Sources line'
+  grep -F -- '- **Counts:**' .claude/commands/debrief.md | grep -qF '"Quarantine: none"'
+  grep -F 'Where yesterday landed:**' .claude/commands/brief.md | grep -qF '`none by <HH:MM>`'
+  grep -F '| `/debrief [date]` |' FOUNDRY.md | grep -qF 'its own headless runs count'
 }
 
 @test "brief and debrief list what the run decided for the user (#166)" {

@@ -110,10 +110,14 @@ case "$rc" in
 esac
 
 prep_meetings
-# The heartbeat (#166): the day's commits, digests, pull requests, alerts and headless runs, so a quiet day (0) and a
-# run that read nothing look different.
+# The heartbeat (#166): the day's commits, digests, pull requests, alerts and headless runs (counted as run_headless.sh
+# counts them for the daily cap), so a day with few signals and a run that read nothing look different; unknown when
+# git or the digest query failed.
 signals="$( { grep -h '^- ' "$PREP_DIR/git.md" "$PREP_DIR/prs.md" "system/logs/alerts_$PREP_DATE.md"
   grep -hE '^## [^ ]+\.md \(' "$PREP_DIR/digests.md"
-  grep -hF "\"started_at\":\"$PREP_DATE" "system/logs/runs-${PREP_DATE:0:7}.jsonl"; } 2>/dev/null | wc -l)" || true
+  jq -R --arg d "$PREP_DATE" 'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and .command != "meeting" and ([2,3,4,6] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "system/logs/runs-${PREP_DATE:0:7}.jsonl"
+  } 2>/dev/null | wc -l)" || true
+[[ -f "$PREP_DIR/git.md" && -f "$PREP_DIR/digests.md" ]] && ! grep -qE '^- debrief_prep: (git|digests):' \
+  "$PREP_DIR/unavailable.md" 2>/dev/null || signals=unknown
 printf 'signals: %s (%s)\n' "$signals" "$PREP_DATE" > "$PREP_DIR/heartbeat.md"
 exit 0

@@ -234,11 +234,28 @@ codebase() {  # <name> <path>
   digest raw/work/notes/w1.md work 2026-10-01T09:00:00-06:00 "## Outcome
 Done."
   printf -- '- 10:00:00 [sync] one\n- 11:00:00 [intake] two\n' > system/logs/alerts_2026-10-01.md
-  printf '{"run_id":"a","command":"ingest","started_at":"2026-10-01T09:00:00-06:00"}\n{"run_id":"b","command":"brief","started_at":"2026-09-30T06:00:00-06:00"}\n' \
-    > system/logs/runs-2026-10.jsonl
+  # Runs are counted as run_headless.sh counts them for the daily cap: no retry, meeting or usage-error run, any
+  # spacing, a bad line skipped (PR #253 review).
+  {
+    printf '{"run_id":"a","command":"ingest","started_at":"2026-10-01T09:00:00-06:00"}\n'
+    printf '{"run_id":"b","command":"brief","started_at":"2026-09-30T06:00:00-06:00"}\n'
+    printf '{"command":"retry","started_at":"2026-10-01T09:30:00-06:00"}\n'
+    printf '{"command":"ingest","exit":3,"started_at":"2026-10-01T09:40:00-06:00"}\n'
+    printf '{"command": "debrief", "started_at": "2026-10-01T17:00:00-06:00"}\n'
+    printf 'not json\n'
+  } > system/logs/runs-2026-10.jsonl
   run "$DP" 2026-10-01
   [ "$status" -eq 0 ]
-  [ "$(cat "$IN/heartbeat.md")" = 'signals: 6 (2026-10-01)' ]
+  [ "$(cat "$IN/heartbeat.md")" = 'signals: 7 (2026-10-01)' ]
+}
+
+@test "debrief_prep: the heartbeat reads unknown when git or the digest query failed (PR #253 review)" {
+  mv system/scripts/vault_index.py system/scripts/vault_index_real.py
+  printf '#!/bin/bash\n[[ "$1" == query ]] && exit 3\nexec "$(dirname "$0")/vault_index_real.py" "$@"\n' > system/scripts/vault_index.py
+  chmod +x system/scripts/vault_index.py
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/heartbeat.md")" = 'signals: unknown (2026-10-01)' ]
 }
 
 @test "debrief_prep: orders.md copies the open Work Orders report, empty when there is none" {
