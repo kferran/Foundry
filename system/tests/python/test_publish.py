@@ -494,3 +494,31 @@ def test_snapshot_never_lists_a_private_note(vault):
     snap = json.loads((vault / "system/logs/runs" / RID / "snapshot.json").read_text())
     assert "wiki/work/concepts/Kafka.md" in snap["files"]
     assert not [f for f in snap["files"] if "/private/" in f]
+
+
+BID = "20261001T120000-brief-ab12"
+NOW_HEAD = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n---\n# Now\n\n## Needs you\n"
+OLD_LONG = f"- [ ] owed: {'old ' * 80}(since 2026-09-01)"
+
+
+def brief_run(vault, page_lines):
+    """A brief run that stages wiki/work/Now.md with these lines over a live page holding OLD_LONG."""
+    write(vault, "wiki/work/Now.md", NOW_HEAD + OLD_LONG + "\n")
+    os.utime(vault / "wiki/work/Now.md", (time.time() - 600, time.time() - 600))
+    publish.snapshot(vault, BID, ["wiki/work/**"])
+    publish.record_stage(vault, BID, "wiki/work/Now.md")
+    stage_new(vault, "wiki/work/Now.md", NOW_HEAD + "\n".join(page_lines) + "\n", run_id=BID)
+    return [r for r in reasons(publish.validate_run(vault, BID, now=LATER)[2]) if "Now line" in r]
+
+
+def test_the_gate_refuses_a_new_now_line_over_300_characters(vault):
+    added = f"- [ ] owed: {'x' * 270} (since 2026-10-01)"
+    assert len(added) > 300
+    assert brief_run(vault, [OLD_LONG, added]) == [
+        "a Now line over 300 characters: move its history to a note under it"]
+
+
+def test_the_gate_passes_an_unchanged_long_line_and_one_at_300(vault):
+    at_cap = "- [ ] owed: " + "y" * (300 - len("- [ ] owed:  (since 2026-10-01)")) + " (since 2026-10-01)"
+    assert len(at_cap) == 300
+    assert brief_run(vault, [OLD_LONG, at_cap]) == []

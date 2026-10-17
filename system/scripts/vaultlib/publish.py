@@ -10,7 +10,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from . import frontmatter, links as linkmod, schema as schemamod
+from . import frontmatter, links as linkmod, now as nowmod, schema as schemamod
 from .index import NAME_EXCLUDED, PRIVATE, Index, wall_blocked
 
 RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
@@ -362,6 +362,11 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
     # A tag the run adds keeps the form; a tag the note already had is the owner's to fix (#158).
     added = [t for t in _tags(new) if old is None or t not in _tags(old)]
     out += [Problem(target, i.message) for i in schemamod.tag_issues(target, (new.data or {}).get("type"), new, added)]
+    if NOW_PAGE.match(target):   # phase A spec §3.5: a line the run adds or changes keeps the cap; older ones pass
+        kept = {line.rstrip() for line in (old.body if old is not None else "").split("\n")}
+        out += [Problem(target, f"a Now line over {nowmod.MAX_LINE} characters: move its history to a note under it")
+                for line in new.body.split("\n") if line.startswith("- [ ] ") and len(line.rstrip()) > nowmod.MAX_LINE
+                and line.rstrip() not in kept]
     out += _conflict(vault, target, snap, now)
     return out
 
