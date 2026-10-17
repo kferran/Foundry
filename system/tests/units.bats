@@ -499,8 +499,9 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-smoke.timer foundry-update.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
-@test "--update removes a focus tracker an older template installed" {
+@test "--update removes a focus tracker an older template installed, and nothing else" {
   "$IU" > /dev/null
+  before="$(ls -R "$UD")"
   printf '# Managed by vault: %s\n[Service]\nExecStart=/bin/true\n' "$VP" > "$UD/foundry-focus.service"
   : > "$STUB_SYSTEMCTL_LOG"
   run "$IU" --update
@@ -508,6 +509,10 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qx 'removed foundry-focus.service' <<< "$output"
   [ ! -e "$UD/foundry-focus.service" ]
   grep -qx -- '--user disable --now foundry-focus.service' "$STUB_SYSTEMCTL_LOG"
+  # Nothing else removed (#122): one removed line, one disable call, every other unit file still there.
+  [ "$(grep -c '^removed ' <<< "$output")" -eq 1 ]
+  [ "$(grep -c -- '--user disable' "$STUB_SYSTEMCTL_LOG")" -eq 1 ]
+  [ "$(ls -R "$UD")" = "$before" ]
 }
 
 @test "an enabled extension's units render and install, with the ownership header" {

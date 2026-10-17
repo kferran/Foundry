@@ -1099,6 +1099,10 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF '**Safe features merge themselves:**' FOUNDRY.md
 }
 
+@test "FOUNDRY.md Development carries the working rules block (#166)" {
+  grep -qF '**Working rules.**' FOUNDRY.md
+}
+
 @test "FOUNDRY.md defines the fix lane, its safety surfaces and the promotion rule (fast lane spec §2)" {
   grep -qF '**Two lanes.**' FOUNDRY.md
   grep -qF 'clear from one sentence' FOUNDRY.md
