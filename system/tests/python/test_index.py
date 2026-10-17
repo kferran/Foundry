@@ -206,3 +206,16 @@ def test_lock_timeout(vault):
         with pytest.raises(TimeoutError):
             Index(vault).refresh(timeout=0.2)
         assert time.monotonic() - start < 2
+
+
+def test_non_utf8_file_name_is_skipped_with_a_warning(vault, capsys):
+    """A Latin-1 name copied from a Windows share must not break every index call."""
+    folder = os.fsencode(vault / "wiki" / "work" / "concepts")
+    with open(os.path.join(folder, b"caf\xe9.md"), "wb") as fh:
+        fh.write(b"---\ntype: concept\n---\n# Cafe\n")
+    idx = Index(vault)
+    idx.refresh()
+    paths = {p for (p,) in rows(idx, "SELECT path FROM files")}
+    assert "wiki/work/concepts/Kafka.md" in paths
+    assert all(p.isprintable() and "\udce9" not in p for p in paths)
+    assert "not valid UTF-8" in capsys.readouterr().err

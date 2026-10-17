@@ -9,6 +9,7 @@ import os
 import posixpath
 import re
 import sqlite3
+import sys
 import time
 from pathlib import Path
 
@@ -182,9 +183,14 @@ class Index:
                 if rel.startswith(SKIP_FILES) or rel.startswith(ignored):
                     continue
                 try:
-                    yield rel, path, path.stat()
+                    rel.encode()  # a non-UTF-8 name (e.g. Latin-1) decodes to surrogates, which SQLite cannot store
+                    st = path.stat()
+                except UnicodeEncodeError:
+                    print(f"index: skipping {ascii(rel)}: name is not valid UTF-8", file=sys.stderr)
+                    continue
                 except FileNotFoundError:
                     continue
+                yield rel, path, st
 
     def refresh(self, timeout=None, full=False) -> None:
         with self.locked(timeout):
