@@ -8,6 +8,8 @@ status: "{{status}}"
 
 ## 🌅 Morning Alignment ({{brief_time}})
 
+<!-- After two or more days with no session, a "While you were away" section goes here; otherwise none. -->
+
 ### Where yesterday landed
 
 ### 1. Active Objectives & Context Boundaries

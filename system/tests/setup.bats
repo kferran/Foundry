@@ -14,7 +14,7 @@ setup() {
   for c in git jq bats systemctl python3 flock timeout systemd-analyze; do
     ln -s "$(command -v "$c")" "$BIN/$c"
   done
-  for c in claude pacman az bwrap; do
+  for c in claude pacman az bwrap socat; do
     printf '#!/bin/bash\n' > "$BIN/$c"
     chmod +x "$BIN/$c"
   done
@@ -23,7 +23,7 @@ setup() {
 @test "check_deps: every item present reports ok and --strict passes" {
   run env PATH="$BIN" "$CD" --strict
   [ "$status" -eq 0 ]
-  for item in claude git jq bats systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze bwrap; do
+  for item in claude git jq bats systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze bwrap socat; do
     grep -qx "ok $item" <<< "$output"
   done
 }
@@ -45,6 +45,17 @@ setup() {
   grep -qx 'missing bwrap sudo pacman -S bubblewrap' <<< "$output"
   run env PATH="$BIN" "$CD" --strict --role client
   [ "$status" -eq 0 ]
+}
+
+@test "check_deps: socat (the Linux sandbox's network proxy) is required on standalone and server, not on a client" {
+  rm "$BIN/socat"
+  run env PATH="$BIN" "$CD" --strict --role standalone
+  [ "$status" -eq 1 ]
+  grep -qx 'missing socat sudo pacman -S socat' <<< "$output"
+  run env PATH="$BIN" "$CD" --strict --role client
+  [ "$status" -eq 0 ]
+  run grep -c socat <<< "$output"
+  [ "$output" = 0 ]
 }
 
 @test "check_deps: a missing required tool gets an install hint and fails only --strict" {

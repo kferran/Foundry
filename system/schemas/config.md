@@ -3,38 +3,38 @@ type: schema
 schema_for: config
 folders: ["system/config.md", "system/config.example.md"]
 fields:
-  type: {kind: const, value: config, required: true}
-  timezone: {kind: timezone, required: true}
-  brief_time: {kind: time, required: true}
-  debrief_time: {kind: time, required: true}
-  remote_mode: {kind: enum, values: [private, none, keep], required: true}
-  template_remote: {kind: string}
-  default_partition: {kind: enum, values: [work, personal, shared], required: true}
-  digest_min_events: {kind: int, default: "5"}
-  digest_min_minutes: {kind: int, default: "20"}
-  recall_budget_chars: {kind: int, default: "9000"}
-  preferences_enabled: {kind: bool, default: "false"}
-  superpowers: {kind: list, of: string}
-  machine_role: {kind: enum, values: [standalone, server, client], default: "standalone"}
-  sync_interval_minutes: {kind: int, min: "1", max: "60", default: "5"}
-  meetings_enabled: {kind: bool, default: "false"}
-  meetings_partition: {kind: enum, values: [work, personal]}
-  owner_names: {kind: list, of: string}
-  order_workspace: {kind: string}
-  run_window: {kind: string}
-  order_max_five_hour: {kind: string, default: "0.6"}
-  nightshift_workspace: {kind: string}
-  nightshift_window: {kind: string}
-  triage_enabled: {kind: bool, default: "false"}
-  triage_partition: {kind: enum, values: [work, personal]}
-  triage_watch_senders: {kind: list, of: string}
-  triage_chat_enabled: {kind: bool, default: "false"}
-  slack_notify_channel: {kind: string}
-  slack_connector: {kind: string, default: "claude.ai Slack"}
-  notify_links: {kind: enum, values: [github, obsidian], default: "github"}
-  orders_enabled: {kind: bool, default: "true"}
-  update_enabled: {kind: bool, default: "true"}
-  extensions: {kind: list, of: string}
+  type: {kind: const, value: config, required: true, readers: [system/scripts/vaultlib/schema.py]}
+  timezone: {kind: timezone, required: true, readers: [system/scripts/lib_prep.sh, system/scripts/vaultlib/intake.py]}
+  brief_time: {kind: time, required: true, readers: [system/scripts/install_units.sh, system/scripts/vaultlib/nightshift_run.py]}
+  debrief_time: {kind: time, required: true, readers: [system/scripts/install_units.sh]}
+  remote_mode: {kind: enum, values: [private, none, keep], required: true, readers: [system/scripts/vault_sync.sh, .claude/commands/backup.md]}
+  template_remote: {kind: string, readers: [system/scripts/lib_prep.sh, system/scripts/vaultlib/nightshift_check.py]}
+  default_partition: {kind: enum, values: [work, personal, shared], required: true, readers: [system/scripts/run_headless.sh, system/scripts/vaultlib/recall.py]}
+  digest_min_events: {kind: int, default: "5", readers: [system/hooks/lib_memory.sh]}
+  digest_min_minutes: {kind: int, default: "20", readers: [system/hooks/lib_memory.sh]}
+  recall_budget_chars: {kind: int, default: "9000", readers: [system/scripts/vaultlib/recall.py]}
+  preferences_enabled: {kind: bool, default: "false", readers: []}
+  superpowers: {kind: list, of: string, readers: [.claude/commands/brief.md]}
+  machine_role: {kind: enum, values: [standalone, server, client], default: "standalone", readers: [system/scripts/install_units.sh, system/scripts/vaultlib/intake.py]}
+  sync_interval_minutes: {kind: int, min: "1", max: "60", default: "5", readers: [system/scripts/install_units.sh]}
+  meetings_enabled: {kind: bool, default: "false", readers: [system/scripts/meetings_fetch.sh, system/scripts/install_units.sh]}
+  meetings_partition: {kind: enum, values: [work, personal], readers: [system/scripts/vaultlib/intake.py]}
+  owner_names: {kind: list, of: string, readers: [system/scripts/triage_fetch.sh, system/scripts/vaultlib/meetings.py]}
+  order_workspace: {kind: string, readers: [system/scripts/vaultlib/nightshift_check.py]}
+  run_window: {kind: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
+  order_max_five_hour: {kind: string, default: "0.6", readers: [system/scripts/vaultlib/nightshift_run.py, system/scripts/vaultlib/triage.py]}
+  nightshift_workspace: {kind: string, readers: [system/scripts/vaultlib/nightshift_check.py]}
+  nightshift_window: {kind: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
+  triage_enabled: {kind: bool, default: "false", readers: [system/scripts/triage_fetch.sh]}
+  triage_partition: {kind: enum, values: [work, personal], readers: [system/scripts/vaultlib/triage.py]}
+  triage_watch_senders: {kind: list, of: string, readers: [system/scripts/vaultlib/triage.py]}
+  triage_chat_enabled: {kind: bool, default: "false", readers: [system/scripts/triage_fetch.sh, system/scripts/vaultlib/triage.py]}
+  slack_notify_channel: {kind: string, readers: [system/scripts/notify.sh, system/scripts/notify.py]}
+  slack_connector: {kind: string, default: "claude.ai Slack", readers: [system/scripts/notify.sh, system/scripts/vaultlib/triage.py]}
+  notify_links: {kind: enum, values: [github, obsidian], default: "github", readers: [system/scripts/vaultlib/notify.py]}
+  orders_enabled: {kind: bool, default: "true", readers: [system/scripts/install_units.sh]}
+  update_enabled: {kind: bool, default: "true", readers: [system/scripts/install_units.sh]}
+  extensions: {kind: list, of: string, readers: [system/scripts/vaultlib/extensions.py]}
 ---
 # Config
 The per-user global configuration written by `/setup` (gitignored). `system/config.example.md` is the committed example.
