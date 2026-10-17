@@ -326,12 +326,12 @@ Done."
   [ "$output" = "0" ]
 }
 
-@test "brief_prep: no earlier briefing writes an empty now.md and no unavailable line" {
+@test "brief_prep: no earlier briefing writes an empty now.md, no Now page and no unavailable line" {
   run "$BP" 2026-10-01
   [ "$status" -eq 0 ]
   [ -f "$IN/now.md" ]
   [ ! -s "$IN/now.md" ]
-  [ -f wiki/personal/Now.md ]
+  [ ! -e wiki/personal/Now.md ]  # the brief's publish creates it; a page written now trips the 60 s check
   run grep -c 'now' "$IN/unavailable.md"
   [ "$status" -ne 0 ]  # no now line, or no unavailable.md at all
 }
