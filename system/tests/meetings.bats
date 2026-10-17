@@ -323,6 +323,8 @@ session_deny() { awk -v n="$1" '$0 == "--end--" { s++; p = 0; next } s == n - 1 
   [ "$status" -eq 4 ]
   CLAUDE_BIN="$BATS_TEST_TMPDIR/no-such-claude" run "$MF"
   [ "$status" -eq 127 ]
+  [ "${#lines[@]}" -eq 1 ]   # the reason is printed once (#122)
+  [[ "$output" == "meetings_fetch: claude: claude not found"* ]]
   : > "$STUB_STREAMS/search.jsonl"
   STUB_RC=1 run "$MF"
   [ "$status" -eq 1 ]
