@@ -54,6 +54,17 @@ slack_posts() {
   [ ! -e "$STUB_ARGS" ]
 }
 
+@test "a post the checker confirms moves the cursor even when claude exits non-zero (#122)" {
+  printf -- '- 06:10:00 [intake] one\n' >> "$ALERTS"
+  slack_posts "$(system/scripts/notify.py collect | jq -r .message)"
+  STUB_RC=1 run "$N"
+  [ "$status" -eq 0 ]
+  rm -f "$STUB_ARGS"
+  run "$N"
+  [ "$status" -eq 0 ]
+  [ ! -e "$STUB_ARGS" ]
+}
+
 @test "a session that breaks its rules holds notices until the hold file goes, without feeding the same lines again" {
   printf -- '- 06:10:00 [intake] one\n' >> "$ALERTS"
   slack_posts "$(system/scripts/notify.py collect | jq -r .message)" mcp__claude_ai_Slack__slack_send_message_draft

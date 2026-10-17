@@ -20,7 +20,7 @@ prepare() {
   CONNECTOR_SERVER="claude.ai Google Calendar" CONNECTOR_PREFIX=mcp__claude_ai_Google_Calendar
   CONNECTOR_TOOL=mcp__claude_ai_Google_Calendar__list_events CONNECTOR_OTHERS=(create_event get_event)
   CONNECTOR_TIMEOUT=30 CONNECTOR_TURNS=9
-  work="$(mktemp -d -p /tmp)"
+  work="$(mktemp -d -p "$BATS_TEST_TMPDIR")"
 }
 
 arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; }
@@ -28,8 +28,9 @@ deny_list() { awk '$0 == "--disallowedTools" { p = 1; next } p' "$STUB_ARGS"; }
 
 @test "connector_run passes the prompt first, the flags, and the tool lists last" {
   prepare
-  connector_run "say hi" "$work"
+  STUB_STDIN="$BATS_TEST_TMPDIR/stdin" connector_run "say hi" "$work"
   [ "$CONNECTOR_RC" -eq 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/stdin")" = /dev/null ]
   [ "$(sed -n 1p "$STUB_ARGS")" = -p ]
   [ "$(sed -n 2p "$STUB_ARGS")" = "say hi" ]
   [ "$(arg_after --permission-mode)" = dontAsk ]

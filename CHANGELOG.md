@@ -14,6 +14,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-16
+- The smoke check no longer reports the calendar as failed on a day with more than 100 events, a connector fetch refuses a too-broad allow rule before listing the servers, and a meetings fetch without `claude` prints its reason once. (#PR)
 - Inbox triage can also watch the Slack channels you are in: with `triage_chat_enabled: true`, messages that ask you something or report a production problem become `owed` Now lines with their Slack link. (#244)
 - Up to three Work Orders run at the same time: a long research order no longer holds up the next one, and two plans on the same codebase and branch still take turns. (#241)
 - A Work Order whose start was cut short by a restart or shutdown runs on the next tick instead of waiting forever. (#248)
