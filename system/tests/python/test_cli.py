@@ -119,6 +119,32 @@ def test_citation_check_warns_on_a_missing_file_or_a_line_past_its_end(cli, vaul
     ]
 
 
+def _rca(stem, codebase, status, body, extra=""):
+    return (f'---\ntype: rca\ntitle: "{stem}"\npartition: work\ncreated_at: "2026-10-11"\nsource: "raw/telemetry/a.md"\n'
+            f'codebase: {codebase}\nrc_confidence: 4\nfix_confidence: 4\nstatus: {status}\n{extra}tags: [rca]\n---\n'
+            f'# {stem}\n\n{body}\n')
+
+
+def test_citation_check_scope_fences_vendored_paths_codebase_file_name_and_layers(cli, vault, tmp_path):
+    """Open, active rca notes only; ~~~ fences and vendored paths skipped; an rca names its codebase by file name;
+    a codebase note's citation may sit under one of its layers (#251 review)."""
+    repo = tmp_path / "repo"
+    (repo / "svc" / "lib").mkdir(parents=True)
+    (repo / "svc" / "lib" / "core.py").write_text("a\n")
+    write(vault, "system/codebases/app.md", f'---\ntype: codebase\nname: "App Service"\npath: "{repo}"\npartition: work\n'
+          'search_globs: ["*"]\nlayers:\n  api: "svc/"\n---\nCore at `lib/core.py:1`; vendored `vendor/x/y.go:1`, '
+          '`web/node_modules/z/i.js:1`.\n~~~\nat src/fenced.py:1\n~~~\n')
+    gone = "Gone `src/gone.py:1`."
+    for stem, status, extra in (("open", "draft", ""), ("ok", "approved", ""), ("filed", "filed", ""),
+                                ("rejected", "rejected", ""), ("old", "draft", 'superseded_by: "[[open]]"\n')):
+        write(vault, f"wiki/work/rca/{stem}.md", _rca(stem, "app", status, gone, extra))
+    data = json.loads(cli("issues", "--json").stdout)
+    assert [(i["path"], i["message"]) for i in data["issues"] if i["code"] == "citation"] == [
+        ("wiki/work/rca/ok.md", "citation src/gone.py:1: no such file in codebase app"),
+        ("wiki/work/rca/open.md", "citation src/gone.py:1: no such file in codebase app"),
+    ]
+
+
 def test_archived_briefings_stay_indexed_and_the_debrief_embed_resolves(cli, vault):
     write(vault, "briefings/archive/2026-10/2026-10-06.md",
           '---\ntype: briefing\ndate: "2026-10-06"\nstatus: active\n---\n# Briefing\n\n![[2026-10-06.debrief]]\n')

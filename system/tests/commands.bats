@@ -69,7 +69,7 @@ headless_contract() {
 @test "ingest: people-writing rules and the no-guessed-link rule (#166)" {
   f=.claude/commands/ingest.md
   grep -qF '**People.**' "$f"
-  grep -qF 'behaviour' "$f"
+  grep -qF 'behavior' "$f"
   grep -qF 'legal or medical' "$f"
   grep -qF 'stays unlinked' "$f"
 }

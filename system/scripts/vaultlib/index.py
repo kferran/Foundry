@@ -64,39 +64,51 @@ CITATION = re.compile(r"(?<![\w/:.-])([\w.-]+(?:/[\w.-]+)+\.[A-Za-z]\w*):(\d+)\b
 
 
 def citation_issues(conn) -> list:
-    """Warning rows for each `dir/file.ext:NN` in an rca or codebase note body, outside fences, that names a file
-    missing from the note's codebase or shorter than NN lines (#166). Read at lint time, never cached in the index, since
-    the code moves on its own; a codebase that is not on this machine is skipped. Bare file names are not checked."""
-    roots = dict(conn.execute(
-        "SELECT a.value, b.value FROM fields a JOIN fields b ON a.path=b.path JOIN notes n ON n.path=a.path "
-        "WHERE n.type='codebase' AND a.key='name' AND b.key='path'").fetchall())
+    """Warning rows for each `dir/file.ext:NN` in an active codebase note or an open (draft or approved) rca note,
+    outside fences, that names a file missing from the codebase or shorter than NN lines (#166). An rca names its
+    codebase by file name, system/codebases/<codebase>.md; a codebase note's citation may also sit under one of its
+    `layers`. Read at lint time, never cached, since the code moves on its own; a codebase not on this machine, bare
+    file names and vendored paths are skipped."""
+    codebases = {posixpath.basename(p)[:-3]: (root, layers) for p, root, layers in conn.execute(
+        "SELECT n.path, (SELECT value FROM fields WHERE path=n.path AND key='path'), "
+        "(SELECT value FROM fields WHERE path=n.path AND key='layers') FROM notes n WHERE n.type='codebase'")}
     rows = []
-    for path, body_line, body, name in conn.execute(
-            "SELECT n.path, n.body_line, f.body, (SELECT value FROM fields WHERE path=n.path AND key=CASE n.type "
-            "WHEN 'rca' THEN 'codebase' ELSE 'name' END) FROM notes n JOIN notes_fts f ON f.path=n.path "
-            "WHERE n.type IN ('rca','codebase') ORDER BY n.path").fetchall():
-        if name not in roots or not (root := Path(os.path.expanduser(roots[name])).resolve()).is_dir():
+    for path, ntype, body_line, body, name in conn.execute(
+            "SELECT n.path, n.type, n.body_line, f.body, (SELECT value FROM fields WHERE path=n.path AND key='codebase') "
+            "FROM notes n JOIN notes_fts f ON f.path=n.path WHERE n.active=1 AND (n.type='codebase' OR (n.type='rca' AND "
+            "coalesce((SELECT value FROM fields WHERE path=n.path AND key='status'), 'draft') IN ('draft','approved'))) "
+            "ORDER BY n.path").fetchall():
+        name = posixpath.basename(path)[:-3] if ntype == "codebase" else name
+        root, layers = codebases.get(name, (None, None))
+        if not root or not (root := Path(os.path.expanduser(root)).resolve()).is_dir():
             continue
-        fence = False
+        try:
+            layers = json.loads(layers) if ntype == "codebase" and layers else {}
+        except ValueError:
+            layers = {}
+        bases = [root] + [root / str(d) for d in (layers.values() if isinstance(layers, dict) else [])]
+        fence = None
         for i, line in enumerate(body.split("\n")):
-            if line.lstrip().startswith("```"):
-                fence = not fence
+            if (fm := linkmod.FENCE.match(line)) and fence in (None, fm.group(1)):
+                fence = None if fence else fm.group(1)
+                continue
             for m in [] if fence else CITATION.finditer(line):
-                target, need = (root / m.group(1)).resolve(), int(m.group(2))
-                if root not in target.parents:
+                cite, need = m.group(1), int(m.group(2))
+                if re.search(r"(^|/)(node_modules|vendor)/", cite):
+                    continue
+                targets = [t for t in ((b / cite).resolve() for b in bases) if root in t.parents and t.is_file()]
+                if not targets:
+                    rows.append((path, body_line + i, "warning", "citation",
+                                 f"citation {cite}:{need}: no such file in codebase {name}"))
                     continue
                 try:
-                    with open(target, "rb") as fh:
+                    with open(targets[0], "rb") as fh:
                         have = sum(1 for _ in itertools.islice(fh, need))
-                except FileNotFoundError:
-                    rows.append((path, body_line + i, "warning", "citation",
-                                 f"citation {m.group(1)}:{need}: no such file in codebase {name}"))
-                    continue
                 except OSError:
                     continue
                 if have < need:
                     rows.append((path, body_line + i, "warning", "citation",
-                                 f"citation {m.group(1)}:{need}: the file has {have} lines"))
+                                 f"citation {cite}:{need}: the file has {have} lines"))
     return rows
 
 
