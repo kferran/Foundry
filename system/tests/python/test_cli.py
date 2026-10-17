@@ -46,6 +46,62 @@ def test_issues_staged_lints_the_index_blob_not_the_working_copy(cli, vault):
     assert cli("issues").returncode == 1
 
 
+def _git(vault, *argv):
+    subprocess.run(["git", "-C", str(vault), "-c", "user.email=t@example.com", "-c", "user.name=t", *argv],
+                   check=True, capture_output=True)
+
+
+def _commit_now_page(vault, size):
+    """A work Now page of `size` bytes committed at HEAD, so the staged lint has a "before" to compare with."""
+    _git(vault, "init", "-q")
+    write(vault, "wiki/work/Now.md", "x" * size)
+    _git(vault, "add", "wiki/work/Now.md")
+    _git(vault, "commit", "-qm", "now", "--no-verify")
+
+
+def test_staged_write_cap_refuses_an_over_cap_file_that_grows(cli, vault):
+    from vaultlib.now import PAGE_BYTES
+    _commit_now_page(vault, PAGE_BYTES + 10)
+    write(vault, "wiki/work/Now.md", "x" * (PAGE_BYTES + 20))
+    _git(vault, "add", "wiki/work/Now.md")
+    res = cli("issues", "--staged")
+    assert res.returncode == 1, res.stdout
+    assert f"wiki/work/Now.md:1: error: {PAGE_BYTES + 20} bytes is over the {PAGE_BYTES}-byte cap" in res.stdout
+
+
+def test_staged_write_cap_passes_an_over_cap_file_that_shrinks(cli, vault):
+    from vaultlib.now import PAGE_BYTES
+    _commit_now_page(vault, PAGE_BYTES + 20)
+    write(vault, "wiki/work/Now.md", "x" * (PAGE_BYTES + 10))
+    _git(vault, "add", "wiki/work/Now.md")
+    res = cli("issues", "--staged")
+    assert "byte cap" not in res.stdout, res.stdout
+
+
+def test_staged_write_cap_passes_an_under_cap_file_that_grows(cli, vault):
+    _commit_now_page(vault, 100)
+    write(vault, "wiki/work/Now.md", "x" * 200)
+    _git(vault, "add", "wiki/work/Now.md")
+    assert "byte cap" not in cli("issues", "--staged").stdout
+
+
+def test_staged_write_cap_refuses_a_new_file_over_its_cap(cli, vault):
+    _git(vault, "init", "-q")
+    write(vault, "CLAUDE.md", "x" * (16 * 1024 + 1))
+    _git(vault, "add", "CLAUDE.md")
+    res = cli("issues", "--staged")
+    assert res.returncode == 1
+    assert "CLAUDE.md:1: error: 16385 bytes is over the 16384-byte cap and larger than HEAD's 0" in res.stdout
+
+
+def test_template_files_sit_under_their_write_caps():
+    from helpers import REPO
+    from vaultlib.cli import WRITE_CAPS
+    for rel, cap in WRITE_CAPS.items():
+        path = REPO / rel
+        assert not path.exists() or path.stat().st_size <= cap, rel
+
+
 def test_tags_lists_one_partition_most_used_first(cli, vault):
     write(vault, "wiki/work/concepts/Topic.md", concept("work", "Topic", tags="[streaming, api-gateway]"))
     write(vault, "wiki/work/concepts/Other.md", concept("work", "Other", tags="[streaming, now]"))

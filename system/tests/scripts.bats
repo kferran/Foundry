@@ -85,6 +85,14 @@ bad_note() {
   [ "$status" -eq 0 ]
 }
 
+@test "hook refuses a new CLAUDE.md over its write cap, staged alone (#166)" {
+  head -c 16385 /dev/zero | tr '\0' x > "$V/CLAUDE.md"
+  git -C "$V" add CLAUDE.md
+  run git -C "$V" commit -qm claude
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"CLAUDE.md:1: error: 16385 bytes is over the 16384-byte cap"* ]]
+}
+
 @test "hook fails loudly when the linter is missing" {
   rm "$V/system/scripts/lint_vault.sh"
   git -C "$V" add wiki/Index.md

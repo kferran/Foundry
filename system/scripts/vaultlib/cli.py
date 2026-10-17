@@ -9,7 +9,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import frontmatter, guard, publish, recall as recallmod, retrieve, schema as schemamod, scope as scopemod
+from . import frontmatter, guard, now as nowmod, publish, recall as recallmod, retrieve, schema as schemamod
+from . import scope as scopemod
 from .index import ISSUE_ROWS, NOT_INDEXED, Index, citation_issues
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
@@ -161,6 +162,29 @@ def staged_blobs(vault: Path, paths) -> dict:
             for p in paths if p.endswith(".md") and not p.startswith(NOT_INDEXED)}
 
 
+# Write caps (#166): files every session or brief reads whole, so their growth is a cost each run pays. A staged copy
+# over its cap is refused when it is larger than HEAD's (a new file counts as 0 bytes); shrinking always passes. The
+# template's CLAUDE.md is about 11 KB and its wiki/Index.md under 1 KB; the Now page reuses now.py's review limit.
+WRITE_CAPS = {"CLAUDE.md": 16 * 1024, "wiki/Index.md": 8 * 1024,
+              **{f"wiki/{p}/Now.md": nowmod.PAGE_BYTES for p in nowmod.PARTITIONS}}
+
+
+def blob_size(vault: Path, spec: str) -> int:
+    """The size of a git object such as ":path" or "HEAD:path"; 0 when it does not exist (a new file, no HEAD)."""
+    out = subprocess.run(["git", "-C", str(vault), "cat-file", "-s", spec], capture_output=True, text=True)
+    return int(out.stdout) if out.returncode == 0 else 0
+
+
+def cap_issues(vault: Path, paths) -> list:
+    rows = []
+    for path in sorted(set(paths) & set(WRITE_CAPS)):
+        cap, size, before = WRITE_CAPS[path], blob_size(vault, f":{path}"), blob_size(vault, f"HEAD:{path}")
+        if size > cap and size > before:
+            rows.append((path, 1, "error", "write-cap",
+                         f"{size} bytes is over the {cap}-byte cap and larger than HEAD's {before}; shrink it"))
+    return rows
+
+
 def cmd_issues(args, vault, sc):
     require_vault_scope(sc)
     idx = Index(vault)
@@ -168,7 +192,7 @@ def cmd_issues(args, vault, sc):
         keep = staged_paths(vault)
         with tempfile.TemporaryDirectory(prefix="staged-lint-") as tmp:
             rows = idx.staged_issues(staged_blobs(vault, keep), Path(tmp) / "index.db")
-        return print_issues([r for r in rows if r[0] in keep], args.json)
+        return print_issues(cap_issues(vault, keep) + [r for r in rows if r[0] in keep], args.json)
     idx.refresh()
     conn = sqlite3.connect(idx.db_path)
     try:
