@@ -345,6 +345,15 @@ Done."
   [ "$(cat "$IN/clock.md")" = "$(printf 'short: 2026-10-04\nlong: 2026-10-31')" ]
 }
 
+@test "brief_prep: alerts.md holds yesterday's and today's alerts with the new-message triage lines summed (phase A spec §3.6)" {
+  mkdir -p system/logs
+  printf -- '- 09:00:00 [triage] 2 new: Blake; Avery\n- 10:00:00 [sync] blocked\n' > system/logs/alerts_2026-09-30.md
+  printf -- '- 05:00:00 [triage] 3 new: Cara\n- 05:10:00 [triage] no Gmail connector reachable\n' > system/logs/alerts_2026-10-01.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/alerts.md")" = "$(printf -- '- 10:00:00 [sync] blocked\n- 05:10:00 [triage] no Gmail connector reachable\n- [triage] 5 new (on the Now page)')" ]
+}
+
 @test "brief_prep: closed Now lines move to the month's archive note before now.md lists the page (phase A spec §3.4)" {
   mkdir -p wiki/work
   printf -- '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-09-01"\npartition: work\n---\n# Now\n\n## Needs you\n- [x] owed: Shipped (since 2026-09-01) _(closed: ticked 2026-09-30)_\n  - 2026-09-15: asked Blake\n- [ ] owed: Open (since 2026-09-01)\n' > wiki/work/Now.md

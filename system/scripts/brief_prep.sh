@@ -52,6 +52,13 @@ NOW_LOCK_WAIT="${ARCHIVE_LOCK_WAIT:-60}" system/scripts/now.py archive --partiti
   > /dev/null 2>> "$PREP_DIR/prep_errors.log" || prep_unavailable "now: the personal Now page was not archived (see $PREP_DIR/prep_errors.log)"
 prep_write now.md system/scripts/now.py list \
   || prep_unavailable "now: now.py list failed (see $PREP_DIR/prep_errors.log)"
+# Pipeline alerts (phase A spec §3.6): yesterday's and today's alert lines, the [triage] "N new" lines summed into one
+# (each new message is already a Now line).
+prep_alerts() {
+  { cat "system/logs/alerts_$(date -d "$PREP_DATE -1 day" +%F).md" "system/logs/alerts_$PREP_DATE.md" 2>/dev/null || true; } \
+    | awk '/^- [0-9:]+ \[triage\] [0-9]+ new:/ { n += $4; next } /^- / { print } END { if (n) print "- [triage] " n " new (on the Now page)" }'
+}
+prep_write alerts.md prep_alerts || prep_unavailable "alerts: the alert files could not be read (see $PREP_DIR/prep_errors.log)"
 # The Now clock (Now clock spec §6, §7): the lines past their decide-by date, and the two dates the headless brief
 # copies onto the lines it adds (it does no date arithmetic).
 prep_write overdue.md system/scripts/now.py overdue --date "$PREP_DATE" \
