@@ -399,7 +399,7 @@ sealed_problems() {
   # 12,500 -> 12,750 (#222): parallel Work Orders (#229) and chat triage, which extends core inbox triage and would
   # split triage across two places as an extension, brought core to 12,606 lines.
   # 12,750 -> 12,800 (#254): the index skips non-UTF-8 file names (+6 lines, no comment-only lines to trim there) on top of
-  # #253, which brought core to about 12,749.
+  # #253 (+35, measured on its branch: 12,714 -> 12,749), so the two together pass 12,750.
   lines="$(git ls-files -z system/scripts | xargs -0 cat | wc -l)"
   [ "$lines" -le 12800 ]
   [ "$(git ls-files system/schemas | wc -l)" -le 14 ]
