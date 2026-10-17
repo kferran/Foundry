@@ -14,7 +14,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-17
-- A note under `wiki/<partition>/private/` is closed to Claude: the settings deny reading and editing it, the index, lint and recall skip it, and headless runs cannot stage or publish it. To show Claude one such file, type `! cat <path>` yourself (FOUNDRY.md: Security model). (#PR)
+- A note under `wiki/<partition>/private/` is closed to Claude: the settings deny reading and editing it, the index, lint and recall skip it, and headless runs cannot stage or publish it. To show Claude one such file, type `! cat <path>` yourself (FOUNDRY.md: Security model). (#258)
 - A new vault's first brief no longer fails to publish with "Now.md modified in the last 60 s": brief prep no longer writes an empty Now page, and the brief creates the page when it adds a line. (#255)
 - A vault file whose name is not valid UTF-8 (such as a Latin-1 name copied from a Windows share) no longer breaks the index, `vault_index.py` and session recall; the index skips it and prints a warning naming it. (#254)
 
