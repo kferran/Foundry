@@ -12,7 +12,7 @@ Read the current role with `system/scripts/vault_index.py field system/config.md
 
 If the vault path (`pwd -P`) contains a space, stop: the memory hooks cannot run from such a path. Ask the user to move the vault to a path without spaces and run `/setup` again there.
 
-Then run `system/scripts/check_deps.sh --role <role>`. List every `missing` line with its install hint, and every `optional` line as optional. If `pyyaml` is missing, stop: setup cannot continue without it. Otherwise continue, noting which features are off.
+Then run `system/scripts/check_deps.sh --role <role>`. List every `missing` line with its install hint, and every `optional` line as optional. `dev` lines (`bats`, `pytest`, `shellcheck`) are only for template development: list them apart, never as missing. If `pyyaml` is missing, stop: setup cannot continue without it. Otherwise continue, noting which features are off.
 
 On a client, skip phases 3, 6, 6b, 6d, 9, 9a and 11, and report each as "not used on a client"; phase 6e only links extension skills there. Phases 5 and 5a run on a client only to remove automation and memory hooks left from an earlier role.
 
@@ -145,4 +145,4 @@ If `git ls-files --error-unmatch .obsidian/plugins/obsidian-git/data.json` succe
 Show a table of every item set up (role, config, each codebase, remote mode, each unit, linger, memory hooks, calendar, meetings, extensions, index, verification) with its status; on a client, the skipped items say "not used on a client", and on other roles a block not chosen in 2a says "unchanged". List superpowers, the digest thresholds and the recall budget as "defaults; change with `system/scripts/vault_index.py set system/config.md <key> <value>`" (superpowers: edit the list in `system/config.md`). Include the installed plugins and their release tags, and remind the user that `system/scripts/update_template.sh` pulls template updates.
 
 ## 11. First brief
-On a standalone machine or a server, run `/brief` now so the user sees the product before leaving setup; a source that is not set up yet is listed under Unavailable Sources. On a client, say that the server writes the brief and sync brings it here.
+On a standalone machine or a server, run `/brief` now so the user sees the product before leaving setup; a source that is not set up yet is listed under Unavailable Sources.
