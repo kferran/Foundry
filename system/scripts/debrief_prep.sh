@@ -77,16 +77,7 @@ else
 fi
 
 # Pull requests for Delivered Today (delivered work spec §3.4): opened or merged by you that day, or reviewed by
-# you and updated that day, in the registered GitHub repositories. Empty when none is registered.
-github_repos() {  # owner/repo, one per line: each codebase's order_pr (or nightshift_pr), and a GitHub template_remote
-  local name pr
-  while IFS= read -r name; do
-    pr="$(codebase_get "$name" order_pr)"
-    [[ -n "$pr" ]] || pr="$(codebase_get "$name" nightshift_pr)"
-    [[ "$pr" != github:* ]] || printf '%s\n' "${pr#github:}"
-  done < <(codebases_list)
-  config_get template_remote | sed -nE 's#^.*github\.com[:/]([^/]+/[^/]+)$#\1#p' | sed 's/\.git$//'
-}
+# you and updated that day, in the registered GitHub repositories (github_repos). Empty when none is registered.
 prs_md() {
   local r
   local -a repos=() args=()
