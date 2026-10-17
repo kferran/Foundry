@@ -467,13 +467,13 @@ def test_stop_mid_conversion_keeps_the_file_in_the_inbox(iv, monkeypatch):
         seen.append("absorbed")  # without intake's trap the signal ends here and the conversion carries on
     previous = signal.signal(signal.SIGTERM, absorb)
     try:
-        def stopped(_):
+        def stopped(*_):
             os.kill(os.getpid(), signal.SIGTERM)  # systemctl stop, or a reboot, mid-conversion
             time.sleep(0.5)
             return "converted"
         monkeypatch.setattr(convert, "convert", stopped)
         write(iv, "raw/inbox/big.xlsx", "x")
-        with pytest.raises(SystemExit):
+        with pytest.raises(KeyboardInterrupt):
             Intake(iv, now=later()).run()
         assert seen == []
         assert signal.getsignal(signal.SIGTERM) is absorb  # the handler intake replaced is back
@@ -501,7 +501,7 @@ def test_marker_write_failure_leaves_the_file_in_the_inbox(iv):
 def test_converter_crash_is_quarantined_and_intake_goes_on(iv, monkeypatch):
     from vaultlib import convert
 
-    def crash(_):
+    def crash(*_):
         raise MemoryError()
     monkeypatch.setattr(convert, "convert", crash)
     write(iv, "raw/inbox/huge.xlsx", "x")
@@ -515,7 +515,7 @@ def test_converter_crash_is_quarantined_and_intake_goes_on(iv, monkeypatch):
 def test_conversion_reason_cannot_forge_alert_lines(iv, monkeypatch):
     from vaultlib import convert
 
-    def fail(_):
+    def fail(*_):
         raise convert.ConversionError("bad\n- 09:00:00 [intake] FAKE <b>" + "y" * 300)
     monkeypatch.setattr(convert, "convert", fail)
     write(iv, "raw/inbox/f.docx", "x")

@@ -52,10 +52,6 @@ def _append_jsonl(path, record) -> None:
         fh.write((json.dumps(record) + "\n").encode("utf-8"))
 
 
-def _stopped(signum, _frame):
-    raise SystemExit(128 + signum)  # SIGTERM's default action would skip the finally blocks
-
-
 def sha256_file(path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -373,18 +369,18 @@ class Intake:
         copy = staging / path.name
         if path.suffix.lower() in convertmod.SUFFIXES:  # a document goes to the same redaction as text (#166)
             # The marker outlives a tick killed mid-conversion (SIGKILL, OOM); the next tick quarantines the file
-            # instead of dying on it again. A failed write leaves the file in the inbox; a stop unwinds and keeps it.
+            # instead of dying on it again. A failed write leaves the file in the inbox; a stop (SIGTERM, raised as
+            # KeyboardInterrupt, which no `except Exception` takes) unwinds through the finally and keeps it.
             marker = staging / f"{sha}.converting"
             stale = marker.exists()
             marker.write_text(path.name, encoding="utf-8")
-            stop = signal.signal(signal.SIGTERM, _stopped)
+            stop = signal.signal(signal.SIGTERM, signal.default_int_handler)
             try:
                 if stale:
                     raise convertmod.ConversionError("conversion did not finish")
-                source = convertmod.convert(path)
+                source = convertmod.convert(path, staging / f"{sha}.converted")
             except Exception as exc:  # a parser bug or a memory blow-up quarantines the file, never wedges intake
-                why = str(exc) if isinstance(exc, convertmod.ConversionError) else \
-                    f"conversion crashed, {exc.__class__.__name__}"
+                why = str(exc) if isinstance(exc, convertmod.ConversionError) else f"conversion crashed, {type(exc).__name__}"
                 # one alert line whatever the reason holds, and no ": " (notify.py reads the reason up to the first)
                 why = " ".join(re.sub(r"[^\w ./,()-]", " ", why, flags=re.ASCII).split())[:80]
                 self.poison(path, f"raw/inbox/{path.name}", sha, reason=f"immediately, not converted ({why})")

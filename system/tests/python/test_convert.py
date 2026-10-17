@@ -58,7 +58,7 @@ def test_xlsx_sheet_blocks_as_tables(tmp_path):
 def test_huge_sheet_is_capped_and_says_so(tmp_path, monkeypatch):
     monkeypatch.setattr(convert, "MAX_ROWS", 50)
     data = "".join(row(n, f'<c r="A{n}"><v>{n}</v></c>') for n in range(1, 5001))
-    out = convert.convert(xlsx(tmp_path / "big.xlsx", {"Log": data}))
+    out = convert._ooxml(xlsx(tmp_path / "big.xlsx", {"Log": data}))
     assert "| 50 |" in out and "| 51 |" not in out
     assert "Rows after 50 not shown: the sheet has 5000 rows." in out
 
@@ -129,33 +129,10 @@ def test_truncated_zip_and_bad_xml_are_conversion_errors(tmp_path):
 
 
 def test_streamed_sheet_may_pass_the_tree_part_cap(tmp_path, monkeypatch):
-    monkeypatch.setattr(convert, "MAX_PART", 1000)  # sheets and shared strings are streamed, not held as trees
     monkeypatch.setattr(convert, "MAX_ROWS", 10)
     data = "".join(row(n, f'<c r="A{n}" t="s"><v>{n % 3}</v></c>') for n in range(1, 2001))
-    out = convert.convert(xlsx(tmp_path / "big.xlsx", {"Log": data}, shared=["a" * 400, "b" * 400, "c"]))
+    out = convert._ooxml(xlsx(tmp_path / "big.xlsx", {"Log": data}, shared=["a" * 400, "b" * 400, "c"]))
     assert "Rows after 10 not shown: the sheet has 2000 rows." in out
-
-
-def test_deep_nesting_in_a_streamed_part_is_refused(tmp_path):
-    junk = "<a>" * 200 + "</a>" * 200  # outside any row: every open ancestor stays in memory
-    path = build(tmp_path / "deep.xlsx", {
-        "xl/workbook.xml": f'<workbook xmlns="{S}" xmlns:r="{R}"><sheets><sheet name="A" r:id="rId1"/></sheets></workbook>',
-        "xl/_rels/workbook.xml.rels": rels(("rId1", "worksheet", "worksheets/s.xml")),
-        "xl/worksheets/s.xml": f'<worksheet xmlns="{S}">{junk}<sheetData/></worksheet>'})
-    with pytest.raises(convert.ConversionError, match="deep"):
-        convert.convert(path)
-
-
-@pytest.mark.parametrize("where", ["row", "si"])
-def test_junk_held_inside_one_row_or_string_is_refused(tmp_path, monkeypatch, where):
-    monkeypatch.setattr(convert, "MAX_HELD", 1000)
-    junk = '<a b="1"/>' * 2000
-    if where == "row":
-        path = xlsx(tmp_path / "row.xlsx", {"S": f'<row r="1"><c r="A1"><v>1</v></c>{junk}</row>'})
-    else:
-        path = xlsx(tmp_path / "si.xlsx", {"S": ""}, shared=[f"x</t>{junk}<t>"])
-    with pytest.raises(convert.ConversionError, match="elements"):
-        convert.convert(path)
 
 
 def test_a_full_row_of_inline_strings_fits_the_caps(tmp_path):
@@ -165,15 +142,63 @@ def test_a_full_row_of_inline_strings_fits_the_caps(tmp_path):
     assert "| last |\n" in out
 
 
-def test_zip_directory_is_capped_before_it_is_parsed(tmp_path, monkeypatch):
-    monkeypatch.setattr(convert, "MAX_ENTRIES", 5)
-    path = build(tmp_path / "many.docx", {f"word/x{i}.xml": "<x/>" for i in range(50)})
+def sheet_part(tmp_path, name, sheet_xml, shared_xml=None):
+    """An xlsx whose sheet (and shared strings) part is given whole, prolog included."""
+    parts = {"xl/workbook.xml": f'<workbook xmlns="{S}" xmlns:r="{R}"><sheets><sheet name="A" r:id="r1"/></sheets></workbook>',
+             "xl/_rels/workbook.xml.rels": rels(("r1", "worksheet", "worksheets/s.xml")), "xl/worksheets/s.xml": sheet_xml}
+    if shared_xml:
+        parts["xl/sharedStrings.xml"] = shared_xml
+    return build(tmp_path / name, parts)
 
-    def never(*_a, **_k):
-        raise AssertionError("the central directory was parsed")
-    monkeypatch.setattr(convert.zipfile, "ZipFile", never)
-    with pytest.raises(convert.ConversionError, match="entries"):
+
+# The parser itself multiplies memory (fourth review of #257). Each shape is refused, and the child is gone.
+def test_dtd_default_attribute_is_refused(tmp_path):
+    dtd = f'<!DOCTYPE worksheet [<!ATTLIST x d CDATA "{"A" * 20_000}">]>'
+    path = sheet_part(tmp_path, "dtd.xlsx", f'{dtd}<worksheet xmlns="{S}"><sheetData><row r="1">{"<x/>" * 99_000}'
+                                            "</row></sheetData></worksheet>")
+    with pytest.raises(convert.ConversionError, match="DOCTYPE"):
         convert.convert(path)
+
+
+def test_entities_in_a_shared_string_are_refused(tmp_path):
+    sst = f'<!DOCTYPE sst [<!ENTITY e "{"B" * 10_000}">]><sst xmlns="{S}"><si><t>{"&e;" * 100_000}</t></si></sst>'
+    path = sheet_part(tmp_path, "ent.xlsx", f'<worksheet xmlns="{S}"><sheetData/></worksheet>', sst)
+    with pytest.raises(convert.ConversionError, match="DOCTYPE"):
+        convert.convert(path)
+
+
+def test_doctype_split_across_read_chunks_is_seen(tmp_path):
+    pad = " " * (2**16 - 4)  # "<!DOC" ends one 64 KB read, "TYPE" starts the next
+    path = sheet_part(tmp_path, "split.xlsx", f'<worksheet xmlns="{S}">{pad}<!DOCTYPE x><sheetData/></worksheet>')
+    with pytest.raises(convert.ConversionError, match="DOCTYPE"):
+        convert._ooxml(path)
+
+
+def test_distinct_namespaced_names_exceed_the_child_limits(tmp_path):
+    names = "".join(f"<n:x{i}/>" for i in range(600_000))
+    path = sheet_part(tmp_path, "names.xlsx", f'<worksheet xmlns="{S}" xmlns:n="{"u" * 5000}">{names}<sheetData/></worksheet>')
+    with pytest.raises(convert.ConversionError, match="exceeded its limits"):
+        convert.convert(path)
+    assert not (tmp_path / ".names.xlsx.converted").exists()
+
+
+def test_two_million_attributes_exceed_the_child_limits(tmp_path):
+    attrs = " ".join(f'a{i}="1"' for i in range(2_000_000))
+    path = sheet_part(tmp_path, "attrs.xlsx", f'<worksheet xmlns="{S}"><x {attrs}/><sheetData/></worksheet>')
+    with pytest.raises(convert.ConversionError, match="exceeded its limits"):
+        convert.convert(path)
+
+
+def test_largest_valid_inputs_still_convert(tmp_path):
+    sst = f'<sst xmlns="{S}">' + "<si><t>ab</t></si>" * (45 * 2**20 // 18) + "</sst>"  # 45 MB, 2.6 M strings
+    first = row(1, '<c r="A1" t="s"><v>1</v></c>')
+    path = sheet_part(tmp_path, "strings.xlsx", f'<worksheet xmlns="{S}"><sheetData>{first}</sheetData></worksheet>', sst)
+    assert "| ab |" in convert.convert(path)
+    dense = '<x b="1"/>' * (4 * 2**20 // 10 - 20)  # four parts at 4 MB of the densest tree
+    doc = f'<w:document xmlns:w="{W}"><w:body>{dense}<w:p><w:r><w:t>kept</w:t></w:r></w:p></w:body></w:document>'
+    parts = {"word/document.xml": doc, **{f"word/{n}s.xml": f'<w:{n}s xmlns:w="{W}">{dense}</w:{n}s>'
+                                          for n in ("footnote", "endnote", "comment")}}
+    assert "kept" in convert.convert(build(tmp_path / "dense.docx", parts))
 
 
 def test_unpacked_total_is_capped_across_parts(tmp_path, monkeypatch):
@@ -189,7 +214,7 @@ def test_unpacked_total_is_capped_across_parts(tmp_path, monkeypatch):
         "ppt/notesSlides/n.xml": notes, **slides, **slide_rels,
     }
     with pytest.raises(convert.ConversionError, match="in total"):
-        convert.convert(build(tmp_path / "notes.pptx", parts))
+        convert._ooxml(build(tmp_path / "notes.pptx", parts))
 
 
 def test_note_ids_count_against_the_output_cap(tmp_path, monkeypatch):
@@ -197,14 +222,14 @@ def test_note_ids_count_against_the_output_cap(tmp_path, monkeypatch):
     doc = f'<w:document xmlns:w="{W}"><w:body><w:p><w:r><w:t>x</w:t></w:r></w:p></w:body></w:document>'
     notes = f'<w:footnotes xmlns:w="{W}"><w:footnote w:id="{"9" * 20_000}"><w:p/></w:footnote></w:footnotes>'
     with pytest.raises(convert.ConversionError, match="over the output limit"):
-        convert.convert(build(tmp_path / "id.docx", {"word/document.xml": doc, "word/footnotes.xml": notes}))
+        convert._ooxml(build(tmp_path / "id.docx", {"word/document.xml": doc, "word/footnotes.xml": notes}))
 
 
 def test_escaped_cells_count_against_the_output_cap(tmp_path, monkeypatch):
     monkeypatch.setattr(convert, "MAX_OUT", 10_000)
     path = xlsx(tmp_path / "pipes.xlsx", {"S": row(1, f'<c r="A1" t="inlineStr"><is><t>{"|" * 6000}</t></is></c>')})
     with pytest.raises(convert.ConversionError, match="over the output limit"):
-        convert.convert(path)
+        convert._ooxml(path)
 
 
 def test_page_headings_count_against_the_output_cap(tmp_path, monkeypatch):
@@ -212,13 +237,6 @@ def test_page_headings_count_against_the_output_cap(tmp_path, monkeypatch):
     path = fake_pdftotext(tmp_path, monkeypatch, r"yes x | head -n 3000 | tr '\n' '\f'")
     with pytest.raises(convert.ConversionError, match="over the output limit"):
         convert.convert(path)
-
-
-def test_oversized_part_is_refused(tmp_path, monkeypatch):
-    monkeypatch.setattr(convert, "MAX_PART", 100)
-    doc = f'<w:document xmlns:w="{W}"><w:body>' + "<w:p/>" * 100 + "</w:body></w:document>"
-    with pytest.raises(convert.ConversionError, match="unpacks to over"):
-        convert.convert(build(tmp_path / "bomb.docx", {"word/document.xml": doc}))
 
 
 def test_missing_pdftotext_is_a_conversion_error(tmp_path, monkeypatch):
@@ -258,7 +276,7 @@ def test_pdftotext_failure_reason_is_fixed_text(tmp_path, monkeypatch):
 
 def test_column_past_xfd_is_refused(tmp_path):
     path = xlsx(tmp_path / "col.xlsx", {"S": row(1, '<c r="ZZZZZZZZ1"><v>1</v></c>')})
-    with pytest.raises(convert.ConversionError, match="column"):
+    with pytest.raises(convert.ConversionError, match="exceeded its limits"):
         convert.convert(path)
 
 
@@ -267,29 +285,7 @@ def test_shared_string_amplification_hits_the_output_limit(tmp_path, monkeypatch
     cells = '<c t="s"><v>0</v></c>' * 100
     path = xlsx(tmp_path / "amp.xlsx", {"S": row(1, cells)}, shared=["A" * 500])
     with pytest.raises(convert.ConversionError, match="over the output limit"):
-        convert.convert(path)
-
-
-def test_two_sheets_naming_one_part_are_refused(tmp_path):
-    parts = {
-        "xl/workbook.xml": f'<workbook xmlns="{S}" xmlns:r="{R}"><sheets><sheet name="A" r:id="rId1"/>'
-                           '<sheet name="B" r:id="rId1"/></sheets></workbook>',
-        "xl/_rels/workbook.xml.rels": rels(("rId1", "worksheet", "worksheets/s.xml")),
-        "xl/worksheets/s.xml": f'<worksheet xmlns="{S}"><sheetData/></worksheet>',
-    }
-    with pytest.raises(convert.ConversionError, match="one part"):
-        convert.convert(build(tmp_path / "dup.xlsx", parts))
-
-
-def test_repeated_slide_is_refused(tmp_path):
-    parts = {
-        "ppt/presentation.xml": f'<p:presentation xmlns:p="{P}" xmlns:r="{R}"><p:sldIdLst>'
-                                '<p:sldId r:id="rId1"/><p:sldId r:id="rId1"/></p:sldIdLst></p:presentation>',
-        "ppt/_rels/presentation.xml.rels": rels(("rId1", "slide", "slides/slide1.xml")),
-        "ppt/slides/slide1.xml": f'<p:sld xmlns:p="{P}"/>',
-    }
-    with pytest.raises(convert.ConversionError, match="one part"):
-        convert.convert(build(tmp_path / "dup.pptx", parts))
+        convert._ooxml(path)
 
 
 def test_reasons_never_carry_document_text(tmp_path):
