@@ -13,6 +13,9 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## Changes
 
+## 2026-10-17
+- A vault file whose name is not valid UTF-8 (such as a Latin-1 name copied from a Windows share) no longer breaks the index, `vault_index.py` and session recall; the index skips it and prints a warning naming it. (#254)
+
 ## 2026-10-16
 - `/lint` warns when an open (draft or approved) `rca` note or a codebase note cites `dir/file.ext:NN` and that file is missing from the codebase or has fewer lines. (#251)
 - `/ingest` writes about people as dated behavior, never a verdict or a legal or medical label, and leaves a first or partial name unlinked unless a note settles who it is. (#251)
