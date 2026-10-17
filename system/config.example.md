@@ -9,6 +9,8 @@ digest_min_events: "5"          # tool calls/edits since the last digest before 
 digest_min_minutes: "20"        # minimum minutes between digests
 preferences_enabled: "false"    # preference derivation, /brief acceptance and recall slot (a later phase)
 recall_budget_chars: "9000"     # SessionStart recall size cap (hard max 9500)
+transcript_keep_dir: ""         # memory hooks: where transcript copies go, outside the vault (empty: ~/.local/state/foundry/transcripts)
+transcript_keep_days: "90"      # memory hooks: delete transcript copies not refreshed for this many days (0: never)
 template_remote: ""             # set by setup_remote.sh
 machine_role: "standalone"      # standalone | server | client; what this machine does (see FOUNDRY.md)
 sync_interval_minutes: "5"      # server only: minutes between vault syncs (1-60)

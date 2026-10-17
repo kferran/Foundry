@@ -13,6 +13,8 @@ fields:
   digest_min_events: {kind: int, default: "5", readers: [system/hooks/lib_memory.sh]}
   digest_min_minutes: {kind: int, default: "20", readers: [system/hooks/lib_memory.sh]}
   recall_budget_chars: {kind: int, default: "9000", readers: [system/scripts/vaultlib/recall.py]}
+  transcript_keep_dir: {kind: string, readers: [system/hooks/memory_keep.sh]}
+  transcript_keep_days: {kind: int, min: "0", default: "90", readers: [system/hooks/memory_keep.sh]}
   preferences_enabled: {kind: bool, default: "false", readers: []}
   superpowers: {kind: list, of: string, readers: [.claude/commands/brief.md]}
   machine_role: {kind: enum, values: [standalone, server, client], default: "standalone", readers: [system/scripts/install_units.sh, system/scripts/vaultlib/intake.py]}
