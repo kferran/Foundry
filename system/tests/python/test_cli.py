@@ -368,3 +368,13 @@ def test_related_skips_meeting_transcripts_unless_asked(vault, cli):
     assert [h["type"] for h in hits] == ["meeting"]
     hits = json.loads(cli("related", "wombat budget", "--include-transcripts", "--json").stdout)
     assert sorted(h["type"] for h in hits) == ["meeting", "meeting_transcript"]
+
+
+def test_field_and_show_refuse_a_private_note(cli, vault):
+    """field, validate and show cannot open wiki/<partition>/private/ (#166)."""
+    write(vault, "wiki/work/private/Secret.md", concept("work", "Secret", "salary talk"))
+    r = cli("field", "wiki/work/private/Secret.md", "partition")
+    assert r.returncode == 2 and "private" in r.stderr
+    assert cli("validate", "wiki/work/private/Secret.md").returncode == 2
+    r = cli("show", "wiki/work/private/Secret.md")
+    assert r.returncode == 1 and "salary" not in r.stdout

@@ -6,7 +6,8 @@
       "Read(~/.claude/.credentials.json)", "Read(~/.claude.json)", "Read(~/.claude/settings*.json)",
       "Read(~/.config/gcalcli/**)", "Read(//**/.env)", "Read(//**/.env.*)",
       "Read(~/.config/foundry/**)", "Read(~/.config/gh/**)", "Read(~/.git-credentials)", "Read(~/.netrc)",
-      "Read(~/.azure/**)", "Read(~/.aws/**)", "Read(~/.claude/projects/**)"
+      "Read(~/.azure/**)", "Read(~/.aws/**)", "Read(~/.claude/projects/**)",
+      "Read(wiki/*/private/**)", "Edit(wiki/*/private/**)"
     ]
   },
   "sandbox": {

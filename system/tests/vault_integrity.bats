@@ -70,6 +70,15 @@ setup() {
   done
 }
 
+@test "settings deny Read and Edit on wiki/<partition>/private/ (#166)" {
+  jq -e '.permissions.deny | index("Read(/wiki/*/private/**)")' .claude/settings.json >/dev/null
+  jq -e '.permissions.deny | index("Edit(/wiki/*/private/**)")' .claude/settings.json >/dev/null
+  # --settings anchors /path at system/, so the headless file uses the path relative to the run's cwd (the vault root).
+  jq -e '.permissions.deny | index("Read(wiki/*/private/**)")' system/headless.settings.json >/dev/null
+  jq -e '.permissions.deny | index("Edit(wiki/*/private/**)")' system/headless.settings.json >/dev/null
+  grep -qF 'wiki/<partition>/private/' FOUNDRY.md
+}
+
 @test "headless settings have no allows, no /-anchored rules, and a strict sandbox" {
   f=system/headless.settings.json
   [ "$(jq '.permissions.allow // [] | length' "$f")" = "0" ]

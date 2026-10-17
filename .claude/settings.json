@@ -58,7 +58,8 @@
     "deny": [
       "Read(~/.ssh/**)", "Read(~/.gnupg/**)",
       "Read(~/.claude/.credentials.json)", "Read(~/.claude.json)", "Read(~/.claude/settings*.json)",
-      "Read(~/.config/gcalcli/**)", "Read(//**/.env)", "Read(//**/.env.*)"
+      "Read(~/.config/gcalcli/**)", "Read(//**/.env)", "Read(//**/.env.*)",
+      "Read(/wiki/*/private/**)", "Edit(/wiki/*/private/**)"
     ]
   }
 }
