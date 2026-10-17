@@ -164,3 +164,12 @@ def test_cli_notices_a_list_without_an_active_heading(vault):
 
 def test_cli_bad_date_exits_2(vault):
     assert run(vault, "yesterday").returncode == 2
+
+
+def test_cli_never_reads_a_private_page(vault):
+    """A private note linked from ActiveProjects stays out of the brief (#166)."""
+    write(vault, "wiki/work/ActiveProjects.md", listing("- [[Secret]]\n"))
+    write(vault, "wiki/work/private/Secret.md", page("- [ ] salary talk\n"))
+    out = run(vault)
+    assert "salary" not in out.stdout
+    assert "[[Secret]] in ActiveProjects does not resolve to a note." in out.stdout

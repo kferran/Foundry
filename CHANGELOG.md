@@ -14,6 +14,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-17
+- A note under `wiki/<partition>/private/` is closed to Claude: the settings deny reading and editing it, the index, lint and recall skip it, and headless runs cannot stage or publish it. To show Claude one such file, type `! cat <path>` yourself (FOUNDRY.md: Security model). `git show` now asks before it runs, since it can print a private note from history. (#258)
 - With the memory hooks installed, each session's transcript is copied outside the vault when the context is compacted and when the session ends (`transcript_keep_dir`, default `~/.local/state/foundry/transcripts`), so a digest the Stop hook missed can be recovered; a copy never shrinks, and copies older than `transcript_keep_days` (default 90) are deleted. (#262)
   - Action: run `system/scripts/install_hooks.sh --dry-run`, then `system/scripts/install_hooks.sh` (or re-run `/setup`'s memory step) to add the two new hook entries.
 - A telemetry source can set `secrets_scan: "true"` (off by default) to raise one alert per new error group whose log line holds a credential shape, sent to Slack at once, naming the group's note and the shape, never the value; at most three a run per source, then one line counting the rest. (#261)
