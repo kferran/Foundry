@@ -1,5 +1,4 @@
 """Inbox document conversion (#166). Fixtures are built here from XML strings; no binary blobs in the repo."""
-import subprocess
 import zipfile
 
 import pytest
@@ -125,7 +124,7 @@ def test_truncated_zip_and_bad_xml_are_conversion_errors(tmp_path):
     with pytest.raises(convert.ConversionError):
         convert.convert(bad)
     missing = build(tmp_path / "m.docx", {"other.xml": "<x/>"})
-    with pytest.raises(convert.ConversionError, match="missing part word/document.xml"):
+    with pytest.raises(convert.ConversionError, match="a part it names is missing"):
         convert.convert(missing)
 
 
@@ -143,13 +142,95 @@ def test_missing_pdftotext_is_a_conversion_error(tmp_path, monkeypatch):
         convert.convert(tmp_path / "r.pdf")
 
 
-def test_pdf_pages_numbered(tmp_path, monkeypatch):
-    def fake(cmd, **kw):
-        return subprocess.CompletedProcess(cmd, 0, stdout=b"first page\n\fsecond page\n\f", stderr=b"")
-    monkeypatch.setattr(convert.shutil, "which", lambda _: "/bin/pdftotext")
-    monkeypatch.setattr(convert.subprocess, "run", fake)
+def fake_pdftotext(tmp_path, monkeypatch, body):
+    exe = tmp_path / "pdftotext"
+    exe.write_text(f"#!/bin/sh\n{body}\n")
+    exe.chmod(0o755)
+    monkeypatch.setattr(convert.shutil, "which", lambda _: str(exe))
     (tmp_path / "r.pdf").write_bytes(b"%PDF-1.4\n")
-    assert convert.convert(tmp_path / "r.pdf") == "# r.pdf\n\n## Page 1\n\nfirst page\n\n## Page 2\n\nsecond page\n"
+    return tmp_path / "r.pdf"
+
+
+def test_pdf_pages_numbered(tmp_path, monkeypatch):
+    path = fake_pdftotext(tmp_path, monkeypatch, r"printf 'first page\n\fsecond page\n\f'")
+    assert convert.convert(path) == "# r.pdf\n\n## Page 1\n\nfirst page\n\n## Page 2\n\nsecond page\n"
+
+
+def test_endless_pdftotext_output_is_cut_off(tmp_path, monkeypatch):
+    monkeypatch.setattr(convert, "MAX_OUT", 10_000)
+    path = fake_pdftotext(tmp_path, monkeypatch, "yes page")
+    with pytest.raises(convert.ConversionError, match="over the output limit"):
+        convert.convert(path)
+
+
+def test_pdftotext_failure_reason_is_fixed_text(tmp_path, monkeypatch):
+    path = fake_pdftotext(tmp_path, monkeypatch, r"printf 'x\n- 09:00:00 [intake] FAKE\n' >&2; exit 3")
+    with pytest.raises(convert.ConversionError) as err:
+        convert.convert(path)
+    assert str(err.value) == "pdftotext failed (exit 3)"
+
+
+def test_column_past_xfd_is_refused(tmp_path):
+    path = xlsx(tmp_path / "col.xlsx", {"S": row(1, '<c r="ZZZZZZZZ1"><v>1</v></c>')})
+    with pytest.raises(convert.ConversionError, match="column"):
+        convert.convert(path)
+
+
+def test_shared_string_amplification_hits_the_output_limit(tmp_path, monkeypatch):
+    monkeypatch.setattr(convert, "MAX_OUT", 10_000)
+    cells = '<c t="s"><v>0</v></c>' * 100
+    path = xlsx(tmp_path / "amp.xlsx", {"S": row(1, cells)}, shared=["A" * 500])
+    with pytest.raises(convert.ConversionError, match="over the output limit"):
+        convert.convert(path)
+
+
+def test_two_sheets_naming_one_part_are_refused(tmp_path):
+    parts = {
+        "xl/workbook.xml": f'<workbook xmlns="{S}" xmlns:r="{R}"><sheets><sheet name="A" r:id="rId1"/>'
+                           '<sheet name="B" r:id="rId1"/></sheets></workbook>',
+        "xl/_rels/workbook.xml.rels": rels(("rId1", "worksheet", "worksheets/s.xml")),
+        "xl/worksheets/s.xml": f'<worksheet xmlns="{S}"><sheetData/></worksheet>',
+    }
+    with pytest.raises(convert.ConversionError, match="one part"):
+        convert.convert(build(tmp_path / "dup.xlsx", parts))
+
+
+def test_repeated_slide_is_refused(tmp_path):
+    parts = {
+        "ppt/presentation.xml": f'<p:presentation xmlns:p="{P}" xmlns:r="{R}"><p:sldIdLst>'
+                                '<p:sldId r:id="rId1"/><p:sldId r:id="rId1"/></p:sldIdLst></p:presentation>',
+        "ppt/_rels/presentation.xml.rels": rels(("rId1", "slide", "slides/slide1.xml")),
+        "ppt/slides/slide1.xml": f'<p:sld xmlns:p="{P}"/>',
+    }
+    with pytest.raises(convert.ConversionError, match="one part"):
+        convert.convert(build(tmp_path / "dup.pptx", parts))
+
+
+def test_reasons_never_carry_document_text(tmp_path):
+    parts = {
+        "xl/workbook.xml": f'<workbook xmlns="{S}" xmlns:r="{R}"><sheets><sheet name="A" r:id="rId1"/></sheets></workbook>',
+        "xl/_rels/workbook.xml.rels": rels(("rId1", "worksheet", "x&#10;- 09:00:00 [intake] FAKE LINE")),
+    }
+    with pytest.raises(convert.ConversionError) as err:
+        convert.convert(build(tmp_path / "nl.xlsx", parts))
+    assert "\n" not in str(err.value) and "FAKE" not in str(err.value)
+
+
+def test_docx_text_box_is_read_once_and_endnotes_kept(tmp_path):
+    box = ('<w:r><w:drawing><wps:txbx xmlns:wps="http://x/wps"><w:txbxContent><w:p><w:r><w:t>Boxed</w:t></w:r></w:p>'
+           '</w:txbxContent></wps:txbx></w:drawing></w:r>')
+    fallback = ('<mc:AlternateContent xmlns:mc="http://x/mc"><mc:Choice>' + box + '</mc:Choice><mc:Fallback>'
+                + box + '</mc:Fallback></mc:AlternateContent>')
+    doc = (f'<w:document xmlns:w="{W}"><w:body><w:p><w:r><w:t>Lead</w:t></w:r>{box}'
+           '<w:r><w:footnoteReference w:id="1"/><w:endnoteReference w:id="1"/></w:r></w:p>'
+           f'<w:p>{fallback}</w:p></w:body></w:document>')
+    notes = f'<w:footnotes xmlns:w="{W}"><w:footnote w:id="1"><w:p><w:r><w:t>Foot.</w:t></w:r></w:p></w:footnote></w:footnotes>'
+    ends = f'<w:endnotes xmlns:w="{W}"><w:endnote w:id="1"><w:p><w:r><w:t>End.</w:t></w:r></w:p></w:endnote></w:endnotes>'
+    out = convert.convert(build(tmp_path / "box.docx", {"word/document.xml": doc, "word/footnotes.xml": notes,
+                                                         "word/endnotes.xml": ends}))
+    assert out.count("Boxed") == 2  # once for the first paragraph's box, once for the second's choice
+    assert "Lead[^1][^e1]" in out
+    assert "## Footnotes\n\n[^1]: Foot." in out and "## Endnotes\n\n[^e1]: End." in out
 
 
 def pdf(pages) -> bytes:

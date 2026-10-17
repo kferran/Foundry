@@ -444,6 +444,33 @@ def test_pdf_without_pdftotext_is_quarantined(iv, monkeypatch):
     assert (iv / "raw/archive/after.md").exists()
 
 
+def test_converter_crash_is_quarantined_and_intake_goes_on(iv, monkeypatch):
+    from vaultlib import convert
+
+    def crash(_):
+        raise MemoryError()
+    monkeypatch.setattr(convert, "convert", crash)
+    write(iv, "raw/inbox/huge.xlsx", "x")
+    write(iv, "raw/inbox/after.md", "next drop")
+    Intake(iv, now=later()).run()
+    assert (iv / "system/quarantine/poisoned/huge.xlsx").is_file()
+    assert "not converted (conversion crashed, MemoryError)" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
+    assert (iv / "raw/archive/after.md").exists()
+
+
+def test_conversion_reason_cannot_forge_alert_lines(iv, monkeypatch):
+    from vaultlib import convert
+
+    def fail(_):
+        raise convert.ConversionError("bad\n- 09:00:00 [intake] FAKE <b>" + "y" * 300)
+    monkeypatch.setattr(convert, "convert", fail)
+    write(iv, "raw/inbox/f.docx", "x")
+    Intake(iv, now=later()).run()
+    lines = next((iv / "system/logs").glob("alerts_*.md")).read_text().splitlines()
+    assert len(lines) == 1
+    assert "<b>" not in lines[0] and "y" * 81 not in lines[0]
+
+
 def test_conversion_alert_keeps_the_shape_slack_notices_parse(iv, monkeypatch):
     from vaultlib import convert, notify
 

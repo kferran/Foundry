@@ -369,8 +369,11 @@ class Intake:
         if path.suffix.lower() in convertmod.SUFFIXES:  # a document goes to the same redaction as text (#166)
             try:
                 source = convertmod.convert(path)
-            except convertmod.ConversionError as exc:
-                why = str(exc).replace(": ", ", ")  # notify.py reads the reason up to the first ": "
+            except Exception as exc:  # a parser bug or a memory blow-up quarantines the file, never wedges intake
+                why = str(exc) if isinstance(exc, convertmod.ConversionError) else \
+                    f"conversion crashed, {exc.__class__.__name__}"
+                # one alert line whatever the reason holds, and no ": " (notify.py reads the reason up to the first)
+                why = " ".join(re.sub(r"[^\w ./,()-]", " ", why, flags=re.ASCII).split())[:80]
                 self.poison(path, f"raw/inbox/{path.name}", sha, reason=f"immediately, not converted ({why})")
                 return True
             copy = staging / f"{path.name}.md"
