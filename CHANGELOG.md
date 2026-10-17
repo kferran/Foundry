@@ -14,6 +14,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-16
+- Connector sessions fail closed when their settings cannot be built, instead of running with hooks on; a connector error's alert line stays on one line; an RCA filing stopped while it lists the servers no longer leaves a false "earlier session" block. (#252)
 - The smoke check no longer reports the calendar as failed on a day with more than 100 events, a connector fetch refuses a too-broad allow rule before listing the servers, and a meetings fetch without `claude` prints its reason once. (#250)
 - Dropping an RCA draft's Now line after its Jira ticket was already created now records that ticket on the note instead of marking the draft rejected. (#245)
 - Inbox triage can also watch the Slack channels you are in: with `triage_chat_enabled: true`, messages that ask you something or report a production problem become `owed` Now lines with their Slack link. (#244)
