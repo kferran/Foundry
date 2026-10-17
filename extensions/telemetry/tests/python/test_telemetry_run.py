@@ -499,3 +499,50 @@ def test_an_adx_source_runs_one_query_per_signal_and_nothing_else(v, monkeypatch
         [span] if kql.startswith("Traces") else []))
     assert telemetry_run.main([], v, NOW) == 0
     assert seen == ["Logs", "Traces"]
+
+
+SECRET_ROW = dict(LOG_ROW, message="login failed for svc password=hunter2xyz")
+
+
+def _secret_alerts(v):
+    path = v / f"system/logs/alerts_{DAY}.md"
+    return [l.split(" ", 2)[2] for l in path.read_text().splitlines() if "credential shape" in l] if path.exists() else []
+
+
+def test_secrets_scan_alerts_once_per_new_group_naming_group_and_shape_never_the_value(v, monkeypatch):
+    write(v, "system/telemetry/prod-adx.md", ADX.format(covers='secrets_scan: "true"\n'))
+    monkeypatch.setattr(kusto, "query", lambda *a, **k: [SECRET_ROW])
+    assert telemetry_run.main(["--dry-run"], v, NOW) == 0
+    assert _secret_alerts(v) == []
+    assert telemetry_run.main([], v, NOW) == 0          # a first run alerts too: a backlog credential is still a leak
+    note = next((v / "raw/telemetry").glob("prod-adx-a-*.md")).relative_to(v).as_posix()
+    assert _secret_alerts(v) == [f"[telemetry] prod-adx: a log line in {note} holds a credential shape: assignment"]
+    assert telemetry_run.main([], v, NOW + timedelta(days=1)) == 0
+    files = [p for p in (v / "system/logs").glob("alerts_*.md")]
+    assert sum("credential shape" in p.read_text() for p in files) == 1
+    written = [p for p in v.rglob("*") if p.is_file() and p.suffix in (".md", ".json", ".jsonl")]
+    assert any(p.suffix == ".jsonl" for p in written)
+    assert all("hunter2xyz" not in p.read_text() for p in written)
+
+
+def test_secrets_scan_alerts_at_most_three_groups_a_run_then_counts_the_rest(v, monkeypatch):
+    write(v, "system/telemetry/prod-adx.md", ADX.format(covers='secrets_scan: "true"\n'))
+    monkeypatch.setattr(kusto, "query", lambda *a, **k: [dict(SECRET_ROW, scope=f"S{i}") for i in range(5)])
+    assert telemetry_run.main([], v, NOW) == 0
+    got = _secret_alerts(v)
+    assert len(got) == 4 and all(" a log line in raw/telemetry/prod-adx-a-" in l for l in got[:3])
+    assert got[3] == "[telemetry] prod-adx: and 2 more new groups hold a credential shape (see raw/telemetry/)"
+    from vaultlib.alerts import severity   # the owner's decision: these lines reach Slack now
+    lines = (v / f"system/logs/alerts_{DAY}.md").read_text().splitlines()
+    assert [severity(l) for l in lines if "credential shape" in l] == ["now"] * 4
+
+
+def test_secrets_scan_is_off_by_default_and_ignores_a_line_redacted_upstream(v, monkeypatch):
+    write(v, "system/telemetry/prod-adx.md", ADX.format(covers=""))
+    monkeypatch.setattr(kusto, "query", lambda *a, **k: [SECRET_ROW])
+    telemetry_run.main([], v, NOW)
+    assert _secret_alerts(v) == []
+    write(v, "system/telemetry/prod-adx.md", ADX.format(covers='secrets_scan: "true"\n'))
+    monkeypatch.setattr(kusto, "query", lambda *a, **k: [dict(LOG_ROW, scope="Other", message="token [REDACTED:jwt]")])
+    telemetry_run.main([], v, NOW + timedelta(hours=1))
+    assert _secret_alerts(v) == []

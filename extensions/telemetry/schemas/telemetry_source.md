@@ -9,6 +9,7 @@ fields:
   environment: {kind: string, required: true}
   kind: {kind: enum, values: [sentry, adx], required: true}
   enabled: {kind: bool, default: "true"}
+  secrets_scan: {kind: bool, default: "false"}
   rank: {kind: int, default: "50", min: "0", max: "999"}
   sentry_url: {kind: string}
   sentry_org: {kind: string}

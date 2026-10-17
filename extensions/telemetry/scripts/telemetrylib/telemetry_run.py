@@ -70,6 +70,19 @@ def _push(vault: Path, store: Store, now: datetime, src, pushes: list) -> None:
                f"{src.name}: and {len(pushes) - INCIDENT_MAX} more new production errors (see the brief)", tag="incident")
 
 
+def _leaks(vault: Path, store: Store, now: datetime, src, leaks: list) -> None:
+    """Secrets scan (#166): a [telemetry] line for each new group of this run whose raw log line held a credential
+    shape, at most INCIDENT_MAX, then one line counting the rest. A group is new only once while its note exists, first
+    run included (a credential in a backlog line is still a leak). The line names the group and the shape, never the
+    value."""
+    for key, shapes in leaks[:INCIDENT_MAX]:
+        _alert(vault, store, now, f"secrets/{key}", f"{src.name}: a log line in "
+               f"{store.state['groups'][key]['note']} holds a credential shape: {', '.join(shapes)}")
+    if len(leaks) > INCIDENT_MAX:
+        _alert(vault, store, now, f"secrets/{src.name}/more", f"{src.name}: and {len(leaks) - INCIDENT_MAX} more new "
+               "groups hold a credential shape (see raw/telemetry/)")
+
+
 def _log(vault: Path, now: datetime, line: dict) -> None:
     path = vault / "system" / "logs" / f"telemetry-{now.strftime('%Y-%m')}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -173,15 +186,19 @@ def _run_source(vault, src, store, by_name, now, dry, line):
         return start, end, moved, counters
     # A source's first run finds every open group new: push none of them (turning a source on sends no backlog).
     push = PRODUCTION.match(src.environment or "") and st.get("checkpoint")
-    pushes = []
+    pushes, leaks = [], []
     for g in groups:
         key = f"{src.name}/{g['fingerprint']}"
         back = (store.state["groups"].get(key) or {}).get("status") == "resolved"
+        shapes = t.credential_shapes(g.get("message")) if src.secrets_scan else []   # the raw line, before upsert masks it
         result = store.upsert(g, now)
         counters[result] += 1
+        if shapes and result == "new":
+            leaks.append((key, shapes))
         if push and not g.get("covered") and (result == "new" or back):   # a covered group is its Sentry source's
             pushes.append((key, g, back))
     _push(vault, store, now, src, pushes)
+    _leaks(vault, store, now, src, leaks)
     for key in skipped:
         store.state["groups"][key]["cover_pending"] = True
     if src.kind == "sentry":

@@ -51,6 +51,17 @@ prep_meetings() {
   prep_unavailable "meetings: the last Google Drive search today failed (exit $(jq -r '"\(.exit): \(.reason)"' <<< "$last"))"
 }
 
+# github_repos: owner/repo, one per line: each codebase's order_pr (or nightshift_pr), and a GitHub template_remote.
+github_repos() {
+  local name pr
+  while IFS= read -r name; do
+    pr="$(codebase_get "$name" order_pr)"
+    [[ -n "$pr" ]] || pr="$(codebase_get "$name" nightshift_pr)"
+    [[ "$pr" != github:* ]] || printf '%s\n' "${pr#github:}"
+  done < <(codebases_list)
+  config_get template_remote | sed -nE 's#^.*github\.com[:/]([^/]+/[^/]+)$#\1#p' | sed 's/\.git$//'
+}
+
 # prep_write <file> <command…>: run the command into $PREP_DIR/<file>, replacing it only on success,
 # so a failed source never leaves a partial file behind. Returns the command's status.
 prep_write() {

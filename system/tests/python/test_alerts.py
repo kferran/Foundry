@@ -18,8 +18,13 @@ def test_each_tag_has_the_owners_severity(tag, want):
     ("- 06:10:00 [triage] Inbox triage failed (exit 6): x", "brief"),
     ("- 06:10:00 [smoke] foundry-brief.timer stale: no run since 2026-10-14 06:00", "now"),
     ("- 06:10:00 [smoke] calendar: failed: auth: expired", "brief"),
+    ("- 06:10:00 [telemetry] prod-adx: a log line in raw/telemetry/prod-adx-a-0123456789ab.md holds a credential "
+     "shape: assignment", "now"),
+    ("- 06:10:00 [telemetry] prod-adx: and 2 more new groups hold a credential shape (see raw/telemetry/)", "now"),
+    ("- 06:10:00 [telemetry] prod-adx: run az login", "brief"),
+    ("- 06:10:00 [telemetry] prod-adx: 900 groups; only 500 kept", "brief"),
 ])
-def test_triage_and_smoke_decide_by_their_text(line, want):
+def test_triage_smoke_and_telemetry_decide_by_their_text(line, want):
     assert alerts.severity(line) == want
 
 
