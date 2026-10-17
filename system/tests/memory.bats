@@ -373,16 +373,18 @@ PY
 }
 
 # --- transcript keep (#166): PreCompact and SessionEnd copy the transcript outside the vault, never shrinking it ---
-keep_env() {  # a temporary HOME, so the default keep directory never touches the real one
+U1=11111111-2222-3333-4444-555555555555 U2=66666666-7777-8888-9999-000000000000
+keep_env() {  # a temporary HOME, so neither the transcript nor the default keep directory is the real one
   export HOME="$BATS_TEST_TMPDIR/home" XDG_STATE_HOME=""
-  mkdir -p "$HOME"
+  unset CLAUDE_CONFIG_DIR
   KD="$HOME/.local/state/foundry/transcripts"
-  T="$BATS_TEST_TMPDIR/host/$1.jsonl"
+  T="$HOME/.claude/projects/-some-project/$1.jsonl"
   mkdir -p "${T%/*}"
 }
-keep() { hook memory_keep.sh "$(jq -cn --arg s "$1" --arg t "$T" --arg e "${2:-SessionEnd}" '{session_id: $s, transcript_path: $t, hook_event_name: $e}')"; }
+keep() { hook memory_keep.sh "$(jq -cn --arg s "$1" --arg t "${3:-$T}" --arg e "${2:-SessionEnd}" '{session_id: $s, transcript_path: $t, hook_event_name: $e}')"; }
+keep_dir() { system/scripts/vault_index.py set system/config.md transcript_keep_dir "$1"; }
 
-@test "keep: a session in scope has its transcript copied to the default directory, readable only by the owner" {
+@test "keep: a session in scope has its transcript copied to a 700 directory with its marker, the copy 600" {
   keep_env kp-1
   start kp-1
   printf '{"n":1}\n' > "$T"
@@ -391,10 +393,12 @@ keep() { hook memory_keep.sh "$(jq -cn --arg s "$1" --arg t "$T" --arg e "${2:-S
   [ -z "$output" ]
   [ "$(cat "$KD/kp-1.jsonl")" = '{"n":1}' ]
   [ "$(stat -c %a "$KD/kp-1.jsonl")" = 600 ]
+  [ "$(stat -c %a "$KD")" = 700 ]
+  [ -f "$KD/.foundry-keep" ]
   printf '{"n":2}\n' >> "$T"
   keep kp-1
   [ "$(wc -l < "$KD/kp-1.jsonl")" -eq 2 ]
-  [ -z "$(find "$KD" -name '.*')" ]
+  [ -z "$(find "$KD" -name '.*' ! -name .foundry-keep)" ]
 }
 
 @test "keep: a larger copy is never replaced by a shorter transcript" {
@@ -408,62 +412,99 @@ keep() { hook memory_keep.sh "$(jq -cn --arg s "$1" --arg t "$T" --arg e "${2:-S
   [ "$(cat "$KD/kp-2.jsonl")" = $'a\nb\nc' ]
 }
 
-@test "keep: transcript_keep_dir moves the copies, and a directory inside the vault is refused" {
+@test "keep: a transcript outside the Claude projects folder is never copied" {
   keep_env kp-3
   start kp-3
-  printf 'x\n' > "$T"
-  system/scripts/vault_index.py set system/config.md transcript_keep_dir "$BATS_TEST_TMPDIR/kept"
-  keep kp-3
-  [ -f "$BATS_TEST_TMPDIR/kept/kp-3.jsonl" ]
-  system/scripts/vault_index.py set system/config.md transcript_keep_dir "$VP/raw/kept"
-  keep kp-3
+  printf 'secret\n' > "$BATS_TEST_TMPDIR/other.jsonl"
+  keep kp-3 SessionEnd "$BATS_TEST_TMPDIR/other.jsonl"
   [ "$status" -eq 0 ]
-  [ ! -e "$VP/raw/kept/kp-3.jsonl" ]
-  grep -qF 'inside the vault' system/logs/memory/hooks.log
+  [ ! -e "$KD/kp-3.jsonl" ]
+  ln -s "$BATS_TEST_TMPDIR/other.jsonl" "$T"
+  keep kp-3
+  [ ! -e "$KD/kp-3.jsonl" ]
 }
 
-@test "keep: out of scope, a missing transcript, bad input or a stdin that never closes all exit 0 and copy nothing" {
+@test "keep: transcript_keep_dir moves the copies; /, ~, ~/, the vault and a link into it are refused" {
   keep_env kp-4
-  printf 'x\n' > "$T"
-  keep kp-4
-  [ "$status" -eq 0 ]
-  [ ! -e "$KD/kp-4.jsonl" ]
   start kp-4
-  rm -f "$T"
+  printf 'x\n' > "$T"
+  keep_dir "$BATS_TEST_TMPDIR/kept"
   keep kp-4
+  [ -f "$BATS_TEST_TMPDIR/kept/kp-4.jsonl" ]
+  ln -s "$VP/raw" "$BATS_TEST_TMPDIR/link"
+  for d in / '~' '~/' "$HOME/" "$VP/raw/kept" "$BATS_TEST_TMPDIR/link/kept"; do
+    keep_dir "$d"
+    keep kp-4
+    [ "$status" -eq 0 ]
+  done
+  [ ! -e "$HOME/kp-4.jsonl" ]
+  [ ! -e "$VP/raw/kept" ]
+  [ ! -e /kp-4.jsonl ]
+  [ "$(grep -c 'keep: transcript_keep_dir .* is refused' system/logs/memory/hooks.log)" -eq 6 ]
+}
+
+@test "keep: a keep directory others can write to is refused" {
+  keep_env kp-5
+  start kp-5
+  printf 'x\n' > "$T"
+  mkdir -p "$KD"
+  chmod 770 "$KD"
+  keep kp-5
+  [ "$status" -eq 0 ]
+  [ ! -e "$KD/kp-5.jsonl" ]
+}
+
+@test "keep: out of scope, a missing transcript, bad input, a subagent or a stdin that never closes exit 0 and copy nothing" {
+  keep_env kp-6
+  printf 'x\n' > "$T"
+  keep kp-6
+  [ "$status" -eq 0 ]
+  [ ! -e "$KD/kp-6.jsonl" ]
+  start kp-6
+  printf 'subagent\n' > "$T"
+  hook memory_keep.sh "$(jq -cn --arg t "$T" '{session_id: "kp-6", agent_id: "a1", transcript_path: $t, hook_event_name: "PreCompact"}')"
+  [ "$status" -eq 0 ]
+  rm -f "$T"
+  keep kp-6
   [ "$status" -eq 0 ]
   hook memory_keep.sh 'not json'
-  [ "$status" -eq 0 ]
-  printf 'subagent\n' > "$T"
-  hook memory_keep.sh "$(jq -cn --arg t "$T" '{session_id: "kp-4", agent_id: "a1", transcript_path: $t, hook_event_name: "PreCompact"}')"
   [ "$status" -eq 0 ]
   mkfifo "$BATS_TEST_TMPDIR/stdin"  # held open for writing by the shell itself, so the hook never sees end of input
   run bash -c 'exec 3<>"$2"; "$1" < "$2"' _ "$H/memory_keep.sh" "$BATS_TEST_TMPDIR/stdin"
   [ "$status" -eq 0 ]
-  [ ! -e "$KD/kp-4.jsonl" ]
+  [ ! -e "$KD/kp-6.jsonl" ]
 }
 
-@test "keep: copies older than transcript_keep_days are pruned, only at the top of the directory; 0 keeps them all" {
-  keep_env kp-5
-  start kp-5
+@test "keep: only old session-id copies in a marked directory are pruned; 0 keeps them all" {
+  keep_env kp-7
+  start kp-7
   printf 'x\n' > "$T"
-  mkdir -p "$KD/sub" "$BATS_TEST_TMPDIR/elsewhere"
-  printf 'old\n' > "$KD/old-1.jsonl"
-  printf 'nested\n' > "$KD/sub/old-2.jsonl"
-  printf 'target\n' > "$BATS_TEST_TMPDIR/elsewhere/old-3.jsonl"
-  ln -s "$BATS_TEST_TMPDIR/elsewhere/old-3.jsonl" "$KD/link.jsonl"
-  touch -h -d '100 days ago' "$KD/old-1.jsonl" "$KD/sub/old-2.jsonl" "$BATS_TEST_TMPDIR/elsewhere/old-3.jsonl" "$KD/link.jsonl"
-  printf 'fresh\n' > "$KD/fresh.jsonl"
+  keep kp-7
+  [ -f "$KD/.foundry-keep" ]
+  mkdir -p "$KD/sub" "$BATS_TEST_TMPDIR/elsewhere" "$BATS_TEST_TMPDIR/unmarked"
+  for f in "$KD/$U1.jsonl" "$KD/notes.jsonl" "$KD/sub/$U2.jsonl" "$BATS_TEST_TMPDIR/elsewhere/$U2.jsonl" \
+      "$BATS_TEST_TMPDIR/unmarked/$U1.jsonl"; do
+    printf 'old\n' > "$f"
+  done
+  ln -s "$BATS_TEST_TMPDIR/elsewhere/$U2.jsonl" "$KD/$U2.jsonl"
+  touch -h -d '100 days ago' "$KD/$U1.jsonl" "$KD/notes.jsonl" "$KD/sub/$U2.jsonl" "$KD/$U2.jsonl" \
+    "$BATS_TEST_TMPDIR/elsewhere/$U2.jsonl" "$BATS_TEST_TMPDIR/unmarked/$U1.jsonl"
+  printf 'fresh\n' > "$KD/$U2-fresh.jsonl"
   system/scripts/vault_index.py set system/config.md transcript_keep_days 0
-  keep kp-5
-  [ -f "$KD/old-1.jsonl" ]
+  keep kp-7
+  [ -f "$KD/$U1.jsonl" ]
   system/scripts/vault_index.py set system/config.md transcript_keep_days 90
-  keep kp-5
+  keep kp-7
   [ "$status" -eq 0 ]
-  [ ! -e "$KD/old-1.jsonl" ]
-  [ -f "$KD/fresh.jsonl" ]
-  [ -f "$KD/kp-5.jsonl" ]
-  [ -f "$KD/sub/old-2.jsonl" ]
-  [ -L "$KD/link.jsonl" ]
-  [ -f "$BATS_TEST_TMPDIR/elsewhere/old-3.jsonl" ]
+  [ ! -e "$KD/$U1.jsonl" ]
+  [ -f "$KD/notes.jsonl" ]
+  [ -f "$KD/$U2-fresh.jsonl" ]
+  [ -f "$KD/kp-7.jsonl" ]
+  [ -f "$KD/sub/$U2.jsonl" ]
+  [ -L "$KD/$U2.jsonl" ]
+  [ -f "$BATS_TEST_TMPDIR/elsewhere/$U2.jsonl" ]
+  keep_dir "$BATS_TEST_TMPDIR/unmarked"
+  keep kp-7
+  [ -f "$BATS_TEST_TMPDIR/unmarked/kp-7.jsonl" ]
+  [ -f "$BATS_TEST_TMPDIR/unmarked/$U1.jsonl" ]
 }
