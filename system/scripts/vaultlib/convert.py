@@ -1,5 +1,4 @@
-"""Inbox document conversion (#166): xlsx, docx and pptx with the standard library, pdf with pdftotext, to text.
-Every refusal reason is fixed text: nothing from the document reaches an alert line."""
+"""Inbox drops to text (#166): OOXML with the standard library, pdf with pdftotext; refusal reasons are fixed text."""
 import posixpath
 import shutil
 import subprocess
@@ -11,13 +10,14 @@ import zlib
 SUFFIXES = (".xlsx", ".docx", ".pptx", ".pdf")
 MAX_ROWS = 1000  # rows shown per sheet; the rest are counted and named
 MAX_COLS = 16384  # column XFD, the last one Excel has
-# A tree costs ~37x its XML in RSS (20 MB of <a b="1"/> peaked at 745 MB); sheets and shared strings are streamed.
-MAX_PART = 5 * 2**20  # unpacked bytes of one part parsed as a tree
+MAX_PART = 5 * 2**20  # bytes of a part parsed as a tree, ~37x that in RSS (20 MB of <a b="1"/>: 745 MB)
 MAX_UNPACKED = 50 * 2**20  # unpacked bytes of every part read, a part read twice counted twice: bounds parse time
 MAX_OUT = 5 * 2**20  # characters of converted text (pdftotext: bytes); past it the drop is refused
+MAX_DEPTH = 32  # streamed XML nesting; real OOXML stays under 10
+MAX_HELD = 100_000  # elements inside one row or shared string; a full row of 16,384 cells is about 65k
+MAX_ENTRIES = 10_000  # zip entries, checked from the end record before zipfile parses the directory
 PDF_TIMEOUT = 120
-# ponytail: per-call module state, convert() is not reentrant; pass a budget object if it ever runs threaded
-_spent = _unpacked = 0
+_used = {"out": 0, "unpacked": 0}  # ponytail: per-call module state, convert() is not reentrant
 
 
 class ConversionError(Exception):
@@ -25,13 +25,20 @@ class ConversionError(Exception):
 
 
 def convert(path) -> str:
-    global _spent, _unpacked
-    _spent = _unpacked = 0
+    _used.update(out=0, unpacked=0)
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         return f"# {path.name}\n\n{_pdf(path)}\n"
+    with open(path, "rb") as fh:  # the end record, found as zipfile finds it, gives the directory's size
+        fh.seek(max(0, path.stat().st_size - 65557))
+        tail = fh.read()
+    at = tail.rfind(b"PK\x05\x06")
+    if at >= 0 and int.from_bytes(tail[at + 12:at + 16], "little") > MAX_ENTRIES * 300:  # bounds the parse
+        raise ConversionError(f"the zip has over {MAX_ENTRIES} entries")
     try:
         with zipfile.ZipFile(path) as z:
+            if len(z.infolist()) > MAX_ENTRIES:
+                raise ConversionError(f"the zip has over {MAX_ENTRIES} entries")
             body = {".xlsx": _xlsx, ".docx": _docx, ".pptx": _pptx}[suffix](z)
     except (zipfile.BadZipFile, ET.ParseError, RuntimeError, NotImplementedError, EOFError, zlib.error) as exc:
         # an encrypted Office file is an OLE container, not a zip, so it lands here too
@@ -40,9 +47,8 @@ def convert(path) -> str:
 
 
 def _spend(text: str) -> str:
-    global _spent
-    _spent += len(text)
-    if _spent > MAX_OUT:
+    _used["out"] += len(text)
+    if _used["out"] > MAX_OUT:
         raise ConversionError(f"text over the output limit of {MAX_OUT // 2**20} MB")
     return text
 
@@ -61,7 +67,6 @@ def _attr(el, name):
 
 
 def _info(z, name, optional=False, streamed=False):
-    global _unpacked
     try:
         info = z.getinfo(name)
     except KeyError:
@@ -70,8 +75,8 @@ def _info(z, name, optional=False, streamed=False):
         raise ConversionError("a part it names is missing")
     if not streamed and info.file_size > MAX_PART:
         raise ConversionError(f"a part unpacks to over {MAX_PART // 2**20} MB")
-    _unpacked += info.file_size  # zipfile stops at the declared size (a lie fails its CRC), so this bounds the reads
-    if _unpacked > MAX_UNPACKED:
+    _used["unpacked"] += info.file_size  # zipfile stops at the declared size (a lie fails its CRC): reads bounded
+    if _used["unpacked"] > MAX_UNPACKED:
         raise ConversionError(f"the parts unpack to over {MAX_UNPACKED // 2**20} MB in total")
     return info
 
@@ -81,13 +86,16 @@ def _stream(z, part, tag, optional=False):
     info = _info(z, part, optional, streamed=True)
     if info is None:
         return
-    parents, inside = [], 0  # inside: open `tag` elements, whose children must stay until it is handled
+    parents, inside, held = [], 0, 0  # an open `tag` element keeps its `held` children until it is handled
     with z.open(info) as fh:
         for event, el in ET.iterparse(fh, events=("start", "end")):
             hit = _local(el.tag) == tag
             if event == "start":
                 parents.append(el)
                 inside += hit
+                held += inside > 0
+                if len(parents) > MAX_DEPTH or held > MAX_HELD:
+                    raise ConversionError(f"XML over {MAX_DEPTH} deep or over {MAX_HELD} elements in one row or string")
                 continue
             parents.pop()
             if hit:
@@ -95,6 +103,7 @@ def _stream(z, part, tag, optional=False):
                 yield el
             if parents and (hit or not inside):
                 parents[-1].remove(el)  # its earlier siblings are gone already, so this is the only child
+            held *= inside > 0
 
 
 def _xml(z, name, optional=False):
@@ -104,14 +113,10 @@ def _xml(z, name, optional=False):
 
 def _rels(z, part) -> dict:
     """Relationship id -> (type, part path) for one part."""
-    folder, name = posixpath.split(part)
-    root = _xml(z, f"{folder}/_rels/{name}.rels", optional=True)
-    out = {}
-    for r in _all(root, "Relationship") if root is not None else []:
-        target = r.get("Target", "")
-        path = target.lstrip("/") if target.startswith("/") else posixpath.normpath(posixpath.join(folder, target))
-        out[r.get("Id")] = (r.get("Type", ""), path)
-    return out
+    base, name = posixpath.split(part)
+    root = _xml(z, f"{base}/_rels/{name}.rels", optional=True)
+    return {r.get("Id"): (r.get("Type", ""), posixpath.normpath(posixpath.join(base, r.get("Target", ""))).lstrip("/"))
+            for r in (_all(root, "Relationship") if root is not None else [])}  # an absolute Target wins the join
 
 
 def _targets(rels, els):
@@ -126,9 +131,7 @@ def _targets(rels, els):
 
 def _col(ref: str, default: int) -> int:
     letters = "".join(ch for ch in ref if ch.isalpha()).upper()
-    n = 0
-    for ch in letters[:4]:  # XFD is three letters; four is enough to be past the cap
-        n = n * 26 + ord(ch) - 64
+    n = sum((ord(ch) - 64) * 26**i for i, ch in enumerate(reversed(letters[:4])))  # four letters pass XFD already
     if n > MAX_COLS:
         raise ConversionError(f"a cell column is past {MAX_COLS}")
     return n - 1 if letters else default
@@ -204,12 +207,8 @@ def _runs(el, parts, inner) -> None:
             continue
         if tag == "p":
             inner += _paras([e])
-        elif tag == "t":
-            parts.append(e.text or "")
-        elif tag == "tab":
-            parts.append("\t")
-        elif tag in ("br", "cr"):
-            parts.append("\n")
+        elif tag in ("t", "tab", "br", "cr"):
+            parts.append(e.text or "" if tag == "t" else "\t" if tag == "tab" else "\n")
         elif tag in ("footnoteReference", "endnoteReference"):  # endnotes are [^eN], apart from footnote ids
             parts.append(f"[^{tag[0] if tag[0] == 'e' else ''}{_attr(e, 'id')}]")
         else:
@@ -233,13 +232,9 @@ def _docx(z) -> str:
 
 def _slide_text(root) -> str:
     """Text runs only: slide-number and date fields drop out."""
-    lines = []
-    for p in _all(root, "p"):
-        text = "".join("\n" if _local(e.tag) == "br" else "".join(t.text or "" for t in e if _local(t.tag) == "t")
-                       for e in p if _local(e.tag) in ("r", "br"))
-        if text.strip():
-            lines.append(_spend(text))
-    return "\n".join(lines)
+    texts = ("".join("\n" if _local(e.tag) == "br" else "".join(t.text or "" for t in e if _local(t.tag) == "t")
+                     for e in p if _local(e.tag) in ("r", "br")) for p in _all(root, "p"))
+    return "\n".join(_spend(t) for t in texts if t.strip())
 
 
 def _pptx(z) -> str:
@@ -261,20 +256,17 @@ def _pdf(path) -> str:
                             stderr=subprocess.DEVNULL)
     timer = threading.Timer(PDF_TIMEOUT, proc.kill)
     timer.start()
-    with proc:  # closes stdout and waits on the way out
-        data = proc.stdout.read(MAX_OUT + 1)  # bounded: the kill at the timeout ends a stalled read too
-        if len(data) > MAX_OUT:
-            proc.kill()
-    timer.cancel()
-    rc = proc.returncode
-    if len(data) > MAX_OUT:
-        raise ConversionError(f"text over the output limit of {MAX_OUT // 2**20} MB")
-    if rc:
-        raise ConversionError(f"pdftotext failed or ran past {PDF_TIMEOUT} s (exit {rc})" if rc < 0
-                              else f"pdftotext failed (exit {rc})")
-    pages = data.decode("utf-8", "replace").split("\f")
-    if pages and not pages[-1].strip():
-        pages.pop()  # pdftotext ends the last page with a form feed too
+    try:
+        with proc:  # closes stdout and waits on the way out
+            data = proc.stdout.read(MAX_OUT + 1)  # bounded: the kill at the timeout ends a stalled read too
+            if len(data) > MAX_OUT:
+                proc.kill()
+                raise ConversionError(f"text over the output limit of {MAX_OUT // 2**20} MB")
+    finally:
+        timer.cancel()
+    if proc.returncode:  # negative: killed, at the timeout
+        raise ConversionError(f"pdftotext failed (exit {proc.returncode})")
+    pages = data.decode("utf-8", "replace").removesuffix("\f").split("\f")  # the last page ends with one too
     if not any(p.strip() for p in pages):
         raise ConversionError("the pdf has no text layer (a scan needs OCR first)")
     return "\n\n".join(_spend(f"## Page {n}\n\n{p.rstrip()}") for n, p in enumerate(pages, 1))

@@ -459,6 +459,45 @@ def test_conversion_that_died_is_quarantined_on_the_next_tick(iv):
     assert list((iv / "raw/inbox/.staging").glob("*.converting")) == []
 
 
+def test_stop_mid_conversion_keeps_the_file_in_the_inbox(iv, monkeypatch):
+    import signal
+    from vaultlib import convert
+    seen = []
+    def absorb(*_):
+        seen.append("absorbed")  # without intake's trap the signal ends here and the conversion carries on
+    previous = signal.signal(signal.SIGTERM, absorb)
+    try:
+        def stopped(_):
+            os.kill(os.getpid(), signal.SIGTERM)  # systemctl stop, or a reboot, mid-conversion
+            time.sleep(0.5)
+            return "converted"
+        monkeypatch.setattr(convert, "convert", stopped)
+        write(iv, "raw/inbox/big.xlsx", "x")
+        with pytest.raises(SystemExit):
+            Intake(iv, now=later()).run()
+        assert seen == []
+        assert signal.getsignal(signal.SIGTERM) is absorb  # the handler intake replaced is back
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    assert (iv / "raw/inbox/big.xlsx").is_file()
+    assert not (iv / "system/quarantine/poisoned").exists()
+    assert list((iv / "raw/inbox/.staging").glob("*.converting")) == []
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file modes")
+def test_marker_write_failure_leaves_the_file_in_the_inbox(iv):
+    write(iv, "raw/inbox/doc.docx", "x")
+    staging = iv / "raw/inbox/.staging"
+    staging.mkdir(parents=True, exist_ok=True)
+    staging.chmod(0o555)  # a full or read-only disk: the marker cannot be written
+    try:
+        Intake(iv, now=later()).run()
+    finally:
+        staging.chmod(0o755)
+    assert (iv / "raw/inbox/doc.docx").is_file()
+    assert not (iv / "system/quarantine/poisoned").exists()
+
+
 def test_converter_crash_is_quarantined_and_intake_goes_on(iv, monkeypatch):
     from vaultlib import convert
 

@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -49,6 +50,10 @@ def _append_jsonl(path, record) -> None:
             if fh.read(1) != b"\n":
                 fh.write(b"\n")
         fh.write((json.dumps(record) + "\n").encode("utf-8"))
+
+
+def _stopped(signum, _frame):
+    raise SystemExit(128 + signum)  # SIGTERM's default action would skip the finally blocks
 
 
 def sha256_file(path) -> str:
@@ -368,12 +373,14 @@ class Intake:
         copy = staging / path.name
         if path.suffix.lower() in convertmod.SUFFIXES:  # a document goes to the same redaction as text (#166)
             # The marker outlives a tick killed mid-conversion (SIGKILL, OOM); the next tick quarantines the file
-            # instead of dying on it again, so it cannot hold up the drops behind it.
+            # instead of dying on it again. A failed write leaves the file in the inbox; a stop unwinds and keeps it.
             marker = staging / f"{sha}.converting"
+            stale = marker.exists()
+            marker.write_text(path.name, encoding="utf-8")
+            stop = signal.signal(signal.SIGTERM, _stopped)
             try:
-                if marker.exists():
+                if stale:
                     raise convertmod.ConversionError("conversion did not finish")
-                marker.write_text(path.name, encoding="utf-8")
                 source = convertmod.convert(path)
             except Exception as exc:  # a parser bug or a memory blow-up quarantines the file, never wedges intake
                 why = str(exc) if isinstance(exc, convertmod.ConversionError) else \
@@ -383,6 +390,7 @@ class Intake:
                 self.poison(path, f"raw/inbox/{path.name}", sha, reason=f"immediately, not converted ({why})")
                 return True
             finally:
+                signal.signal(signal.SIGTERM, stop)
                 marker.unlink(missing_ok=True)
             copy = staging / f"{path.name}.md"
         else:

@@ -136,6 +136,46 @@ def test_streamed_sheet_may_pass_the_tree_part_cap(tmp_path, monkeypatch):
     assert "Rows after 10 not shown: the sheet has 2000 rows." in out
 
 
+def test_deep_nesting_in_a_streamed_part_is_refused(tmp_path):
+    junk = "<a>" * 200 + "</a>" * 200  # outside any row: every open ancestor stays in memory
+    path = build(tmp_path / "deep.xlsx", {
+        "xl/workbook.xml": f'<workbook xmlns="{S}" xmlns:r="{R}"><sheets><sheet name="A" r:id="rId1"/></sheets></workbook>',
+        "xl/_rels/workbook.xml.rels": rels(("rId1", "worksheet", "worksheets/s.xml")),
+        "xl/worksheets/s.xml": f'<worksheet xmlns="{S}">{junk}<sheetData/></worksheet>'})
+    with pytest.raises(convert.ConversionError, match="deep"):
+        convert.convert(path)
+
+
+@pytest.mark.parametrize("where", ["row", "si"])
+def test_junk_held_inside_one_row_or_string_is_refused(tmp_path, monkeypatch, where):
+    monkeypatch.setattr(convert, "MAX_HELD", 1000)
+    junk = '<a b="1"/>' * 2000
+    if where == "row":
+        path = xlsx(tmp_path / "row.xlsx", {"S": f'<row r="1"><c r="A1"><v>1</v></c>{junk}</row>'})
+    else:
+        path = xlsx(tmp_path / "si.xlsx", {"S": ""}, shared=[f"x</t>{junk}<t>"])
+    with pytest.raises(convert.ConversionError, match="elements"):
+        convert.convert(path)
+
+
+def test_a_full_row_of_inline_strings_fits_the_caps(tmp_path):
+    cells = "".join(f'<c r="{c}1" t="inlineStr"><is><t>v</t></is></c>' for c in ("A",) * 16_383) + \
+        '<c r="XFD1" t="inlineStr"><is><t>last</t></is></c>'
+    out = convert.convert(xlsx(tmp_path / "wide.xlsx", {"S": row(1, cells)}))
+    assert "| last |\n" in out
+
+
+def test_zip_directory_is_capped_before_it_is_parsed(tmp_path, monkeypatch):
+    monkeypatch.setattr(convert, "MAX_ENTRIES", 5)
+    path = build(tmp_path / "many.docx", {f"word/x{i}.xml": "<x/>" for i in range(50)})
+
+    def never(*_a, **_k):
+        raise AssertionError("the central directory was parsed")
+    monkeypatch.setattr(convert.zipfile, "ZipFile", never)
+    with pytest.raises(convert.ConversionError, match="entries"):
+        convert.convert(path)
+
+
 def test_unpacked_total_is_capped_across_parts(tmp_path, monkeypatch):
     monkeypatch.setattr(convert, "MAX_UNPACKED", 50_000)
     notes = f'<p:notes xmlns:p="{P}"><p:cSld>' + "<p:x/>" * 1000 + "</p:cSld></p:notes>"  # ~6 KB, no text
