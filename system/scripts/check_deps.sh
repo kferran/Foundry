@@ -23,7 +23,7 @@ if [[ -z "$role" ]]; then
   role="${role:-standalone}"
 fi
 case "$role" in
-  standalone|server) REQUIRED=(claude git jq systemctl python3 flock timeout pyyaml fts5 systemd-analyze bwrap) ;;
+  standalone|server) REQUIRED=(claude git jq systemctl python3 flock timeout pyyaml fts5 systemd-analyze bwrap socat) ;;
   client) REQUIRED=(claude git jq python3 pyyaml fts5) ;;
   *) usage ;;
 esac
@@ -41,7 +41,7 @@ hint() {
     systemd-analyze) echo "systemd is required (unit verification)"; return ;;
     herdr) echo "optional session backend for sub-project 2; see FOUNDRY.md"; return ;;
     fts5) pkg_pacman="sqlite python" pkg_apt="libsqlite3-0 python3"; printf "python's sqlite3 lacks FTS5: " ;;
-    git|jq|tmux) pkg_pacman="$1" pkg_apt="$1" ;;
+    git|jq|tmux|socat) pkg_pacman="$1" pkg_apt="$1" ;;
     bats) pkg_pacman=bash-bats pkg_apt=bats ;;
     pdftotext) pkg_pacman=poppler pkg_apt=poppler-utils ;;
     bwrap) pkg_pacman=bubblewrap pkg_apt=bubblewrap ;;
