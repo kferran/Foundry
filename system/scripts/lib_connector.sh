@@ -22,12 +22,13 @@ connector_run() {
     CONNECTOR_REASON="claude not found ($claude_bin)"
     return 127
   fi
-  if [[ -z "${CONFINE_SETTINGS:-}" ]] && ! confine_settings "$CONNECTOR_SERVER" "$work"; then
+  for t in "${CONNECTOR_OTHERS[@]}"; do others+=("${CONNECTOR_PREFIX}__$t"); done
+  # The allow rules first: a refused rule stops before the up-to-30 s server listing.
+  if ! confine_deny --strict "$CONNECTOR_PREFIX" "$CONNECTOR_TOOL" "${others[@]}"; then
     CONNECTOR_REASON="$CONFINE_ERROR"
     return 1
   fi
-  for t in "${CONNECTOR_OTHERS[@]}"; do others+=("${CONNECTOR_PREFIX}__$t"); done
-  if ! confine_deny --strict "$CONNECTOR_PREFIX" "$CONNECTOR_TOOL" "${others[@]}"; then
+  if [[ -z "${CONFINE_SETTINGS:-}" ]] && ! confine_settings "$CONNECTOR_SERVER" "$work"; then
     CONNECTOR_REASON="$CONFINE_ERROR"
     return 1
   fi

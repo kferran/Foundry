@@ -92,6 +92,15 @@ jira_errs() {
   [ ! -e "system/logs/rca/work-$STEM.attempt" ]
 }
 
+@test "a ticket the checker confirms is written back even when claude exits non-zero (#122)" {
+  jira_says "$C" "$ARGS"
+  STUB_RC=1 run "$RF" work "$STEM"
+  [ "$status" -eq 0 ]
+  [ "$output" = "EX-7" ]
+  grep -qx 'ticket: "EX-7"' "wiki/work/rca/$STEM.md"
+  [ ! -e "system/logs/rca/work-$STEM.attempt" ]
+}
+
 @test "the session is checked against the arguments sent, so a note edited during it still files (#106)" {
   printf '#!/bin/bash\n[[ "$1" == mcp ]] || sed -i "s/^\\*\\*Summary:\\*\\* Orders fail$/**Summary:** Orders fail, edited/" "%s"\nexec "%s" "$@"\n' \
     "$V/wiki/work/rca/$STEM.md" "$REPO/system/tests/stub_claude_calendar" > "$BATS_TEST_TMPDIR/claude"
