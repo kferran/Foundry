@@ -11,8 +11,7 @@ import zlib
 SUFFIXES = (".xlsx", ".docx", ".pptx", ".pdf")
 MAX_ROWS = 1000  # rows shown per sheet; the rest are counted and named
 MAX_COLS = 16384  # column XFD, the last one Excel has
-# Memory: ElementTree holds about 37 bytes of RSS per byte of the densest XML (20 MB of <a b="1"/> peaked at 745 MB),
-# so a part parsed as a tree stays small; sheets and shared strings are streamed and only count toward the total.
+# A tree costs ~37x its XML in RSS (20 MB of <a b="1"/> peaked at 745 MB); sheets and shared strings are streamed.
 MAX_PART = 5 * 2**20  # unpacked bytes of one part parsed as a tree
 MAX_UNPACKED = 50 * 2**20  # unpacked bytes of every part read, a part read twice counted twice: bounds parse time
 MAX_OUT = 5 * 2**20  # characters of converted text (pdftotext: bytes); past it the drop is refused
@@ -117,18 +116,14 @@ def _rels(z, part) -> dict:
 
 def _targets(rels, els):
     """The part each sheet or slide entry links, each part once (a repeated part would multiply the output)."""
-    parts = []
-    for el in els:
-        hit = rels.get(_attr(el, "id"))
-        if hit is None:
-            raise ConversionError("a sheet or slide has no link")
-        if hit[1] in parts:
-            raise ConversionError("two sheets or slides name one part")
-        parts.append(hit[1])
+    parts = [rels.get(_attr(el, "id"), ("", None))[1] for el in els]
+    if None in parts:
+        raise ConversionError("a sheet or slide has no link")
+    if len(set(parts)) < len(parts):
+        raise ConversionError("two sheets or slides name one part")
     return parts
 
 
-# -- xlsx ---------------------------------------------------------------------
 def _col(ref: str, default: int) -> int:
     letters = "".join(ch for ch in ref if ch.isalpha()).upper()
     n = 0
@@ -189,7 +184,6 @@ def _xlsx(z) -> str:
                        for sheet, part in zip(sheets, parts))
 
 
-# -- docx ---------------------------------------------------------------------
 def _paras(children) -> list:
     """Paragraph texts in document order, each once: a text box's paragraphs follow the paragraph that holds it."""
     out = []
@@ -216,37 +210,27 @@ def _runs(el, parts, inner) -> None:
             parts.append("\t")
         elif tag in ("br", "cr"):
             parts.append("\n")
-        elif tag == "footnoteReference":
-            parts.append(f"[^{_attr(e, 'id')}]")
-        elif tag == "endnoteReference":
-            parts.append(f"[^e{_attr(e, 'id')}]")
+        elif tag in ("footnoteReference", "endnoteReference"):  # endnotes are [^eN], apart from footnote ids
+            parts.append(f"[^{tag[0] if tag[0] == 'e' else ''}{_attr(e, 'id')}]")
         else:
             _runs(e, parts, inner)
 
 
-def _notes(z, part, tag, mark, heading) -> str:
+def _notes(z, part, tag, heading, prefix) -> str:
     root = _xml(z, part, optional=True)
-    if root is None:
-        return ""
-    lines = [_spend(f"[^{mark}{_attr(n, 'id')}]: ") + " ".join(_paras(n)).strip()
-             for n in _all(root, tag) if not _attr(n, "type")]  # typed notes are Word's separators
+    lines = [] if root is None else [_spend(prefix(n)) + " ".join(_paras(n)).strip()
+                                     for n in _all(root, tag) if not _attr(n, "type")]  # typed: Word's separators
     return f"## {heading}\n\n" + "\n".join(lines) if lines else ""
 
 
 def _docx(z) -> str:
     out = ["\n\n".join(t for t in _paras(_xml(z, "word/document.xml")) if t.strip()),
-           _notes(z, "word/footnotes.xml", "footnote", "", "Footnotes"),
-           _notes(z, "word/endnotes.xml", "endnote", "e", "Endnotes")]
-    comments = _xml(z, "word/comments.xml", optional=True)
-    if comments is not None:
-        lines = [_spend(f"- {_attr(c, 'author') or 'unknown'}: ") + " ".join(_paras(c)).strip()
-                 for c in _all(comments, "comment")]
-        if lines:
-            out.append("## Comments\n\n" + "\n".join(lines))
+           _notes(z, "word/footnotes.xml", "footnote", "Footnotes", lambda n: f"[^{_attr(n, 'id')}]: "),
+           _notes(z, "word/endnotes.xml", "endnote", "Endnotes", lambda n: f"[^e{_attr(n, 'id')}]: "),
+           _notes(z, "word/comments.xml", "comment", "Comments", lambda n: f"- {_attr(n, 'author') or 'unknown'}: ")]
     return "\n\n".join(t for t in out if t)
 
 
-# -- pptx ---------------------------------------------------------------------
 def _slide_text(root) -> str:
     """Text runs only: slide-number and date fields drop out."""
     lines = []
@@ -265,13 +249,10 @@ def _pptx(z) -> str:
         block = _spend(f"## Slide {n}\n\n") + _slide_text(_xml(z, part))
         notes = next((p for kind, p in _rels(z, part).values() if kind.endswith("/notesSlide")), None)
         text = _slide_text(_xml(z, notes)) if notes else ""
-        if text:
-            block += f"\n\n### Speaker notes\n\n{text}"
-        blocks.append(block)
+        blocks.append(block + (f"\n\n### Speaker notes\n\n{text}" if text else ""))
     return "\n\n".join(blocks)
 
 
-# -- pdf ----------------------------------------------------------------------
 def _pdf(path) -> str:
     exe = shutil.which("pdftotext")
     if exe is None:
@@ -280,17 +261,12 @@ def _pdf(path) -> str:
                             stderr=subprocess.DEVNULL)
     timer = threading.Timer(PDF_TIMEOUT, proc.kill)
     timer.start()
-    try:
+    with proc:  # closes stdout and waits on the way out
         data = proc.stdout.read(MAX_OUT + 1)  # bounded: the kill at the timeout ends a stalled read too
         if len(data) > MAX_OUT:
             proc.kill()
-        rc = proc.wait()
-    finally:
-        timer.cancel()
-        proc.stdout.close()
-        if proc.poll() is None:
-            proc.kill()
-            proc.wait()
+    timer.cancel()
+    rc = proc.returncode
     if len(data) > MAX_OUT:
         raise ConversionError(f"text over the output limit of {MAX_OUT // 2**20} MB")
     if rc:
