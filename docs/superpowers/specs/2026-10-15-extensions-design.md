@@ -49,7 +49,7 @@ Owner-specific names in core include `dtcc.com`, `atlassian.net` and `sentry.io`
    - no DTCC, Sentry, ADX, Kusto, Azure, Jira or Atlassian name or domain is left in core, enforced by the core-clean test;
    - there are 14 schemas or fewer (`dtcc_change`, `production_error`, `telemetry_source`, `rca` and `plan_gate` leave);
    - the gate is green with no extensions and with every extension on.
-   - The core line budget is set at 12,500 lines (12,270 measured on 2026-10-16, after the three moves), pinned with the 14-schema cap by a vault_integrity test. The 8,800-line target assumed all seven moves. Raised to 12,750 by #222 (parallel Work Orders and chat triage brought core to 12,606), and to 12,800 by #254 (skipping non-UTF-8 file names in the index). Raised to 13,200 for the 2026-10-17 #166 and #122 builds (#257: inbox document conversion).
+   - The core line budget is set at 12,500 lines (12,270 measured on 2026-10-16, after the three moves), pinned with the 14-schema cap by a vault_integrity test. The 8,800-line target assumed all seven moves. Raised to 12,750 by #222 (parallel Work Orders and chat triage brought core to 12,606), and to 12,800 by #254 (skipping non-UTF-8 file names in the index). Raised to 13,200 for the 2026-10-17 #166 and #122 builds (#257: inbox document conversion), and to 13,250 by #259 (the write-cap ratchet).
 3. **Home (changed 2026-10-16, §8): tracked folders `extensions/<name>/` in the template.**
    - The template ships every extension, each off until it is listed in `extensions:`.
    - The template update brings them with the normal merge. There is no clone, no pin and no `extensions_remote`.
