@@ -14,6 +14,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-17
+- The pre-commit hook refuses a `CLAUDE.md` over 16 KB or a `wiki/Index.md` over 8 KB when the commit makes it larger; shrinking always passes. (#259)
 - With the memory hooks installed, each session's transcript is copied outside the vault when the context is compacted and when the session ends (`transcript_keep_dir`, default `~/.local/state/foundry/transcripts`), so a digest the Stop hook missed can be recovered; a copy never shrinks, and copies older than `transcript_keep_days` (default 90) are deleted. (#262)
   - Action: run `system/scripts/install_hooks.sh --dry-run`, then `system/scripts/install_hooks.sh` (or re-run `/setup`'s memory step) to add the two new hook entries.
 - A telemetry source can set `secrets_scan: "true"` (off by default) to raise one alert per new error group whose log line holds a credential shape, sent to Slack at once, naming the group's note and the shape, never the value; at most three a run per source, then one line counting the rest. (#261)
