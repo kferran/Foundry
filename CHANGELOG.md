@@ -14,6 +14,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-16
+- Dropping an RCA draft's Now line after its Jira ticket was already created now records that ticket on the note instead of marking the draft rejected. (#245)
 - Inbox triage can also watch the Slack channels you are in: with `triage_chat_enabled: true`, messages that ask you something or report a production problem become `owed` Now lines with their Slack link. (#244)
 - Up to three Work Orders run at the same time: a long research order no longer holds up the next one, and two plans on the same codebase and branch still take turns. (#241)
 - A Work Order whose start was cut short by a restart or shutdown runs on the next tick instead of waiting forever. (#248)

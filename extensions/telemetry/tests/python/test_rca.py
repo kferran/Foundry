@@ -42,6 +42,15 @@ def test_pending_finds_ticked_and_dropped_drafts_only(vault):
     assert rca.pending(vault) == [("file", "work", "a-ticked"), ("reject", "work", "b-dropped")]
 
 
+def test_a_dropped_draft_whose_key_is_saved_is_written_back_not_rejected(vault):
+    # #106: a ticket already exists in Jira, so the drop files (rca_file.sh only writes the saved key back)
+    prepare(vault)
+    note(vault, "a-dropped")
+    line(vault, "a-dropped", "-")
+    write(vault, "system/logs/rca/work-a-dropped.key", "EX-5\n")
+    assert rca.pending(vault) == [("file", "work", "a-dropped")]
+
+
 def test_an_approved_draft_stays_pending_after_its_now_line_is_pruned(vault):
     prepare(vault)
     path = note(vault, "a-approved")

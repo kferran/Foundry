@@ -42,7 +42,7 @@ def _status(path: Path):
 def pending(vault) -> list:
     """(action, partition, stem) for each Now line with rca:<stem> evidence that you ticked (file) or dropped (reject)
     while its note is a draft without a ticket, then each note already approved without a ticket (its Now line may be
-    pruned by now)."""
+    pruned by now). A dropped line whose ticket was already created (a saved .key) files instead of rejecting."""
     out = []
     for partition in nowmod.PARTITIONS:
         for line in nowmod.read(vault, partition).split("\n"):
@@ -53,7 +53,9 @@ def pending(vault) -> list:
             stem = ev[4:]
             path = note_path(vault, partition, stem)
             if STEM.match(stem) and path.is_file() and _status(path) == "draft":
-                out.append(("reject" if m.group("mark") == "-" else "file", partition, stem))
+                # A saved key means the ticket exists: a drop still files, which only writes the key back (#106).
+                saved = (Path(vault) / "system" / "logs" / "rca" / f"{partition}-{stem}.key").is_file()
+                out.append(("reject" if m.group("mark") == "-" and not saved else "file", partition, stem))
         for path in sorted((Path(vault) / "wiki" / partition / "rca").glob("*.md")):
             if STEM.match(path.stem) and _status(path) == "approved":
                 out.append(("file", partition, path.stem))
