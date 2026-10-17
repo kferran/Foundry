@@ -160,7 +160,7 @@ def staged_paths(vault: Path) -> set:
 def staged_blobs(vault: Path, paths) -> dict:
     """The index content of each staged note that the index would lint: what the commit records (#166)."""
     return {p: _git(vault, "cat-file", "blob", f":{p}", what=f"git cat-file :{p}").stdout
-            for p in paths if p.endswith(".md") and not p.startswith(NOT_INDEXED)}
+            for p in paths if p.endswith(".md") and not p.startswith(NOT_INDEXED) and not PRIVATE.match(p)}
 
 
 def cmd_issues(args, vault, sc):
