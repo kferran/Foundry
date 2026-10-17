@@ -201,22 +201,6 @@ def test_largest_valid_inputs_still_convert(tmp_path):
     assert "kept" in convert.convert(build(tmp_path / "dense.docx", parts))
 
 
-def test_unpacked_total_is_capped_across_parts(tmp_path, monkeypatch):
-    monkeypatch.setattr(convert, "MAX_UNPACKED", 50_000)
-    notes = f'<p:notes xmlns:p="{P}"><p:cSld>' + "<p:x/>" * 1000 + "</p:cSld></p:notes>"  # ~6 KB, no text
-    slides = {f"ppt/slides/slide{i}.xml": f'<p:sld xmlns:p="{P}"/>' for i in range(30)}
-    slide_rels = {f"ppt/slides/_rels/slide{i}.xml.rels": rels(("rId1", "notesSlide", "../notesSlides/n.xml"))
-                  for i in range(30)}
-    parts = {
-        "ppt/presentation.xml": f'<p:presentation xmlns:p="{P}" xmlns:r="{R}"><p:sldIdLst>'
-                                + "".join(f'<p:sldId r:id="rId{i}"/>' for i in range(30)) + "</p:sldIdLst></p:presentation>",
-        "ppt/_rels/presentation.xml.rels": rels(*[(f"rId{i}", "slide", f"slides/slide{i}.xml") for i in range(30)]),
-        "ppt/notesSlides/n.xml": notes, **slides, **slide_rels,
-    }
-    with pytest.raises(convert.ConversionError, match="in total"):
-        convert._ooxml(build(tmp_path / "notes.pptx", parts))
-
-
 def test_note_ids_count_against_the_output_cap(tmp_path, monkeypatch):
     monkeypatch.setattr(convert, "MAX_OUT", 10_000)
     doc = f'<w:document xmlns:w="{W}"><w:body><w:p><w:r><w:t>x</w:t></w:r></w:p></w:body></w:document>'

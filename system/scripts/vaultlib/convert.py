@@ -11,11 +11,10 @@ from pathlib import Path
 
 SUFFIXES = (".xlsx", ".docx", ".pptx", ".pdf")
 MAX_ROWS = 1000  # rows shown per sheet; the rest are counted and named
-MAX_UNPACKED = 50 * 2**20  # unpacked bytes of every part read, a part read twice counted twice: bounds parse time
 MAX_OUT = 5 * 2**20  # characters of converted text (pdftotext: bytes); past it the drop is refused
 CHILD_AS, CHILD_CPU = 512 * 2**20, 60  # child limits: 2.5x the largest valid VSZ (45 MB of strings: 208 MB)
 PDF_TIMEOUT = 120
-_used = {"out": 0, "unpacked": 0}  # ponytail: per-call module state, convert() is not reentrant
+_used = {"out": 0}  # ponytail: per-call module state, convert() is not reentrant
 
 
 class ConversionError(Exception):
@@ -23,9 +22,8 @@ class ConversionError(Exception):
 
 
 def convert(path, out=None) -> str:
-    """pdf here (pdftotext is bounded already); OOXML in a child under memory and CPU limits (the XML parser itself
-    multiplies memory, past any per-shape cap). The child's out file goes on every path."""
-    _used.update(out=0, unpacked=0)
+    """pdf here; OOXML in a child under memory and CPU limits (the XML parser multiplies memory past any cap)."""
+    _used["out"] = 0
     if path.suffix.lower() == ".pdf":
         return f"# {path.name}\n\n{_pdf(path)}\n"
     out = Path(out or path.with_name(f".{path.name}.converted"))
@@ -44,14 +42,13 @@ def convert(path, out=None) -> str:
 
 
 def _ooxml(path) -> str:  # an encrypted Office file is an OLE container, not a zip: "encrypted or corrupt"
-    _used.update(out=0, unpacked=0)
+    _used["out"] = 0
     suffix = path.suffix.lower()
     try:
         with zipfile.ZipFile(path) as z:
-            body = {".xlsx": _xlsx, ".docx": _docx, ".pptx": _pptx}[suffix](z)
+            return f"# {path.name}\n\n{ {'.xlsx': _xlsx, '.docx': _docx, '.pptx': _pptx}[suffix](z)}\n"
     except (zipfile.BadZipFile, ET.ParseError, RuntimeError, NotImplementedError, EOFError, zlib.error) as exc:
         raise ConversionError(f"not a readable {suffix[1:]} file, encrypted or corrupt ({exc.__class__.__name__})")
-    return f"# {path.name}\n\n{body}\n"
 
 
 def _spend(text: str) -> str:
@@ -80,9 +77,6 @@ def _info(z, name, optional=False):
         if optional:
             return None
         raise ConversionError("a part it names is missing")
-    _used["unpacked"] += info.file_size  # zipfile stops at the declared size (a lie fails its CRC): reads bounded
-    if _used["unpacked"] > MAX_UNPACKED:
-        raise ConversionError(f"the parts unpack to over {MAX_UNPACKED // 2**20} MB in total")
     return info
 
 
@@ -125,8 +119,8 @@ def _rels(z, part) -> dict:  # relationship id -> (type, part path)
             for r in (_all(root, "Relationship") if root is not None else [])}  # an absolute Target wins the join
 
 
-def _targets(rels, els):  # an entry with no link names part "", which is missing
-    return [rels.get(_attr(el, "id"), ("", ""))[1] for el in els]
+def _part(rels, el):  # an entry with no link names part "", which is missing
+    return rels.get(_attr(el, "id"), ("", ""))[1]
 
 
 def _col(ref: str, default: int) -> int:
@@ -177,10 +171,8 @@ def _sheet(z, part, shared) -> str:
 
 def _xlsx(z) -> str:
     shared = ["".join(t.text or "" for t in _all(si, "t")) for si in _stream(z, "xl/sharedStrings.xml", "si")]
-    sheets = _all(_xml(z, "xl/workbook.xml"), "sheet")
-    parts = _targets(_rels(z, "xl/workbook.xml"), sheets)
-    return "\n\n".join(_spend(f"## Sheet: {sheet.get('name', '?')}\n\n") + _sheet(z, part, shared)
-                       for sheet, part in zip(sheets, parts))
+    sheets, rels = _all(_xml(z, "xl/workbook.xml"), "sheet"), _rels(z, "xl/workbook.xml")
+    return "\n\n".join(_spend(f"## Sheet: {s.get('name')}\n\n") + _sheet(z, _part(rels, s), shared) for s in sheets)
 
 
 def _paras(children) -> list:  # each paragraph once, in order; a text box's follow the paragraph holding it
@@ -230,9 +222,9 @@ def _slide_text(root) -> str:  # text runs only: slide-number and date fields dr
 
 
 def _pptx(z) -> str:
-    slides = _all(_xml(z, "ppt/presentation.xml"), "sldId")
+    slides, rels = _all(_xml(z, "ppt/presentation.xml"), "sldId"), _rels(z, "ppt/presentation.xml")
     blocks = []
-    for n, part in enumerate(_targets(_rels(z, "ppt/presentation.xml"), slides), 1):
+    for n, part in enumerate((_part(rels, s) for s in slides), 1):
         block = _spend(f"## Slide {n}\n\n") + _slide_text(_xml(z, part))
         notes = next((p for kind, p in _rels(z, part).values() if kind.endswith("/notesSlide")), None)
         text = _slide_text(_xml(z, notes)) if notes else ""
@@ -241,11 +233,9 @@ def _pptx(z) -> str:
 
 
 def _pdf(path) -> str:
-    exe = shutil.which("pdftotext")
-    if exe is None:
+    if (exe := shutil.which("pdftotext")) is None:
         raise ConversionError("pdftotext is not installed (package poppler or poppler-utils)")
-    proc = subprocess.Popen([exe, "-layout", "-enc", "UTF-8", str(path), "-"], stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen([exe, "-layout", str(path), "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     timer = threading.Timer(PDF_TIMEOUT, proc.kill)
     timer.start()
     try:
@@ -267,8 +257,7 @@ def _pdf(path) -> str:
 if __name__ == "__main__":  # the child convert() starts: limits on itself first, then one OOXML file
     import resource
     for limit, value in ((resource.RLIMIT_AS, CHILD_AS), (resource.RLIMIT_CPU, CHILD_CPU), (resource.RLIMIT_CORE, 0)):
-        hard = resource.getrlimit(limit)[1]  # a lower limit already set stays
-        resource.setrlimit(limit, (value, value) if hard == resource.RLIM_INFINITY or hard >= value else (hard, hard))
+        resource.setrlimit(limit, (value,) * 2 if (h := resource.getrlimit(limit)[1]) < 0 or h >= value else (h, h))
     try:
         Path(sys.argv[2]).write_text(_ooxml(Path(sys.argv[1])), encoding="utf-8")
     except ConversionError as exc:

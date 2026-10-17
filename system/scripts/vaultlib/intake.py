@@ -368,9 +368,8 @@ class Intake:
         staging.mkdir(parents=True, exist_ok=True)
         copy = staging / path.name
         if path.suffix.lower() in convertmod.SUFFIXES:  # a document goes to the same redaction as text (#166)
-            # The marker outlives a tick killed mid-conversion (SIGKILL, OOM); the next tick quarantines the file
-            # instead of dying on it again. A failed write leaves the file in the inbox; a stop (SIGTERM, raised as
-            # KeyboardInterrupt, which no `except Exception` takes) unwinds through the finally and keeps it.
+            # A tick killed mid-conversion leaves the marker: the next one quarantines the file. A failed write, or a
+            # stop (SIGTERM as KeyboardInterrupt, past every `except Exception`), leaves the file in the inbox.
             marker = staging / f"{sha}.converting"
             stale = marker.exists()
             marker.write_text(path.name, encoding="utf-8")
