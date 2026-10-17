@@ -16,7 +16,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends bats jq sqlite3 parallel shellcheck bubblewrap \
-            python3-yaml python3-pytest python3-pytest-xdist
+            python3-yaml python3-pytest python3-pytest-xdist poppler-utils
       # bwrap needs unprivileged user namespaces, which the runner's AppArmor policy restricts by default.
       - name: Allow unprivileged user namespaces for bwrap
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
@@ -66,7 +66,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends bats jq sqlite3 parallel shellcheck bubblewrap \
-            python3-yaml python3-pytest python3-pytest-xdist
+            python3-yaml python3-pytest python3-pytest-xdist poppler-utils
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           git config --global user.name "Foundry CI"
           git config --global user.email "ci@example.invalid"

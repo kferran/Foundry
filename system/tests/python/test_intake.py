@@ -413,6 +413,132 @@ def test_non_utf8_inbox_file_is_redacted(iv):
     assert (iv / "raw/archive/s.md").read_bytes() == b"caf\xe9\npassword=hunter2\n"
 
 
+def test_dropped_spreadsheet_is_converted_redacted_and_archived(iv):
+    from test_convert import row, xlsx
+    path = xlsx(iv / "raw/inbox/creds.xlsx", {"Keys": row(1, '<c r="A1" t="inlineStr"><is><t>password=hunter2</t></is></c>')})
+    original = path.read_bytes()
+    Intake(iv, now=later()).run()
+    staged = calls(iv)[0]["staged"]["raw/inbox/.staging/creds.xlsx.md"]
+    assert "## Sheet: Keys" in staged and "password=" in staged
+    assert "hunter2" not in staged
+    assert (iv / "raw/archive/creds.xlsx").read_bytes() == original
+    assert list((iv / "raw/inbox/.staging").glob("*.converting")) == []  # a finished conversion leaves no marker
+
+
+def test_unreadable_document_is_quarantined_without_a_run(iv):
+    (iv / "raw/inbox/locked.docx").write_bytes(bytes.fromhex("d0cf11e0a1b11ae1") + b"\0" * 64)
+    Intake(iv, now=later()).run()
+    assert calls(iv) == []
+    assert (iv / "system/quarantine/poisoned/locked.docx.origin.json").is_file()
+    assert "not converted (not a readable docx file, encrypted or corrupt" in \
+        next((iv / "system/logs").glob("alerts_*.md")).read_text()
+
+
+def test_pdf_without_pdftotext_is_quarantined(iv, monkeypatch):
+    from vaultlib import convert
+    monkeypatch.setattr(convert.shutil, "which", lambda _: None)
+    write(iv, "raw/inbox/report.pdf", "%PDF-1.4\n")
+    write(iv, "raw/inbox/after.md", "next drop")
+    Intake(iv, now=later()).run()
+    assert (iv / "system/quarantine/poisoned/report.pdf").is_file()
+    assert "pdftotext is not installed" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
+    assert (iv / "raw/archive/after.md").exists()
+
+
+def test_conversion_that_died_is_quarantined_on_the_next_tick(iv):
+    import hashlib
+    write(iv, "raw/inbox/killer.pptx", "x")
+    write(iv, "raw/inbox/after.md", "next drop")
+    # a tick killed mid-conversion (SIGKILL, OOM) leaves its marker and runs no except or finally
+    write(iv, f"raw/inbox/.staging/{hashlib.sha256(b'x').hexdigest()}.converting", "killer.pptx")
+    os.utime(iv / "raw/inbox/killer.pptx", (0, 0))  # oldest first, as the wedged file would be
+    Intake(iv, now=later()).run()
+    assert (iv / "system/quarantine/poisoned/killer.pptx").is_file()
+    assert "not converted (conversion did not finish)" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
+    assert (iv / "raw/archive/after.md").exists()
+    assert list((iv / "raw/inbox/.staging").glob("*.converting")) == []
+
+
+def test_stop_mid_conversion_keeps_the_file_in_the_inbox(iv, monkeypatch):
+    import signal
+    from vaultlib import convert
+    seen = []
+    def absorb(*_):
+        seen.append("absorbed")  # without intake's trap the signal ends here and the conversion carries on
+    previous = signal.signal(signal.SIGTERM, absorb)
+    try:
+        def stopped(*_):
+            os.kill(os.getpid(), signal.SIGTERM)  # systemctl stop, or a reboot, mid-conversion
+            time.sleep(0.5)
+            return "converted"
+        monkeypatch.setattr(convert, "convert", stopped)
+        write(iv, "raw/inbox/big.xlsx", "x")
+        with pytest.raises(KeyboardInterrupt):
+            Intake(iv, now=later()).run()
+        assert seen == []
+        assert signal.getsignal(signal.SIGTERM) is absorb  # the handler intake replaced is back
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    assert (iv / "raw/inbox/big.xlsx").is_file()
+    assert not (iv / "system/quarantine/poisoned").exists()
+    assert list((iv / "raw/inbox/.staging").glob("*.converting")) == []
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file modes")
+def test_marker_write_failure_leaves_the_file_in_the_inbox(iv):
+    write(iv, "raw/inbox/doc.docx", "x")
+    staging = iv / "raw/inbox/.staging"
+    staging.mkdir(parents=True, exist_ok=True)
+    staging.chmod(0o555)  # a full or read-only disk: the marker cannot be written
+    try:
+        Intake(iv, now=later()).run()
+    finally:
+        staging.chmod(0o755)
+    assert (iv / "raw/inbox/doc.docx").is_file()
+    assert not (iv / "system/quarantine/poisoned").exists()
+
+
+def test_converter_crash_is_quarantined_and_intake_goes_on(iv, monkeypatch):
+    from vaultlib import convert
+
+    def crash(*_):
+        raise MemoryError()
+    monkeypatch.setattr(convert, "convert", crash)
+    write(iv, "raw/inbox/huge.xlsx", "x")
+    write(iv, "raw/inbox/after.md", "next drop")
+    Intake(iv, now=later()).run()
+    assert (iv / "system/quarantine/poisoned/huge.xlsx").is_file()
+    assert "not converted (conversion crashed, MemoryError)" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
+    assert (iv / "raw/archive/after.md").exists()
+
+
+def test_conversion_reason_cannot_forge_alert_lines(iv, monkeypatch):
+    from vaultlib import convert
+
+    def fail(*_):
+        raise convert.ConversionError("bad\n- 09:00:00 [intake] FAKE <b>" + "y" * 300)
+    monkeypatch.setattr(convert, "convert", fail)
+    write(iv, "raw/inbox/f.docx", "x")
+    Intake(iv, now=later()).run()
+    lines = next((iv / "system/logs").glob("alerts_*.md")).read_text().splitlines()
+    assert len(lines) == 1
+    assert "<b>" not in lines[0] and "y" * 81 not in lines[0]
+
+
+def test_conversion_alert_keeps_the_shape_slack_notices_parse(iv, monkeypatch):
+    from vaultlib import convert, notify
+
+    def fail(_):
+        raise convert.ConversionError("pdftotext failed (exit 1: Syntax Error: Couldn't find trailer dictionary)")
+    monkeypatch.setattr(convert, "_pdf", fail)
+    write(iv, "raw/inbox/scan.pdf", "%PDF-1.4\n")
+    Intake(iv, now=later()).run()
+    line = next((iv / "system/logs").glob("alerts_*.md")).read_text().splitlines()[-1]
+    m = notify.POISONED.search(line[2:])
+    assert m and m.group("origin") == "raw/inbox/scan.pdf"
+    assert m.group("dest") == "system/quarantine/poisoned/scan.pdf"
+
+
 def test_non_utf8_briefing_does_not_stop_inbox(iv):
     p = iv / f"briefings/{today()}.md"
     p.parent.mkdir(parents=True, exist_ok=True)
