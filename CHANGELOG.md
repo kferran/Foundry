@@ -15,6 +15,9 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## 2026-10-17
 - A note under `wiki/<partition>/private/` is closed to Claude: the settings deny reading and editing it, the index, lint and recall skip it, and headless runs cannot stage or publish it. To show Claude one such file, type `! cat <path>` yourself (FOUNDRY.md: Security model). `git show` now asks before it runs, since it can print a private note from history. (#258)
+- A telemetry source can set `secrets_scan: "true"` (off by default) to raise one alert per new error group whose log line holds a credential shape, sent to Slack at once, naming the group's note and the shape, never the value; at most three a run per source, then one line counting the rest. (#261)
+- The first brief after two or more days with no session opens with "While you were away": counts of the pull requests merged and still open, Work Orders done and failed, Now lines added and closed, alerts held, and Decided for you lines over those days (up to 14). (#264)
+- Every field in `system/schemas/` names the files that read it (`readers:`), and a test fails when a named reader is missing or never mentions the field; a field nothing reads (`readers: []`) only warns for now. (#256)
 - `check_deps.sh` requires `socat` on a standalone machine or a server: Claude Code's sandbox, which headless runs turn on, needs it on Linux for its network proxy. Install it with `sudo apt install socat` or `sudo pacman -S socat`. (#260)
 - A `claude` version change no longer counts as a failed smoke check source: the line reads `version: changed: <old> -> <new>` and its `[smoke]` alert still lists the acceptance steps in the brief's Pipeline. (#260)
 - A new vault's first brief no longer fails to publish with "Now.md modified in the last 60 s": brief prep no longer writes an empty Now page, and the brief creates the page when it adds a line. (#255)
