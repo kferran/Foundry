@@ -68,6 +68,11 @@ connector_outcome "$prc" "$work"
 if (( prc == 7 )); then
   printf -- '- %s [calendar] calendar fetch for %s: %s\n' "$(date +%H:%M:%S)" "$day" "$CONNECTOR_REASON" >> "system/logs/alerts_$(date +%F).md"
 fi
+# More than 100 events is a working connector: --check passes; a day's fetch keeps exit 8 for the brief.
+if (( check && CONNECTOR_EXIT == 8 )); then
+  echo "calendar_fetch: the connector listed more than 100 events"
+  finish 0 ""
+fi
 (( CONNECTOR_EXIT == 0 )) || finish "$CONNECTOR_EXIT" "$CONNECTOR_REASON"
 if (( check )); then
   echo "calendar_fetch: the connector listed $(wc -l < "$work/events.tsv") events"

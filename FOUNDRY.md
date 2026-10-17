@@ -346,6 +346,23 @@ Work follows the superpowers workflow: brainstorm → spec in [`docs/superpowers
 - **Small features skip the plan:** a feature under about 300 lines that touches no safety surface ends its spec with the task list instead of a separate plan, and one reviewer checks the finished branch.
 - **Safe features merge themselves:** such a feature auto-merges once CI and the reviewer pass. A change to a safety surface, to connector confinement or to the Work Order runner waits for the owner's merge.
 
+**Working rules.** These hold in both lanes.
+- Report or record an action only after reading its command's status, and say what you could not verify.
+- Every rule that adds rows, lines or findings ships with the rule that removes them.
+- No fix without its cause written down first; a cause not established is written as not established.
+- Answer it before asking it: check the files, the config and the git log before a question goes to the owner.
+- A negative result is not evidence unless the instrument could have returned a positive; name the missing instrument.
+- Three exit codes everywhere: 0 clean, 1 findings, 2 could not run; never collapse 2 into "empty".
+- The reviewer re-runs the gate off its own run before reading the implementer's report.
+- Seed a proving test from the hazard, never from the writer's own output.
+- The writer goes through what the reader goes through: one frontmatter composer.
+- Ship the activation story: how a tool or rule is triggered, and where, is part of delivering it.
+- Quote chat and mail verbatim, attributed, hedges intact; your own read goes on a separate marked line.
+- A retired load-bearing claim leaves one marker: `superseded <date>, was "<old claim>"`.
+- Verify before you destroy: uncommitted work or an unfiled action stops a delete.
+- No colleague's name in a commit message; write the fact or point at the record.
+- A hook that fires on every tool call fails open and resolves its root from `BASH_SOURCE`, never `$HOME`.
+
 **Release notes.** A pull request that changes something a vault user would notice adds its line to `CHANGELOG.md`, under today's date in **Changes**, in plain words, ending with its PR number: `- <what changed> (#<n>)`. When a vault must do something, an indented `  - Action: <what to run>` line follows. Docs, test and CI changes add none. A Work Order's plan adds the line in its last task. The morning update shows the lines it merged in the brief's What changed.
 
 The gating suites must pass at the end of every task. Install the development tools first (`bats`, `pytest`, `shellcheck`, and optionally `parallel` (GNU) and `pytest-xdist`): without the first two the gate lints only and prints `SKIP suites` in its summary. The gate runs the bats suites side by side when GNU `parallel` is installed and spreads pytest over every core when `pytest-xdist` is. In the template repository, CI runs the same gate on every pull request. A test that needs what the machine lacks (a user systemd instance, `bwrap`, a non-root user) skips with `environment:` in its reason; `--require-suites`, which CI and `verify_on_host.sh` pass, fails it instead. One command runs them all and exits non-zero if any fails:
