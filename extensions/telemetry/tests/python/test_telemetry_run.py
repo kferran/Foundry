@@ -499,3 +499,36 @@ def test_an_adx_source_runs_one_query_per_signal_and_nothing_else(v, monkeypatch
         [span] if kql.startswith("Traces") else []))
     assert telemetry_run.main([], v, NOW) == 0
     assert seen == ["Logs", "Traces"]
+
+
+SECRET_ROW = dict(LOG_ROW, message="login failed for svc password=hunter2xyz")
+
+
+def _secret_alerts(v):
+    path = v / f"system/logs/alerts_{DAY}.md"
+    return [l.split(" ", 2)[2] for l in path.read_text().splitlines() if "credential shape" in l] if path.exists() else []
+
+
+def test_secrets_scan_alerts_once_per_new_group_naming_group_and_shape_never_the_value(v, monkeypatch):
+    write(v, "system/telemetry/prod-adx.md", ADX.format(covers='secrets_scan: "true"\n'))
+    monkeypatch.setattr(kusto, "query", lambda *a, **k: [SECRET_ROW])
+    assert telemetry_run.main(["--dry-run"], v, NOW) == 0
+    assert _secret_alerts(v) == []
+    assert telemetry_run.main([], v, NOW) == 0          # a first run alerts too: a backlog credential is still a leak
+    note = next((v / "raw/telemetry").glob("prod-adx-a-*.md")).relative_to(v).as_posix()
+    assert _secret_alerts(v) == [f"[telemetry] prod-adx: a log line in {note} holds a credential shape: assignment"]
+    assert telemetry_run.main([], v, NOW + timedelta(days=1)) == 0
+    files = [p for p in (v / "system/logs").glob("alerts_*.md")]
+    assert sum("credential shape" in p.read_text() for p in files) == 1
+    assert all("hunter2xyz" not in p.read_text() for p in v.rglob("*") if p.is_file() and p.suffix in (".md", ".json"))
+
+
+def test_secrets_scan_is_off_by_default_and_ignores_a_line_redacted_upstream(v, monkeypatch):
+    write(v, "system/telemetry/prod-adx.md", ADX.format(covers=""))
+    monkeypatch.setattr(kusto, "query", lambda *a, **k: [SECRET_ROW])
+    telemetry_run.main([], v, NOW)
+    assert _secret_alerts(v) == []
+    write(v, "system/telemetry/prod-adx.md", ADX.format(covers='secrets_scan: "true"\n'))
+    monkeypatch.setattr(kusto, "query", lambda *a, **k: [dict(LOG_ROW, scope="Other", message="token [REDACTED:jwt]")])
+    telemetry_run.main([], v, NOW + timedelta(hours=1))
+    assert _secret_alerts(v) == []

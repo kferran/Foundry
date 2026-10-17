@@ -177,8 +177,14 @@ def _run_source(vault, src, store, by_name, now, dry, line):
     for g in groups:
         key = f"{src.name}/{g['fingerprint']}"
         back = (store.state["groups"].get(key) or {}).get("status") == "resolved"
+        shapes = t.credential_shapes(g.get("message")) if src.secrets_scan else []   # the raw line, before upsert masks it
         result = store.upsert(g, now)
         counters[result] += 1
+        # Secrets scan (#166): once per group, which is new only once while its note exists, first run included (a
+        # credential in a backlog line is still a leak). The alert names the group and the shape, never the value.
+        if shapes and result == "new":
+            _alert(vault, store, now, f"secrets/{key}", f"{src.name}: a log line in "
+                   f"{store.state['groups'][key]['note']} holds a credential shape: {', '.join(shapes)}")
         if push and not g.get("covered") and (result == "new" or back):   # a covered group is its Sentry source's
             pushes.append((key, g, back))
     _push(vault, store, now, src, pushes)
