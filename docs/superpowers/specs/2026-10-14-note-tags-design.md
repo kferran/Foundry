@@ -1,7 +1,7 @@
 # Note tags: reuse before inventing, one form, per-partition listings
 
 **Date:** 2026-10-14
-**Status:** Draft for the owner's review.
+**Status:** Built (2026-10-15): PR #208.
 **Issue:** #158. Owner's outcome (2026-10-14): find and group things in Obsidian.
 
 ## 1. Problem

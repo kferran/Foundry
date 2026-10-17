@@ -1,7 +1,7 @@
 # Connector health: say which credential expired, how to renew it, and show every source on one line
 
 **Date:** 2026-10-15
-**Status:** Draft for the owner's review (feature lane: it changes alerting and the brief command text).
+**Status:** Built (2026-10-15): PR #207, with the brief fix #209.
 **Plan:** phase 1 item 9 of `docs/superpowers/2026-10-15-next-phase-plan.md` (live finding L1). Builds on #184 (timer liveness, unit drift), merged.
 
 ## 1. Problem

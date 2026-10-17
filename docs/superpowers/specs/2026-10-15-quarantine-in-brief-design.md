@@ -1,7 +1,7 @@
 # Quarantine you can recover from: one reader for the brief and the debrief, one retry per input
 
 **Date:** 2026-10-15
-**Status:** Draft for the owner's review (feature lane: it changes the brief and debrief command text).
+**Status:** Built (2026-10-15): PR #206.
 **Plan:** phase 1 item 10 of `docs/superpowers/2026-10-15-next-phase-plan.md` (live finding L6).
 
 ## 1. Problem
