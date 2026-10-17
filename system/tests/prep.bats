@@ -345,6 +345,17 @@ Done."
   [ "$(cat "$IN/clock.md")" = "$(printf 'short: 2026-10-04\nlong: 2026-10-31')" ]
 }
 
+@test "brief_prep: closed Now lines move to the month's archive note before now.md lists the page (phase A spec §3.4)" {
+  mkdir -p wiki/work
+  printf -- '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-09-01"\npartition: work\n---\n# Now\n\n## Needs you\n- [x] owed: Shipped (since 2026-09-01) _(closed: ticked 2026-09-30)_\n  - 2026-09-15: asked Blake\n- [ ] owed: Open (since 2026-09-01)\n' > wiki/work/Now.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/now.md")" = "$(printf '## work\n- [ ] owed: Open (since 2026-09-01)')" ]
+  run grep -c 'Shipped' wiki/work/Now.md
+  [ "$output" = "0" ]
+  [ "$(tail -n 2 wiki/work/now-archive/2026-09.md)" = "$(printf -- '- [x] owed: Shipped (since 2026-09-01) _(closed: ticked 2026-09-30)_\n  - 2026-09-15: asked Blake')" ]
+}
+
 @test "brief_prep: briefings and debriefs before yesterday move to briefings/archive/<YYYY-MM>/; a rerun changes nothing" {
   today="$(TZ=America/Denver date +%F)"
   yesterday="$(date -d "$today -1 day" +%F)"
@@ -709,5 +720,5 @@ away_vault() {
   run "$BP" 2026-10-10
   [ "$status" -eq 0 ]
   [ "$(head -n 1 system/logs/inputs/2026-10-10/away.md)" = '### While you were away (2026-09-26 to 2026-10-09)' ]
-  grep -qxF -- '- Now lines (closed lines leave the page after 7 days): none' system/logs/inputs/2026-10-10/away.md
+  grep -qxF -- '- Now lines: none' system/logs/inputs/2026-10-10/away.md
 }

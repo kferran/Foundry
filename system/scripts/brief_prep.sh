@@ -45,6 +45,11 @@ prep_meetings
 # open objectives; then now.md lists the open lines of both pages, so the brief adds no repeat.
 NOW_LOCK_WAIT="${ARCHIVE_LOCK_WAIT:-60}" system/scripts/now.py seed "$PREP_DATE" > /dev/null 2>> "$PREP_DIR/prep_errors.log" \
   || prep_unavailable "now: the first Now page was not seeded (see $PREP_DIR/prep_errors.log)"
+# Closed lines leave both pages for wiki/<p>/now-archive/<YYYY-MM>.md (phase A spec §3.4).
+NOW_LOCK_WAIT="${ARCHIVE_LOCK_WAIT:-60}" system/scripts/now.py archive --partition work --date "$PREP_DATE" \
+  > /dev/null 2>> "$PREP_DIR/prep_errors.log" || prep_unavailable "now: the work Now page was not archived (see $PREP_DIR/prep_errors.log)"
+NOW_LOCK_WAIT="${ARCHIVE_LOCK_WAIT:-60}" system/scripts/now.py archive --partition personal --date "$PREP_DATE" \
+  > /dev/null 2>> "$PREP_DIR/prep_errors.log" || prep_unavailable "now: the personal Now page was not archived (see $PREP_DIR/prep_errors.log)"
 prep_write now.md system/scripts/now.py list \
   || prep_unavailable "now: now.py list failed (see $PREP_DIR/prep_errors.log)"
 # The Now clock (Now clock spec §6, §7): the lines past their decide-by date, and the two dates the headless brief

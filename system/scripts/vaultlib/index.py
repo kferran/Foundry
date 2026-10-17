@@ -407,7 +407,7 @@ class Index:
         self._extension_issues(conn, add)
         for (path,) in conn.execute(
                 "SELECT n.path FROM notes n WHERE n.path LIKE 'wiki/%' AND n.active=1 "
-                "AND coalesce(n.type,'') != 'index' AND NOT EXISTS "
+                "AND coalesce(n.type,'') != 'index' AND n.path NOT LIKE 'wiki/%/now-archive/%' AND NOT EXISTS "
                 "(SELECT 1 FROM links l WHERE l.target_path=n.path AND l.src != n.path)").fetchall():
             add(path, 1, "warning", "orphan", "no other note links here")
         for (path,) in conn.execute("SELECT path FROM notes WHERE path NOT LIKE '%/%' AND path LIKE '%.md'").fetchall():

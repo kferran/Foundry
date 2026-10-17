@@ -219,14 +219,15 @@ def test_a_missing_section_heading_is_added_back(vault):
                                 "- [ ] waiting: B [due:: 2026-11-08] (since 2026-10-09)\n")
 
 
-def test_hand_ticks_are_stamped_and_closed_lines_pruned_after_seven_days():
+def test_hand_ticks_are_stamped_and_closed_lines_stay_until_archived():
     text = ("## Needs you\n- [x] owed: Ticked (since 2026-10-01)\n- [-] owed: Dropped (since 2026-10-01)\n"
             "- [x] owed: Kept (since 2026-10-01) _(closed: ticked 2026-10-02)_\n"
-            "- [x] owed: Gone (since 2026-10-01) _(closed: PR merged 2026-10-01)_\n- [ ] owed: Open (since 2026-10-01)\n")
-    assert now.stamp_and_prune(text, TODAY) == (
+            "- [x] owed: Old (since 2026-10-01) _(closed: PR merged 2026-09-01)_\n- [ ] owed: Open (since 2026-10-01)\n")
+    assert now.stamp(text, TODAY) == (
         "## Needs you\n- [x] owed: Ticked (since 2026-10-01) _(closed: ticked 2026-10-09)_\n"
         "- [-] owed: Dropped (since 2026-10-01) _(closed: ticked 2026-10-09)_\n"
-        "- [x] owed: Kept (since 2026-10-01) _(closed: ticked 2026-10-02)_\n- [ ] owed: Open (since 2026-10-01)\n")
+        "- [x] owed: Kept (since 2026-10-01) _(closed: ticked 2026-10-02)_\n"
+        "- [x] owed: Old (since 2026-10-01) _(closed: PR merged 2026-09-01)_\n- [ ] owed: Open (since 2026-10-01)\n")
 
 
 def test_check_closes_a_merged_or_closed_pr_and_leaves_an_open_one(vault, tmp_path):
@@ -299,7 +300,7 @@ def test_check_keeps_a_tick_made_while_gh_runs(vault, tmp_path):
     assert "_(closed: PR merged 2026-10-09)_" in text
 
 
-def test_check_and_the_prune_keep_both_fields(vault, tmp_path):
+def test_check_and_the_stamp_keep_both_fields(vault, tmp_path):
     prepare(vault)  # Now clock spec §5: check rewrites a line by prefix, so the fields survive a close
     now.add(vault, "work", "owed", "Pick it", TODAY, "vendor", "https://github.com/acme/shop/pull/7", rec="CSV: it loads")
     now.add(vault, "work", "owed", "Ticked", TODAY, rec="Yes: fine")
@@ -311,7 +312,7 @@ def test_check_and_the_prune_keep_both_fields(vault, tmp_path):
                       "https://github.com/acme/shop/pull/7) _(closed: PR merged 2026-10-09)_",
                       "- [x] owed: Ticked [rec:: Yes: fine] [due:: 2026-11-08] (since 2026-10-09) "
                       "_(closed: ticked 2026-10-09)_"]
-    assert now.stamp_and_prune(page(vault), "2026-10-16") == page(vault)  # kept until 7 days after the stamp
+    assert now.stamp(page(vault), "2026-10-30") == page(vault)  # kept until archived
 
 
 def test_a_failed_pr_check_skips_the_other_prs_this_tick(vault, tmp_path):
@@ -461,7 +462,7 @@ def test_a_line_with_trailing_space_or_a_crlf_end_still_parses(vault, tmp_path):
 
 def test_a_reopened_line_loses_its_stamp():
     text = "- [ ] owed: Again (since 2026-10-01) _(closed: ticked 2026-10-02)_\n"
-    assert now.stamp_and_prune(text, TODAY) == "- [ ] owed: Again (since 2026-10-01)\n"
+    assert now.stamp(text, TODAY) == "- [ ] owed: Again (since 2026-10-01)\n"
 
 
 def test_seed_turns_wikilinks_into_plain_text(vault):
@@ -601,13 +602,15 @@ def test_a_hand_written_line_with_since_text_is_not_unreadable(vault):
 
 def test_cli_set_and_review_long_lines_and_page_size(vault):
     prepare(vault)
-    now.add(vault, "work", "owed", "Long " + "update " * 40, TODAY)
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n"
+          f"---\n# Now\n\n## Needs you\n- [ ] owed: Long {'update ' * 45}(since 2026-10-01, EX-1)\n")
     r = cli(vault, "review", "--partition", "work")
     assert r.returncode == 0, r.stderr
-    assert "## Long lines (over 240 characters): rewrite with now.py set\n- [ ] owed: Long update" in r.stdout
+    assert ("## Long lines (over 300 characters): shorten with now.py set, history with now.py note\n"
+            "- [ ] owed: Long update") in r.stdout
     r = cli(vault, "set", "--partition", "work", "--match", "long update", "--statement", "Short")
     assert r.returncode == 0, r.stderr
-    assert r.stdout.startswith("set: - [ ] owed: Short [due:: ")
+    assert r.stdout == "set: - [ ] owed: Short (since 2026-10-01, EX-1)\n"
     assert cli(vault, "review", "--partition", "work").stdout == ""
     assert cli(vault, "set", "--partition", "work", "--match", "nothing", "--statement", "x").returncode == 2
     for i in range(140):
@@ -648,3 +651,112 @@ def test_cli_add_seeds_the_missing_default_page_first(vault):
 def test_cli_list_refuses_an_unknown_partition(vault):
     prepare(vault)
     assert cli(vault, "list", "--partition", "../x").returncode == 2
+
+
+# --- phase A: the archive, notes under a line, the 300-character cap ---
+
+def archive_note(vault, month, partition="work"):
+    return (vault / "wiki" / partition / "now-archive" / f"{month}.md").read_text(encoding="utf-8")
+
+
+def test_archive_moves_closed_lines_with_their_notes_and_keeps_open_ones(vault):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Done thing", TODAY)
+    now.add(vault, "work", "owed", "Open thing", TODAY)
+    now.note(vault, "work", "done thing", "asked Blake", TODAY)
+    now.note(vault, "work", "open thing", "still going", TODAY)
+    path = vault / "wiki/work/Now.md"
+    path.write_text(path.read_text().replace("- [ ] owed: Done thing", "- [x] owed: Done thing"))
+    assert now.archive(vault, "work", TODAY) == 1
+    text = page(vault)
+    assert "Done thing" not in text and "asked Blake" not in text
+    assert "- [ ] owed: Open thing" in text and "  - 2026-10-09: still going" in text
+    archived = archive_note(vault, "2026-10")
+    assert archived.startswith('---\ntype: concept\ntags: [now-archive]\ncompiled_at: "2026-10-09"\npartition: work\n---\n')
+    assert archived.endswith("- [x] owed: Done thing [due:: 2026-11-08] (since 2026-10-09) _(closed: ticked 2026-10-09)_\n"
+                             "  - 2026-10-09: asked Blake\n")
+
+
+def test_archive_appends_by_stamp_month_and_writes_a_line_once(vault):
+    prepare(vault)
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n"
+          "---\n# Now\n\n## Needs you\n- [x] owed: Sept (since 2026-09-01) _(closed: ticked 2026-09-30)_\n"
+          "- [-] owed: Oct (since 2026-09-01) _(closed: ticked 2026-10-02)_\n- [ ] owed: Open (since 2026-10-01)\n")
+    before = page(vault)
+    assert now.archive(vault, "work", TODAY) == 2
+    assert "Sept" in archive_note(vault, "2026-09") and "Oct" in archive_note(vault, "2026-10")
+    (vault / "wiki/work/Now.md").write_text(before)  # a crash after the archive write, before the page write
+    now.archive(vault, "work", TODAY)
+    assert archive_note(vault, "2026-09").count("owed: Sept") == 1
+    assert page(vault).endswith("## Needs you\n- [ ] owed: Open (since 2026-10-01)\n")
+    assert now.archive(vault, "work", TODAY) == 0
+
+
+def test_note_lands_after_the_last_note_of_the_one_matching_line(vault):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Send the report", TODAY)
+    now.add(vault, "work", "owed", "Send the invoice", TODAY)
+    now.note(vault, "work", "report", "first", TODAY)
+    now.note(vault, "work", "report", "second", "2026-10-10")
+    lines = page(vault).split("\n")
+    i = next(n for n, line in enumerate(lines) if "Send the report" in line)
+    assert lines[i + 1:i + 4] == ["  - 2026-10-09: first", "  - 2026-10-10: second", "- [ ] owed: Send the invoice "
+                                  "[due:: 2026-11-08] (since 2026-10-09)"]
+    for bad in ("send the", "nothing"):
+        try:
+            now.note(vault, "work", bad, "x", TODAY)
+            raise AssertionError("no error")
+        except ValueError as exc:
+            assert "open lines match" in str(exc)
+
+
+def test_notes_follow_set_and_check_and_are_never_open_lines(vault, tmp_path):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Merge it", TODAY, evidence="https://github.com/acme/shop/pull/7")
+    now.note(vault, "work", "merge it", "reviewer asked for a test", TODAY)
+    now.set_statement(vault, "work", "merge it", "Merge the export PR", TODAY)
+    assert now.open_lines(page(vault)) == [
+        "- [ ] owed: Merge the export PR [due:: 2026-11-08] (since 2026-10-09, https://github.com/acme/shop/pull/7)"]
+    now.check(vault, TODAY, [].append, gh_stub(tmp_path, "MERGED"))
+    lines = page(vault).split("\n")
+    i = next(n for n, line in enumerate(lines) if "Merge the export PR" in line)
+    assert lines[i].startswith("- [x] ") and lines[i + 1] == "  - 2026-10-09: reviewer asked for a test"
+    assert now.overdue(vault, "2027-01-01") == ""
+
+
+def test_add_and_set_refuse_a_line_over_300_characters(vault):
+    prepare(vault)
+    now.add(vault, "work", "owed", "short one", TODAY)
+    for call in (lambda: now.add(vault, "work", "owed", "x" * 300, TODAY),
+                 lambda: now.set_statement(vault, "work", "short", "y" * 300, TODAY)):
+        try:
+            call()
+            raise AssertionError("no error")
+        except ValueError as exc:
+            assert "limit is 300" in str(exc)
+    assert now.add(vault, "work", "owed", "z" * 240, TODAY)[0] == "added"
+
+
+def test_a_long_line_written_before_the_cap_keeps_working(vault):
+    prepare(vault)
+    long = f"- [ ] owed: {'w' * 400} (since 2026-10-01)"
+    write(vault, "wiki/work/Now.md", f"---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n"
+          f"---\n# Now\n\n## Needs you\n{long}\n")
+    assert now.add(vault, "work", "owed", "w" * 400, TODAY)[0] == "exists"
+    assert now.review(vault, "work", TODAY)["long"] == [long]
+    now.set_statement(vault, "work", "wwww", "Short again", TODAY)
+    assert now.review(vault, "work", TODAY)["long"] == []
+
+
+def test_a_github_issue_url_is_evidence(vault, tmp_path):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Closed issue", TODAY, evidence="https://github.com/acme/shop/issues/3")
+    assert now.check(vault, TODAY, [].append, gh_stub(tmp_path, "CLOSED")) == 1
+    assert "_(closed: issue closed 2026-10-09)_" in page(vault)
+    assert "issue view https://github.com/acme/shop/issues/3" in (tmp_path / "gh.args").read_text()
+    now.add(vault, "work", "owed", "Open issue", TODAY, evidence="https://github.com/acme/shop/issues/4")
+    assert now.check(vault, TODAY, [].append, gh_stub(tmp_path, "OPEN")) == 0
+    alerts = []
+    for _ in range(3):
+        now.check(vault, TODAY, alerts.append, gh_stub(tmp_path, "", rc=1))
+    assert "- [ ] owed: Open issue" in page(vault) and len(alerts) == 1

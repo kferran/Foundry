@@ -762,15 +762,16 @@ self_edit_contract() {
 
 @test "CLAUDE.md and the settings let sessions record Now lines (Now page spec §3.2)" {
   grep -qF 'system/scripts/now.py add --partition <work|personal> --kind <owed|waiting|draft>' CLAUDE.md
-  grep -qF -- '--evidence <pull request URL, Work Order id, ticket key, rca:<note stem> or a telemetry note path>' CLAUDE.md   # #106
+  grep -qF -- '--evidence <pull request URL, Work Order id, GitHub issue URL, ticket key, rca:<note stem> or a telemetry note path>' CLAUDE.md   # #106
   grep -qF 'Before calling anything unsent or still waiting, check its evidence.' CLAUDE.md
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py add:*)")' .claude/settings.json >/dev/null
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py list:*)")' .claude/settings.json >/dev/null
-  grep -qF 'Rewrite a line with `system/scripts/now.py set --partition <p> --match "<text>" --statement "<new>"` instead of appending updates to it.' CLAUDE.md
+  grep -qF 'add each update under it with `system/scripts/now.py note --partition <p> --match "<text>" --text "<update>"`' CLAUDE.md
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py set:*)")' .claude/settings.json >/dev/null
-  grep -qF 'long lines (over 240 characters, which recall cuts), and a page over 32 KB' FOUNDRY.md
+  jq -e '.permissions.allow | index("Bash(system/scripts/now.py note:*)")' .claude/settings.json >/dev/null
+  grep -qF 'long lines (over 300 characters, which `add` and `set` refuse), and a page over 25 KB' FOUNDRY.md
   grep -qF 'keeps at least a third of its budget (and whatever the Now lines leave) for the latest digests' FOUNDRY.md
-  grep -qF 'long lines and an oversized page, which you rewrite with `system/scripts/now.py set`' system/agents/foreman.md
+  grep -qF 'then `system/scripts/now.py note` for each dated update, oldest first' system/agents/foreman.md
   grep -qF '**The Now page.**' FOUNDRY.md
   grep -qF 'Never stage or edit `wiki/<p>/Now.md` either' .claude/commands/ingest.md
   grep -qF '`wiki/<partition>/Now.md` is the one note both machines write' FOUNDRY.md

@@ -8,13 +8,18 @@
                                   --rec, or set missing evidence, and writes nothing when nothing is new
   now.py set --partition <p> --match "<text>" --statement "<new statement>"
                                   the one open line whose statement contains the text gets the new statement, keeping
-                                  its kind, who, since, evidence and clock (exit 2 on no match or several)
+                                  its kind, who, since, evidence, clock and notes (exit 2 on no match or several)
+  now.py note --partition <p> --match "<text>" --text "<update>"
+                                  adds "  - <today>: <update>" under the one open line that matches (exit 2 as set);
+                                  add and set refuse a line over 300 characters
+  now.py archive --partition <p> --date YYYY-MM-DD
+                                  moves closed lines and their notes to wiki/<p>/now-archive/<YYYY-MM>.md (brief prep)
   now.py list [--partition <p>]   the open lines; without --partition, both pages under "## <partition>"
-  now.py check                    close lines on checked evidence, stamp hand ticks, prune (the intake timer runs it)
+  now.py check                    close lines on checked evidence, stamp hand ticks (the intake timer runs it)
   now.py review --partition <p> [--stale-days N]
                                   read-only: lines closed by their evidence, open more than N days (14) with no
                                   evidence, duplicated, holding text or a [rec::]/[due::] field after the parenthesis
-                                  (unreadable), over 240 characters, and a page over 32 KB; nothing printed when there
+                                  (unreadable), over 300 characters, and a page over 25 KB; nothing printed when there
                                   is nothing to review
   now.py overdue [--date YYYY-MM-DD]
                                   read-only: open lines past their [due::] (before the date, today by default) in
@@ -47,6 +52,13 @@ s = sub.add_parser("set")
 s.add_argument("--partition", required=True, choices=now.PARTITIONS)
 s.add_argument("--match", required=True)
 s.add_argument("--statement", required=True)
+n = sub.add_parser("note")
+n.add_argument("--partition", required=True, choices=now.PARTITIONS)
+n.add_argument("--match", required=True)
+n.add_argument("--text", required=True)
+ar = sub.add_parser("archive")
+ar.add_argument("--partition", required=True, choices=now.PARTITIONS)
+ar.add_argument("--date", required=True)
 sub.add_parser("list").add_argument("--partition", choices=now.PARTITIONS)
 sub.add_parser("check")
 r = sub.add_parser("review")
@@ -84,10 +96,14 @@ if args.cmd == "review":  # read-only, so no run.lock
         print("\n".join([f"## Unreadable lines ({len(found['unreadable'])}): move the text or the [rec::] or [due::] "
                          "field after the parenthesis back before it", *found["unreadable"]]))
     if found["long"]:
-        print("\n".join([f"## Long lines (over {now.LONG_LINE} characters): rewrite with now.py set", *found["long"]]))
+        print("\n".join([f"## Long lines (over {now.MAX_LINE} characters): shorten with now.py set, history with now.py note",
+                         *found["long"]]))
     if found["page_bytes"] > now.PAGE_BYTES:
         print(f"## Page size: {found['page_bytes'] // 1024} KB (over {now.PAGE_BYTES // 1024} KB): close or rewrite lines")
     sys.exit(0)
+if args.cmd == "archive" and not now.is_date(args.date):
+    print("usage: now.py archive --partition <p> --date YYYY-MM-DD", file=sys.stderr)
+    sys.exit(2)
 if args.cmd == "seed":
     try:
         date.fromisoformat(args.date)
@@ -105,6 +121,10 @@ try:
             print(f"{status}: {line}")
         elif args.cmd == "set":
             print(f"set: {now.set_statement(VAULT, args.partition, args.match, args.statement, intake.today())}")
+        elif args.cmd == "note":
+            print(f"noted: {now.note(VAULT, args.partition, args.match, args.text, intake.today())}")
+        elif args.cmd == "archive":
+            print(f"archived: {now.archive(VAULT, args.partition, args.date)}")
         elif args.cmd == "check":
             print(f"closed: {now.check(VAULT, intake.today(), intake.alert)}")
         else:
