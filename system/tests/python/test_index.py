@@ -219,3 +219,12 @@ def test_non_utf8_file_name_is_skipped_with_a_warning(vault, capsys):
     assert "wiki/work/concepts/Kafka.md" in paths
     assert all(p.isprintable() and "\udce9" not in p for p in paths)
     assert "not valid UTF-8" in capsys.readouterr().err
+
+
+def test_private_folder_is_never_walked(vault):
+    """wiki/<partition>/private/ is read-denied (#166): the index, and so lint, query and recall, never see it."""
+    write(vault, "wiki/work/private/Secret.md", concept("work", "Secret", "salary talk"))
+    idx = Index(vault)
+    idx.refresh()
+    assert not [p for (p,) in rows(idx, "SELECT path FROM files") if "/private/" in p]
+    assert rows(idx, "SELECT path FROM notes_fts WHERE notes_fts MATCH 'salary'") == []

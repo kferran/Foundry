@@ -6,13 +6,14 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import cli, extensions as extmod, frontmatter, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
+from . import cli, convert as convertmod, extensions as extmod, frontmatter, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
 from . import triage
 
 FRESH_SECONDS = 60
@@ -366,8 +367,30 @@ class Intake:
         staging = self.vault / "raw" / "inbox" / ".staging"
         staging.mkdir(parents=True, exist_ok=True)
         copy = staging / path.name
-        raw = path.read_bytes()
-        text, _ = redactmod.redact(raw.decode("utf-8", errors="replace"))
+        if path.suffix.lower() in convertmod.SUFFIXES:  # a document goes to the same redaction as text (#166)
+            # A tick killed mid-conversion leaves the marker: the next one quarantines the file. A failed write, or a
+            # stop (SIGTERM as KeyboardInterrupt, past every `except Exception`), leaves the file in the inbox.
+            marker = staging / f"{sha}.converting"
+            stale = marker.exists()
+            marker.write_text(path.name, encoding="utf-8")
+            stop = signal.signal(signal.SIGTERM, signal.default_int_handler)
+            try:
+                if stale:
+                    raise convertmod.ConversionError("conversion did not finish")
+                source = convertmod.convert(path, staging / f"{sha}.converted")
+            except Exception as exc:  # a parser bug or a memory blow-up quarantines the file, never wedges intake
+                why = str(exc) if isinstance(exc, convertmod.ConversionError) else f"conversion crashed, {type(exc).__name__}"
+                # one alert line whatever the reason holds, and no ": " (notify.py reads the reason up to the first)
+                why = " ".join(re.sub(r"[^\w ./,()-]", " ", why, flags=re.ASCII).split())[:80]
+                self.poison(path, f"raw/inbox/{path.name}", sha, reason=f"immediately, not converted ({why})")
+                return True
+            finally:
+                signal.signal(signal.SIGTERM, stop)
+                marker.unlink(missing_ok=True)
+            copy = staging / f"{path.name}.md"
+        else:
+            source = path.read_bytes().decode("utf-8", errors="replace")
+        text, _ = redactmod.redact(source)
         copy.write_text(text, encoding="utf-8")
         try:
             rc = self.headless([copy.relative_to(self.vault).as_posix()], [sha])

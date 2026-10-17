@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from . import frontmatter, guard, publish, recall as recallmod, retrieve, schema as schemamod, scope as scopemod
-from .index import ISSUE_ROWS, NOT_INDEXED, Index, citation_issues
+from .index import ISSUE_ROWS, NOT_INDEXED, PRIVATE, Index, citation_issues
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
 
@@ -35,6 +35,8 @@ def inside_vault(vault: Path, arg: str) -> Path:
         raise UsageError(f"no such file: {arg}")
     if not path.is_file():
         raise UsageError(f"not a regular file: {arg}")
+    if PRIVATE.match(path.relative_to(vault).as_posix()):
+        raise UsageError(f"path is in a read-denied private folder: {arg}")
     return path
 
 
@@ -158,7 +160,7 @@ def staged_paths(vault: Path) -> set:
 def staged_blobs(vault: Path, paths) -> dict:
     """The index content of each staged note that the index would lint: what the commit records (#166)."""
     return {p: _git(vault, "cat-file", "blob", f":{p}", what=f"git cat-file :{p}").stdout
-            for p in paths if p.endswith(".md") and not p.startswith(NOT_INDEXED)}
+            for p in paths if p.endswith(".md") and not p.startswith(NOT_INDEXED) and not PRIVATE.match(p)}
 
 
 # Write caps (#166): files every session reads whole, so their growth is a cost each run pays. A staged copy over its
