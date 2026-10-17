@@ -532,6 +532,9 @@ def test_secrets_scan_alerts_at_most_three_groups_a_run_then_counts_the_rest(v, 
     got = _secret_alerts(v)
     assert len(got) == 4 and all(" a log line in raw/telemetry/prod-adx-a-" in l for l in got[:3])
     assert got[3] == "[telemetry] prod-adx: and 2 more new groups hold a credential shape (see raw/telemetry/)"
+    from vaultlib.alerts import severity   # the owner's decision: these lines reach Slack now
+    lines = (v / f"system/logs/alerts_{DAY}.md").read_text().splitlines()
+    assert [severity(l) for l in lines if "credential shape" in l] == ["now"] * 4
 
 
 def test_secrets_scan_is_off_by_default_and_ignores_a_line_redacted_upstream(v, monkeypatch):

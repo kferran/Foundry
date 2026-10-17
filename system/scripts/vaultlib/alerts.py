@@ -22,10 +22,13 @@ TAGS = {
     "notify": ("the notifier itself", "never"),
 }
 LINE = re.compile(r"^- \d\d:\d\d:\d\d \[([a-z_]+)\] ")
-# Two tags decide by their text: triage reaches Slack only as its "N new:" count (a failed triage fetch is a fetch
-# failure like any other), and a stale timer from the smoke check goes now, since a stale brief timer means no brief
-# would ever show it (the owner's rule: now when the next brief is too late).
-NOW_WHEN = {"triage": re.compile(r"\d+ new: "), "smoke": re.compile(r"\S+\.timer stale: ")}
+# Three tags decide by their text: triage reaches Slack only as its "N new:" count (a failed triage fetch is a fetch
+# failure like any other), a stale timer from the smoke check goes now, since a stale brief timer means no brief
+# would ever show it (the owner's rule: now when the next brief is too late), and so does a telemetry secrets-scan
+# line (#166, owner's decision 2026-10-17): a credential in a production log needs rotating before the brief.
+NOW_WHEN = {"triage": re.compile(r"\d+ new: "), "smoke": re.compile(r"\S+\.timer stale: "),
+            "telemetry": re.compile(r"\S+: (?:a log line in \S+ holds|and \d+ more new groups hold) "
+                                    r"a credential shape")}
 
 
 def severity(line: str) -> str:
