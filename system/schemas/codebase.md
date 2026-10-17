@@ -3,22 +3,22 @@ type: schema
 schema_for: codebase
 folders: ["system/codebases/"]
 fields:
-  type: {kind: const, value: codebase, required: true}
-  name: {kind: string, required: true}
-  path: {kind: path, required: true, must_exist: warn}
-  partition: {kind: enum, values: [work, personal, shared], required: true}
-  default: {kind: bool, default: "false", unique_true: true}
-  stack: {kind: list, of: string}
-  search_globs: {kind: list, of: string, required: true}
-  layers: {kind: map, of: string}
-  order_hosts: {kind: list, of: string}
-  order_plugins: {kind: list, of: string}
-  order_pr: {kind: string}
-  order_toolchain: {kind: list, of: string}
-  order_install: {kind: string}
-  nightshift_hosts: {kind: list, of: string}
-  nightshift_plugins: {kind: list, of: string}
-  nightshift_pr: {kind: string}
+  type: {kind: const, value: codebase, required: true, readers: [system/scripts/vaultlib/schema.py]}
+  name: {kind: string, required: true, readers: [system/scripts/vaultlib/scope.py, system/hooks/lib_memory.sh]}
+  path: {kind: path, required: true, must_exist: warn, readers: [system/scripts/vaultlib/scope.py, system/scripts/vaultlib/index.py, .claude/commands/impact.md]}
+  partition: {kind: enum, values: [work, personal, shared], required: true, readers: [system/scripts/vaultlib/scope.py, system/hooks/lib_memory.sh]}
+  default: {kind: bool, default: "false", unique_true: true, readers: [system/scripts/lib_config.sh]}
+  stack: {kind: list, of: string, readers: []}
+  search_globs: {kind: list, of: string, required: true, readers: [.claude/commands/impact.md]}
+  layers: {kind: map, of: string, readers: [system/scripts/vaultlib/index.py, .claude/commands/impact.md]}
+  order_hosts: {kind: list, of: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
+  order_plugins: {kind: list, of: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
+  order_pr: {kind: string, readers: [system/scripts/vaultlib/nightshift_check.py, system/scripts/vaultlib/nightshift_deliver.py, system/scripts/debrief_prep.sh]}
+  order_toolchain: {kind: list, of: string, readers: [system/scripts/vaultlib/nightshift_check.py]}
+  order_install: {kind: string, readers: [system/scripts/vaultlib/nightshift_check.py, system/scripts/vaultlib/nightshift_run.py]}
+  nightshift_hosts: {kind: list, of: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
+  nightshift_plugins: {kind: list, of: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
+  nightshift_pr: {kind: string, readers: [system/scripts/vaultlib/nightshift_check.py, system/scripts/vaultlib/nightshift_deliver.py, system/scripts/debrief_prep.sh]}
 ---
 # Codebase
 One registered codebase, produced by `/setup` discovery and inspection. The body holds free-form notes for agents.
