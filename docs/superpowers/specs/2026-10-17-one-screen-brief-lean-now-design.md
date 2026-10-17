@@ -1,7 +1,7 @@
 # One-screen brief and lean Now page (gap plan phase A)
 
 **Date:** 2026-10-17
-**Status:** Grilled (owner, 2026-10-17). Draft for the owner's review.
+**Status:** Approved (owner, 2026-10-17), including the four review decisions: the interactive split of long lines, the Blockers defaults in §3.6, the core budget raise and the 8 KB risk with every project kept.
 **Plan:** `docs/superpowers/2026-10-17-cto-gap-plan.md`, phase A. Follows `2026-10-11-brief-one-screen-design.md` (#115), whose sections stand; this spec limits what each section holds.
 
 ## 1. Measures (live vault, 2026-10-17 13:49)
