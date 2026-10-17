@@ -1,7 +1,7 @@
 # Alert tags: one registry, a severity per tag, a Foreman push
 
 **Date:** 2026-10-14
-**Status:** Draft for the owner's review.
+**Status:** Built (2026-10-15): PR #213.
 **Issue:** #158. Owner's outcomes (2026-10-14): urgent pushes reach the owner now and the rest waits for the brief; the tag says at a glance which part raised the alert; the Foreman can push a line to the owner on its own.
 
 ## 1. Problem
