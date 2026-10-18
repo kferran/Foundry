@@ -13,6 +13,8 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-18
+- `system/scripts/eval_ingest.sh` scores what `/ingest` writes: 15 golden cases (restated facts, aliases, merges, corrections, friction, supersede, shared placement, the partition walls, an inbox injection, the shrink guard, and one case per converted document format) each run through one real intake tick, N times, against a pass rate, with a `--max-usd` budget stop. Results land in `system/logs/evals/`. It is not gating. (#PHASEB)
+  - Action: on the server, run `system/scripts/eval_ingest.sh --runs 1` to measure each case's cost, then `--runs 3 --max-usd <D>` for the baseline.
 - The brief's Overdue block shows at most 10 lines, those the fewest days over first, then `and N more of M overdue lines`; the Now pages still hold every line. (#272)
 
 ## 2026-10-17

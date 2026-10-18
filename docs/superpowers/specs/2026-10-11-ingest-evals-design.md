@@ -61,6 +61,9 @@ When the tick returns, the staging directory is gone: the gate publishes its not
 | `absent` | these paths were neither published nor staged (the injection case: the path the input asked for) |
 | `body_contains` / `body_lacks` | substrings in a published note's body |
 | `archived` | the input left the inbox for `raw/archive/` (the format cases: conversion and ingest both ran) |
+| `count` | the number of published paths matching each glob |
+| `retired` | these notes were published with `status: deprecated` or a `superseded_by` |
+| `keeps` | these vault notes still hold these substrings after the tick, published or not |
 
 Exit 0 when every check holds, 1 with one line per failed check.
 
