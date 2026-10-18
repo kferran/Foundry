@@ -8,7 +8,17 @@ from datetime import date, timedelta
 from pathlib import Path
 
 LOOKBACK_DAYS = 30
+ITEM_CHARS = 160   # one brief item (phase A spec §3.1)
 DATED = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
+
+
+def cut(text: str, limit: int = ITEM_CHARS) -> str:
+    """text, or its first `limit` characters cut back to a word boundary (mid-word for one long word) plus "…"."""
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    space = head.rfind(" ")
+    return (head[:space] if space > 0 else head).rstrip() + "…"
 
 
 def _paths(root: Path, day: str) -> tuple:

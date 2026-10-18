@@ -345,6 +345,26 @@ Done."
   [ "$(cat "$IN/clock.md")" = "$(printf 'short: 2026-10-04\nlong: 2026-10-31')" ]
 }
 
+@test "brief_prep: alerts.md holds yesterday's and today's alerts with the new-message triage lines summed (phase A spec §3.6)" {
+  mkdir -p system/logs
+  printf -- '- 09:00:00 [triage] 2 new: Blake; Avery\n- 10:00:00 [sync] blocked\n' > system/logs/alerts_2026-09-30.md
+  printf -- '- 05:00:00 [triage] 3 new: Cara\n- 05:10:00 [triage] no Gmail connector reachable\n' > system/logs/alerts_2026-10-01.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/alerts.md")" = "$(printf -- '- 10:00:00 [sync] blocked\n- 05:10:00 [triage] no Gmail connector reachable\n- [triage] 5 new (on the Now page)')" ]
+}
+
+@test "brief_prep: closed Now lines move to the month's archive note before now.md lists the page (phase A spec §3.4)" {
+  mkdir -p wiki/work
+  printf -- '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-09-01"\npartition: work\n---\n# Now\n\n## Needs you\n- [x] owed: Shipped (since 2026-09-01) _(closed: ticked 2026-09-30)_\n  - 2026-09-15: asked Blake\n- [ ] owed: Open (since 2026-09-01)\n' > wiki/work/Now.md
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/now.md")" = "$(printf '## work\n- [ ] owed: Open (since 2026-09-01)')" ]
+  run grep -c 'Shipped' wiki/work/Now.md
+  [ "$output" = "0" ]
+  [ "$(tail -n 2 wiki/work/now-archive/2026-09.md)" = "$(printf -- '- [x] owed: Shipped (since 2026-09-01) _(closed: ticked 2026-09-30)_\n  - 2026-09-15: asked Blake')" ]
+}
+
 @test "brief_prep: briefings and debriefs before yesterday move to briefings/archive/<YYYY-MM>/; a rerun changes nothing" {
   today="$(TZ=America/Denver date +%F)"
   yesterday="$(date -d "$today -1 day" +%F)"
@@ -709,5 +729,37 @@ away_vault() {
   run "$BP" 2026-10-10
   [ "$status" -eq 0 ]
   [ "$(head -n 1 system/logs/inputs/2026-10-10/away.md)" = '### While you were away (2026-09-26 to 2026-10-09)' ]
-  grep -qxF -- '- Now lines (closed lines leave the page after 7 days): none' system/logs/inputs/2026-10-10/away.md
+  grep -qxF -- '- Now lines: none' system/logs/inputs/2026-10-10/away.md
+}
+
+# --- phase A size targets (phase A spec §3.7) ---
+
+@test "brief size: the inputs the brief prints stay under 8 KB on a vault at the live size" {
+  python3 "$REPO/system/tests/fixtures/brief_size.py" "$V"
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  printed=(projects.md actions.md people.md friction.md overdue.md alerts.md quarantine.md away.md updates.md)
+  total=0
+  for f in "${printed[@]}" $(cd "$IN" && ls sections/*.md 2>/dev/null | grep -v '\.prompt\.md$'); do
+    [[ -f "$IN/$f" ]] || continue
+    echo "$f $(wc -c < "$IN/$f")"
+    total=$(( total + $(wc -c < "$IN/$f") ))
+  done
+  echo "total $total"
+  [ "$total" -le 8192 ]
+}
+
+@test "brief size: the Now page is under 25 KB after the brief prep archives it" {
+  python3 "$REPO/system/tests/fixtures/brief_size.py" "$V"
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  echo "Now.md $(wc -c < wiki/work/Now.md)"
+  [ "$(wc -c < wiki/work/Now.md)" -le 25600 ]
+  [ "$(grep -c '^- \[x\] ' wiki/work/now-archive/2026-09.md)" -eq 200 ]
+}
+
+@test "brief size: the brief prompt is at most 2,500 words with every extension's section" {
+  words="$(cat "$REPO/.claude/commands/brief.md" "$REPO"/extensions/*/brief/section.md | wc -w)"
+  echo "words $words"
+  [ "$words" -le 2500 ]
 }

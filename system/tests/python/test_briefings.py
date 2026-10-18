@@ -41,3 +41,14 @@ def test_previous_weekday_briefing_skips_the_weekend(vault):
 def test_no_earlier_briefing_is_none(vault):
     assert briefings.earlier_briefings(vault, "2026-10-12") == []
     assert briefings.previous_weekday_briefing(vault, "2026-10-12") is None
+
+
+def test_cut_stops_at_a_word_and_marks_the_cut():
+    short = "word " * 31 + "abcd"  # 159 characters
+    assert briefings.cut(short) == short
+    exact = "x" * 160
+    assert briefings.cut(exact) == exact
+    long = "word " * 80
+    out = briefings.cut(long)
+    assert out.endswith("word…") and len(out) <= 161
+    assert briefings.cut("y" * 200) == "y" * 160 + "…"

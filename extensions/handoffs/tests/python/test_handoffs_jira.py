@@ -113,3 +113,26 @@ def test_main_prints_the_lines_and_one_reason_line(monkeypatch, capsys):
     monkeypatch.setattr(jh, "config", lambda: {})
     assert jh.main(["x", "query"]) == 2
     assert capsys.readouterr().err == "jira_handoffs: handoffs_projects lists no Jira project keys\n"
+
+
+def test_the_brief_lists_ten_recent_then_counts_the_rest_and_the_old():
+    old = [node(f"EX-{i}", statuscategorychangedate=f"2025-03-{i:02d}T09:00:00.000-0600") for i in range(1, 9)]
+    recent = [node(f"OPS-{i}", statuscategorychangedate=f"2026-09-{i:02d}T09:00:00.000-0600") for i in range(1, 18)]
+    edge = node("OPS-99", statuscategorychangedate="2026-07-19T09:00:00.000-0600")  # exactly 90 days: recent
+    out = jh.chase(jh.extract(stream(recent[::-1] + old + [edge]), CFG), "2026-10-17")
+    assert out[0].startswith("- [ ] [OPS-99]") and out[1].startswith("- [ ] [OPS-1]")
+    assert len(out) == 12 and out[10] == "- and 8 more"
+    assert out[11] == "- 8 handoffs unchanged for more than 90 days (oldest: EX-1, since 2025-03-01)"
+
+
+def test_a_long_summary_is_cut():
+    (line,) = jh.extract(stream([node(summary="word " * 60)]), CFG)
+    assert "…" in line and line.endswith("unchanged since 2026-09-28)")
+
+
+def test_main_takes_a_date(monkeypatch, capsys):
+    monkeypatch.setattr(jh, "config", lambda: CFG)
+    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(json.dumps(m) for m in stream([node()]))))
+    assert jh.main(["x", "extract", "--date", "2027-06-01"]) == 0
+    assert capsys.readouterr().out.startswith("- 1 handoffs unchanged for more than 90 days (oldest: EX-1")
+    assert jh.main(["x", "extract", "--date"]) == 2

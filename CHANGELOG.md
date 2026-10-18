@@ -6,7 +6,6 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 - Finish the extensions work: no vendor names left in the core, fewer note types, and every check passing with all extensions on and with all off.
 - Ingest checks: a set of sample inputs that scores how well `/ingest` compiles notes, before any new input source is added.
-- A brief that stays on one screen and a shorter Now page: long sections get caps, and unattended runs read less prompt text.
 - An intraday brief: what changed since the morning, with Slack messages captured into the inbox.
 - Work Orders that run side by side, so a long research order no longer holds up the others (#229).
 - Details: [roadmap](docs/superpowers/roadmap.md).
@@ -14,6 +13,8 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-17
+- The brief is shorter. Active Projects shows 3 decisions per project, then a count. Waiting on shows the 5 people with the most actions, then a count. Handoffs to chase lists 10 tickets, then counts the rest and those unchanged for more than 90 days. Every item is cut to 160 characters. New-message triage alerts print as one line, and a meeting notice prints in one brief only. Closed Now lines move to `wiki/<partition>/now-archive/<YYYY-MM>.md` at each brief. A Now line stays under 300 characters: add history under it with `system/scripts/now.py note`. A GitHub issue URL as evidence closes its line when the issue closes. (#270)
+  - Action: in a lull, run `system/scripts/now.py review --partition work` and split each long line with `now.py set` and `now.py note`.
 - The pre-commit hook refuses a `CLAUDE.md` over 16 KB or a `wiki/Index.md` over 8 KB when the commit makes it larger; shrinking always passes. (#259)
 - A spreadsheet, Word document, slide deck or PDF dropped in `raw/inbox/` is converted to text and ingested (sheets as tables, footnotes and comments, speaker notes, numbered pages) (before, its raw bytes reached the ingest run as unreadable text); an encrypted or corrupt file is quarantined at once with the reason. PDFs need `pdftotext` (poppler). (#257)
 - A note under `wiki/<partition>/private/` is closed to Claude: the settings deny reading and editing it, the index, lint and recall skip it, and headless runs cannot stage or publish it. To show Claude one such file, type `! cat <path>` yourself (FOUNDRY.md: Security model). `git show` now asks before it runs, since it can print a private note from history. (#258)

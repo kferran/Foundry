@@ -8,13 +8,14 @@ from vaultlib import frontmatter, schema
 SAMPLE = {
     "date": "2026-09-30", "partition": "work", "codebase": "sample", "capability": "code",
     "source_stem": "SampleSource", "title": "Sample", "status": "active", "brief_time": "06:00",
-    "debrief_time": "17:00",
+    "debrief_time": "17:00", "month": "2026-09",
 }
 TEMPLATE_TARGETS = {
     "wiki-concept.md": "wiki/work/concepts/Sample.md",
     "daily-briefing.md": "briefings/2026-09-30.md",
     "daily-debrief.md": "briefings/2026-09-30.debrief.md",
     "now.md": "wiki/work/Now.md",
+    "now_archive.md": "wiki/work/now-archive/2026-10.md",
 }
 NOT_NOTES = set()
 # Core's schemas, and those of every extension present (extensions spec §3: a present extension's schemas load).

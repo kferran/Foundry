@@ -3,8 +3,8 @@
 
 Usage: meeting_actions.py YYYY-MM-DD   prints actions.md: the user's open actions (owner_names, case-folded,
 whole entries) from every meeting; everyone else's from the meeting notes imported since the previous weekday
-brief, grouped by owner, printed once (none on a Saturday or Sunday); and the Notices of the last 7 days from
-system/logs/meetings-<YYYY-MM>.jsonl.
+brief, grouped by owner (the 5 with the most, then a count), printed once (none on a Saturday or Sunday); and the
+Notices logged in system/logs/meetings-<YYYY-MM>.jsonl since that same brief.
 """
 import json
 import sqlite3
@@ -16,11 +16,12 @@ from zoneinfo import ZoneInfo
 VAULT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
 from vaultlib import briefings, frontmatter  # noqa: E402
+from vaultlib.briefings import cut  # noqa: E402
 from vaultlib.index import Index  # noqa: E402
 from vaultlib.meetings import open_actions, owner_names  # noqa: E402
 
 NO_BRIEF_DAYS = 7
-NOTICE_DAYS = 7
+MAX_OWNERS = 5
 UNASSIGNED = "Unassigned"
 
 
@@ -124,14 +125,21 @@ def merge_first_names(groups: dict) -> dict:
     return groups
 
 
+def waiting_on(others: dict) -> list:
+    """The MAX_OWNERS owners with the most items (ties by name), then one count line (phase A spec §3.2)."""
+    owners = sorted(others, key=lambda o: (-len(others[o]), o.casefold()))
+    out = [line for owner in owners[:MAX_OWNERS] for line in (f"### {owner}", *others[owner])]
+    if rest := owners[MAX_OWNERS:]:
+        out.append(f"and {len(rest)} more people ({sum(len(others[o]) for o in rest)} actions)")
+    return out
+
+
 def notices(day):
-    out = []
+    """The notices logged since the window start, so each prints in one brief (phase A spec §3.6)."""
+    out, start, tz = [], window_start(VAULT, day.isoformat()), _zone(_config())
     for r in _records():
-        try:
-            when = date.fromisoformat(str(r.get("time", ""))[:10])
-        except ValueError:
-            continue
-        if not day - timedelta(days=NOTICE_DAYS) <= when <= day:
+        when = _when(r, tz)
+        if when is None or not start < when < datetime.combine(day + timedelta(days=1), time(0, 0), tz):
             continue
         if r.get("kind") == "imported" and r.get("complete") is False:
             out.append(f"- {r.get('note')} was imported from a transcript cut short (complete: false).")
@@ -168,16 +176,16 @@ def main(argv):
         for owners, bracket, text in open_actions(body):
             if any(o.casefold() in me for o in owners):
                 days = (day - held_on).days
-                mine.append(f"- [{bracket}] {text} ([[{Path(path).stem}]], {days} day{'' if days == 1 else 's'} open)")
+                mine.append(f"- [{bracket}] {cut(text)} ([[{Path(path).stem}]], {days} day{'' if days == 1 else 's'} open)")
     if day.weekday() < 5:
         for path, held, body in imported_notes(VAULT, day.isoformat(), rows):
             for owners, _, text in open_actions(body):
                 if any(o.casefold() in me for o in owners):
                     continue
                 for owner in owners or [UNASSIGNED]:
-                    others.setdefault(owner, []).append(f"- {text} ([[{Path(path).stem}]], {held})")
+                    others.setdefault(owner, []).append(f"- {cut(text)} ([[{Path(path).stem}]], {held})")
         others = merge_first_names(others)
-    waiting = [line for owner in sorted(others, key=str.casefold) for line in (f"### {owner}", *others[owner])]
+    waiting = waiting_on(others)
     print(f"# Meeting actions for {day}\n")
     for heading, lines in (("Yours", mine), ("Waiting on", waiting), ("Notices", notices(day))):
         print(f"## {heading}\n" + "\n".join(lines or ["None."]) + "\n")

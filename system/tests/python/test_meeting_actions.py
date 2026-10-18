@@ -190,3 +190,43 @@ def test_a_bad_date_exits_2(av):
     p = subprocess.run([sys.executable, str(av / "system/scripts/meeting_actions.py"), "2026-13-01"],
                        capture_output=True, text=True)
     assert p.returncode == 2 and "invalid date" in p.stderr
+
+
+def test_waiting_on_lists_five_owners_then_a_count(av):
+    brief(av, "2026-10-05")
+    name = "2026-10-05-1500-big"
+    body = "## Action items\n" + "".join(f"- [ ] [Owner {n}] Item {n}-{i}: Do it.\n"
+                                         for n in range(1, 8) for i in range(n))
+    write(av, f"wiki/work/meetings/{name}.md", meeting("work", name, body=body))
+    imported(av, f"wiki/work/meetings/{name}.md", "2026-10-05T16:00:00-06:00")
+    waiting = section(actions(av), "Waiting on")
+    assert [w for w in waiting if w.startswith("### ")] == [f"### Owner {n}" for n in (7, 6, 5, 4, 3)]
+    assert waiting[-1] == "and 2 more people (3 actions)"
+
+
+def test_owner_ties_sort_by_name():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("meeting_actions", REPO / "system/scripts/meeting_actions.py")
+    ma = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ma)
+    assert ma.waiting_on({"cara": ["- c"], "Abe": ["- a"], "Bo": ["- b1", "- b2"]}) == [
+        "### Bo", "- b1", "- b2", "### Abe", "- a", "### cara", "- c"]
+
+
+def test_yours_cuts_long_items(av):
+    name = "2026-10-05-1500-long"
+    body = "## Action items\n- [ ] [Avery Sample] Long: " + "word " * 60 + "\n"
+    write(av, f"wiki/work/meetings/{name}.md", meeting("work", name, body=body))
+    (line,) = section(actions(av), "Yours")
+    assert "…" in line and len(line) < 230
+
+
+def test_notices_print_in_one_brief_only(av):
+    brief(av, "2026-10-05")  # Monday 06:00 America/Denver
+    records = [
+        {"time": "2026-10-05T05:00:00-06:00", "kind": "quarantined", "file": "before.pdf", "reason": "r"},
+        {"time": "2026-10-05T07:00:00-06:00", "kind": "quarantined", "file": "after.pdf", "reason": "r"},
+    ]
+    write(av, "system/logs/meetings-2026-10.jsonl", "".join(json.dumps(r) + "\n" for r in records))
+    notices = "".join(section(actions(av), "Notices"))
+    assert "after.pdf" in notices and "before.pdf" not in notices

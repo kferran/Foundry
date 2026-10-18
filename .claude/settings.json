@@ -8,6 +8,7 @@
       "Bash(system/scripts/now.py add:*)",
       "Bash(system/scripts/now.py list:*)",
       "Bash(system/scripts/now.py set:*)",
+      "Bash(system/scripts/now.py note:*)",
       "Bash(system/scripts/alert.py foreman:*)",
       "Bash(system/scripts/lint_vault.sh:*)",
       "Bash(system/scripts/vault_index.py query:*)",

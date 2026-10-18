@@ -173,3 +173,16 @@ def test_cli_never_reads_a_private_page(vault):
     out = run(vault)
     assert "salary" not in out.stdout
     assert "[[Secret]] in ActiveProjects does not resolve to a note." in out.stdout
+
+
+def test_decisions_cap_at_three_and_count_the_rest():
+    body = "## Decisions\n" + "".join(f"- [ ] d{i}\n" for i in range(6))
+    lines = ap.project_block("Alpha", "", page(body))
+    assert lines[lines.index("Decisions waiting:") + 1:] == ["- d0", "- d1", "- d2", "- and 3 more decisions on the page"]
+
+
+def test_long_items_are_cut_to_one_brief_item():
+    body = "- [ ] " + "long " * 80 + "\n## Decisions\n- [ ] " + "wide " * 80 + "\n"
+    lines = ap.project_block("Alpha", "", page(body))
+    assert all(len(line) <= 163 for line in lines)
+    assert lines[3].endswith("…") and lines[-1].endswith("…")

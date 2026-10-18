@@ -58,13 +58,13 @@ def orders(conn, tz, first, last) -> str:
     return count("Work Orders", len(states), (states.count("done"), "done"), (states.count("failed"), "failed"))
 
 
-def now_lines(first, last, days) -> str:
-    lines = [line for p in now.PARTITIONS for line in now.read(VAULT, p).splitlines() if now.parse(line)]
+def now_lines(first, last) -> str:
+    """The page's lines and the archived ones of the away months (closed lines leave the page at each brief)."""
+    lines = [line for p in now.PARTITIONS for text in (now.read(VAULT, p), *now.archived(VAULT, p, first, last))
+             for line in text.splitlines() if now.parse(line)]
     added = sum(first <= now.parse(line)["since"] <= last for line in lines)
     closed = sum(bool(s := now.STAMP.search(line)) and first <= s.group(1) <= last for line in lines)
-    # ponytail: now.py prunes closed lines after KEEP_DAYS, so a longer absence undercounts them; said on the line.
-    pruned = f" (closed lines leave the page after {now.KEEP_DAYS} days)" if days > now.KEEP_DAYS else ""
-    return count("Now lines" + pruned, len(lines), (added, "added"), (closed, "closed"))
+    return count("Now lines", len(lines), (added, "added"), (closed, "closed"))
 
 
 def alerts(span) -> str:
@@ -115,7 +115,7 @@ def main(argv) -> int:
     print(f"### While you were away ({first} to {last})\n")
     for label, read in (("Pull requests", lambda: prs(repos, tz, first, last)),
                         ("Work Orders", lambda: orders(conn, tz, first, last)),
-                        ("Now lines", lambda: now_lines(first, last, len(span))), ("Alerts", lambda: alerts(span)),
+                        ("Now lines", lambda: now_lines(first, last)), ("Alerts", lambda: alerts(span)),
                         ("Decided for you", lambda: decided(span))):
         try:
             print(read())

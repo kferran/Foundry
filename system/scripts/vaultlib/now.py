@@ -15,9 +15,9 @@ from . import briefings, frontmatter, nightshift_item
 PARTITIONS = ("work", "personal")
 KINDS = ("owed", "waiting", "draft")
 NEEDS, WAITING = "## Needs you", "## Waiting"
-KEEP_DAYS = 7
 STALE_DAYS = 14
-LONG_LINE, PAGE_BYTES = 240, 32 * 1024   # review limits (#211): recall cuts a line at 240
+MAX_LINE = 300   # an open line written in full (phase A spec §3.5); history goes to notes under it
+PAGE_BYTES = 25 * 1024   # review limit (#211; phase A target)
 LOOKBACK_DAYS = briefings.LOOKBACK_DAYS
 FAILURE_ALERT = 3
 GH_TIMEOUT = 10
@@ -28,6 +28,7 @@ LINE = re.compile(r"^- \[(?P<mark>.)\] (?P<kind>owed|waiting|draft): (?P<stateme
 CLOSED = re.compile(r"^- \[[xX-]\] ")
 STAMP = re.compile(r"_\(closed: .*?(\d{4}-\d{2}-\d{2})\)_\s*$")
 PR_URL = re.compile(r"^https://github\.com/[^/\s]+/[^/\s]+/pull/\d+$")
+ISSUE_URL = re.compile(r"^https://github\.com/[^/\s]+/[^/\s]+/issues/\d+$")   # phase A spec §2.6
 ORDER_ID = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$")
 ORDER_CLOSED = ("done", "failed", "cancelled")
 SINCE = re.compile(r"\s*_\(open since (\d{4}-\d{2}-\d{2})(?:, \d+ days?)?\)_")
@@ -103,22 +104,87 @@ def open_lines(text: str) -> list:
     return [line for line in frontmatter.parse(text).body.splitlines() if line.startswith("- [ ] ")]
 
 
-def stamp_and_prune(text: str, today: str) -> str:
-    """Stamp a ticked or dropped line that has no close date; drop one closed more than KEEP_DAYS ago; a reopened
-    line loses its old stamp."""
-    cutoff = (date.fromisoformat(today) - timedelta(days=KEEP_DAYS)).isoformat()
+def stamp(text: str, today: str) -> str:
+    """Stamp a ticked or dropped line that has no close date; a reopened line loses its old stamp. Closed lines stay
+    until archive() moves them (phase A spec §3.4)."""
     out = []
     for line in text.split("\n"):
         if line.startswith("- [ ] "):
             line = STAMP.sub("", line).rstrip()
-        elif CLOSED.match(line):
-            stamp = STAMP.search(line)
-            if not stamp:
-                line = f"{line.rstrip()} _(closed: ticked {today})_"
-            elif stamp.group(1) < cutoff:
-                continue
+        elif CLOSED.match(line) and not STAMP.search(line):
+            line = f"{line.rstrip()} _(closed: ticked {today})_"
         out.append(line)
     return "\n".join(out)
+
+
+def _block_end(lines: list, i: int) -> int:
+    """The index after line i and its notes: the indented lines right under a checklist line (phase A spec §3.5)."""
+    j = i + 1
+    if lines[i].startswith("- ["):
+        while j < len(lines) and lines[j].startswith("  ") and lines[j].strip():
+            j += 1
+    return j
+
+
+def archive_path(vault, partition: str, month: str) -> Path:
+    return Path(vault) / "wiki" / partition / "now-archive" / f"{month}.md"
+
+
+def archived(vault, partition: str, first: str, last: str) -> list:
+    """The texts of the archive notes for the months first[:7] to last[:7]."""
+    folder = Path(vault) / "wiki" / partition / "now-archive"
+    return [p.read_text(encoding="utf-8") for p in sorted(folder.glob("*.md")) if first[:7] <= p.stem <= last[:7]]
+
+
+def archive(vault, partition: str, today: str) -> int:
+    """Move every closed line and its notes to the archive note of its stamp's month, in page order; return the count.
+    The archive is written before the page, so a crash between the two repeats nothing: a line already in its
+    archive note is not written twice. The callers hold run.lock."""
+    text = read(vault, partition)
+    if not text:
+        return 0
+    lines, keep, moved, i = stamp(text, today).split("\n"), [], {}, 0
+    while i < len(lines):
+        j = _block_end(lines, i)
+        if CLOSED.match(lines[i]):
+            moved.setdefault(STAMP.search(lines[i]).group(1)[:7], []).append(lines[i:j])
+        else:
+            keep += lines[i:j]
+        i = j
+    for month, blocks in moved.items():
+        path = archive_path(vault, partition, month)
+        old = path.read_text(encoding="utf-8") if path.is_file() else (
+            (Path(vault) / "system" / "templates" / "now_archive.md").read_text(encoding="utf-8")
+            .replace("{{date}}", today).replace("{{partition}}", partition).replace("{{month}}", month))
+        have = {line.rstrip() for line in old.split("\n")}
+        new = [line for block in blocks if block[0].rstrip() not in have for line in block]
+        if new:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_name(f".{path.name}.tmp")
+            tmp.write_text(old.rstrip("\n") + "\n" + "\n".join(new) + "\n", encoding="utf-8")
+            os.replace(tmp, path)
+    if moved:
+        write(vault, partition, "\n".join(keep))
+    return sum(len(blocks) for blocks in moved.values())
+
+
+def note(vault, partition: str, match: str, text: str, today: str) -> str:
+    """Under run.lock: add `  - <today>: <text>` after the notes of the one open line whose statement contains
+    `match` (any case), so a line keeps its statement short and its history under it (phase A spec §3.5)."""
+    text, page, match = " ".join(text.split()), read(vault, partition), match.strip().lower()
+    if not match or not text:
+        raise ValueError("--match and --text need text")
+    if FIELD_KEY.search(text):
+        raise ValueError("a note must not hold [rec:: or [due::")
+    lines = page.split("\n")
+    found = [i for i, line in enumerate(lines) if line.startswith("- [ ] ") and (m := parse(line))
+             and match in fields(m.group("statement"))[0].lower()]
+    if len(found) != 1:
+        raise ValueError(f"{len(found)} open lines match {match!r}; give text that names exactly one")
+    line = f"  - {today}: {text}"
+    end = _block_end(lines, found[0])
+    write(vault, partition, "\n".join(lines[:end] + [line] + lines[end:]))
+    return line
 
 
 def _insert(text: str, heading: str, line: str) -> str:
@@ -151,6 +217,15 @@ def validate(partition: str, kind: str, statement: str, who: str, evidence: str,
         raise ValueError("rec must not hold a bracket or a newline")
     if due and not is_date(due):
         raise ValueError("due must be a date, YYYY-MM-DD")
+
+
+def _fits(line: str, old: str = "") -> str:
+    """line, or ValueError when it is over MAX_LINE and longer than the line it replaces (a long line written before
+    the cap may keep its length)."""
+    if len(line) > MAX_LINE and len(line) > len(old.rstrip()):
+        raise ValueError(f"the line is {len(line)} characters; the limit is {MAX_LINE}: "
+                         "keep the statement short and add history with now.py note")
+    return line
 
 
 def is_date(text: str) -> bool:
@@ -191,13 +266,13 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
         new_rec, new_evidence = rec or old_rec, m.group("evidence") or evidence
         if (new_due, new_rec, new_evidence) == (old_due, old_rec, m.group("evidence") or ""):
             return "exists", existing
-        line = render(kind, bare, m.group("since"), m.group("who") or "", new_evidence, new_rec, new_due)
+        line = _fits(render(kind, bare, m.group("since"), m.group("who") or "", new_evidence, new_rec, new_due), existing)
         lines = text.split("\n")
         lines[[x.rstrip() for x in lines].index(existing.rstrip())] = line
-        write(vault, partition, stamp_and_prune("\n".join(lines), today))
+        write(vault, partition, stamp("\n".join(lines), today))
         return "tightened" if new_due != old_due else "updated", line
-    line = render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who))
-    text = _insert(stamp_and_prune(text, today), WAITING if kind == "waiting" else NEEDS, line)
+    line = _fits(render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who)))
+    text = _insert(stamp(text, today), WAITING if kind == "waiting" else NEEDS, line)
     write(vault, partition, text)
     return "added", line
 
@@ -221,18 +296,20 @@ def set_statement(vault, partition: str, match: str, statement: str, today: str)
            for o, p in parsed):
         raise ValueError("another open line of the same kind already has that statement")
     validate(partition, m.group("kind"), statement, m.group("who") or "", m.group("evidence") or "", rec, due)
-    line = render(m.group("kind"), statement, m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
+    line = _fits(render(m.group("kind"), statement, m.group("since"), m.group("who") or "", m.group("evidence") or "",
+                        rec, due))
     lines = text.split("\n")
     lines[[x.rstrip() for x in lines].index(old.rstrip())] = line
-    write(vault, partition, stamp_and_prune("\n".join(lines), today))
+    write(vault, partition, stamp("\n".join(lines), today))
     return line
 
 
 def evidence_state(vault, evidence: str, gh: str = "gh"):
     """The close reason ("PR merged", "Work Order done", …), None while still open, or CheckFailed."""
-    if PR_URL.match(evidence):
+    if PR_URL.match(evidence) or ISSUE_URL.match(evidence):
+        what = "pr" if PR_URL.match(evidence) else "issue"
         try:
-            out = subprocess.run([gh, "pr", "view", evidence, "--json", "state", "-q", ".state"],
+            out = subprocess.run([gh, what, "view", evidence, "--json", "state", "-q", ".state"],
                                  capture_output=True, text=True, timeout=GH_TIMEOUT)
         except FileNotFoundError:
             raise CheckFailed("gh is not installed")
@@ -241,7 +318,7 @@ def evidence_state(vault, evidence: str, gh: str = "gh"):
         if out.returncode != 0:
             raise CheckFailed(f"gh exit {out.returncode}: {out.stderr.strip()[:200]}")
         state = out.stdout.strip().upper()
-        return f"PR {state.lower()}" if state in ("MERGED", "CLOSED") else None
+        return f"{'PR' if what == 'pr' else 'issue'} {state.lower()}" if state in ("MERGED", "CLOSED") else None
     if ORDER_ID.match(evidence):
         for _, fm, _ in nightshift_item.items(vault):
             if fm.get("id") == evidence:
@@ -272,7 +349,7 @@ def closures(vault, lines: list, gh: str = "gh", on_fail=lambda line, reason: No
     found, gh_down = {}, False
     for line in lines:
         m = LINE.match(line)
-        if not m or not m.group("evidence") or (gh_down and PR_URL.match(m.group("evidence"))):
+        if not m or not m.group("evidence") or (gh_down and (PR_URL.match(m.group("evidence")) or ISSUE_URL.match(m.group("evidence")))):
             continue
         try:
             how = evidence_state(vault, m.group("evidence"), gh)
@@ -303,7 +380,7 @@ def check(vault, today: str, alert, gh: str = "gh") -> int:
             if key in found:
                 lines[i] = f"- [x]{key[5:]} _(closed: {found[key]} {today})_"
                 closed += 1
-        write(vault, partition, stamp_and_prune("\n".join(lines), today))
+        write(vault, partition, stamp("\n".join(lines), today))
     return closed
 
 
@@ -326,7 +403,7 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
             "stale": [line for line, m in parsed if m and not m.group("evidence") and m.group("since") < cutoff],
             "duplicate": [line for group in statements.values() if len(group) > 1 for line in group],
             "unreadable": [line for line, m in parsed if not m and (FIELD_KEY.search(line) or SCRIPT_META.search(line))],
-            "long": [line for line in lines if len(line) > LONG_LINE and parse(line)],   # set can rewrite each
+            "long": [line for line in lines if len(line) > MAX_LINE and parse(line)],   # set and note split each
             "page_bytes": page_path(vault, partition).stat().st_size if page_path(vault, partition).is_file() else 0}
 
 
