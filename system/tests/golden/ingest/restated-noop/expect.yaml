@@ -1,0 +1,5 @@
+min_pass_rate: 0.67
+publish: noop
+decisions:
+  - [noop, wiki/work/concepts/Kafka.md]
+untouched: [wiki/work/concepts/Kafka.md]

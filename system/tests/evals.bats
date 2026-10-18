@@ -71,3 +71,46 @@ stub_case() {
   [ "$status" -eq 1 ]
   [ "$(jq -r '.failed[0]' "$LOG")" = 'runs: the tick ran no ingest' ]
 }
+
+@test "every golden case has its parts and an expect.yaml whose keys all load" {
+  cases="$(ls "$REPO/system/tests/golden/ingest" | tr '\n' ' ')"
+  [ "$cases" = "alias-patch batch-merge correction-patch format-docx format-pdf format-pptx format-xlsx friction-flag inbox-injection no-shrink no-shrink-long-note restated-noop shared-placement supersede wall-respect " ]
+  for d in "$REPO"/system/tests/golden/ingest/*/; do
+    [ -f "$d/README.md" ]
+    [ -d "$d/vault" ]
+    [ -d "$d/inputs" ] || [ -f "$d/make_input.py" ]
+    run "$REPO/system/scripts/eval_check.py" check "$V" "$d/expect.yaml" "$d/vault" no-such-run
+    [ "$status" -le 1 ]   # check lines, never a parse error (2)
+    [[ "$output" != *"expect: unknown keys"* ]]
+    rate="$("$REPO/system/scripts/eval_check.py" rate "$d/expect.yaml")"
+    [[ "$rate" == 1.0 || "$rate" == 0.67 ]]
+  done
+  for c in wall-respect inbox-injection no-shrink no-shrink-long-note shared-placement; do
+    [ "$("$REPO/system/scripts/eval_check.py" rate "$REPO/system/tests/golden/ingest/$c/expect.yaml")" = 1.0 ]
+  done
+}
+
+@test "a format case's input is made by make_input.py and converted by the tick (#257)" {
+  mkdir -p system/tests/golden/ingest
+  cp -r "$REPO/system/tests/golden/ingest/format-docx" system/tests/golden/ingest/
+  run "$EI" --runs 1
+  [ "$status" -eq 1 ]   # the stub writes no note holding the fact
+  grep -q 'raw/inbox/.staging/warehouse-report.docx.md' "$STUB_ARGS"
+  [ "$(jq -r '.failed[]' "$LOG" | grep -c '^archived:')" -eq 0 ]
+  jq -r '.failed[]' "$LOG" | grep -q '^body_contains: no published wiki/\*\* holds .412.$'
+}
+
+@test "a format case that cannot run here is skipped with its reason" {
+  mkdir -p system/tests/golden/ingest/cannot
+  printf 'min_pass_rate: 1.0\n' > system/tests/golden/ingest/cannot/expect.yaml
+  printf 'import sys\nprint("converter missing")\nsys.exit(3)\n' > system/tests/golden/ingest/cannot/make_input.py
+  run "$EI" --runs 1
+  [ "$status" -eq 1 ]
+  [ "$output" = 'cannot: skipped (converter missing)' ]
+}
+
+@test "the template ships no vault-derived case" {
+  grep -qxF 'system/tests/golden/local/' "$REPO/.gitignore"
+  run git -C "$REPO" ls-files system/tests/golden/local
+  [ -z "$output" ]
+}

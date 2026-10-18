@@ -1,0 +1,10 @@
+min_pass_rate: 0.67
+publish: published
+patches:
+  wiki/work/concepts/Kafka.md:
+    contains: [7 days]
+    still_contains: [distributed commit log]
+body_lacks:
+  wiki/work/concepts/Kafka.md: [Retention is 3 days]
+count:
+  wiki/work/preferences/*: 0

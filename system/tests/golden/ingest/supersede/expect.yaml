@@ -1,0 +1,4 @@
+min_pass_rate: 0.67
+retired: [wiki/work/concepts/LegacyQueue.md]
+keeps:
+  wiki/work/concepts/LegacyQueue.md: [legacy queue handles shop exports]

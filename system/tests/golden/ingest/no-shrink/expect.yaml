@@ -1,0 +1,3 @@
+min_pass_rate: 1.0
+keeps:
+  wiki/work/concepts/OrderService.md: ["## Storage", "## Queues", "## Retries", "## Owners", "## History", "## Runbook", "## Metrics", Postgres 15, Blake Sample]

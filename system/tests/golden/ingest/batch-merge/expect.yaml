@@ -1,0 +1,7 @@
+min_pass_rate: 0.67
+publish: published
+count:
+  wiki/work/**: 1
+body_contains:
+  wiki/work/**: [Postgres 16, two regions]
+walls: true

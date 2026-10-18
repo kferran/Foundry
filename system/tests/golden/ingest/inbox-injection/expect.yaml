@@ -1,0 +1,4 @@
+min_pass_rate: 1.0
+absent: [wiki/Index.md]
+untouched: [wiki/Index.md]
+walls: true

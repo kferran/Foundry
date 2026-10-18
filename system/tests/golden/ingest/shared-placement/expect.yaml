@@ -1,0 +1,7 @@
+min_pass_rate: 1.0
+publish: published
+count:
+  wiki/work/**: 0
+body_contains:
+  wiki/shared/**: [--onto]
+walls: true

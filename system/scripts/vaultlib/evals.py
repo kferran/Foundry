@@ -13,7 +13,7 @@ from . import frontmatter, links as linkmod, publish, schema as schemamod
 from .index import NAME_EXCLUDED, Index
 
 KEYS = ("min_pass_rate", "publish", "decisions", "creates", "patches", "untouched", "walls", "absent",
-        "body_contains", "body_lacks", "archived")
+        "body_contains", "body_lacks", "archived", "count", "retired", "keeps")
 
 
 def _json(path: Path, default):
@@ -122,16 +122,16 @@ def _patches(vault, run_ids, want, _overlay) -> list:
 def _untouched(vault, _run_ids, want, overlay) -> list:
     out = []
     for rel in want:
-        source = (Path(overlay) / rel) if overlay and (Path(overlay) / rel).is_file() else None
-        before = source.read_bytes() if source else None
+        source = Path(overlay or "") / rel
+        if not overlay or not source.is_file():  # a path the overlay lacks has nothing to compare with
+            out.append(f"untouched: {rel} is not in the case's overlay")
+            continue
         try:
             after = (vault / rel).read_bytes()
         except OSError:
             after = None
-        if before is not None and after != before:
+        if after != source.read_bytes():
             out.append(f"untouched: {rel} changed")
-        if before is None and after is None:
-            out.append(f"untouched: {rel} is in neither the overlay nor the vault")
     return out
 
 
@@ -172,6 +172,35 @@ def _body_check(vault, run_ids, want, contains: bool) -> list:
     return out
 
 
+def _count(vault, run_ids, want, _overlay) -> list:
+    pub = published(vault, run_ids)
+    return [f"count: {len(_matching(pub, pattern))} published {pattern}, want {n}"
+            for pattern, n in want.items() if len(_matching(pub, pattern)) != int(n)]   # yamlload reads numbers as text
+
+
+def _retired(vault, run_ids, want, _overlay) -> list:
+    out, pub = [], published(vault, run_ids)
+    for rel in want:
+        try:
+            data = frontmatter.parse((vault / rel).read_text(encoding="utf-8")).data or {}
+        except (OSError, UnicodeDecodeError):
+            data = {}
+        if rel not in pub or not (data.get("status") == "deprecated" or data.get("superseded_by")):
+            out.append(f"retired: {rel} is neither deprecated nor superseded")
+    return out
+
+
+def _keeps(vault, _run_ids, want, _overlay) -> list:
+    out = []
+    for rel, texts in want.items():
+        try:
+            text = (vault / rel).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            text = ""
+        out += [f"keeps: {rel} lost {t!r}" for t in texts if t not in text]
+    return out
+
+
 def _archived(vault, _run_ids, want, _overlay) -> list:
     archive = vault / "raw" / "archive"
     return [f"archived: {name} is not in raw/archive/" for name in want
@@ -180,6 +209,7 @@ def _archived(vault, _run_ids, want, _overlay) -> list:
 
 CHECKS = {"publish": _publish, "decisions": _decisions, "creates": _creates, "patches": _patches,
           "untouched": _untouched, "walls": _walls, "absent": _absent, "archived": _archived,
+          "count": _count, "retired": _retired, "keeps": _keeps,
           "body_contains": lambda v, r, w, o: _body_check(v, r, w, True),
           "body_lacks": lambda v, r, w, o: _body_check(v, r, w, False)}
 
@@ -205,7 +235,7 @@ def summary(records: list) -> tuple:
         made = [r for r in runs if not r.get("skipped")]
         rate = float(runs[0].get("min_pass_rate", 1.0))
         if not made:
-            lines.append(f"{name}: skipped (budget)")
+            lines.append(f"{name}: skipped ({runs[0].get('reason', 'budget')})")
             ok = False
             continue
         passes = sum(not r.get("failed") for r in made)

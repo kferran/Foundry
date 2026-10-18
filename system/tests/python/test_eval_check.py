@@ -144,3 +144,29 @@ def test_cli_check_rate_and_a_bad_expect(vault, tmp_path):
     assert p.stdout == "0.67\n"
     p = subprocess.run([sys.executable, str(SCRIPT), "rate", str(bad)], capture_output=True, text=True)
     assert p.returncode == 2 and "not a mapping" in p.stderr
+
+
+def test_untouched_needs_the_path_in_the_overlay(vault, tmp_path):
+    run(vault)
+    assert evals.check(vault, [RUN], {"untouched": ["wiki/Index.md"]}, tmp_path) == [
+        "untouched: wiki/Index.md is not in the case's overlay"]
+
+
+def test_count_retired_and_keeps(vault):
+    write(vault, "wiki/work/concepts/Old.md", concept("work", "Old", status="deprecated"))
+    write(vault, "wiki/work/concepts/Gone.md", concept("work", "Gone", superseded_by='"[[New]]"'))
+    write(vault, "wiki/work/concepts/Kept.md", concept("work", "Kept"))
+    run(vault, published=["wiki/work/concepts/Old.md", "wiki/work/concepts/Gone.md", "wiki/work/concepts/Kept.md"])
+    assert evals.check(vault, [RUN], {"count": {"wiki/work/**": 3, "wiki/shared/**": 0},
+                                       "retired": ["wiki/work/concepts/Old.md", "wiki/work/concepts/Gone.md"],
+                                       "keeps": {"wiki/work/concepts/Kafka.md": ["commit log"]}}) == []
+    assert evals.check(vault, [RUN], {"count": {"wiki/work/**": 1}, "retired": ["wiki/work/concepts/Kept.md"],
+                                       "keeps": {"wiki/work/concepts/Kafka.md": ["five brokers"]}}) == [
+        "count: 3 published wiki/work/**, want 1",
+        "retired: wiki/work/concepts/Kept.md is neither deprecated nor superseded",
+        "keeps: wiki/work/concepts/Kafka.md lost 'five brokers'"]
+
+
+def test_summary_names_a_skip_reason():
+    assert evals.summary([{"case": "pdf", "skipped": True, "reason": "pdftotext missing"}]) == (
+        ["pdf: skipped (pdftotext missing)"], False)

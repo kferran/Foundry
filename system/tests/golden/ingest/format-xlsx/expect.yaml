@@ -1,0 +1,6 @@
+min_pass_rate: 0.67
+publish: published
+archived: [warehouses.xlsx]
+body_contains:
+  wiki/**: ["412"]
+walls: true

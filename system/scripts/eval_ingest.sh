@@ -81,7 +81,17 @@ for dir in "${dirs[@]}"; do
         cp -r "$p." "$v/raw/$(basename "$p")/notes/"
       done
     fi
-    [[ -f "$dir/make_input.py" ]] && python3 -I "$dir/make_input.py" "$v/raw/inbox"
+    if [[ -f "$dir/make_input.py" ]]; then  # exit 3: this machine cannot run the case (its stdout says why)
+      mrc=0
+      reason="$(python3 -I "$dir/make_input.py" "$v/raw/inbox")" || mrc=$?
+      if (( mrc == 3 )); then
+        record "$(jq -cn --arg c "$name" --argjson r "$n" --argjson rate "$rate" --arg why "$reason" \
+          '{time: (now | todate), case: $c, repeat: $r, min_pass_rate: $rate, skipped: true, reason: $why}')"
+        rm -rf "$tmp"
+        continue
+      fi
+      (( mrc == 0 )) || { echo "eval_ingest: case $name: make_input.py failed (exit $mrc)" >&2; rm -rf "$tmp"; exit 2; }
+    fi
     find "$v/raw" -type f -exec touch -d '10 minutes ago' {} +   # past the intake's fresh-file wait
     (cd "$v" && system/scripts/vault_index.py rebuild >/dev/null)
     mkdir -p "$v/system/logs/runs"
