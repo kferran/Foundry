@@ -13,7 +13,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-18
-- The brief's Overdue block shows at most 10 lines, those the fewest days over first, then `and N more of M overdue lines`; the Now pages still hold every line. (#PR)
+- The brief's Overdue block shows at most 10 lines, those the fewest days over first, then `and N more of M overdue lines`; the Now pages still hold every line. (#272)
 
 ## 2026-10-17
 - The brief is shorter. Active Projects shows 3 decisions per project, then a count. Waiting on shows the 5 people with the most actions, then a count. Handoffs to chase lists 10 tickets, then counts the rest and those unchanged for more than 90 days. Every item is cut to 160 characters. New-message triage alerts print as one line, and a meeting notice prints in one brief only. Closed Now lines move to `wiki/<partition>/now-archive/<YYYY-MM>.md` at each brief. A Now line stays under 300 characters: add history under it with `system/scripts/now.py note`. A GitHub issue URL as evidence closes its line when the issue closes. (#270)
