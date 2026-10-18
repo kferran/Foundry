@@ -1203,3 +1203,10 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF 'extensions.py link' "$f"
   grep -qF 'A failure here never blocks setup' "$f"
 }
+
+@test "FOUNDRY.md Development says when the ingest evals run and that a new Workcell ships with a case (ingest evals spec §3.5)" {
+  grep -qF 'system/scripts/eval_ingest.sh' FOUNDRY.md
+  grep -qF "run them after a change to the \`ingest\` command, \`run_headless.sh\`, the headless settings, the intake's staging (conversion, redaction) or the \`claude\` version" FOUNDRY.md
+  grep -qF 'Every new Workcell ships with at least one eval case.' FOUNDRY.md
+  grep -qF 'Evals are not gating' FOUNDRY.md
+}

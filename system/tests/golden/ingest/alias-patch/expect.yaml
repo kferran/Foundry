@@ -1,0 +1,8 @@
+min_pass_rate: 0.67
+publish: published
+patches:
+  wiki/work/concepts/ExportQueue.md:
+    contains: [three times]
+    still_contains: [warehouse]
+count:
+  wiki/work/**: 1

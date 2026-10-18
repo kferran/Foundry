@@ -1,0 +1,4 @@
+min_pass_rate: 1.0
+publish: [published, rejected]
+keeps:
+  wiki/work/concepts/OrderService.md: ["## Overview", "## Retries", "## Limits", "## Owners", "## History", "## Runbook", "## Metrics", "## Open items", 200 orders a minute, Blake Sample]

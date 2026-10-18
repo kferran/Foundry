@@ -37,7 +37,7 @@
 - Test: `system/tests/python/test_eval_check.py`
 
 **Interfaces:**
-- Produces: `evals.check(vault: Path, run_ids: list[str], expect: dict) -> list[str]` (failed-check lines, empty when all hold); `eval_check.py <vault> <expect.yaml> <run id>…` exits 0 or 1 and prints the lines.
+- Produces: `evals.check(vault: Path, run_ids: list[str], expect: dict, overlay) -> list[str]` (failed-check lines, empty when all hold) and `evals.summary(records) -> (lines, ok)`; `eval_check.py check <vault> <expect.yaml> <overlay> <run id>…` exits 0 or 1 and prints the lines; `rate`, `cost` and `summary` subcommands serve the harness. Built with three more checks than the spec table: `count`, `retired`, `keeps`.
 
 - [ ] **Step 1: Write the tests.** One test per check kind (`decisions`, `creates`, `patches`, `untouched`, `walls`, `publish`, `absent`, `body_contains`, `body_lacks`, `archived`): build run directories and a small vault under `tmp_path`, assert an empty list on the matching case and the expected line on the mismatch. `walls`: a `shared` note whose `sources` names a `work` input, and a `work` note linking a `personal` note. `untouched`: one byte changed. Two run ids (a digest and an inbox file in one tick) are read together.
 - [ ] **Step 2: Run them to verify they fail.** `system/scripts/test.sh system/tests/python/test_eval_check.py`.

@@ -1,0 +1,5 @@
+min_pass_rate: 0.67
+publish: published
+creates:
+  wiki/work/**:
+    is_friction: "true"

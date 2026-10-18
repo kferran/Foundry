@@ -1,0 +1,5 @@
+min_pass_rate: 1.0
+count:
+  wiki/work/**: 0
+untouched: [wiki/work/concepts/Kafka.md]
+walls: true
