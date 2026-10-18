@@ -387,7 +387,7 @@ def overdue_pages(vault):
 
 
 def test_overdue_groups_both_pages_by_days_over_and_counts_clockless_lines(vault):
-    # Now clock spec §7: open lines with due before the date, uncapped, oldest due first in each group, then the
+    # Now clock spec §7: open lines with due before the date, oldest due first in each group, then the
     # count of open lines with no clock; ticked and dropped lines and a line due on the date are left out.
     prepare(vault)
     overdue_pages(vault)
@@ -397,12 +397,21 @@ def test_overdue_groups_both_pages_by_days_over_and_counts_clockless_lines(vault
     assert not (vault / "system/logs").exists()
 
 
-def test_overdue_prints_every_line_and_nothing_when_all_lines_are_on_time(vault):
+def test_overdue_prints_ten_lines_fewest_days_over_first_then_a_count(vault):
+    prepare(vault)  # Now clock spec §7; phase A follow-up: at most 10 lines
+    write(vault, "wiki/work/Now.md", HEAD.format(p="work") + "".join(
+        f"- [ ] owed: Item {i} [due:: 2026-10-01] (since 2026-09-01)\n" for i in range(40))
+          + "- [ ] owed: Recent [due:: 2026-10-18] (since 2026-09-01)\n")
+    out = now.overdue(vault, "2026-10-20").split("\n\n")
+    assert out[0] == "**1 to 7 days over**\n- owed: Recent [due:: 2026-10-18] (since 2026-09-01)"
+    assert out[1].splitlines()[0] == "**8 to 30 days over**" and len(out[1].splitlines()) == 10
+    assert out[2] == "and 31 more of 41 overdue lines; the Now pages hold them all."
+
+
+def test_overdue_prints_nothing_when_all_lines_are_on_time(vault):
     prepare(vault)  # Now clock spec §7
     write(vault, "wiki/work/Now.md", HEAD.format(p="work") + "".join(
         f"- [ ] owed: Item {i} [due:: 2026-10-01] (since 2026-09-01)\n" for i in range(40)))
-    out = now.overdue(vault, "2026-10-20").splitlines()
-    assert out[0] == "**8 to 30 days over**" and len(out) == 41
     assert now.overdue(vault, "2026-10-01") == ""
     assert now.overdue(vault, "2026-09-01") == ""
 

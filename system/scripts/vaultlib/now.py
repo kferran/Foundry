@@ -17,6 +17,7 @@ KINDS = ("owed", "waiting", "draft")
 NEEDS, WAITING = "## Needs you", "## Waiting"
 STALE_DAYS = 14
 MAX_LINE = 300   # an open line written in full (phase A spec §3.5); history goes to notes under it
+MAX_OVERDUE = 10   # lines the brief's Overdue block prints
 PAGE_BYTES = 25 * 1024   # review limit (#211; phase A target)
 LOOKBACK_DAYS = briefings.LOOKBACK_DAYS
 FAILURE_ALERT = 3
@@ -409,7 +410,8 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
 
 def overdue(vault, day: str) -> str:
     """The brief's Overdue block (Now clock spec §7), read-only: the open lines of both pages whose due is before day,
-    grouped by days over, oldest due first, then the count of open lines with no clock; "" when there is neither."""
+    grouped by days over, oldest due first, at most MAX_OVERDUE lines (1 to 7 days over first) and a count of the
+    rest, then the count of open lines with no clock; "" when there is neither."""
     groups, clockless, total = ([], [], []), 0, 0
     for partition in PARTITIONS:
         for line in open_lines(read(vault, partition)):
@@ -423,10 +425,15 @@ def overdue(vault, day: str) -> str:
                 groups[0 if over <= 7 else 1 if over <= 30 else 2].append((due.group(1), f"- {line.rstrip()[6:]}"))
     # One block per group and one for the count, joined by a blank line, so Markdown keeps each bold label on its own
     # line and the count out of the last bullet.
-    blocks = []
+    # At most MAX_OVERDUE lines, the fewest days over first, then one count line (phase A follow-up).
+    blocks, left, over_total = [], MAX_OVERDUE, sum(len(g) for g in groups)
     for heading, lines in zip(OVERDUE_HEADINGS, groups):
-        if lines:
-            blocks.append("\n".join([heading] + [line for _, line in sorted(lines, key=lambda t: t[0])]))
+        shown = [line for _, line in sorted(lines, key=lambda t: t[0])][:left]
+        if shown:
+            blocks.append("\n".join([heading] + shown))
+            left -= len(shown)
+    if over_total > MAX_OVERDUE:
+        blocks.append(f"and {over_total - MAX_OVERDUE} more of {over_total} overdue lines; the Now pages hold them all.")
     if clockless:
         # A count prints its denominator (#166).
         blocks.append(f"{clockless} of {total} open line{'s' * (total > 1)} carr{'ies' if clockless == 1 else 'y'} no clock.")
