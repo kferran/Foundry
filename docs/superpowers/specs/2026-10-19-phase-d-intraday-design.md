@@ -19,7 +19,7 @@ Owner, 2026-10-19:
 1. **The work-data boundary.** The vault repository is private. The owner moves it to the company's GitHub later; nothing here waits for the move.
 2. **Four pieces, one phase:** the channel watch with the calendar diff, the today file, the own-commitments sweep, and the capture channel.
 3. **Delivery: the today file plus an urgent notice.** Each tick appends to `briefings/<date>.today.md`, which only the server writes, so it never conflicts with the owner's edits to the briefing. A cancelled or moved meeting and a production incident also raise an alert line that Slack carries at once.
-4. **One read-in-full list.** `watch_channels` holds channel IDs with labels, seeded with the 2026-10-13 list (gstaff, management, team_dev_management, department-heads, annuities, team-kratos, team-fia, ultron, edj-uat-testing, warroom, support_dev_annuity, ultron-sev-1-unit, pager-duty), plus the owner's group DMs. There is no mentions-only tier, because chat triage already searches every channel the owner is in. A channel is added by editing the config; `/setup` can suggest more.
+4. **One read-in-full list.** `watch_channels` holds channel IDs with labels, seeded with the owner's 2026-10-13 list of 13 channels (staff, management, team, product, support, incident and paging channels), plus the owner's group DMs. There is no mentions-only tier, because chat triage already searches every channel the owner is in. A channel is added by editing the config; `/setup` can suggest more.
 5. **Capture through the connector, read-only.** The same confined Slack connector session as notices and triage reads the capture channel since the last tick and writes one `raw/inbox/` drop. No Slack app, no bot token and no ✅ reaction; the intake archiving the file is the receipt.
 6. **Commitments become `owed` lines, from Slack and sent mail.** Each new commitment in the owner's own Slack messages or sent mail becomes an `owed` Now line (who, what, by when) with the message link as evidence. It is skipped when a Now line or a calendar event already covers it. A meeting commitment also gets the owner's free slots before its deadline. Nothing is sent, and no invite is created.
 7. **A `blocked` watch kind.** A watched message saying work is stuck or waiting on someone, and naming the owner or the owner's team, becomes a `waiting` Now line.
@@ -114,8 +114,8 @@ Routing rules:
 `briefings/<date>.today.md`, frontmatter `type: today` (extension schema), is created with its first entry of the day and is append-only. Entries are chronological, one line each:
 
 ```markdown
-- 08:47 **meeting** Weekly huddle 09:00 cancelled per #gstaff (calendar still confirmed) https://…/p1
-- 10:12 **deadline** QBR deck before next week's meeting (#gstaff) → Now https://…/p2
+- 08:47 **meeting** Weekly huddle 09:00 cancelled per #ops (calendar still confirmed) https://…/p1
+- 10:12 **deadline** QBR deck before next week's meeting (#ops) → Now https://…/p2
 - 11:41 **session** Traced the 404s to the partner's QA endpoint ([[2026-10-19-1141-1a2b3c4d-traced-the-404s]])
   - delivered: message — thread reply with traces and query
 - 14:05 **meeting** [[2026-10-19-1400-pilot-sync]]: 2 decisions; yours: "Send the capability doc"

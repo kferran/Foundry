@@ -31,7 +31,7 @@ setup() {
 @test "the config keys validate, and a channel without a label is an error" {
   sed -i '$d' system/config.md
   cat >> system/config.md <<'EOF'
-watch_channels: [{id: "C0001", label: "gstaff"}, {id: "C0002", label: "warroom"}]
+watch_channels: [{id: "C0001", label: "ops"}, {id: "C0002", label: "oncall"}]
 watch_group_dms: "true"
 watch_user_id: "U0OWNER"
 watch_partition: "work"
@@ -42,7 +42,7 @@ capture_partition: ""
 EOF
   run system/scripts/vault_index.py validate system/config.md
   [ "$status" -eq 0 ]
-  sed -i 's/{id: "C0002", label: "warroom"}/{id: "C0002"}/' system/config.md
+  sed -i 's/{id: "C0002", label: "oncall"}/{id: "C0002"}/' system/config.md
   run system/scripts/vault_index.py validate system/config.md
   [ "$status" -ne 0 ]
   [[ "$output" == *"missing required key label"* ]]
@@ -87,7 +87,7 @@ print(alerts.severity("- 09:00:00 [watch] Weekly huddle cancelled", ext), alerts
 }
 
 @test "the brief section carries the today embed and yesterday's count; the debrief section lists the watch's open lines" {
-  printf '{"key": "watch:a", "day": "2026-09-30", "time": "09:00", "kind": "deadline", "text": "QBR deck (#gstaff)", "link": "https://x.slack.com/archives/C1/p1", "now": "added"}\n' \
+  printf '{"key": "watch:a", "day": "2026-09-30", "time": "09:00", "kind": "deadline", "text": "QBR deck (#ops)", "link": "https://x.slack.com/archives/C1/p1", "now": "added"}\n' \
     > "$(mkdir -p system/logs/watch && echo system/logs/watch/items-2026-09.jsonl)"
   printf '{"time": "2026-09-30T10:00:00-06:00", "step": "route", "exit": 0, "reason": "", "count": 0}\n' > system/logs/watch_fetch-2026-09.jsonl
   run system/scripts/brief_prep.sh 2026-10-01
@@ -96,8 +96,8 @@ print(alerts.severity("- 09:00:00 [watch] Weekly huddle cancelled", ext), alerts
   grep -qF '## 🕑 Today so far' system/logs/inputs/2026-10-01/sections/intraday.prompt.md
   grep -q '^watch	ok' system/logs/inputs/2026-10-01/sources.given
   mkdir -p wiki/work
-  printf -- '---\ntype: concept\ntags: [now]\npartition: work\n---\n# Now\n\n## Needs you\n- [ ] owed: QBR deck (in #gstaff) (Pat, since 2026-09-30, https://x.slack.com/archives/C1/p1)\n' > wiki/work/Now.md
+  printf -- '---\ntype: concept\ntags: [now]\npartition: work\n---\n# Now\n\n## Needs you\n- [ ] owed: QBR deck (in #ops) (Pat, since 2026-09-30, https://x.slack.com/archives/C1/p1)\n' > wiki/work/Now.md
   run system/scripts/debrief_prep.sh 2026-09-30
   [ "$status" -eq 0 ]
-  [ "$(cat system/logs/inputs/2026-09-30/debrief_sections/intraday.md)" = "$(printf 'logged: 1 deadline\n- [ ] owed: QBR deck (in #gstaff) (Pat, since 2026-09-30, https://x.slack.com/archives/C1/p1)')" ]
+  [ "$(cat system/logs/inputs/2026-09-30/debrief_sections/intraday.md)" = "$(printf 'logged: 1 deadline\n- [ ] owed: QBR deck (in #ops) (Pat, since 2026-09-30, https://x.slack.com/archives/C1/p1)')" ]
 }
