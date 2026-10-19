@@ -451,12 +451,13 @@ def test_conversion_that_died_is_quarantined_on_the_next_tick(iv):
     write(iv, "raw/inbox/after.md", "next drop")
     # a tick killed mid-conversion (SIGKILL, OOM) leaves its marker and runs no except or finally
     write(iv, f"raw/inbox/.staging/{hashlib.sha256(b'x').hexdigest()}.converting", "killer.pptx")
+    write(iv, f"raw/inbox/.staging/{hashlib.sha256(b'x').hexdigest()}.converted", "half the text")  # the child's output
     os.utime(iv / "raw/inbox/killer.pptx", (0, 0))  # oldest first, as the wedged file would be
     Intake(iv, now=later()).run()
     assert (iv / "system/quarantine/poisoned/killer.pptx").is_file()
     assert "not converted (conversion did not finish)" in next((iv / "system/logs").glob("alerts_*.md")).read_text()
     assert (iv / "raw/archive/after.md").exists()
-    assert list((iv / "raw/inbox/.staging").glob("*.converting")) == []
+    assert list((iv / "raw/inbox/.staging").glob("*.convert*")) == []
 
 
 def test_stop_mid_conversion_keeps_the_file_in_the_inbox(iv, monkeypatch):
