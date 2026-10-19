@@ -291,7 +291,20 @@ EOF
   [ "$(cat system/logs/claude.version)" = "1.0.0 (Claude Code)" ]
 }
 
-@test "an enabled timer past its next tick plus the grace reads stale and alerts once a day; on time reads ok (#166)" {
+# pin_clock <America/Denver time>: every `date` without -d, in the test and in the smoke check, reads that instant,
+# so the alert day cannot roll over mid-test (#265).
+pin_clock() {
+  local real pin
+  real="$(command -v date)"
+  pin="$(TZ=America/Denver "$real" -d "$1" +%s)"
+  printf '#!/bin/bash\nfor a in "$@"; do case "$a" in -d|--date*) exec %s "$@" ;; esac; done\nexec %s -d @%s "$@"\n' \
+    "$real" "$real" "$pin" > "$BATS_TEST_TMPDIR/bin/date"
+  chmod +x "$BATS_TEST_TMPDIR/bin/date"
+  LOG="system/logs/smoke-$(TZ=America/Denver date +%Y-%m).jsonl"
+}
+
+stale_timer_alerts_once_a_day() {
+  pin_clock "$1"
   timer foundry-brief.timer 'OnCalendar=*-*-* 06:00:00 America/Denver' $(( 3 * 86400 ))
   timer foundry-debrief.timer 'OnCalendar=*-*-* 17:00:00 America/Denver' 3600
   timer foundry-intake.timer 'OnUnitActiveSec=5min' 120
@@ -307,6 +320,14 @@ EOF
   [ "$(jq -r 'select(.source == "foundry-brief.timer") | .exit' "$LOG")" = 1 ]
   run "$SC"
   [ "$(alerts | grep -c 'stale:')" -eq 2 ]
+}
+
+@test "an enabled timer past its next tick plus the grace reads stale and alerts once a day; on time reads ok (#166)" {
+  stale_timer_alerts_once_a_day "2026-01-14 12:00:00"
+}
+
+@test "the once-a-day timer alert holds at 23:59:59 local, one second before the alert day rolls over (#265)" {
+  stale_timer_alerts_once_a_day "2026-01-14 23:59:59"
 }
 
 @test "a 15-minute timer that fired 10 minutes ago reads ok in a timezone east of UTC (#166)" {
