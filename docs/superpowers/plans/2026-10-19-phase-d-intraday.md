@@ -29,14 +29,11 @@
 
 ---
 
-### Task 1: Probe the Slack and Gmail queries (live, owner's server)
+### Task 1: Probe the Slack and Gmail queries (done 2026-10-19)
 
 **Files:** `docs/superpowers/spikes/2026-10-19-watch-probe.md`.
 
-- [ ] One confined session per tool, as triage's 2026-10-16 probe:
-  - Slack: several `in:` filters in one query; one query per channel; `is:mpim`; `from:me`, all channel types.
-  - Gmail: `in:sent after:` and the thread ID in the result.
-- [ ] Record each call's input, result shape and page size. Stop the plan here if `from:me` or the channel filters do not work, and report.
+- [x] Repeated `in:` is an OR; group DMs use `channel_types: "mpim"`; `from:<@id>` covers every channel type, so `watch_user_id` is a setting; Gmail `search_threads` gives subject and snippet only. The spec carries the results.
 
 ### Task 2: Core loader generalizations
 
@@ -62,8 +59,9 @@
 **Files:** `extensions/intraday/scripts/watchlib/{query,check}.py`, tests.
 
 - [ ] Failing pytest:
-  - the Slack queries are built from settings and cursors as Task 1 found;
-  - the Gmail and Calendar inputs;
+  - the Slack queries are built from settings and cursors as the probe found (repeated `in:`, an `mpim` query, `from:<@watch_user_id>`, an `after:<date>` filter on each);
+  - the result parser reads the channel, group DM and DM variants of a result block;
+  - the Gmail input (`in:sent`, `THREAD_VIEW_MINIMAL`, `internalDate` against the cursor) and the Calendar input;
   - the checker refuses another tool, an altered input or a `<persisted-output>` marker;
   - an item whose `(channel_id, ts)` is not in its query's results is dropped;
   - the 5-page cap alerts once a day.
