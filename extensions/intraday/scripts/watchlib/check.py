@@ -77,10 +77,11 @@ def label(kind: str, name: str) -> str:
     return f"#{name}" if name else ("group DM" if kind == "Group DM" else "DM")
 
 
-def messages(got: list) -> dict:
+def messages(got: list, notify: str = "") -> dict:
     """"<channel id>/<ts>" -> {link, ts, channel, label, sender, sender_id, text}, from the results' markdown only.
     A piece counts only when its link is that message's own permalink, and the first piece for a message wins (its
-    real header comes before its text, which may quote another result's)."""
+    real header comes before its text, which may quote another result's). A result in the notify channel is skipped,
+    as chat triage does: the Foundry's notices post as the owner."""
     out = {}
     for page in got:
         results = page.get("results")
@@ -95,7 +96,7 @@ def messages(got: list) -> dict:
             if not re.match(rf"https://(?:[a-z0-9-]+\.)+slack\.com/archives/{cid}/p{ts.replace('.', '')}(?:\?|$)", link):
                 continue
             parsed += 1
-            if f"{cid}/{ts}" in out:
+            if cid == notify or f"{cid}/{ts}" in out:
                 continue
             out[f"{cid}/{ts}"] = {"link": link, "ts": ts, "channel": cid,
                                   "label": label(f["channel"].group(2) or "", f["channel"].group(1) or ""),
@@ -117,11 +118,11 @@ def _by(value) -> str:
     return value if nowmod.is_date(value) else ""
 
 
-def slack_extract(stream, tool: str, queries: dict) -> dict:
+def slack_extract(stream, tool: str, queries: dict, notify: str = "") -> dict:
     """{"items": [...], "captures": [...], "full": [query names]}: the classified watch and own messages joined to
     the results, and every message of the capture search (never classified)."""
     pages, result = slack_pages(stream, tool, queries)
-    known = {n: messages(got) for n, got in pages.items()}
+    known = {n: messages(got, notify) for n, got in pages.items()}
     items, seen = [], set()
     for r in reply(result):
         q, key = r.get("query"), f"{r.get('channel_id')}/{r.get('ts')}"

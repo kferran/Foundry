@@ -71,6 +71,20 @@ def test_a_setting_that_could_change_a_query_is_refused(vault, line, reason):
     assert e.value.code == 2 and reason in e.value.reason
 
 
+def test_a_capture_channel_that_is_the_notify_channel_is_refused(vault):
+    cfg = vault / "system" / "config.md"
+    cfg.write_text(cfg.read_text().replace("---\n", '---\nslack_notify_channel: "C0CAP"\n', 1))
+    with pytest.raises(Fail) as e:
+        query.slack(vault, 1_800_000_000)
+    assert e.value.code == 2 and "slack_notify_channel" in e.value.reason
+
+
+def test_results_in_the_notify_channel_are_skipped():
+    s = stream([(Q["watch"], page(block()))], items=[item()])
+    assert check.slack_extract(s, TOOL, Q, "C0GSTAFF")["items"] == []   # the Foundry's own notices
+    assert len(check.slack_extract(s, TOOL, Q, "C0OTHER")["items"]) == 1
+
+
 def test_mail_query_follows_its_own_cursor_and_its_switch(vault):
     assert query.mail(vault, 1_800_000_000) == f"in:sent after:{1_800_000_000 - 7200}"
     query.advance(vault, ["mail"], 1_800_000_000)

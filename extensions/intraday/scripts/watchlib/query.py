@@ -81,6 +81,8 @@ def slack(vault, now_epoch: int) -> dict:
     if capture:
         if not SLACK_ID.fullmatch(capture):
             raise Fail(2, f"capture_channel: {capture!r} is not a Slack channel ID")
+        if capture == str(cfg.get("slack_notify_channel") or ""):
+            raise Fail(2, "capture_channel is slack_notify_channel: the capture would copy the Foundry's own notices")
         if "capture" in cur:
             date, after = _after(cur["capture"] - OVERLAP_SECONDS)
             out["capture"] = {"filters": f"in:<#{capture}> {date}", "after": after, **COMMON}

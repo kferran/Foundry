@@ -98,7 +98,8 @@ def main(argv) -> int:
             if reason:
                 print(reason)
         elif len(args) == 2 and args[0] == "extract-slack":
-            print(json.dumps(check.slack_extract(messages(sys.stdin.read()), query.slack_tool(VAULT), json.loads(args[1]))))
+            print(json.dumps(check.slack_extract(messages(sys.stdin.read()), query.slack_tool(VAULT), json.loads(args[1]),
+                                                 str(triage.config(VAULT).get("slack_notify_channel") or ""))))
         elif len(args) == 2 and args[0] == "extract-mail":
             print(json.dumps(check.mail_extract(messages(sys.stdin.read()), args[1])))
         elif args[:1] == ["slot-days"] and len(args) > 1:
