@@ -174,6 +174,17 @@ def test_doctype_split_across_read_chunks_is_seen(tmp_path):
         convert._ooxml(path)
 
 
+# expat reads UTF-16 with a BOM or without one, where the byte check for "<!DOCTYPE" never matches (#268)
+@pytest.mark.parametrize("bom,enc", [("﻿", "utf-16-le"), ("﻿", "utf-16-be"), ("", "utf-16-le"), ("", "utf-16-be")])
+def test_utf16_part_is_refused(tmp_path, bom, enc):
+    sheet = f'{bom}<!DOCTYPE worksheet [<!ENTITY e "{"B" * 100}">]><worksheet xmlns="{S}"><sheetData/></worksheet>'
+    with pytest.raises(convert.ConversionError, match="^a part is UTF-16$"):
+        convert.convert(sheet_part(tmp_path, "u16.xlsx", sheet.encode(enc)))
+    book = build(tmp_path / "book.xlsx", {"xl/workbook.xml": f'{bom}<workbook xmlns="{S}"/>'.encode(enc)})
+    with pytest.raises(convert.ConversionError, match="^a part is UTF-16$"):
+        convert._ooxml(book)
+
+
 def test_distinct_namespaced_names_exceed_the_child_limits(tmp_path):
     names = "".join(f"<n:x{i}/>" for i in range(600_000))
     path = sheet_part(tmp_path, "names.xlsx", f'<worksheet xmlns="{S}" xmlns:n="{"u" * 5000}">{names}<sheetData/></worksheet>')
@@ -258,6 +269,11 @@ def test_pdftotext_failure_reason_is_fixed_text(tmp_path, monkeypatch):
     assert str(err.value) == "pdftotext failed (exit 3)"
 
 
+def test_pdftotext_runs_under_the_child_limits(tmp_path, monkeypatch):
+    path = fake_pdftotext(tmp_path, monkeypatch, r'echo "$(ulimit -v) $(ulimit -t) $(ulimit -c)"')
+    assert convert.convert(path) == f"# r.pdf\n\n## Page 1\n\n{convert.CHILD_AS // 1024} {convert.CHILD_CPU} 0\n"
+
+
 def test_column_past_xfd_is_refused(tmp_path):
     path = xlsx(tmp_path / "col.xlsx", {"S": row(1, '<c r="ZZZZZZZZ1"><v>1</v></c>')})
     with pytest.raises(convert.ConversionError, match="exceeded its limits"):
@@ -310,7 +326,7 @@ def pdf(pages) -> bytes:
         objs.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {4 + 2 * i} 0 R "
                     f"/Resources << /Font << /F1 {font} 0 R >> >> >>")
         objs.append(f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream")
-    objs.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    objs.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
     out, offsets = "%PDF-1.4\n", []
     for n, body in enumerate(objs, 1):
         offsets.append(len(out))
@@ -324,6 +340,11 @@ def test_real_pdftotext_numbers_pages(tmp_path, needs_pdftotext):
     (tmp_path / "two.pdf").write_bytes(pdf(["Hello page one", "Second page text"]))
     out = convert.convert(tmp_path / "two.pdf")
     assert "## Page 1\n\nHello page one\n\n## Page 2\n\nSecond page text" in out
+
+
+def test_real_pdftotext_keeps_non_ascii_text(tmp_path, needs_pdftotext):
+    (tmp_path / "accents.pdf").write_bytes(pdf(["Café naïve façade"]))
+    assert "## Page 1\n\nCafé naïve façade\n" in convert.convert(tmp_path / "accents.pdf")
 
 
 def test_corrupt_pdf_is_a_conversion_error(tmp_path, needs_pdftotext):

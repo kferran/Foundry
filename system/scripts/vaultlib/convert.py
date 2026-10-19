@@ -1,5 +1,6 @@
 """Inbox drops to text (#166): OOXML with the standard library, pdf with pdftotext; refusal reasons are fixed text."""
 import posixpath
+import resource
 import shutil
 import subprocess
 import sys
@@ -86,8 +87,8 @@ def _stream(z, part, tag):  # each `tag` element of a part, dropped once handled
     parser, tail, parents, inside = ET.XMLPullParser(events=("start", "end")), b"", [], 0
     with z.open(info) as fh:
         while chunk := fh.read(2**16):
-            if b"<!DOCTYPE" in tail + chunk:  # the tail catches one split across two reads
-                raise ConversionError("a part has a DOCTYPE")
+            if b"<!DOCTYPE" in tail + chunk or b"\0" in chunk:  # the tail catches one split across two reads
+                raise ConversionError("a part is UTF-16" if b"\0" in chunk else "a part has a DOCTYPE")
             tail = chunk[-9:]
             parser.feed(chunk)
             for event, el in parser.read_events():
@@ -107,8 +108,8 @@ def _stream(z, part, tag):  # each `tag` element of a part, dropped once handled
 
 def _xml(z, name, optional=False):
     data = z.read(info) if (info := _info(z, name, optional)) else b""
-    if b"<!DOCTYPE" in data:  # OOXML has none; a DTD's defaults and entities multiply memory
-        raise ConversionError("a part has a DOCTYPE")
+    if b"<!DOCTYPE" in data or b"\0" in data:  # OOXML has none, a DTD multiplies memory; a NUL is UTF-16 (BOM or
+        raise ConversionError("a part is UTF-16" if b"\0" in data else "a part has a DOCTYPE")  # not), hiding one
     return ET.fromstring(data) if info else None
 
 
@@ -235,7 +236,8 @@ def _pptx(z) -> str:
 def _pdf(path) -> str:
     if (exe := shutil.which("pdftotext")) is None:
         raise ConversionError("pdftotext is not installed (package poppler or poppler-utils)")
-    proc = subprocess.Popen([exe, "-layout", str(path), "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen([exe, "-layout", str(path), "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            preexec_fn=_limit)  # the child's limits; the read cap and the kill below still apply
     timer = threading.Timer(PDF_TIMEOUT, proc.kill)
     timer.start()
     try:
@@ -254,10 +256,13 @@ def _pdf(path) -> str:
     return "\n\n".join(_spend(f"## Page {n}\n\n{p.rstrip()}") for n, p in enumerate(pages, 1))
 
 
-if __name__ == "__main__":  # the child convert() starts: limits on itself first, then one OOXML file
-    import resource
+def _limit():  # on the OOXML child and on pdftotext; a lower hard limit already set is kept
     for limit, value in ((resource.RLIMIT_AS, CHILD_AS), (resource.RLIMIT_CPU, CHILD_CPU), (resource.RLIMIT_CORE, 0)):
         resource.setrlimit(limit, (value,) * 2 if (h := resource.getrlimit(limit)[1]) < 0 or h >= value else (h, h))
+
+
+if __name__ == "__main__":  # the child convert() starts: limits on itself first, then one OOXML file
+    _limit()
     try:
         Path(sys.argv[2]).write_text(_ooxml(Path(sys.argv[1])), encoding="utf-8")
     except ConversionError as exc:

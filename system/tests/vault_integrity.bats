@@ -406,7 +406,7 @@ sealed_problems() {
 }
 
 # Task 10: core names no vendor or customer outside a shrinking allowlist (extensions spec §6; plan task 10).
-@test "core stays inside its budget: 13,800 script lines and 14 schemas (extensions spec §2.2, §5)" {
+@test "core stays inside its budget: 13,850 script lines and 14 schemas (extensions spec §2.2, §5)" {
   # Set once at the end of phase 4 (2026-10-16: 12,270 lines, 14 schemas). A feature that needs more moves code into an
   # extension, or raises the budget in its own pull request, with the reason.
   # 12,500 -> 12,750 (#222): parallel Work Orders (#229) and chat triage, which extends core inbox triage and would
@@ -419,9 +419,11 @@ sealed_problems() {
   # 300-character cap in now.py and the publish gate, issue evidence and the prep caps took core to 13,363 lines.
   # 13,400 -> 13,800 (phase B, ingest evals): eval_ingest.sh, eval_check.py and vaultlib/evals.py (+422) took core from
   # 13,370 to 13,792 lines. They test what /ingest writes, so they stay with the pipeline they run.
+  # 13,800 -> 13,850 (#282, owner 2026-10-19): conversion hardening from #268 (UTF-16 refusal, .converted cleanup,
+  # limits on pdftotext, +6) on top of #280 (+4), which left core at 13,796, took core to 13,802.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   lines="$(git ls-files -z system/scripts | xargs -0 cat | wc -l)"
-  [ "$lines" -le 13800 ]
+  [ "$lines" -le 13850 ]
   [ "$(git ls-files system/schemas | wc -l)" -le 14 ]
 }
 

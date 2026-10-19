@@ -387,6 +387,7 @@ class Intake:
             finally:
                 signal.signal(signal.SIGTERM, stop)
                 marker.unlink(missing_ok=True)
+                (staging / f"{sha}.converted").unlink(missing_ok=True)  # a hard kill leaves the child's output
             copy = staging / f"{path.name}.md"
         else:
             source = path.read_bytes().decode("utf-8", errors="replace")
