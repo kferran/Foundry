@@ -85,7 +85,11 @@ qrc=0
 inputs="$("$W" slack-input 2> "$work/q.err")" || qrc=$?
 if (( qrc != 0 )); then
   failed slack "$qrc" "$(sed 's/^watch: //' "$work/q.err" | head -n 1)"
-elif [[ "$inputs" != "{}" ]]; then
+elif [[ "$inputs" == "{}" ]]; then
+  # No search this tick (only a capture channel, with no cursor yet): route still sets the first capture cursor.
+  echo '{"items": []}' > "$work/slack.json"
+  route+=(--slack "$work/slack.json" "{}")
+else
   TOOL="$("$W" slack-tool)"
   CONNECTOR_PREFIX="${TOOL%__slack_search_public_and_private}" CONNECTOR_TOOL="$TOOL"
   CONNECTOR_SERVER="$(config_get slack_connector "claude.ai Slack")" CONNECTOR_OTHERS=("${SLACK_OTHERS[@]}")

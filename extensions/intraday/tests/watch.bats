@@ -121,6 +121,14 @@ cal_says() {
   [ -z "$(ls raw/inbox 2>/dev/null)" ]
 }
 
+@test "with only a capture channel set, the first tick still sets its cursor" {
+  sed -i '/^watch_channels:/d; /^watch_user_id:/d' system/config.md
+  [ "$(extensions/intraday/scripts/watch.py slack-input)" = "{}" ]
+  run "$WF"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .capture system/logs/watch/cursors.json)" != null ]
+}
+
 @test "a Slack session outside the rules writes nothing, keeps its cursors and alerts once a day; the calendar still runs" {
   SLACK_TOOL_USED=mcp__claude_ai_Slack__slack_read_channel slack_says '{"items": []}'
   run "$WF"
