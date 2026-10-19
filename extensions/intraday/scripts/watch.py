@@ -104,9 +104,7 @@ def main(argv) -> int:
             print(json.dumps(check.mail_extract(messages(sys.stdin.read()), args[1])))
         elif args[:1] == ["slot-days"] and len(args) > 1:
             items = [i for p in args[1:] for i in _found(p).get("items") or []]
-            days = sorted({d for i in items if i["kind"] == "commitment" and i["meeting"]
-                           for d in cal.workdays(intake.today(), i["by"])})
-            print("".join(f"{d}\n" for d in days[:cal.MAX_DAYS]), end="")
+            print("".join(f"{d}\n" for d in cal.slot_days(intake.today(), items)), end="")
         elif args[:1] == ["route"] and len(args) >= 2 and args[1].isdigit():
             print(do_route(intake, args[1:]))
         else:

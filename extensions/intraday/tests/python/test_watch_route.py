@@ -58,7 +58,14 @@ def test_free_slots_skip_busy_times_and_all_day_events_and_stay_within_work_hour
     assert cal.workdays("2026-10-23", "") == ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30"]
 
 
-def run(vault, found, flags=(), crossed=(), events=(), fetched=(DAY,), clock="09:10:00"):
+def test_slot_days_fetch_at_most_two_workdays_for_the_meeting_commitments():
+    items = [{"kind": "commitment", "meeting": True, "by": ""}, {"kind": "commitment", "meeting": False, "by": ""},
+             {"kind": "deadline", "meeting": True, "by": ""}]
+    assert cal.slot_days(DAY, items) == ["2026-10-20", "2026-10-21"]   # each fetch is one 190 s calendar session
+    assert cal.slot_days(DAY, items[1:]) == []
+
+
+def run(vault, found,flags=(), crossed=(), events=(), fetched=(DAY,), clock="09:10:00"):
     return route.route(vault, "work", found, list(flags), list(crossed), list(events), list(fetched), DAY, clock)
 
 

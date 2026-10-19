@@ -11,6 +11,7 @@ from .common import load, save, state
 
 MIN_TITLE = 4   # a shorter title ("1:1") matches too much channel text for the cross-check
 DAY_START, DAY_END, SLOT_MINUTES, MAX_SLOTS, MAX_DAYS = "09:00", "17:00", 30, 3, 5
+MAX_FETCH_DAYS = 2   # Slack 420 s + mail 300 s + calendar 190 s x (1 + 2) + route 120 s fits TimeoutStartSec=25min
 
 
 def parse_tsv(text: str) -> list:
@@ -85,6 +86,13 @@ def workdays(today: str, by: str) -> list:
         if d.weekday() < 5:
             out.append(d.isoformat())
     return out
+
+
+def slot_days(today: str, items: list) -> list:
+    """The workdays whose calendar the meeting commitments' free slots need, at most MAX_FETCH_DAYS: each is one
+    calendar session, and the tick must end inside the unit's TimeoutStartSec."""
+    days = {d for i in items if i["kind"] == "commitment" and i["meeting"] for d in workdays(today, i["by"])}
+    return sorted(days)[:MAX_FETCH_DAYS]
 
 
 def free_slots(events: list, days: list, after: str = "") -> list:

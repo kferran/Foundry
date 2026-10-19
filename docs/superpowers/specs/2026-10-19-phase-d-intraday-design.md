@@ -183,7 +183,7 @@ The Slack and Gmail connectors are core's `slack_connector` and the Gmail connec
 - **Calendar.** The extension reuses core's `calendar_fetch.sh`, one session per day, whose rows hold only times and a title: no event ID, status, organizer or attendees.
   - The diff therefore covers today only and matches events by title: a title that disappears is flagged as gone from the calendar, a changed time as moved, a new title as new. "Organizer out" is not detected.
   - A meeting commitment counts as covered when a fetched event's title names the person, since there are no attendees to check.
-  - The days its free slots need are fetched only when a meeting commitment is found, at most 5.
+  - The days its free slots need are fetched only when a meeting commitment is found, at most 2 (one 190-second session each), and never under `--check`. A tick is then up to five sessions, and `foundry-watch.service` allows 25 minutes (Slack 420 s, mail 300 s, calendar 3 × 190 s, route 120 s).
 - **Core budget.** The two loader generalizations (§2 decision 10) took core from 13,802 to 13,822 lines, inside its 13,850 budget, so the budget did not change.
 - **Alert tags.** The extension has two: `watch` (Slack at once, for meeting changes and incidents) and `intraday` (the next brief, for failed sessions and full search pages).
 - **Debrief.** Extension debrief sections are written to `system/logs/inputs/<date>/debrief_sections/`, apart from the brief's `sections/`, because each prep clears its own folder.
