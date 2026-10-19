@@ -72,11 +72,15 @@ def do_route(intake, args: list) -> str:
             names.append("capture")
         if mail is not None:
             names.append("mail")
-        query.advance(VAULT, names, start)
+        resume = {n: e for n, e in (slack[0].get("resume") or {}).items() if n in names} if slack else {}
+        query.advance(VAULT, [n for n in names if n not in resume], start)
+        for n, epoch in resume.items():
+            query.advance(VAULT, [n], epoch)
         for name in [*(slack[0].get("full") or [] if slack else []), *(mail.get("full") or [] if mail else [])]:
             key = f"the {name} search read its full page limit:"
-            common.alert(VAULT, day, clock, "intraday", f"{key} the oldest messages since the last tick were not read",
-                         key=key)
+            rest = ("the next tick reads on from the last message read" if name in resume
+                    else "the oldest messages since the last tick were not read")
+            common.alert(VAULT, day, clock, "intraday", f"{key} {rest}", key=key)
     return " ".join(f"{k} {v}" for k, v in counts.items())
 
 

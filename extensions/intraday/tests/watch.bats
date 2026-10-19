@@ -54,8 +54,8 @@ slack_says() {
       [[ ! -f "$BATS_TEST_TMPDIR/page-$name.md" ]] || res="$(printf '## Messages (1 results)\n%s' "$(cat "$BATS_TEST_TMPDIR/page-$name.md")")"
       jq -cn --arg t "${SLACK_TOOL_USED:-$SLACK}" --argjson i "$(jq -c --arg n "$name" '.[$n]' <<< "$inputs")" --arg id "t$n" \
         '{type: "assistant", message: {content: [{type: "tool_use", id: $id, name: $t, input: $i}]}}'
-      jq -cn --arg id "t$n" --arg r "$res" \
-        '{type: "user", message: {content: [{type: "tool_result", tool_use_id: $id, content: [{type: "text", text: ({results: $r, pagination_info: "End of results"} | tojson)}]}]}}'
+      jq -cn --arg id "t$n" --arg r "$res" --arg p "${SLACK_PAGINATION:-End of results}" \
+        '{type: "user", message: {content: [{type: "tool_result", tool_use_id: $id, content: [{type: "text", text: ({results: $r, pagination_info: $p} | tojson)}]}]}}'
       n=$((n + 1))
     done
     jq -cn --arg r "$1" '{type: "result", subtype: "success", is_error: false, result: $r}'
@@ -120,6 +120,16 @@ cal_says() {
   run "$WF"
   [ "$status" -eq 0 ]
   [ -z "$(ls raw/inbox 2>/dev/null)" ]
+}
+
+@test "a search that reads its full page limit resumes next tick from the last message it read" {
+  result "#gstaff (ID: C0GSTAFF)" C0GSTAFF 1792430610.351069 "Status as usual." > "$BATS_TEST_TMPDIR/page-watch.md"
+  SLACK_PAGINATION='For the next page of results use cursor `Q1`' slack_says '{"items": []}'
+  run "$WF"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .watch system/logs/watch/cursors.json)" = 1792430610 ]
+  [ "$(jq -r .own system/logs/watch/cursors.json)" -ne 1800000000 ]   # no message read: the tick's start
+  grep -qF '[intraday] the watch search read its full page limit: the next tick reads on from the last message read' "$ALERTS"
 }
 
 @test "with only a capture channel set, the first tick still sets its cursor" {

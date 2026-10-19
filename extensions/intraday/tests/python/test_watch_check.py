@@ -48,7 +48,7 @@ def test_queries_are_built_from_settings_with_repeated_in_an_mpim_query_and_the_
     assert q["watch"]["after"] == str(1_800_000_000 - 7200)
     assert q["mpim"]["channel_types"] == "mpim" and q["mpim"]["filters"] == "after:2027-01-13"
     assert q["own"]["filters"] == "from:<@U0OWNER> after:2027-01-13"
-    assert all(v["include_context"] is False and v["limit"] == 20 for v in q.values())
+    assert all(v["include_context"] is False and v["limit"] == 20 and v["sort_dir"] == "asc" for v in q.values())
     assert query.first_capture(vault)
     query.advance(vault, ["watch", "mpim", "own", "capture"], 1_800_000_000)
     q = query.slack(vault, 1_800_003_600)
@@ -153,8 +153,10 @@ def test_another_query_more_than_five_pages_or_a_persisted_result_fail_closed():
         with pytest.raises(Fail) as e:
             check.slack_extract(s, TOOL, Q)
         assert e.value.code == code
-    s = stream([({**Q["watch"], "cursor": "c"}, page(block(), more=True))])
-    assert check.slack_extract(s, TOOL, Q)["full"] == ["watch"]
+    s = stream([({**Q["watch"], "cursor": "c"}, page(block(ts=TS2), block(), more=True))])
+    got = check.slack_extract(s, TOOL, Q)
+    assert got["full"] == ["watch"]
+    assert got["resume"] == {"watch": int(float(TS2))}   # oldest first: the next tick reads on from the last one read
 
 
 def test_message_text_cannot_forge_a_result():

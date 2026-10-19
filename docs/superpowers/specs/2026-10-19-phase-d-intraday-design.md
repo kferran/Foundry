@@ -56,7 +56,7 @@ State lives in `system/logs/watch/`: the cursor for each query (`cursors.json`),
 
 ### 3.2 Slack session
 
-The session is allowed only `slack_search_public_and_private`, with every other Slack tool denied by name. It runs the queries below, each built only from settings and the cursor. The checker compares each call's input dict with the one built for the tick; only `cursor` may differ between pages. Results are the `### Result N of M` blocks probed for triage (`Channel:`, `From:`, `Time:`, `Message_ts:`, `Permalink:`, `Text:`). Each query reads at most 5 pages of 20; a query that ends on a full fifth page raises one `[watch]` alert a day, and the next tick resumes from its cursor.
+The session is allowed only `slack_search_public_and_private`, with every other Slack tool denied by name. It runs the queries below, each built only from settings and the cursor. The checker compares each call's input dict with the one built for the tick; only `cursor` may differ between pages. Results are the `### Result N of M` blocks probed for triage (`Channel:`, `From:`, `Time:`, `Message_ts:`, `Permalink:`, `Text:`). Each query reads at most 5 pages of 20, oldest first (`sort: timestamp`, `sort_dir: asc`, from the tool's schema; not live-probed); a query that ends on a full fifth page raises one `[intraday]` alert a day, and its cursor moves to the last message it read instead of the tick's start, so the next tick reads on from there. If the connector ignored `sort_dir`, the last message read would be the newest and the oldest would be skipped, as before.
 
 | Query | Filters | Used for |
 |---|---|---|
@@ -71,7 +71,7 @@ Each query keeps an `after:<date>` filter, since a filter-only query needs one, 
 
 ### 3.3 Gmail session
 
-This session runs only when `watch_commitments_mail` is `true`. It may call only `search_threads`, with `query: "in:sent after:<cursor date>"` and `view: THREAD_VIEW_MINIMAL`. The cursor epoch is checked against each message's `internalDate`. The minimal view gives `subject` and `snippet` but no body, so v1 classifies from those two fields. The prompt classifies messages into the same item shape with `kind: commitment`. Each item's link is the thread's `viewUrl`.
+This session runs only when `watch_commitments_mail` is `true`. It may call only `search_threads`, with `query: "in:sent after:<cursor date>"` and `view: THREAD_VIEW_MINIMAL`. The cursor epoch is checked against each message's `internalDate`. The thread search has no ascending sort, so a search that fills its 3 pages moves the cursor to the tick's start and its oldest threads are not read; the `[intraday]` alert says so. The minimal view gives `subject` and `snippet` but no body, so v1 classifies from those two fields. The prompt classifies messages into the same item shape with `kind: commitment`. Each item's link is the thread's `viewUrl`.
 
 ### 3.4 Calendar session and the diff
 

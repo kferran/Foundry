@@ -141,7 +141,9 @@ def slack_extract(stream, tool: str, queries: dict, notify: str = "") -> dict:
                       "link": m["link"], "ts": m["ts"], "label": m["label"], "text": m["text"]})
     captures = sorted(known.get("capture", {}).values(), key=lambda m: float(m["ts"]))
     full = [n for n, got in pages.items() if got and "use cursor `" in str(got[-1].get("pagination_info") or "")]
-    return {"items": items, "captures": captures, "full": full}
+    # Results come oldest first (sort_dir asc), so a search cut at its page limit resumes from its last message read.
+    resume = {n: int(max(float(m["ts"]) for m in known[n].values())) for n in full if known[n]}
+    return {"items": items, "captures": captures, "full": full, "resume": resume}
 
 
 def sent_threads(got: list, since: int = 0) -> dict:

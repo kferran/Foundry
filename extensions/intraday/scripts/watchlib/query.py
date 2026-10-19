@@ -20,7 +20,7 @@ OVERLAP_SECONDS = 300
 FIRST_LOOKBACK_SECONDS = 2 * 3600
 SLACK_ID = re.compile(r"[CGD][A-Z0-9]{2,}")
 USER_ID = re.compile(r"[UW][A-Z0-9]{2,}")
-COMMON = {"sort": "timestamp", "limit": 20, "include_bots": False, "include_context": False,
+COMMON = {"sort": "timestamp", "sort_dir": "asc", "limit": 20, "include_bots": False, "include_context": False,
           "response_format": "detailed", "content_types": "messages"}
 
 
