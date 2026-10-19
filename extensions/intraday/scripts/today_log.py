@@ -128,7 +128,7 @@ def write(vault: Path, day: str, clock: str) -> int:
     done = {r.get("source") for r in records(ledger)}
     new = []
     for r in records(route.ledger_path(vault, day)):
-        if r.get("day") == day and f"item:{r.get('key')}" not in done:
+        if r.get("day") == day and r.get("partition") == "work" and f"item:{r.get('key')}" not in done:
             text = clean(r.get("text"))
             if r.get("now") == "added":
                 text += " → Now"

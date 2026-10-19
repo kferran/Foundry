@@ -75,7 +75,7 @@ def test_a_meeting_change_is_logged_and_alerted_once_and_never_routes_twice(vaul
     assert run(vault, {"items": [item()]}) == {"items": 1, "now": 0, "alerts": 1}
     assert alerts(vault) == [f"- 09:10:00 [watch] Weekly Huddle cancelled today (#gstaff) {LINK}"]
     assert run(vault, {"items": [item()]}) == {"items": 0, "now": 0, "alerts": 0}
-    assert [r["kind"] for r in ledger(vault)] == ["meeting"]
+    assert [(r["kind"], r["partition"]) for r in ledger(vault)] == [("meeting", "work")]
 
 
 def test_each_kind_goes_where_the_spec_routes_it(vault):
@@ -146,6 +146,7 @@ def test_a_capture_file_holds_each_message_and_its_link_under_a_name_the_intake_
     assert text.startswith('---\npartition: "work"\nsource: "slack"\nchannel: "C0CAP"\ncaptured_at: "2026-10-19T09:10:00-06:00"\n---\n')
     assert "## 11:00 Kyle Owner\n\nidea: retry the export\nsecond line\n\nLink: https://example.slack.com/archives/C0CAP/p1792429200000100" in text
     assert capture.write(vault, msgs, "work", "C0CAP", now).name == "slack-2026-10-19T091000-2.md"
-    route.captured(vault, DAY, "09:10:00", "raw/inbox/slack-2026-10-19T091000.md", 1)
+    route.captured(vault, DAY, "09:10:00", "raw/inbox/slack-2026-10-19T091000.md", 1, "personal")
     assert ledger(vault)[-1]["text"] == "1 message → raw/inbox/slack-2026-10-19T091000.md"
+    assert ledger(vault)[-1]["partition"] == "personal"
     assert json.loads(json.dumps(ledger(vault)[-1]))["kind"] == "capture"

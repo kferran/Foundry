@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from vaultlib.notify import prefix
 
-from .common import Fail, QUERIES, config, load, save, state, truthy
+from .common import Fail, QUERIES, config, load, partition, save, state, truthy
 
 SLACK_TOOL = "slack_search_public_and_private"
 GMAIL_TOOL = "mcp__claude_ai_Gmail__search_threads"
@@ -60,6 +60,7 @@ def _after(cursor_epoch: int) -> tuple:
 def slack(vault, now_epoch: int) -> dict:
     """{query name: search input} for this tick, in QUERIES order. An empty dict means no Slack session runs."""
     cfg, cur, out = config(vault), cursors(vault), {}
+    partition(vault)   # a bad watch_partition stops the tick before a session runs, not after
 
     def since(name):
         return cur[name] - OVERLAP_SECONDS if name in cur else now_epoch - FIRST_LOOKBACK_SECONDS
@@ -98,6 +99,7 @@ def mail(vault, now_epoch: int) -> str:
     """The sent-mail query since the last mail tick, or "" when watch_commitments_mail is off."""
     if not truthy(config(vault).get("watch_commitments_mail"), True):
         return ""
+    partition(vault)
     cur = cursors(vault)
     after = cur["mail"] - OVERLAP_SECONDS if "mail" in cur else now_epoch - FIRST_LOOKBACK_SECONDS
     return f"in:sent after:{after}"

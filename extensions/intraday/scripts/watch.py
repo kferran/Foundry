@@ -62,10 +62,9 @@ def do_route(intake, args: list) -> str:
         crossed = cal.cross(found["items"], events, day)
         counts = route.route(VAULT, partition, found, flags, crossed, events, fetched, day, clock)
         if slack and slack[0].get("captures"):
-            caps = slack[0]["captures"]
-            path = capture.write(VAULT, caps, common.capture_partition(VAULT),
-                                 str(triage.config(VAULT).get("capture_channel") or ""), now)
-            route.captured(VAULT, day, clock, path.relative_to(VAULT).as_posix(), len(caps))
+            caps, cap_partition = slack[0]["captures"], common.capture_partition(VAULT)
+            path = capture.write(VAULT, caps, cap_partition, str(triage.config(VAULT).get("capture_channel") or ""), now)
+            route.captured(VAULT, day, clock, path.relative_to(VAULT).as_posix(), len(caps), cap_partition)
             counts["captured"] = len(caps)
         names = list(slack[1]) if slack else []
         if slack and query.first_capture(VAULT):

@@ -71,6 +71,15 @@ def test_a_setting_that_could_change_a_query_is_refused(vault, line, reason):
     assert e.value.code == 2 and reason in e.value.reason
 
 
+def test_a_bad_watch_partition_is_refused_before_any_session_runs(vault):
+    cfg = vault / "system" / "config.md"
+    cfg.write_text(cfg.read_text().replace("---\n", '---\nwatch_partition: "shared"\n', 1))
+    for build in (query.slack, query.mail):
+        with pytest.raises(Fail) as e:
+            build(vault, 1_800_000_000)
+        assert e.value.code == 2 and "watch_partition" in e.value.reason
+
+
 def test_a_capture_channel_that_is_the_notify_channel_is_refused(vault):
     cfg = vault / "system" / "config.md"
     cfg.write_text(cfg.read_text().replace("---\n", '---\nslack_notify_channel: "C0CAP"\n', 1))

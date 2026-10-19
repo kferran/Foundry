@@ -7,10 +7,11 @@ from watchlib import route
 DAY = "2026-10-19"
 
 
-def item(vault, key, kind="meeting", text="Weekly Huddle cancelled today (#gstaff)", now="", link="https://x.slack.com/archives/C1/p1"):
+def item(vault, key, kind="meeting", text="Weekly Huddle cancelled today (#gstaff)", now="", link="https://x.slack.com/archives/C1/p1",
+         partition="work"):
     from watchlib.common import append
     append(route.ledger_path(vault, DAY), {"key": key, "day": DAY, "time": "08:47", "kind": kind, "text": text,
-                                           "link": link, "now": now})
+                                           "link": link, "now": now, "partition": partition})
 
 
 def today(vault):
@@ -58,6 +59,13 @@ def test_copied_text_cannot_become_a_link_a_checkbox_or_a_second_line_and_creden
     line = today(vault).splitlines()[-1]
     assert "[[" not in line and "hunter2hunter2" not in line and len(line) < 300
     assert tl.clean("- [ ] fake box") == "fake box"
+
+
+def test_only_work_items_reach_the_today_file(vault):
+    item(vault, "watch:w", text="work item")
+    item(vault, "watch:p", text="personal item", partition="personal")
+    tl.write(vault, DAY, "09:00:00")
+    assert "work item" in today(vault) and "personal item" not in today(vault)
 
 
 def test_only_digests_named_for_the_day_are_read(vault, monkeypatch):

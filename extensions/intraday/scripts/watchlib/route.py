@@ -85,7 +85,8 @@ def route(vault, partition: str, found: dict, flags: list, crossed: list, events
     alerts, counts = [], {"items": 0, "now": 0, "alerts": 0}
 
     def log(key, kind, text, link="", now=""):
-        append(path, {"key": key, "day": day, "time": clock[:5], "kind": kind, "text": text, "link": link, "now": now})
+        append(path, {"key": key, "day": day, "time": clock[:5], "kind": kind, "text": text, "link": link, "now": now,
+                      "partition": partition})
         done.add(key)
         counts["items"] += 1
 
@@ -140,6 +141,7 @@ def route(vault, partition: str, found: dict, flags: list, crossed: list, events
     return counts
 
 
-def captured(vault, day: str, clock: str, rel: str, n: int) -> None:
+def captured(vault, day: str, clock: str, rel: str, n: int, partition: str) -> None:
     append(ledger_path(vault, day), {"key": f"capture:{rel}", "day": day, "time": clock[:5], "kind": "capture",
-                                     "text": f"{n} message{'s' if n != 1 else ''} → {rel}", "link": "", "now": ""})
+                                     "text": f"{n} message{'s' if n != 1 else ''} → {rel}", "link": "", "now": "",
+                                     "partition": partition})
