@@ -221,6 +221,7 @@ def collect(vault, now: datetime) -> tuple:
                 continue
             if event:
                 runs.append(event)
+    ext_tags = alertsmod.extension_tags(vault)
     for day in sorted({(now - timedelta(days=1)).strftime("%F"), now.strftime("%F")}):
         path = logs / f"alerts_{day}.md"
         if not path.is_file():
@@ -229,7 +230,7 @@ def collect(vault, now: datetime) -> tuple:
         cursor["alerts"][path.name] = end
         sent = cursor["sent"].setdefault(day, [])
         for x in [] if first else new:
-            if alertsmod.severity(x) != "now":   # the rest waits for the brief; [notify] never (alert tags spec §2)
+            if alertsmod.severity(x, ext_tags) != "now":   # the rest waits for the brief; [notify] never (alert tags spec §2)
                 continue
             event = _alert(vault, x)
             if event is None or _sans_time(event) in sent:  # an alert repeated each tick while a problem lasts goes out once a day

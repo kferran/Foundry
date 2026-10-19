@@ -26,6 +26,7 @@ Read what exists. Every source that is missing or unreadable goes under **Unavai
 - `system/logs/inputs/<date>/prs.md`: pull requests you opened, merged or reviewed today in the registered GitHub repositories, one `- <type> — <what> — <link>` line each (empty when none or no GitHub repository is registered).
 - `briefings/<date>.md`: the lines in its 📝 Notes section that start with `delivered:`.
 - `system/logs/inputs/<date>/unavailable.md`: sources the prep script could not read.
+- `system/logs/inputs/<date>/debrief_sections/`: one `<name>.prompt.md` and one `<name>.md` per enabled extension with a debrief section. For each `<name>.prompt.md`, follow it with `<name>.md` as its data; it says where its lines go. Skip one whose data file is missing or empty.
 - `system/logs/alerts_<date>.md`: pipeline alerts.
 - `system/logs/inputs/<date>/quarantine.md`: what quarantine holds, the same rows the brief read. Read quarantine from this file only.
 - Today's meetings: `system/scripts/vault_index.py query "SELECT path, title, partition FROM v_meeting WHERE date = '<date>'"`.

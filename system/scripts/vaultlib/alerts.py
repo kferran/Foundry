@@ -31,9 +31,20 @@ NOW_WHEN = {"triage": re.compile(r"\d+ new: "), "smoke": re.compile(r"\S+\.timer
                                     r"a credential shape")}
 
 
-def severity(line: str) -> str:
+def extension_tags(vault) -> dict:
+    """{tag: severity} from enabled manifests' `alert_tags` entries written as {tag, severity} (phase D spec §2
+    decision 10). A bare tag, or one core already has, waits for the brief or keeps core's rule."""
+    from . import extensions
+    return {str(t["tag"]): str(t.get("severity", "brief")) for _, d in extensions.enabled(vault)
+            for t in d.get("alert_tags") or [] if isinstance(t, dict) and t.get("tag")
+            and str(t.get("severity", "brief")) in ("now", "brief", "never")}
+
+
+def severity(line: str, extra: dict = None) -> str:
     m = LINE.match(line)
-    if not m or m.group(1) not in TAGS:
+    if m and m.group(1) not in TAGS:
+        return (extra or {}).get(m.group(1), "brief")
+    if not m:
         return "brief"
     if m.group(1) in NOW_WHEN:
         return "now" if NOW_WHEN[m.group(1)].match(line, m.end()) else "brief"

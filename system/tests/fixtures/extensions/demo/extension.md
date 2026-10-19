@@ -10,6 +10,7 @@ sources:
 smoke:
   - {source: demo, timeout: 30, connector: false, run: "scripts/demo_check.sh"}
 brief: true
+debrief: true
 units: [{name: foundry-demo, roles: [standalone, server]}]
 alert_tags: [demo]
 allow: ["Bash(extensions/demo/scripts/demo_check.sh)"]

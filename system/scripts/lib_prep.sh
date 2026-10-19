@@ -62,6 +62,35 @@ github_repos() {
   config_get template_remote | sed -nE 's#^.*github\.com[:/]([^/]+/[^/]+)$#\1#p' | sed 's/\.git$//'
 }
 
+# prep_sections <brief|debrief> <dir>: sections from enabled extensions (extensions spec §3). Each extension's
+# <kind>/prep.sh is sourced in a subshell with PREP_DATE, PREP_DIR, SECTIONS (the dir, $PREP_DIR/<dir>) and the
+# prep_* functions, writes $SECTIONS/<name>.md and records its readings; its <kind>/section.md is copied beside it as
+# <name>.prompt.md for the headless run to read.
+prep_sections() {
+  local kind="$1" ext rc=0 list
+  SECTIONS="$PREP_DIR/$2"
+  rm -rf "$SECTIONS"
+  list="$(system/scripts/extensions.py "$kind" 2>> "$PREP_DIR/prep_errors.log")" || rc=$?
+  if (( rc != 0 )); then
+    prep_unavailable "extensions: extensions.py $kind failed (see $PREP_DIR/prep_errors.log)"
+    list=""
+  fi
+  while IFS= read -r ext; do
+    [[ -n "$ext" ]] || continue
+    mkdir -p "$SECTIONS"
+    [[ ! -f "extensions/$ext/$kind/section.md" ]] || cp -- "extensions/$ext/$kind/section.md" "$SECTIONS/$ext.prompt.md"
+    rc=0
+    if [[ -f "extensions/$ext/$kind/prep.sh" ]]; then
+      # shellcheck disable=SC1090
+      ( source "extensions/$ext/$kind/prep.sh" ) 2>> "$PREP_DIR/prep_errors.log" || rc=$?
+    fi
+    if (( rc != 0 )); then
+      rm -f -- "$SECTIONS/$ext.md"
+      prep_unavailable "$ext: $kind section failed (see $PREP_DIR/prep_errors.log)"
+    fi
+  done <<< "$list"
+}
+
 # prep_write <file> <command…>: run the command into $PREP_DIR/<file>, replacing it only on success,
 # so a failed source never leaves a partial file behind. Returns the command's status.
 prep_write() {

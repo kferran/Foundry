@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What each enabled extension gives the shared scripts, as lines bash can read (extensions spec §3).
 
-Usage: extensions.py list | check | field <name> <key> | smoke | brief | units <role> | allow [--write | --remove <name>] | ignore | link | migrate
+Usage: extensions.py list | check | field <name> <key> | smoke | brief | debrief | units <role> | allow [--write | --remove <name>] | ignore | link | migrate
 Exit: 0; 1 from `check` when an extension cannot load; 2 usage.
 """
 import json
@@ -50,8 +50,8 @@ def main(argv: list) -> int:
                 out.append("\t".join([str(s.get("source") or name), str(s.get("timeout", "")), "1" if _truthy(s.get("connector")) else "0",
                                       f"extensions/{name}/{s.get('run', '')}",
                                       f"extensions/{name}/{s['each']}" if s.get("each") else ""]).rstrip("\t"))
-    elif cmd == "brief" and not args:
-        out = [n for n, d in loaded if _truthy(d.get("brief"))]
+    elif cmd in ("brief", "debrief") and not args:
+        out = [n for n, d in loaded if _truthy(d.get(cmd))]
     elif cmd == "units" and len(args) == 1 and args[0] in ROLES:
         for name, d in loaded:
             for u in d.get("units") or []:

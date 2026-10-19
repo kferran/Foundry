@@ -369,8 +369,8 @@ Done."
   today="$(TZ=America/Denver date +%F)"
   yesterday="$(date -d "$today -1 day" +%F)"
   mkdir -p briefings
-  for f in 2026-09-29.md 2026-09-29.debrief.md 2026-10-01.md "$yesterday.md" "$yesterday.debrief.md" "$today.md" \
-      "$today.debrief.md" notes.md; do
+  for f in 2026-09-29.md 2026-09-29.debrief.md 2026-09-29.today.md 2026-10-01.md "$yesterday.md" "$yesterday.debrief.md" \
+      "$today.md" "$today.debrief.md" "$today.today.md" notes.md; do
     printf 'x\n' > "briefings/$f"
   done
   run "$BP"
@@ -378,6 +378,8 @@ Done."
   [ "$status" -eq 0 ]
   [ -f briefings/archive/2026-09/2026-09-29.md ]
   [ -f briefings/archive/2026-09/2026-09-29.debrief.md ]
+  [ -f briefings/archive/2026-09/2026-09-29.today.md ]   # phase D spec §3.6: the today file moves with its briefing
+  [ -f "briefings/$today.today.md" ]
   [ -f briefings/archive/2026-10/2026-10-01.md ]
   [ ! -e briefings/2026-09-29.md ]
   [ -f "briefings/$yesterday.md" ]
@@ -625,6 +627,18 @@ gh_says() {
   grep -qxF -- '- brief_prep: demo: brief section failed (see system/logs/inputs/2026-10-01/prep_errors.log)' "$IN/unavailable.md"
   [ -e "$IN/actions.md" ]
   [ -e "$IN/sources.md" ]
+}
+
+@test "debrief_prep: an enabled extension writes its debrief section into debrief_sections/ (phase D spec §2)" {
+  use_extension demo
+  run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/debrief_sections/demo.md")" = '- demo evening line' ]
+  grep -q 'Demo (debrief)' "$IN/debrief_sections/demo.prompt.md"
+  DEMO_PREP_FAIL=1 run "$DP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ ! -e "$IN/debrief_sections/demo.md" ]
+  grep -qxF -- '- debrief_prep: demo: debrief section failed (see system/logs/inputs/2026-10-01/prep_errors.log)' "$IN/unavailable.md"
 }
 
 @test "brief_prep: no extensions writes no sections/ folder" {
