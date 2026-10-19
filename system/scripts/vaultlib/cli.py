@@ -287,7 +287,8 @@ def cmd_related(args, vault, sc):
         print(json.dumps(hits))
     else:
         for hit in hits:
-            print(f"- {hit['title']} — {hit['path']} ({hit['partition']}, {hit['type']})")
+            facts = (hit["partition"], hit["type"], hit["compiled_at"], hit["source"])
+            print(f"- {hit['title']} — {hit['path']} ({', '.join(f for f in facts if f)})")
     return EXIT_OK
 
 
