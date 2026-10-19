@@ -11,7 +11,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-19
-- `CLAUDE.md` is 50 lines, down from 77, and a test holds it there. The Workcells and the routing rules moved to `system/agents/foreman.md`, which `CLAUDE.md` tells every session to read. The approved-plans rule moved to the `order` skill, which now loads when you approve a plan. The command list is gone (the skills list themselves), and Scannable Layouts and Blocked Actions are Writing lines. Core holds at 14 schemas: new note types ship in extensions. (#PR)
+- `CLAUDE.md` is 50 lines, down from 77, and a test holds it there. The Workcells and the routing rules moved to `system/agents/foreman.md`, which `CLAUDE.md` tells every session to read. The approved-plans rule moved to the `order` skill, which now loads when you approve a plan. The command list is gone (the skills list themselves), and Scannable Layouts and Blocked Actions are Writing lines. Core holds at 14 schemas: new note types ship in extensions. (#281)
   - Action: if your vault edited the Agents, Commands or User Persona sections of `CLAUDE.md`, the template update reports a conflict; move your edits to `system/agents/foreman.md` or `system/config.md`.
 
 ## 2026-10-18
