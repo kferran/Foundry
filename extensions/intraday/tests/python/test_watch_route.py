@@ -135,12 +135,21 @@ def test_calendar_flags_and_cross_hits_are_logged_and_cancellations_and_moves_al
     flags = [{"change": "cancelled", "title": "Weekly Huddle", "start": "09:00", "end": "09:30", "was": ""},
              {"change": "moved", "title": "1:1 Pat", "start": "11:00", "end": "11:30", "was": "10:00-10:30"},
              {"change": "new", "title": "Deck review", "start": "14:00", "end": "15:00", "was": ""}]
-    crossed = [(item(), ev("Standup", "08:30", "08:45"))]
-    run(vault, {"items": []}, flags=flags, crossed=crossed)
+    cancel = item()
+    crossed = [(cancel, ev("Standup", "08:30", "08:45"))]
+    run(vault, {"items": [cancel]}, flags=flags, crossed=crossed)
     assert [r["text"] for r in ledger(vault)] == [
+        "Standup 08:30-08:45 cancelled per #gstaff (calendar still confirmed)",
         "Weekly Huddle 09:00-09:30 is gone from the calendar", "1:1 Pat moved from 10:00-10:30 to 11:00-11:30",
-        "new in the calendar: Deck review 14:00-15:00", "Standup 08:30-08:45 cancelled per #gstaff (calendar still confirmed)"]
+        "new in the calendar: Deck review 14:00-15:00"]
     assert len(alerts(vault)) == 3
+
+
+def test_a_cancellation_the_calendar_still_lists_is_one_alert_and_one_today_line(vault):
+    cancel = item()
+    assert run(vault, {"items": [cancel]}, crossed=[(cancel, ev("Weekly Huddle"))]) == {"items": 1, "now": 0, "alerts": 1}
+    assert alerts(vault) == [f"- 09:10:00 [watch] Weekly Huddle 09:00-09:30 cancelled per #gstaff (calendar still confirmed) {LINK}"]
+    assert run(vault, {"items": [cancel]}, crossed=[(cancel, ev("Weekly Huddle"))]) == {"items": 0, "now": 0, "alerts": 0}
 
 
 def test_more_than_three_alerts_in_a_tick_end_with_one_count_line(vault):

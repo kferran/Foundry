@@ -67,23 +67,24 @@ cal_says() {
   jq -cn --argjson e "$1" '{type: "result", subtype: "success", is_error: false, structured_output: {status: "ok", reason: "", events: $e}}' > "$STUB_CAL_STREAM"
 }
 
-@test "a non-mention cancellation in a watched channel is one today line and [watch] alerts, with the calendar cross-check" {
+@test "a non-mention cancellation in a watched channel is one today line and one [watch] alert, with the calendar cross-check" {
   result "#gstaff (ID: C0GSTAFF)" C0GSTAFF 1792430610.351069 "Heads up: the Weekly Huddle is cancelled today." > "$BATS_TEST_TMPDIR/page-watch.md"
   cal_says "[{\"start_date\": \"$TODAY\", \"start_time\": \"09:30\", \"end_date\": \"$TODAY\", \"end_time\": \"10:00\", \"title\": \"Weekly Huddle\"}]"
   slack_says '{"items": [{"query": "watch", "channel_id": "C0GSTAFF", "ts": "1792430610.351069", "kind": "meeting_change", "who": "Pat", "what": "Weekly Huddle cancelled today", "by": "", "change": "cancelled", "meeting": false}]}'
   run "$WF"
   [ "$status" -eq 0 ]
-  grep -qF '[watch] Weekly Huddle cancelled today (#gstaff) https://example.slack.com/archives/C0GSTAFF/p1792430610351069' "$ALERTS"
-  grep -qF '[watch] Weekly Huddle 09:30-10:00 cancelled per #gstaff (calendar still confirmed)' "$ALERTS"
+  [ "$(grep -c '\[watch\]' "$ALERTS")" -eq 1 ]
+  grep -qF '[watch] Weekly Huddle 09:30-10:00 cancelled per #gstaff (calendar still confirmed) https://example.slack.com/archives/C0GSTAFF/p1792430610351069' "$ALERTS"
   run extensions/intraday/scripts/today_log.py tick
   [ "$status" -eq 0 ]
-  grep -qF '**meeting** Weekly Huddle cancelled today (#gstaff) https://example.slack.com/archives/C0GSTAFF/p1792430610351069' "briefings/$TODAY.today.md"
+  [ "$(grep -c '\*\*meeting\*\*' "briefings/$TODAY.today.md")" -eq 1 ]
+  grep -qF '**meeting** Weekly Huddle 09:30-10:00 cancelled per #gstaff (calendar still confirmed) https://example.slack.com/archives/C0GSTAFF/p1792430610351069' "briefings/$TODAY.today.md"
   run system/scripts/vault_index.py validate "briefings/$TODAY.today.md"
   [ "$status" -eq 0 ]
   # The next tick reads the same message again through its overlap: nothing routes twice.
   slack_says '{"items": [{"query": "watch", "channel_id": "C0GSTAFF", "ts": "1792430610.351069", "kind": "meeting_change", "who": "Pat", "what": "Weekly Huddle cancelled today", "by": "", "change": "cancelled", "meeting": false}]}'
   run "$WF"
-  [ "$(grep -c 'Weekly Huddle cancelled today' "$ALERTS")" -eq 1 ]
+  [ "$(grep -c '\[watch\]' "$ALERTS")" -eq 1 ]
 }
 
 @test "a commitment in a group DM becomes one owed line with the message link" {

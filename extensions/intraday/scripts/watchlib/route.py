@@ -120,7 +120,9 @@ def route(vault, partition: str, found: dict, flags: list, crossed: list, events
                             nowmod.note(vault, partition, item["what"], f"free: {', '.join(slots)}", day)
                         except ValueError:
                             pass   # another open line holds the same text: the slots are an offer, not the item
-        text = f"{item['what']} ({item['label']})"
+        e = next((e for i, e in crossed if i is item), None)   # a cancellation the calendar still lists: one line
+        text = (f"{e['title']}{_span(e['start'], e['end'])} cancelled per {item['label']} (calendar still confirmed)"
+                if e else f"{item['what']} ({item['label']})")
         log(key, "meeting" if item["kind"] == "meeting_change" else item["kind"], text, item["link"], status)
         if item["kind"] == "incident" or (item["kind"] == "meeting_change" and item["change"] in ALERT_CHANGES):
             alerts.append(f"{text} {item['link']}")
@@ -137,13 +139,6 @@ def route(vault, partition: str, found: dict, flags: list, crossed: list, events
         log(key, "meeting", text)
         if f["change"] in ALERT_CHANGES:
             alerts.append(text)
-    for item, e in crossed:
-        key = f"cross:{day}:{e['title']}:{e['start']}"
-        if key in done:
-            continue
-        text = f"{e['title']}{_span(e['start'], e['end'])} cancelled per {item['label']} (calendar still confirmed)"
-        log(key, "meeting", text, item["link"])
-        alerts.append(f"{text} {item['link']}")
     for text in alerts[:MAX_ALERTS]:
         alert(vault, day, clock, "watch", text)
         counts["alerts"] += 1
