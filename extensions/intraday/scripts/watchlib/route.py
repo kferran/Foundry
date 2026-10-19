@@ -25,7 +25,8 @@ def ledger_path(vault, day: str):
 def seen(vault, day: str) -> set:
     first = date.fromisoformat(day).replace(day=1)
     prev = date.fromordinal(first.toordinal() - 1).isoformat()
-    return {r.get("key") for d in (prev, day) for r in records(ledger_path(vault, d))}
+    rows = [r for d in (prev, day) for r in records(ledger_path(vault, d))]
+    return {r.get("key") for r in rows} | {k for r in rows for k in r.get("keys") or []}
 
 
 def _norm(text: str) -> str:
@@ -141,7 +142,19 @@ def route(vault, partition: str, found: dict, flags: list, crossed: list, events
     return counts
 
 
-def captured(vault, day: str, clock: str, rel: str, n: int, partition: str) -> None:
+def _capture_key(m: dict) -> str:
+    return f"capture:{m['channel']}/{m['ts']}"
+
+
+def new_captures(vault, day: str, messages: list) -> list:
+    """The capture messages no earlier tick wrote: the capture search reads back through the cursor's overlap."""
+    done = seen(vault, day)
+    return [m for m in messages if _capture_key(m) not in done]
+
+
+def captured(vault, day: str, clock: str, rel: str, messages: list, partition: str) -> None:
+    """One ledger row per capture file (one today-file line), holding each message's key in `keys`."""
+    n = len(messages)
     append(ledger_path(vault, day), {"key": f"capture:{rel}", "day": day, "time": clock[:5], "kind": "capture",
                                      "text": f"{n} message{'s' if n != 1 else ''} → {rel}", "link": "", "now": "",
-                                     "partition": partition})
+                                     "partition": partition, "keys": [_capture_key(m) for m in messages]})

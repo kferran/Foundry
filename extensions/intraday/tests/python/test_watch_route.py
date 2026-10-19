@@ -138,7 +138,7 @@ def test_more_than_three_alerts_in_a_tick_end_with_one_count_line(vault):
 
 def test_a_capture_file_holds_each_message_and_its_link_under_a_name_the_intake_accepts(vault):
     now = datetime(2026, 10, 19, 9, 10, tzinfo=ZoneInfo("America/Denver"))
-    msgs = [{"ts": "1792429200.000100", "sender": "Kyle Owner", "text": "idea: retry the export\nsecond line",
+    msgs = [{"ts": "1792429200.000100", "channel": "C0CAP", "sender": "Kyle Owner", "text": "idea: retry the export\nsecond line",
              "link": "https://example.slack.com/archives/C0CAP/p1792429200000100"}]
     path = capture.write(vault, msgs, "work", "C0CAP", now)
     assert RAW_NAME.match(path.name) and path.parent == vault / "raw" / "inbox"
@@ -146,7 +146,10 @@ def test_a_capture_file_holds_each_message_and_its_link_under_a_name_the_intake_
     assert text.startswith('---\npartition: "work"\nsource: "slack"\nchannel: "C0CAP"\ncaptured_at: "2026-10-19T09:10:00-06:00"\n---\n')
     assert "## 11:00 Kyle Owner\n\nidea: retry the export\nsecond line\n\nLink: https://example.slack.com/archives/C0CAP/p1792429200000100" in text
     assert capture.write(vault, msgs, "work", "C0CAP", now).name == "slack-2026-10-19T091000-2.md"
-    route.captured(vault, DAY, "09:10:00", "raw/inbox/slack-2026-10-19T091000.md", 1, "personal")
+    route.captured(vault, DAY, "09:10:00", "raw/inbox/slack-2026-10-19T091000.md", msgs, "personal")
     assert ledger(vault)[-1]["text"] == "1 message → raw/inbox/slack-2026-10-19T091000.md"
     assert ledger(vault)[-1]["partition"] == "personal"
+    # The next tick's overlap reads the same message again: only the new one is captured.
+    later = {**msgs[0], "ts": "1792429300.000100"}
+    assert route.new_captures(vault, DAY, [msgs[0], later]) == [later]
     assert json.loads(json.dumps(ledger(vault)[-1]))["kind"] == "capture"

@@ -114,6 +114,11 @@ cal_says() {
   [ "$status" -eq 0 ]
   [ ! -e "$f" ]
   ls raw/archive | grep -q '^slack-'
+  # The next tick reads the same message again through its overlap: it is not captured twice.
+  slack_says '{"items": []}'
+  run "$WF"
+  [ "$status" -eq 0 ]
+  [ -z "$(ls raw/inbox 2>/dev/null)" ]
 }
 
 @test "a Slack session outside the rules writes nothing, keeps its cursors and alerts once a day; the calendar still runs" {
