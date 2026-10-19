@@ -35,7 +35,8 @@ def fts_query(terms) -> str:
 
 
 def _first_source(conn, path):
-    row = conn.execute("SELECT target_path FROM links WHERE src=? AND kind='frontmatter:sources' "
+    # Sources are gitignored raw inputs, so off the compiling machine the link's own target stands in.
+    row = conn.execute("SELECT coalesce(target_path, target) FROM links WHERE src=? AND kind='frontmatter:sources' "
                        "ORDER BY rowid LIMIT 1", (path,)).fetchone()
     return row[0] if row and row[0] else None
 
@@ -45,8 +46,8 @@ def related(conn, terms, *, limit=10, partitions=None, codebase=None, ntype=None
     query = fts_query(terms)
     if not query:
         return []
-    sql = ("SELECT n.path, n.title, n.partition, n.type, bm25(notes_fts, 0.0, 5.0, 3.0, 1.0) AS score "
-           "FROM notes_fts JOIN notes n ON n.path = notes_fts.path WHERE notes_fts MATCH ?")
+    sql = ("SELECT n.path, n.title, n.partition, n.type, bm25(notes_fts, 0.0, 5.0, 3.0, 1.0) AS score, "
+           "(SELECT value FROM fields f WHERE f.path=n.path AND f.key='compiled_at') FROM notes_fts JOIN notes n ON n.path = notes_fts.path WHERE notes_fts MATCH ?")
     args = [query]
     if not include_inactive:
         sql += " AND n.active = 1"
@@ -67,12 +68,14 @@ def related(conn, terms, *, limit=10, partitions=None, codebase=None, ntype=None
     sql += " ORDER BY score LIMIT ?"
     args.append(limit * 5)
     out, per = [], collections.Counter()
-    for path, title, part, ntype_, score in conn.execute(sql, args).fetchall():
-        key = _first_source(conn, path) or path
+    for path, title, part, ntype_, score, compiled_at in conn.execute(sql, args).fetchall():
+        source = _first_source(conn, path)
+        key = source or path
         if per[key] >= per_source:
             continue
         per[key] += 1
-        out.append({"path": path, "title": title, "partition": part, "type": ntype_, "score": round(score, 4)})
+        out.append({"path": path, "title": title, "partition": part, "type": ntype_, "score": round(score, 4),
+                    "compiled_at": compiled_at, "source": source})
         if len(out) >= limit:
             break
     return out

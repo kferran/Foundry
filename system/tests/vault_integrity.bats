@@ -419,6 +419,7 @@ sealed_problems() {
   # 300-character cap in now.py and the publish gate, issue evidence and the prep caps took core to 13,363 lines.
   # 13,400 -> 13,800 (phase B, ingest evals): eval_ingest.sh, eval_check.py and vaultlib/evals.py (+422) took core from
   # 13,370 to 13,792 lines. They test what /ingest writes, so they stay with the pipeline they run.
+  # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   lines="$(git ls-files -z system/scripts | xargs -0 cat | wc -l)"
   [ "$lines" -le 13800 ]
   [ "$(git ls-files system/schemas | wc -l)" -le 14 ]
