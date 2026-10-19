@@ -124,6 +124,15 @@ Chat triage (#222) already turns Slack messages that need the owner into `owed` 
 
 **Done when:** for 5 weekdays the owner adds no hand annotations to the brief (11 on 10-14), and every captured message reaches the wiki or the Now page within one intake tick.
 
+**Grilled (owner, 2026-10-19; `specs/2026-10-19-phase-d-intraday-design.md`):**
+- Decision 3: the private repository is enough for now; the move to the company's GitHub comes later.
+- All four pieces are in, as the `intraday` extension: the channel watch with the calendar diff, the today file, the own-commitments sweep and the capture channel.
+- Delivery is the server-written today file plus an at-once alert for meeting changes and incidents.
+- There is one read-in-full channel list; mentions stay with chat triage.
+- Capture goes through the connector, read-only.
+- A `blocked` watch kind writes `waiting` lines.
+- The partner mail guard is left for a vault extension.
+
 ### Phase E: people Workcell
 
 From #112 (owner page, people-page contract, confidence, open questions). Input already exists: 111 entity notes and 100 meeting notes in the live vault.
@@ -163,7 +172,7 @@ Today Work Orders cannot reach the main work codebase, whose pull requests are o
 |---|---|---|---|
 | 1 | Approve this order (A and B before C, C before new features) | Approve | Approved |
 | 2 | Phase A runs before the step 4 budgets | Yes: the brief is the daily interface and is 4x its target, and phase A shrinks `brief.md` first | Yes |
-| 3 | Work-data boundary (#218): all partitions push to one private origin on a personal host | Decide before phase D; recommend a separate work origin if chat captures are wanted | The vault repository moves to the employer's GitHub account the week of 2026-10-19. Phase D's grill starts after the move. |
+| 3 | Work-data boundary (#218): all partitions push to one private origin on a personal host | Decide before phase D; recommend a separate work origin if chat captures are wanted | The vault repository moves to the employer's GitHub account the week of 2026-10-19. Phase D's grill starts after the move. Revised (owner, 2026-10-19): the private repository is enough for now; the move to the company's GitHub comes later, and phase D does not wait for it. |
 | 4 | Phase G: Work Orders on the Bitbucket codebase | Grill it; skip if the work codebase's own tooling covers it | Grill it |
 | 5 | #236, #263, Foreman v2 parked until after phase F | Park | Parked |
 
