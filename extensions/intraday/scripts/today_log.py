@@ -68,10 +68,11 @@ def digest_entry(body: str) -> list:
 
 
 def digests(vault: Path, day: str) -> list:
-    """(source, sha, time, lines) for each work session digest created today, pending or compiled."""
+    """(source, sha, time, lines) for each work session digest created today, pending or compiled. A digest's name
+    starts with its local creation time (%Y-%m-%d-%H%M, memory_capture.sh), so only today's files are read."""
     out = []
     for folder in ("notes", "archive"):
-        for p in sorted((vault / "raw" / "work" / folder).glob("*.md")):
+        for p in sorted((vault / "raw" / "work" / folder).glob(f"{day}-*.md")):
             try:
                 text = p.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
