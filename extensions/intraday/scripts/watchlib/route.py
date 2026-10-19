@@ -6,6 +6,7 @@ again by the next tick's overlap never routes twice. A Now line is skipped when 
 holds the same link (chat triage's lines included), when an open line's statement already says it, or, for a meeting
 commitment, when a fetched calendar event names the person.
 """
+import re
 from datetime import date
 
 from vaultlib import now as nowmod
@@ -16,6 +17,8 @@ from .common import alert, append, records, state
 MAX_ALERTS = 3
 NOW_KINDS = {"deadline": "owed", "blocked": "waiting", "commitment": "owed"}
 ALERT_CHANGES = ("cancelled", "moved")
+SAID_WORDS = 4
+STOPWORDS = {"team", "with", "from", "group", "everyone", "folks", "people", "them", "they"}
 
 
 def ledger_path(vault, day: str):
@@ -41,17 +44,25 @@ def _known_link(vault, partition: str, link: str, day: str) -> bool:
 
 
 def _said(vault, partition: str, what: str) -> bool:
+    """An open line says the same task: the same statement, or one that holds it as whole words when it has at least
+    SAID_WORDS words (a shorter phrase, "follow up", names an action, not a task)."""
     w = _norm(what)
     for line in nowmod.open_lines(nowmod.read(vault, partition)):
         m = nowmod.parse(line)
-        if m and w in _norm(nowmod.fields(m.group("statement"))[0]):
+        s = _norm(nowmod.fields(m.group("statement"))[0]) if m else ""
+        if m and (w == s or (len(w.split()) >= SAID_WORDS and f" {w} " in f" {s} ")):
             return True
     return False
 
 
+def _words(text: str) -> set:
+    return set(re.findall(r"\w+", _norm(text)))
+
+
 def _calendar_names(events: list, who: str) -> bool:
-    token = next((t for t in _norm(who).split() if len(t) >= 3), "")
-    return bool(token) and any(token in _norm(e["title"]) for e in events)
+    """A fetched event's title names the person: a whole word of 4+ letters from `who`, not a stopword."""
+    names = {t for t in _words(who) if len(t) >= 4} - STOPWORDS
+    return any(names & _words(e["title"]) for e in events)
 
 
 def _span(start: str, end: str) -> str:
@@ -61,7 +72,8 @@ def _span(start: str, end: str) -> str:
 def now_line(vault, partition: str, item: dict, day: str, events: list) -> tuple:
     """(status, line) for an item that makes a Now line: "added", "exists", "covered" or "refused"."""
     kind = NOW_KINDS[item["kind"]]
-    if _known_link(vault, partition, item["link"], day):
+    # A mail link is the thread's: a later commitment in the same thread is new, so mail relies on the ledger and _said.
+    if item["label"] != "mail" and _known_link(vault, partition, item["link"], day):
         return "covered", ""
     if item["kind"] == "commitment" and (_said(vault, partition, item["what"])
                                          or (item["meeting"] and _calendar_names(events, item["who"]))):

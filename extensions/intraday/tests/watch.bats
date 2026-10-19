@@ -166,7 +166,7 @@ cal_says() {
     jq -cn --arg t "$GMAIL" --arg q "$q" '{type: "assistant", message: {content: [{type: "tool_use", id: "m1", name: $t, input: {query: $q, pageSize: 50, view: "THREAD_VIEW_MINIMAL"}}]}}'
     jq -cn '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "m1", content: "…"}]},
       tool_use_result: {structuredContent: {threads: [{id: "th1", viewUrl: "https://mail.google.com/mail/#all/thread-a:1",
-        messages: [{labelIds: ["SENT"], internalDate: "1792428384000", subject: "Deck", snippet: "I will send the deck Friday"}]}]}}}'
+        messages: [{labelIds: ["SENT"], internalDate: "1800000100000", subject: "Deck", snippet: "I will send the deck Friday"}]}]}}}'
     jq -cn '{type: "result", subtype: "success", is_error: false, result: ({items: [{thread_id: "th1", kind: "commitment", who: "Pat Sample", what: "Send Pat the deck", by: "", meeting: false}]} | tojson)}'
   } > "$STUB_MAIL_STREAM"
   run "$WF"

@@ -193,3 +193,7 @@ def test_sent_mail_commitments_link_the_thread_and_key_on_the_latest_sent_messag
     with pytest.raises(Fail) as e:
         check.mail_extract(sent_stream(threads, q="in:inbox"), "in:sent after:1")
     assert e.value.code == 7
+    # A thread the search returns for an older sent message is not a new commitment (spec §3.3: internalDate >= cursor).
+    q = "in:sent after:1792428400"
+    got = check.mail_extract(sent_stream(threads, q=q, items=[{"thread_id": "th1", "kind": "commitment", "what": "Send"}]), q)
+    assert got["items"] == []

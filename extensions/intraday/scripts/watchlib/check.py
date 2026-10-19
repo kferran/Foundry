@@ -144,8 +144,9 @@ def slack_extract(stream, tool: str, queries: dict, notify: str = "") -> dict:
     return {"items": items, "captures": captures, "full": full}
 
 
-def sent_threads(got: list) -> dict:
-    """thread id -> {link, date (epoch ms of its latest sent message)}, from the search results only."""
+def sent_threads(got: list, since: int = 0) -> dict:
+    """thread id -> {link, date (epoch ms of its latest sent message)}, from the search results only; a thread whose
+    sent messages are all older than `since` (epoch seconds) is left out (spec §3.3)."""
     out = {}
     for sc in got:
         listed = sc.get("threads", [])
@@ -155,7 +156,8 @@ def sent_threads(got: list) -> dict:
             msgs = [m for m in (t.get("messages") or []) if isinstance(m, dict)] if isinstance(t, dict) else []
             if not (isinstance(t, dict) and isinstance(t.get("id"), str) and str(t.get("viewUrl", "")).startswith("https://")):
                 raise Fail(1, "a thread lacks an id or a link")
-            sent = [str(m.get("internalDate", "")) for m in msgs if "SENT" in (m.get("labelIds") or [])]
+            sent = [str(m.get("internalDate", "")) for m in msgs if "SENT" in (m.get("labelIds") or [])
+                    and str(m.get("internalDate", "")).isdigit() and int(m["internalDate"]) >= since * 1000]
             if sent:
                 out[t["id"]] = {"link": t["viewUrl"], "date": max(sent, key=lambda d: int(d) if d.isdigit() else 0)}
     return out
@@ -167,7 +169,8 @@ def mail_extract(stream, q: str) -> dict:
     from .query import GMAIL_TOOL
     got, result = pages(stream, GMAIL_TOOL, lambda i: i.get("query") == q and i.get("view") == "THREAD_VIEW_MINIMAL",
                         _structured, MAIL_PAGES, "Gmail")
-    known = sent_threads(got)
+    since = re.search(r"after:(\d+)", q)
+    known = sent_threads(got, int(since.group(1)) if since else 0)
     items, seen = [], set()
     for r in reply(result):
         tid, what = r.get("thread_id"), one_line(r.get("what"))

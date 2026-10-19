@@ -105,6 +105,20 @@ def test_a_link_already_on_the_now_page_or_archive_and_a_said_commitment_are_cov
     assert len(nowmod.open_lines(nowmod.read(vault, "work"))) == 2
 
 
+def test_a_thread_link_a_short_phrase_or_a_partial_name_does_not_cover_a_commitment(vault):
+    thread = "https://mail.google.com/mail/#all/thread-a:1"
+    nowmod.add(vault, "work", "owed", "Send the export numbers", DAY, "Pat", thread)   # an earlier commitment in the thread
+    nowmod.add(vault, "work", "owed", "Follow up with the vendor on the export retries", DAY)
+    items = [item(kind="commitment", query="mail", what="Book the review room", key="m1", link=thread, label="mail"),
+             item(kind="commitment", query="own", what="follow up", key="k2", link=LINK + "2"),
+             item(kind="commitment", query="own", what="Set up a sync with the team", who="the team", meeting=True,
+                  key="k3", link=LINK + "3"),
+             item(kind="commitment", query="own", what="Set up a call with Sam", who="Sam", meeting=True, key="k4",
+                  link=LINK + "4")]
+    run(vault, {"items": items}, events=[ev("Other vendors sync", "15:00", "15:30"), ev("Samsung review", "16:00", "16:30")])
+    assert [r["now"] for r in ledger(vault)] == ["added", "added", "added", "added"]
+
+
 def test_a_meeting_commitment_gets_free_slots_unless_the_calendar_already_names_the_person(vault):
     c = item(kind="commitment", query="own", what="Set up a sync with Sam", who="Sam Sample", meeting=True, by="2026-10-21",
              key="k1", link=LINK + "1", label="group DM")
