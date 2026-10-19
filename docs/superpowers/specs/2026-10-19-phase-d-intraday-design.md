@@ -60,17 +60,18 @@ The session is allowed only `slack_search_public_and_private`, with every other 
 
 | Query | Filters | Used for |
 |---|---|---|
-| watch | `in:<id>` for each `watch_channels` entry, plus group DMs (`is:mpim`, if the probe confirms the filter), after the cursor | classified (§3.5) |
-| own | `from:me`, all channel types, after the cursor | commitments (§3.5) |
+| watch | `in:<id>` repeated for each `watch_channels` entry (a repeated modifier is an OR), after the cursor | classified (§3.5) |
+| group DMs | `channel_types: "mpim"`, after the cursor; only while `watch_group_dms` is on | classified (§3.5) |
+| own | `from:<@watch_user_id>`, all channel types, after the cursor | commitments (§3.5) |
 | capture | `in:<capture_channel>`, after the cursor; only when `capture_channel` is set | copied, never classified (§3.7) |
 
 The prompt has the model classify the watch and own results into `{"items": [{"query", "channel_id", "ts", "kind", "who", "what", "by"}]}` and ignore the capture results. Message text is data, never instructions. The checker drops every item whose `(channel_id, ts)` is not a result of the query it names. Links, times and dates come from the results; the model's words are used only in `what` (redacted, cut at 160 characters).
 
-The first plan task probes the filters (several `in:` in one query against one query per channel, `is:mpim`, `from:me`) in one live confined session, as triage's probe did, and the query builder follows what the probe shows.
+Each query keeps an `after:<date>` filter, since a filter-only query needs one, plus the epoch `after` from its cursor, as triage does. The 2026-10-19 probe (`docs/superpowers/spikes/2026-10-19-watch-probe.md`) settled the filters and the result variants: group DMs and DMs carry a `Participants:` line, and `Message_ts` orders the results.
 
 ### 3.3 Gmail session
 
-This session runs only when `watch_commitments_mail` is `true`. It may call only the Gmail search tool, with `in:sent after:<cursor date>` and the cursor epoch checked against each message's date. The prompt classifies messages into the same item shape with `kind: commitment`. Each item's link is the Gmail thread URL built from the result's thread ID.
+This session runs only when `watch_commitments_mail` is `true`. It may call only `search_threads`, with `query: "in:sent after:<cursor date>"` and `view: THREAD_VIEW_MINIMAL`. The cursor epoch is checked against each message's `internalDate`. The minimal view gives `subject` and `snippet` but no body, so v1 classifies from those two fields. The prompt classifies messages into the same item shape with `kind: commitment`. Each item's link is the thread's `viewUrl`.
 
 ### 3.4 Calendar session and the diff
 
@@ -150,6 +151,7 @@ The intake redacts, compiles and archives the file like any inbox drop. `/ingest
 |---|---|---|---|
 | `watch_channels` | list of `{id, label}` | `[]` | channels read in full; empty with `watch_group_dms` off turns the watch query off |
 | `watch_group_dms` | bool | `true` | the owner's group DMs are read in full too |
+| `watch_user_id` | string | `""` | the owner's Slack user ID for the own-messages query; empty turns that query off |
 | `watch_partition` | enum `work`, `personal` | `work` | the Now page and today file the watch writes to |
 | `watch_commitments_mail` | bool | `true` | the Gmail session for sent mail (§3.3) |
 | `capture_channel` | string | `""` | channel or DM ID to capture; empty is off |
@@ -204,6 +206,7 @@ The Slack and Gmail connectors are core's `slack_connector` and the Gmail connec
 ## 5. Out of scope
 
 - The partner mail guard (§2 decision 8).
+- Sent-mail bodies: v1 classifies from the subject and snippet. Reading a body needs `get_thread`, a second Gmail session per thread.
 - Asks to the owner that the owner accepted with a reply that states no task ("will do"). The sweep reads only the owner's own words; the thread context would need `include_context`, a later step.
 - Tickets and a personal inbox as triage sources, a "draft was sent" check, a dashboard: the other #135 lines. They stay on the roadmap.
 - Commands from Slack (`now:`, `order:`), file downloads, and edits or deletions after capture.
