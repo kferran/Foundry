@@ -119,7 +119,7 @@ An `incident` line is a new production error group, or a resolved one that came 
 
 **Delivered work.** Handoffs to chase (stalled tickets you reported that someone else holds) is an extension: each enabled extension's brief section comes from its own `brief/` folder (`/setup` phase 6e). The debrief lists what you delivered under 6. Delivered Today: each digest's Delivered section, `delivered:` lines in the briefing's 📝 Notes (the Foreman adds one when you ask it to log something), and pull requests you opened, merged or reviewed in the registered GitHub repositories (`gh`, logged in; a codebase's `order_pr: github:<owner>/<repo>` and a GitHub `template_remote`).
 
-**Workcells.** Work goes to the Workcell whose `capabilities` include the one the work needs, never by name:
+**Workcells.** Work goes to the Workcell whose `capabilities` include the one the work needs, never by name. The routing rules live in `system/agents/foreman.md`, which `CLAUDE.md` tells every session to read; the approved-plans rule lives in the `order` skill, which loads when you approve a plan:
 
 | Workcell | Capabilities |
 |---|---|

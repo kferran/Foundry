@@ -3,11 +3,14 @@ name: order
 description: |
   Queue refined work as a Work Order for unattended execution: an approved implementation plan (or a task range of one)
   that ends in a pull request, or a written research brief that ends in a findings note. Use for
-  /order add|ask|list|cancel|status, or when the user wants work run in the background, later today or overnight.
+  /order add|ask|list|cancel|status, when the user wants work run in the background, later today or overnight, or when
+  the user approves a plan.
 ---
 # Work Orders
 
 Specs: `docs/superpowers/specs/2026-10-06-nightshift-design.md` (the runner) and `docs/superpowers/specs/2026-10-08-foreman-v1-work-orders-design.md` (Work Orders). Everything runs through `system/scripts/nightshift.py` from the vault root.
+
+**Approved plans.** When the user approves a plan and names no execution method, the plan runs as a Work Order that starts now. When `orders_enabled` is `false`, it runs native in the session instead. "native" or "subagent" runs it in the session; "tonight" queues it for 22:00; "hold" leaves it unqueued. The vault is the repository that has `system/config.md`. In the vault, run `/order add` (the skill shows the readiness result). In any other repository, push the plan's branch and send the exact `system/scripts/nightshift.py add` command to the Foreman session by cross-session message.
 
 **`/order add <plan> [--tasks N-M] [--at HH:MM | --window] [--budget 4h] [--model opus]`**
 

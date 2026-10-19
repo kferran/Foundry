@@ -106,6 +106,8 @@ Step 3 is complete on master: DTCC moved to a vault-only `extensions/dtcc/` (`9e
 
 **Done when:** schemas at 12 or fewer, `CLAUDE.md` at or under 50 lines, and both budget tests lowered and green.
 
+**Revised (owner, 2026-10-19; `specs/2026-10-19-phase-c-budgets-design.md` §2):** core holds at 14 schemas, and new note types ship as extension schemas; meetings stay in core. The line budget holds at 13,800, since phases A and B added more than they removed. `CLAUDE.md` goes to 50 lines or fewer, with the Agents block and routing in `system/agents/foreman.md` and the approved-plans rule in the `order` skill. Done when `CLAUDE.md` is at or under 50 lines, both budget tests are green at 14 schemas and 13,800 lines, and the live check passes.
+
 ### Phase D: capture and the intraday picture
 
 Chat triage (#222) already turns Slack messages that need the owner into `owed` lines. This phase adds the rest. One grill for #135 (leadership channels read in full, calendar diff), the Slack captures (`specs/2026-10-11-slack-bridge-design.md`, captures half) and the intraday update #94 asked for. They answer one question: what changed since the morning brief. Starting points: the specs on `feat/intraday-brief-94` and the chat-gateway findings from phase 0.

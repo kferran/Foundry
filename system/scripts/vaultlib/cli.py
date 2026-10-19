@@ -165,7 +165,7 @@ def staged_blobs(vault: Path, paths) -> dict:
 
 # Write caps (#166): files every session reads whole, so their growth is a cost each run pays. A staged copy over its
 # cap is refused when it is larger than HEAD's, or during a merge than the larger of HEAD's and MERGE_HEAD's (a new
-# file counts as 0 bytes); shrinking always passes. The template's CLAUDE.md is about 11 KB and its wiki/Index.md
+# file counts as 0 bytes); shrinking always passes. The template's CLAUDE.md is about 8 KB and its wiki/Index.md
 # under 1 KB. Only people and merges grow these two. The Now pages are left out: triage and the brief grow them
 # unattended, and a refused sync commit would stop every sync; `now.py review` reports an oversized one instead.
 WRITE_CAPS = {"CLAUDE.md": 16 * 1024, "wiki/Index.md": 8 * 1024}

@@ -42,7 +42,10 @@ headless_contract() {
   grep -qF 'Codebases are defined in `system/codebases/`. Read the relevant file before touching code.' "$f"
   run grep -nE 'Anti-Refusal|Intent Gate Audit|Kusto Intake|Strategic Intent Shaper|Friction Identification|Production Telemetry Routing' "$f"
   [ "$status" -eq 1 ]
-  [ "$(wc -l < "$f")" -le 120 ]   # CLAUDE.md prune spec §2: the next imported block has to displace something
+  [ "$(wc -l < "$f")" -le 50 ]   # phase C spec §3: the next imported block has to displace something
+  grep -qF 'The Foreman is the only role you address; read `system/agents/foreman.md` for the Workcells and routing.' "$f"
+  run grep -nE '^## (Agents|Commands|🗣️ User Persona)' "$f"
+  [ "$status" -eq 1 ]
 }
 
 @test "ingest: headless contract, allowlisted index calls, decisions file" {
@@ -229,7 +232,7 @@ setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } o
   grep -qx '# Maintenance Workcell' system/agents/workcells/maintenance.md
   grep -qx '# Research Workcell' system/agents/workcells/research.md
   [ "$(head -n 1 system/agents/foreman.md)" = '# The Foreman' ]
-  grep -qF 'Persona: `system/agents/foreman.md`.' CLAUDE.md
+  grep -qF 'read `system/agents/foreman.md` for the Workcells and routing' CLAUDE.md
   # The [C] bracket keeps the pattern from matching this line.
   run git grep -nE '[C]hiefOfStaff' -- CLAUDE.md README.md FOUNDRY.md .claude system
   [ "$status" -eq 1 ]
@@ -299,8 +302,9 @@ writing_section() { awk '$0 == "## ✍️ Writing" { on = 1; next } /^## / { on 
   n="$(grep -cE '^[0-9]+\. ' <<< "$sec")"
   [ "$n" -ge 8 ]
   [ "$n" -le 12 ]
-  # The formatting rule stays where it was (spec §2).
-  grep -qF '**Scannable Layouts**' CLAUDE.md
+  # The User Persona section's two formatting rules live in Writing (phase C spec §2 decision 4).
+  [[ "$sec" == *'**Scannable Layouts**'* ]]
+  [[ "$sec" == *'- **Blocked Actions**: When an action is blocked'* ]]
 }
 
 @test "no approval bottleneck: CLAUDE.md and the Foreman do the work and ask only what is the owner's to decide" {
@@ -431,7 +435,7 @@ self_edit_contract() {
   [[ "$sec" != *'`remote_mode` is empty'* ]]
   [[ "$(setup_section '2a. Features')" == *'An absent `orders_enabled` or `update_enabled` is on'* ]]
   grep -qx 'superpowers: \[\]' system/config.example.md
-  grep -qF 'When `orders_enabled` is `false`, it runs native in the session instead.' CLAUDE.md
+  grep -qF 'When `orders_enabled` is `false`, it runs native in the session instead.' .claude/skills/order/SKILL.md
   run grep -c 'Use this template' README.md FOUNDRY.md
   [[ "$output" == *'README.md:0'* ]]
   [[ "$output" == *'FOUNDRY.md:0'* ]]
@@ -576,9 +580,11 @@ self_edit_contract() {
 }
 
 @test "work routes by capability, never by a Workcell's name" {
-  grep -qF '`system/agents/workcells/*.md`' CLAUDE.md
-  grep -qF 'route to the Workcell with `telemetry`' CLAUDE.md
-  grep -qF 'routing them to the Workcell with `vault-health`' CLAUDE.md
+  f=system/agents/foreman.md
+  grep -qF '`system/agents/workcells/*.md`' "$f"
+  grep -qF 'never route work to a Workcell by name' "$f"
+  grep -qF 'route to the Workcell with `telemetry`' "$f"
+  grep -qF 'routing them to the Workcell with `vault-health`' "$f"
   grep -qF 'routes to the Workcell with `telemetry`' extensions/telemetry/brief/section.md
   grep -qF 'hand each concrete slice to a capability' .claude/commands/brief.md
   grep -qF '`capability: code`' .claude/commands/setup.md
@@ -888,7 +894,6 @@ self_edit_contract() {
   grep -qF '/order add|ask|list|cancel|status' "$f"
   grep -qF 'system/scripts/nightshift.py add --kind plan' "$f"
   grep -qF 'Work Order' "$f"
-  grep -qF -- '- `/order add|ask|list|cancel|status`:' CLAUDE.md
   grep -qF -- '- `raw/<partition>/nightshift/`: Work Order queue notes' CLAUDE.md
   run grep -nE '(^|[`( ])/nightshift' "$f" CLAUDE.md README.md FOUNDRY.md
   [ "$status" -eq 1 ]
@@ -969,11 +974,11 @@ self_edit_contract() {
   [ "$(grep '^### ' system/templates/daily-debrief.md | tail -n 3 | head -n 1)" = '### 5. Work Orders' ]
 }
 
-# commands_section: the body of CLAUDE.md's Commands section.
-commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 } on' CLAUDE.md; }
-
-@test "CLAUDE.md Commands: an approved plan becomes a Work Order that starts now (Foreman v1 §3.3)" {
-  sec="$(commands_section)"
+@test "the /order skill: an approved plan becomes a Work Order that starts now (Foreman v1 §3.3, phase C spec §2)" {
+  f=.claude/skills/order/SKILL.md
+  # The description names plan approval, so the skill loads when a plan is approved.
+  grep -qE '^  .*approves a plan' "$f"
+  sec="$(cat "$f")"
   [[ "$sec" == *'When the user approves a plan and names no execution method, the plan runs as a Work Order that starts now.'* ]]
   [[ "$sec" == *'"native" or "subagent" runs it in the session; "tonight" queues it for 22:00; "hold" leaves it unqueued.'* ]]
   [[ "$sec" == *'In the vault, run `/order add` (the skill shows the readiness result).'* ]]
@@ -1116,9 +1121,8 @@ commands_section() { awk '$0 == "## Commands" { on = 1; next } /^## / { on = 0 }
   grep -qF '`triage_chat_enabled: true`' FOUNDRY.md
 }
 
-@test "/rca is the telemetry extension's skill: CLAUDE.md and the manual point there, and core holds no rca command" {
+@test "/rca is the telemetry extension's skill: the manual points there, and core holds no rca command" {
   [ ! -e .claude/commands/rca.md ]
-  grep -qF 'Extension skills, such as `/rca <raw/telemetry/note>` from the telemetry extension' CLAUDE.md
   grep -qF '| `/rca <raw/telemetry/note.md>` | The telemetry extension'"'"'s skill' FOUNDRY.md
   run grep -E 'rca_project' system/schemas/config.md system/config.example.md
   [ "$status" -eq 1 ]
