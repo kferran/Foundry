@@ -64,6 +64,7 @@ def snapshot(vault, day: str, events: list) -> list:
         save(path, {"base": today, "last": today})
         return []
     flags = diff(old["base"], today)
+    # ponytail: whole-list match, so one event reworded every tick holds back every flag; per-flag persistence if seen
     if flags and not _same(today, old.get("last") or []):
         save(path, {"base": old["base"], "last": today})
         return []
