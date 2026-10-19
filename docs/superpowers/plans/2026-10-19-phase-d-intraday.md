@@ -39,71 +39,71 @@
 
 **Files:** `system/scripts/debrief_prep.sh`, `system/scripts/vaultlib/extensions.py`, `system/scripts/vaultlib/alerts.py`, `system/scripts/brief_prep.sh`, `system/tests/prep.bats`, `system/tests/python/test_alerts.py`, `system/tests/vault_integrity.bats`.
 
-- [ ] Write failing tests:
+- [x] Write failing tests:
   - an extension `debrief/prep.sh` writes its section file through `debrief_prep.sh`;
   - a manifest `alert_tags` entry `{tag: watch, severity: now}` makes `severity()` return `now`, and a bare string stays `brief`;
   - a `<date>.today.md` archives with its briefing.
-- [ ] Implement: `extensions.py debrief` (mirror `brief`); `alerts.severity` reads extension tags with severity; the archive regex becomes `(\.[a-z]+)?`.
-- [ ] Measure core lines; set the budget to the measured count, with the comment.
-- [ ] Run `prep.bats`, the alerts pytest, `vault_integrity.bats`. Commit.
+- [x] Implement: `extensions.py debrief` (mirror `brief`); `alerts.severity` reads extension tags with severity; the archive regex becomes `(\.[a-z]+)?`.
+- [x] Measure core lines; set the budget to the measured count, with the comment.
+- [x] Run `prep.bats`, the alerts pytest, `vault_integrity.bats`. Commit.
 
 ### Task 3: The extension skeleton and config
 
 **Files:** `extensions/intraday/extension.md`, `schemas/config.md`, `schemas/today.md`, `units/foundry-watch.{service,timer}.in`, `tests/`.
 
-- [ ] Failing tests: `extensions.py check` accepts the manifest; the config keys validate (spec §3.8); `units.bats` renders the timer only while on, never on a client, `OnCalendar=Mon..Fri *-*-* 08..17:15,45:00 {{TZ}}`.
-- [ ] Write the manifest, the schemas and the units. Run the tests. Commit.
+- [x] Failing tests: `extensions.py check` accepts the manifest; the config keys validate (spec §3.8); `units.bats` renders the timer only while on, never on a client, `OnCalendar=Mon..Fri *-*-* 08..17:15,45:00 {{TZ}}`.
+- [x] Write the manifest, the schemas and the units. Run the tests. Commit.
 
 ### Task 4: Queries and the stream checker (`watchlib`)
 
 **Files:** `extensions/intraday/scripts/watchlib/{query,check}.py`, tests.
 
-- [ ] Failing pytest:
+- [x] Failing pytest:
   - the Slack queries are built from settings and cursors as the probe found (repeated `in:`, an `mpim` query, `from:<@watch_user_id>`, an `after:<date>` filter on each);
   - the result parser reads the channel, group DM and DM variants of a result block;
   - the Gmail input (`in:sent`, `THREAD_VIEW_MINIMAL`, `internalDate` against the cursor) and the Calendar input;
   - the checker refuses another tool, an altered input or a `<persisted-output>` marker;
   - an item whose `(channel_id, ts)` is not in its query's results is dropped;
   - the 5-page cap alerts once a day.
-- [ ] Implement. Run. Commit.
+- [x] Implement. Run. Commit.
 
 ### Task 5: Calendar snapshot, diff and free slots
 
 **Files:** `watchlib/calendar.py`, tests.
 
-- [ ] Failing pytest:
+- [x] Failing pytest:
   - cancelled (status, and the event gone), moved, new, organizer out;
   - the first tick of a day is a baseline;
   - the cross-check flags "cancelled per <label> (calendar still confirmed)";
   - free slots: at most 3, within 09:00–17:00 on workdays, before the deadline or within 5 workdays.
-- [ ] Implement. Run. Commit.
+- [x] Implement. Run. Commit.
 
 ### Task 6: Routing
 
 **Files:** `watchlib/route.py`, tests.
 
-- [ ] Failing pytest, one case per row of spec §3.5:
+- [x] Failing pytest, one case per row of spec §3.5:
   - Now lines through `now.py add`, with `--due` and `--who`;
   - the free-slot note;
   - skipping on evidence in an open or archived Now line (a triage line included), on a covering statement and on a calendar event;
   - the item ledger;
   - the 3-alert cap with a count line;
   - `watch_partition`.
-- [ ] Implement. Run. Commit.
+- [x] Implement. Run. Commit.
 
 ### Task 7: Captures
 
 **Files:** `watchlib/capture.py`, tests, `system/tests/golden/ingest/slack-capture/`.
 
-- [ ] Failing pytest: the file name matches the intake's `RAW_NAME`; frontmatter and sections as spec §3.7; no cursor captures nothing and sets the cursor; the cursor moves only after the write; `capture_partition` falls back.
-- [ ] Add the `slack-capture` eval case (a fact, a link, an uncertainty word; `archived`, `body_contains`).
-- [ ] Implement. Run. Commit.
+- [x] Failing pytest: the file name matches the intake's `RAW_NAME`; frontmatter and sections as spec §3.7; no cursor captures nothing and sets the cursor; the cursor moves only after the write; `capture_partition` falls back.
+- [x] Add the `slack-capture` eval case (a fact, a link, an uncertainty word; `archived`, `body_contains`).
+- [x] Implement. Run. Commit.
 
 ### Task 8: `watch_fetch.sh`, the tick
 
 **Files:** `extensions/intraday/scripts/watch_fetch.sh`, `tests/watch.bats`.
 
-- [ ] Failing bats with the stub `claude`:
+- [x] Failing bats with the stub `claude`:
   - a non-mention cancellation gives one item, one today-file line and one `[watch]` alert;
   - a commitment gives one `owed` line with its link;
   - a capture gives one inbox file that `intake_daemon.sh` compiles and archives;
@@ -111,13 +111,13 @@
   - the usage-ceiling hold;
   - `--check slack|gmail|calendar`;
   - the client no-op.
-- [ ] Implement: three `connector_run` calls, then routing. Run. Commit.
+- [x] Implement: three `connector_run` calls, then routing. Run. Commit.
 
 ### Task 9: `today_log.py` and the brief and debrief sections
 
 **Files:** `extensions/intraday/scripts/today_log.py`, `brief/`, `debrief/`, tests.
 
-- [ ] Failing pytest:
+- [x] Failing pytest:
   - the entries of spec §3.6 (watch, session with delivered sub-bullets, meeting, capture);
   - masking, cutting, link and checkbox stripping;
   - the ledger;
@@ -125,15 +125,15 @@
   - an unreadable source alerts once a day;
   - a meeting note not yet present is retried;
   - the client no-op.
-- [ ] Failing bats: the brief section carries the embed line; the debrief section lists today's open watch lines.
-- [ ] Implement. Run. Commit.
+- [x] Failing bats: the brief section carries the embed line; the debrief section lists today's open watch lines.
+- [x] Implement. Run. Commit.
 
 ### Task 10: Setup, smoke, documents
 
 **Files:** `extension.md` body (setup text), `FOUNDRY.md`, `CLAUDE.md`, `docs/superpowers/roadmap.md`, the gap plan's phase D section, `CHANGELOG.md`.
 
-- [ ] The setup steps of spec §3.9. The smoke entries. The FOUNDRY.md Intraday paragraph and the `watch` tag row. The two Directory Map phrases; `CLAUDE.md` stays at 50 lines.
-- [ ] Run the gate with every extension off and with every extension on. Commit.
+- [x] The setup steps of spec §3.9. The smoke entries. The FOUNDRY.md Intraday paragraph and the `watch` tag row. The two Directory Map phrases; `CLAUDE.md` stays at 50 lines.
+- [x] Run the gate with every extension off and with every extension on. Commit.
 
 ### Task 11: Live acceptance (owner)
 
