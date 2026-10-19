@@ -72,8 +72,10 @@ print(alerts.severity("- 09:00:00 [watch] Weekly huddle cancelled", ext), alerts
   [ "$status" -eq 0 ]
   grep -q '^OnCalendar=Mon..Fri \*-\*-\* 08..17:15,45:00 America/Denver$' "$SYSTEMD_USER_DIR/foundry-watch.timer"
   grep -qF 'extensions/intraday/scripts/watch_fetch.sh' "$SYSTEMD_USER_DIR/foundry-watch.service"
+  # A client keeps no units: a plain install there removes the ones this vault installed.
   system/scripts/vault_index.py set system/config.md machine_role client > /dev/null
-  run system/scripts/install_units.sh --update
+  run system/scripts/install_units.sh
+  [ "$status" -eq 0 ]
   [ ! -e "$SYSTEMD_USER_DIR/foundry-watch.timer" ]
 }
 
