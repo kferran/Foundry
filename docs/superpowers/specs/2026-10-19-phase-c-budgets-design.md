@@ -1,7 +1,7 @@
 # Phase C: the step 4 budgets
 
 **Date:** 2026-10-19
-**Status:** Grilled (owner, 2026-10-19). Gap plan phase C (`docs/superpowers/2026-10-17-cto-gap-plan.md`). Revises `2026-10-11-claude-md-prune-design.md` §2 for the 50-line target, and changes two of the gap plan's phase C targets (§2).
+**Status:** Grilled (owner, 2026-10-19). Built 2026-10-19 (plan Tasks 1 and 2); the live check is open. §3 as built: the Agents line is the first Vault Rules bullet, and four pairs of short lines are joined (two Directory Map pairs, Configuration into Invocation, the two Data lines) to reach 50. Gap plan phase C (`docs/superpowers/2026-10-17-cto-gap-plan.md`). Revises `2026-10-11-claude-md-prune-design.md` §2 for the 50-line target, and changes two of the gap plan's phase C targets (§2).
 **Issues:** #122 (simplify the template, step 4).
 
 ## 1. Measures (master, 2026-10-19)

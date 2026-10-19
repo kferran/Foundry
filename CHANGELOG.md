@@ -4,13 +4,15 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## What's next
 
-- Finish the extensions work: no vendor names left in the core, fewer note types, and every check passing with all extensions on and with all off.
-- Ingest checks: a set of sample inputs that scores how well `/ingest` compiles notes, before any new input source is added.
 - An intraday brief: what changed since the morning, with Slack messages captured into the inbox.
-- Work Orders that run side by side, so a long research order no longer holds up the others (#229).
+- A people Workcell, then a planning and communications Workcell, each with its note types as extension schemas.
 - Details: [roadmap](docs/superpowers/roadmap.md).
 
 ## Changes
+
+## 2026-10-19
+- `CLAUDE.md` is 50 lines, down from 77, and a test holds it there. The Workcells and the routing rules moved to `system/agents/foreman.md`, which `CLAUDE.md` tells every session to read. The approved-plans rule moved to the `order` skill, which now loads when you approve a plan. The command list is gone (the skills list themselves), and Scannable Layouts and Blocked Actions are Writing lines. Core holds at 14 schemas: new note types ship in extensions. (#PR)
+  - Action: if your vault edited the Agents, Commands or User Persona sections of `CLAUDE.md`, the template update reports a conflict; move your edits to `system/agents/foreman.md` or `system/config.md`.
 
 ## 2026-10-18
 - `system/scripts/eval_ingest.sh` scores what `/ingest` writes: 15 golden cases (restated facts, aliases, merges, corrections, friction, supersede, shared placement, the partition walls, an inbox injection, the shrink guard, and one case per converted document format) each run through one real intake tick, N times, against a pass rate, with a `--max-usd` budget stop. Results land in `system/logs/evals/`. It is not gating. (#276)
