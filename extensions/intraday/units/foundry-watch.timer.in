@@ -1,0 +1,8 @@
+[Unit]
+Description=The Foundry: intraday watch every 30 minutes on workdays
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 08..17:15,45:00 {{TZ}}
+
+[Install]
+WantedBy=timers.target
