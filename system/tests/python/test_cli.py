@@ -270,6 +270,23 @@ def test_related_text_and_json(cli):
     assert hits[0]["path"] == "wiki/work/concepts/Kafka.md"
 
 
+def test_related_shows_date_and_first_source(cli, vault):
+    """Each hit names its compiled_at date and first source; a note without them prints neither (#271)."""
+    write(vault, "wiki/work/concepts/Okapi.md", concept("work", "Okapi", "okapi", sources='["[[drop-one]]"]'))
+    write(vault, "raw/work/archive/drop-one.md", "x")
+    write(vault, "wiki/work/concepts/Gone.md", concept("work", "Gone", "okapi", sources='["[[drop-two]]"]'))
+    write(vault, "wiki/work/concepts/Bare.md", "---\ntype: concept\ntags: []\npartition: work\n---\n# Bare\nokapi\n")
+    out = cli("related", "okapi").stdout
+    assert "- Okapi — wiki/work/concepts/Okapi.md (work, concept, 2026-09-01, raw/work/archive/drop-one.md)" in out
+    assert "- Gone — wiki/work/concepts/Gone.md (work, concept, 2026-09-01, drop-two)" in out
+    assert "- Bare — wiki/work/concepts/Bare.md (work, concept)" in out
+    assert "None" not in out
+    hits = {h["path"]: h for h in json.loads(cli("related", "okapi", "--json").stdout)}
+    assert hits["wiki/work/concepts/Okapi.md"]["compiled_at"] == "2026-09-01"
+    assert hits["wiki/work/concepts/Okapi.md"]["source"] == "raw/work/archive/drop-one.md"
+    assert hits["wiki/work/concepts/Bare.md"]["source"] is None
+
+
 def test_show_and_backlinks(cli):
     assert "# Git" in cli("show", "Git").stdout
     assert "wiki/work/concepts/Kafka.md" in cli("backlinks", "Git").stdout
