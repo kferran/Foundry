@@ -16,7 +16,7 @@ from .common import CHANGES, WATCH_KINDS, Fail
 
 MAX_PAGES = 5
 MAIL_PAGES = 3
-FIELDS = {"channel": re.compile(r"^Channel: (?:#(\S+)|(Group DM|DM)) \(ID: ([CGD][A-Z0-9]+)\)", re.M),
+FIELDS = {"channel": re.compile(r"^Channel: (?:#([\w-]+)|(Group DM|DM)) \(ID: ([CGD][A-Z0-9]+)\)", re.M),
           "sender": re.compile(r"^From: (.*?) \(ID: ([A-Z0-9]+)\)", re.M),
           "ts": re.compile(r"^Message_ts: (\d+\.\d+)", re.M),
           "link": re.compile(r"^Permalink: \[[^\]]*\]\((https://[^)\s]+)\)", re.M),
