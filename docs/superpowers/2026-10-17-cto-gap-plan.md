@@ -133,7 +133,7 @@ Chat triage (#222) already turns Slack messages that need the owner into `owed` 
 - A `blocked` watch kind writes `waiting` lines.
 - The partner mail guard is left for a vault extension.
 
-Built 2026-10-19 (#PR): the `intraday` extension, plan Tasks 2 to 10. Open: the owner's live check.
+Built 2026-10-19 (#285): the `intraday` extension, plan Tasks 2 to 10. Open: the owner's live check.
 
 ### Phase E: people Workcell
 
