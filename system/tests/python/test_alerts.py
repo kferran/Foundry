@@ -32,3 +32,19 @@ def test_triage_smoke_and_telemetry_decide_by_their_text(line, want):
                                   "[sync] text", "- 6:10:00 [sync] text", ""])
 def test_an_untagged_or_unknown_line_waits_for_the_brief(line):
     assert alerts.severity(line) == "brief"
+
+
+def test_an_extension_tag_takes_its_manifest_severity_and_core_tags_keep_theirs():
+    ext = {"watch": "now"}
+    assert alerts.severity("- 06:10:00 [watch] x", ext) == "now"
+    assert alerts.severity("- 06:10:00 [watch] x") == "brief"
+    assert alerts.severity("- 06:10:00 [sync] x", {"sync": "brief"}) == "now"
+    assert alerts.severity("- 06:10:00 [other] x", ext) == "brief"
+
+
+def test_extension_tags_reads_tag_entries_with_a_severity_from_enabled_manifests(vault):
+    from helpers import write
+    write(vault, "system/config.md", '---\ntype: config\nextensions: ["w"]\n---\n')
+    write(vault, "extensions/w/extension.md", "---\nname: w\ncontract: 1\nalert_tags: [plain, {tag: watch, severity: now},"
+          " {tag: odd, severity: loud}]\n---\nbody\n")
+    assert alerts.extension_tags(vault) == {"watch": "now"}

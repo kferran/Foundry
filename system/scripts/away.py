@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 VAULT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
 from vaultlib import frontmatter, now  # noqa: E402
-from vaultlib.alerts import severity  # noqa: E402
+from vaultlib.alerts import extension_tags, severity  # noqa: E402
 from vaultlib.recall import _open_index  # noqa: E402
 
 CAP = 14
@@ -70,7 +70,8 @@ def now_lines(first, last) -> str:
 def alerts(span) -> str:
     lines = [line for d in span if (p := VAULT / "system" / "logs" / f"alerts_{d}.md").is_file()
              for line in p.read_text(encoding="utf-8").splitlines() if line.startswith("- ")]
-    return count("Alerts", len(lines), (sum(severity(line) == "brief" for line in lines), "held for the brief"))
+    ext = extension_tags(VAULT)
+    return count("Alerts", len(lines), (sum(severity(line, ext) == "brief" for line in lines), "held for the brief"))
 
 
 def decided(span) -> str:

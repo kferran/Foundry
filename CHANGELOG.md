@@ -4,13 +4,14 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## What's next
 
-- An intraday brief: what changed since the morning, with Slack messages captured into the inbox.
 - A people Workcell, then a planning and communications Workcell, each with its note types as extension schemas.
 - Details: [roadmap](docs/superpowers/roadmap.md).
 
 ## Changes
 
 ## 2026-10-19
+- A new extension, `intraday`, shows what changed since the brief. Every 30 minutes on workdays it reads the Slack channels you list in full, your group DMs, your own messages and sent mail, and today's calendar. Deadlines and your commitments become `owed` Now lines, blocks `waiting` lines, and a cancelled or moved meeting or an incident a `[watch]` alert that Slack carries at once. Everything it finds, with the day's session digests and imported meetings, is appended to `briefings/<date>.today.md`, which the briefing embeds under 🕑 Today so far. A capture channel you post to becomes inbox drops. It is off until you list it in `extensions:`. Core changes: an extension can now add a debrief section, and its alert tag can reach Slack at once. (#285)
+  - Action: to turn it on, run `/setup` and answer phase 6e for `intraday`: the channels to read in full, your Slack member ID, and optionally a capture channel.
 - `CLAUDE.md` is 50 lines, down from 77, and a test holds it there. The Workcells and the routing rules moved to `system/agents/foreman.md`, which `CLAUDE.md` tells every session to read. The approved-plans rule moved to the `order` skill, which now loads when you approve a plan. The command list is gone (the skills list themselves), and Scannable Layouts and Blocked Actions are Writing lines. Core holds at 14 schemas: new note types ship in extensions. (#281)
   - Action: if your vault edited the Agents, Commands or User Persona sections of `CLAUDE.md`, the template update reports a conflict; move your edits to `system/agents/foreman.md` or `system/config.md`.
 

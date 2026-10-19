@@ -421,6 +421,8 @@ sealed_problems() {
   # 13,370 to 13,792 lines. They test what /ingest writes, so they stay with the pipeline they run.
   # 13,800 -> 13,850 (#282, owner 2026-10-19): conversion hardening from #268 (UTF-16 refusal, .converted cleanup,
   # limits on pdftotext, +6) on top of #280 (+4), which left core at 13,796, took core to 13,802.
+  # Phase D's two loader generalizations (extension debrief sections, alert severity from a manifest; spec §2
+  # decision 10) took core from 13,802 to 13,822, inside the budget.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   lines="$(git ls-files -z system/scripts | xargs -0 cat | wc -l)"
   [ "$lines" -le 13850 ]

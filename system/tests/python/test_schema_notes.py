@@ -21,7 +21,7 @@ NOT_NOTES = set()
 # Core's schemas, and those of every extension present (extensions spec §3: a present extension's schemas load).
 EXPECTED = {"schema", "concept", "index", "briefing", "debrief",
             "production_error", "config", "codebase", "session_digest", "preference", "workcell",
-            "meeting", "meeting_transcript", "meeting_input", "telemetry_source", "nightshift_item", "rca"}
+            "meeting", "meeting_transcript", "meeting_input", "telemetry_source", "nightshift_item", "rca", "today"}
 
 
 def load():

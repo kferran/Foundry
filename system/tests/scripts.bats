@@ -379,7 +379,15 @@ TOKEN="AKIA""IOSFODNN7EXAMPLE"
     --exclude-dir=tests "$REPO/system/scripts" "$REPO/system/hooks" "$REPO/extensions"
   [ "$status" -eq 0 ]
   used="$(sed -E 's/.*[["]([a-z_]+)[]"]$/\1/' <<< "$output" | sort -u)"
-  known="$(PYTHONPATH="$REPO/system/scripts" python3 -c 'from vaultlib.alerts import TAGS; print("\n".join(sorted(TAGS)))')"
+  # An extension's own tags are in its manifest's alert_tags (a name, or {tag, severity}; phase D spec §2 decision 10).
+  known="$(PYTHONPATH="$REPO/system/scripts" python3 -c 'import glob, sys
+from vaultlib import frontmatter
+from vaultlib.alerts import TAGS
+tags = set(TAGS)
+for p in glob.glob(sys.argv[1] + "/extensions/*/extension.md"):
+    for t in frontmatter.parse(open(p, encoding="utf-8").read()).data.get("alert_tags") or []:
+        tags.add(t["tag"] if isinstance(t, dict) else t)
+print("\n".join(sorted(tags)))' "$REPO")"
   [ "$(wc -l <<< "$used")" -ge 15 ]
   [ "$(comm -23 <(printf '%s\n' "$used") <(printf '%s\n' "$known"))" = "" ]
 }

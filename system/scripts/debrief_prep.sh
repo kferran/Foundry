@@ -101,6 +101,7 @@ case "$rc" in
 esac
 
 prep_meetings
+prep_sections debrief debrief_sections
 # The heartbeat (#166): the day's commits, digests, pull requests, alerts and headless runs (as run_headless.sh counts
 # them for the daily cap); unknown when git or the digest query failed, so a quiet day and a dead read differ.
 signals="$( { grep -h '^- ' "$PREP_DIR/git.md" "$PREP_DIR/prs.md" "system/logs/alerts_$PREP_DATE.md"

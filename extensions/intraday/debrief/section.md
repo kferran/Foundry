@@ -1,0 +1,1 @@
+**Open from today:** under 1. Execution Logs & Results, write `Today's watch logged <the logged line's text>.`, then the heading **Open from today** and every `- [ ] ` line of the data file verbatim, or "None." when it has none.

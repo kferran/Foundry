@@ -1,7 +1,7 @@
 # Phase D: capture and the intraday picture
 
 **Date:** 2026-10-19
-**Status:** Grilled (owner, 2026-10-19). Gap plan phase D (`docs/superpowers/2026-10-17-cto-gap-plan.md`). §2 items 9 to 12 were decided while specifying and are open to the owner's review.
+**Status:** Grilled (owner, 2026-10-19). Gap plan phase D (`docs/superpowers/2026-10-17-cto-gap-plan.md`). §2 items 9 to 12 were decided while specifying and are open to the owner's review. Built 2026-10-19 (plan Tasks 2 to 10); §3.11 lists where the build differs. Open: the owner's live check (plan Task 11).
 **Issues:** #135 (channel watch, calendar diff, own commitments; B3, B4 and B8 from #94). Builds on: the 2026-10-09 intraday spec on `feat/intraday-brief-94` (the today file, §3.1 and §3.2 there), the Slack bridge spec's capture half (`2026-10-11-slack-bridge-design.md` §3.4), chat triage (`2026-10-16-chat-triage-design.md`), the extensions contract (`2026-10-15-extensions-design.md` §3).
 
 ## 1. Problem
@@ -177,6 +177,16 @@ The Slack and Gmail connectors are core's `slack_connector` and the Gmail connec
 - **`FOUNDRY.md`:** an Intraday paragraph covering what the watch reads, where each kind goes and the capture path; the `watch` alert tag row.
 - **`CLAUDE.md` Directory Map:** `briefings/` gains `<date>.today.md`, the server-written log of the day, and `raw/inbox/` gains "and Slack captures". `CLAUDE.md` stays at 50 lines.
 - **Roadmap and gap plan:** the phase D row.
+
+### 3.11 As built (2026-10-19)
+
+- **Calendar.** The extension reuses core's `calendar_fetch.sh`, one session per day, whose rows hold only times and a title: no event ID, status, organizer or attendees.
+  - The diff therefore covers today only and matches events by title: a title that disappears is flagged as gone from the calendar, a changed time as moved, a new title as new. "Organizer out" is not detected.
+  - A meeting commitment counts as covered when a fetched event's title names the person, since there are no attendees to check.
+  - The days its free slots need are fetched only when a meeting commitment is found, at most 5.
+- **Core budget.** The two loader generalizations (§2 decision 10) took core from 13,802 to 13,822 lines, inside its 13,850 budget, so the budget did not change.
+- **Alert tags.** The extension has two: `watch` (Slack at once, for meeting changes and incidents) and `intraday` (the next brief, for failed sessions and full search pages).
+- **Debrief.** Extension debrief sections are written to `system/logs/inputs/<date>/debrief_sections/`, apart from the brief's `sections/`, because each prep clears its own folder.
 
 ## 4. Tests and validation
 
