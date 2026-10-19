@@ -10,7 +10,7 @@ from watchlib import calendar as cal, capture, route
 from watchlib.common import records
 
 DAY = "2026-10-19"   # a Monday
-LINK = "https://example.slack.com/archives/C0GSTAFF/p1792430610351069"
+LINK = "https://example.slack.com/archives/C0OPS/p1792430610351069"
 
 
 def ev(title, start="09:00", end="09:30", day=DAY):
@@ -37,8 +37,8 @@ def test_tsv_rows_parse_and_all_day_events_keep_no_times():
 
 
 def item(kind="meeting_change", what="Weekly Huddle cancelled today", change="cancelled", query="watch", **kw):
-    base = {"query": query, "key": "C0GSTAFF/1792430610.351069", "kind": kind, "what": what, "who": "Pat Sample", "by": "",
-            "meeting": False, "change": change, "link": LINK, "ts": "1792430610.351069", "label": "#gstaff",
+    base = {"query": query, "key": "C0OPS/1792430610.351069", "kind": kind, "what": what, "who": "Pat Sample", "by": "",
+            "meeting": False, "change": change, "link": LINK, "ts": "1792430610.351069", "label": "#ops",
             "text": "The 09:00 Weekly Huddle is cancelled today."}
     return {**base, **kw}
 
@@ -73,7 +73,7 @@ def alerts(vault):
 
 def test_a_meeting_change_is_logged_and_alerted_once_and_never_routes_twice(vault):
     assert run(vault, {"items": [item()]}) == {"items": 1, "now": 0, "alerts": 1}
-    assert alerts(vault) == [f"- 09:10:00 [watch] Weekly Huddle cancelled today (#gstaff) {LINK}"]
+    assert alerts(vault) == [f"- 09:10:00 [watch] Weekly Huddle cancelled today (#ops) {LINK}"]
     assert run(vault, {"items": [item()]}) == {"items": 0, "now": 0, "alerts": 0}
     assert [r["kind"] for r in ledger(vault)] == ["meeting"]
 
@@ -87,12 +87,12 @@ def test_each_kind_goes_where_the_spec_routes_it(vault):
                   link=LINK + "5", label="group DM")]
     assert run(vault, {"items": items}) == {"items": 5, "now": 3, "alerts": 1}
     page = nowmod.read(vault, "work")
-    assert f"- [ ] owed: QBR deck before next week's meeting (in #gstaff) [due:: 2026-10-26] (Pat Sample, since {DAY}, {LINK}1)" in page
-    assert re.search(r"- \[ \] waiting: UAT waits on your sign-off \(in #gstaff\) \[due:: [\d-]+\] \(QA team, since", page)
+    assert f"- [ ] owed: QBR deck before next week's meeting (in #ops) [due:: 2026-10-26] (Pat Sample, since {DAY}, {LINK}1)" in page
+    assert re.search(r"- \[ \] waiting: UAT waits on your sign-off \(in #ops\) \[due:: [\d-]+\] \(QA team, since", page)
     assert "owed: Add Sam to the partner meeting (in group DM)" in page
     assert "Moving to the new node pool" not in page
     assert [r["now"] for r in ledger(vault)] == ["added", "added", "", "", "added"]
-    assert alerts(vault) == [f"- 09:10:00 [watch] Prod login errors (#gstaff) {LINK}4"]
+    assert alerts(vault) == [f"- 09:10:00 [watch] Prod login errors (#ops) {LINK}4"]
 
 
 def test_a_link_already_on_the_now_page_or_archive_and_a_said_commitment_are_covered(vault):
@@ -113,7 +113,7 @@ def test_a_meeting_commitment_gets_free_slots_unless_the_calendar_already_names_
     page = nowmod.read(vault, "work")
     assert f"  - {DAY}: free: 2026-10-21 10:00, 2026-10-21 12:00, 2026-10-21 14:00" in page
     c2 = {**c, "what": "Set up a review with Jordan", "who": "Jordan Sample", "key": "k2", "link": LINK + "2"}
-    run(vault, {"items": [c2]}, events=[ev("Jordan / Kyle sync", "15:00", "15:30", "2026-10-20")])
+    run(vault, {"items": [c2]}, events=[ev("Jordan / Alex sync", "15:00", "15:30", "2026-10-20")])
     assert ledger(vault)[-1]["now"] == "covered"
 
 
@@ -125,7 +125,7 @@ def test_calendar_flags_and_cross_hits_are_logged_and_cancellations_and_moves_al
     run(vault, {"items": []}, flags=flags, crossed=crossed)
     assert [r["text"] for r in ledger(vault)] == [
         "Weekly Huddle 09:00-09:30 is gone from the calendar", "1:1 Pat moved from 10:00-10:30 to 11:00-11:30",
-        "new in the calendar: Deck review 14:00-15:00", "Standup 08:30-08:45 cancelled per #gstaff (calendar still confirmed)"]
+        "new in the calendar: Deck review 14:00-15:00", "Standup 08:30-08:45 cancelled per #ops (calendar still confirmed)"]
     assert len(alerts(vault)) == 3
 
 
@@ -138,13 +138,13 @@ def test_more_than_three_alerts_in_a_tick_end_with_one_count_line(vault):
 
 def test_a_capture_file_holds_each_message_and_its_link_under_a_name_the_intake_accepts(vault):
     now = datetime(2026, 10, 19, 9, 10, tzinfo=ZoneInfo("America/Denver"))
-    msgs = [{"ts": "1792429200.000100", "sender": "Kyle Owner", "text": "idea: retry the export\nsecond line",
+    msgs = [{"ts": "1792429200.000100", "sender": "Alex Owner", "text": "idea: retry the export\nsecond line",
              "link": "https://example.slack.com/archives/C0CAP/p1792429200000100"}]
     path = capture.write(vault, msgs, "work", "C0CAP", now)
     assert RAW_NAME.match(path.name) and path.parent == vault / "raw" / "inbox"
     text = path.read_text()
     assert text.startswith('---\npartition: "work"\nsource: "slack"\nchannel: "C0CAP"\ncaptured_at: "2026-10-19T09:10:00-06:00"\n---\n')
-    assert "## 11:00 Kyle Owner\n\nidea: retry the export\nsecond line\n\nLink: https://example.slack.com/archives/C0CAP/p1792429200000100" in text
+    assert "## 11:00 Alex Owner\n\nidea: retry the export\nsecond line\n\nLink: https://example.slack.com/archives/C0CAP/p1792429200000100" in text
     assert capture.write(vault, msgs, "work", "C0CAP", now).name == "slack-2026-10-19T091000-2.md"
     route.captured(vault, DAY, "09:10:00", "raw/inbox/slack-2026-10-19T091000.md", 1)
     assert ledger(vault)[-1]["text"] == "1 message → raw/inbox/slack-2026-10-19T091000.md"

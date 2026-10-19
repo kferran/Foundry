@@ -27,6 +27,6 @@ def vault(tmp_path: Path) -> Path:
     cfg = root / "system" / "config.md"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text('---\ntype: config\ntimezone: "America/Denver"\ndefault_partition: "work"\nextensions: ["intraday"]\n'
-                   'watch_channels: [{id: "C0GSTAFF", label: "gstaff"}, {id: "C0WAR", label: "warroom"}]\n'
+                   'watch_channels: [{id: "C0OPS", label: "ops"}, {id: "C0ONCALL", label: "oncall"}]\n'
                    'watch_user_id: "U0OWNER"\ncapture_channel: "C0CAP"\n---\n', encoding="utf-8")
     return root
