@@ -100,6 +100,11 @@ def test_items_take_link_label_and_text_from_the_results_and_captures_are_copied
     assert got["full"] == []
 
 
+def test_a_blocked_item_never_falls_back_to_the_sender_for_who():
+    s = stream([(Q["watch"], page(block()))], items=[item(kind="blocked", what="UAT is stuck", who="")])
+    assert check.slack_extract(s, TOOL, Q)["items"][0]["who"] == ""
+
+
 def test_an_item_its_query_never_returned_or_a_kind_its_query_cannot_give_is_dropped():
     s = stream([(Q["watch"], page(block()))],
                items=[item(ts="1.0"), item("own"), item(kind="commitment"), item(kind="gossip"), item(), item()])

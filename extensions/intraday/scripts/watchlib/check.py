@@ -133,7 +133,8 @@ def slack_extract(stream, tool: str, queries: dict) -> dict:
             continue
         seen.add((q, key))
         m = known[q][key]
-        items.append({"query": q, "key": key, "kind": r["kind"], "what": what, "who": _who(r.get("who")) or _who(m["sender"]),
+        sender = "" if r["kind"] == "blocked" else _who(m["sender"])   # a block waits on someone, not its poster
+        items.append({"query": q, "key": key, "kind": r["kind"], "what": what, "who": _who(r.get("who")) or sender,
                       "by": _by(r.get("by")), "meeting": r.get("meeting") is True,
                       "change": r.get("change") if r.get("change") in CHANGES else "other",
                       "link": m["link"], "ts": m["ts"], "label": m["label"], "text": m["text"]})
