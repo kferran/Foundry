@@ -25,10 +25,20 @@ def test_the_diff_flags_cancelled_moved_and_new_events_by_title():
     assert next(f for f in cal.diff(old, new) if f["change"] == "moved")["was"] == "10:00-10:30"
 
 
-def test_the_days_first_snapshot_is_a_baseline(vault):
+def test_the_days_first_snapshot_is_a_baseline_and_a_change_shows_when_the_next_tick_still_has_it(vault):
     assert cal.snapshot(vault, DAY, [ev("Weekly Huddle")]) == []
+    assert cal.snapshot(vault, DAY, []) == []
     assert [f["change"] for f in cal.snapshot(vault, DAY, [])] == ["cancelled"]
+    assert cal.snapshot(vault, DAY, []) == []
     assert cal.snapshot(vault, "2026-10-20", []) == []
+
+
+def test_an_event_one_tick_drops_and_the_next_lists_again_flags_nothing(vault):
+    events = [ev("Weekly Huddle"), ev("Deck review", "14:00", "15:00")]
+    cal.snapshot(vault, DAY, events)
+    assert cal.snapshot(vault, DAY, events[1:]) == []
+    assert cal.snapshot(vault, DAY, events) == []
+    assert cal.snapshot(vault, DAY, [ev("Weekly huddle "), events[1]]) == []   # reworded: same title once folded
 
 
 def test_tsv_rows_parse_and_all_day_events_keep_no_times():

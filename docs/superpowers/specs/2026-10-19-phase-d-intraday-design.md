@@ -181,7 +181,7 @@ The Slack and Gmail connectors are core's `slack_connector` and the Gmail connec
 ### 3.11 As built (2026-10-19)
 
 - **Calendar.** The extension reuses core's `calendar_fetch.sh`, one session per day, whose rows hold only times and a title: no event ID, status, organizer or attendees.
-  - The diff therefore covers today only and matches events by title: a title that disappears is flagged as gone from the calendar, a changed time as moved, a new title as new. "Organizer out" is not detected.
+  - The diff therefore covers today only and matches events by title: a title that disappears is flagged as gone from the calendar, a changed time as moved, a new title as new. "Organizer out" is not detected. Each tick's list is a model's transcription, so a change is flagged only when the next tick lists the same events (30 minutes later); an event one tick drops or rewords and the next lists again flags nothing. A channel's cancellation still alerts at once, as its own item.
   - A meeting commitment counts as covered when a fetched event's title names the person, since there are no attendees to check.
   - The days its free slots need are fetched only when a meeting commitment is found, at most 2 (one 190-second session each), and never under `--check`. A tick is then up to five sessions, and `foundry-watch.service` allows 25 minutes (Slack 420 s, mail 300 s, calendar 3 × 190 s, route 120 s).
 - **Core budget.** The two loader generalizations (§2 decision 10) took core from 13,802 to 13,822 lines, inside its 13,850 budget, so the budget did not change.

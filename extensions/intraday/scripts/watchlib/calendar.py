@@ -49,14 +49,26 @@ def diff(old: list, new: list) -> list:
     return flags
 
 
+def _same(a: list, b: list) -> bool:
+    return sorted((e["start"], e["end"], _key(e)) for e in a) == sorted((e["start"], e["end"], _key(e)) for e in b)
+
+
 def snapshot(vault, day: str, events: list) -> list:
-    """Compare today's events with the last snapshot of the day, store them, and return the flags (none on the day's
-    first snapshot)."""
+    """Compare today's events with the day's base snapshot and return the flags (none on the day's first snapshot).
+    Each tick's list is a model's transcription, so a change shows only when the next tick lists the same events: an
+    event one tick drops or rewords and the next lists again flags nothing. The base moves only when flags show."""
     path = state(vault) / f"calendar-{day}.json"
     old = load(path, None)
     today = [e for e in events if e["date"] == day]
-    save(path, today)
-    return [] if not isinstance(old, list) else diff(old, today)
+    if not isinstance(old, dict) or not isinstance(old.get("base"), list):
+        save(path, {"base": today, "last": today})
+        return []
+    flags = diff(old["base"], today)
+    if flags and not _same(today, old.get("last") or []):
+        save(path, {"base": old["base"], "last": today})
+        return []
+    save(path, {"base": today, "last": today})
+    return flags
 
 
 def cross(items: list, events: list, day: str) -> list:
