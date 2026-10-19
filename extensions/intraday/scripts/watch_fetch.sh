@@ -1,10 +1,10 @@
 #!/bin/bash
-# The intraday watch tick (phase D spec §3.2 to §3.5): up to three confined connector sessions, then routing.
+# The intraday watch tick (phase D spec §3.2 to §3.5): up to five confined connector sessions, then routing.
 #   1. Slack: one session allowed only the Slack search runs this tick's searches (watched channels, group DMs, the
 #      owner's own messages, the capture channel) and classifies the first three.
 #   2. Gmail: one session allowed only the thread search reads the owner's sent mail for commitments.
-#   3. Calendar: core's calendar_fetch.sh lists today's events (and, for a meeting commitment, the workdays up to its
-#      deadline, for free slots).
+#   3. Calendar: core's calendar_fetch.sh lists today's events (and, for a meeting commitment, up to two workdays
+#      before its deadline, for free slots; not under --check).
 # watch.py checks each session's tool use and joins the model's reply to the search results; `watch.py route` then
 # writes the item ledger, the Now lines, the [watch] alerts and the capture file under run.lock and moves the cursors
 # of the sessions that succeeded. A failed session costs one [intraday] alert a day and its own items; the others run.
@@ -85,7 +85,11 @@ qrc=0
 inputs="$("$W" slack-input 2> "$work/q.err")" || qrc=$?
 if (( qrc != 0 )); then
   failed slack "$qrc" "$(sed 's/^watch: //' "$work/q.err" | head -n 1)"
-elif [[ "$inputs" != "{}" ]]; then
+elif [[ "$inputs" == "{}" ]]; then
+  # No search this tick (only a capture channel, with no cursor yet): route still sets the first capture cursor.
+  echo '{"items": []}' > "$work/slack.json"
+  route+=(--slack "$work/slack.json" "{}")
+else
   TOOL="$("$W" slack-tool)"
   CONNECTOR_PREFIX="${TOOL%__slack_search_public_and_private}" CONNECTOR_TOOL="$TOOL"
   CONNECTOR_SERVER="$(config_get slack_connector "claude.ai Slack")" CONNECTOR_OTHERS=("${SLACK_OTHERS[@]}")
@@ -158,7 +162,7 @@ else
 fi
 found=()
 for f in "$work/slack.json" "$work/mail.json"; do [[ ! -s "$f" ]] || found+=("$f"); done
-if (( ${#found[@]} )); then
+if (( ${#found[@]} && ! check )); then   # --check proves the calendar session once; slot days add only time
   while IFS= read -r d; do
     [[ -n "$d" ]] || continue
     if system/scripts/calendar_fetch.sh "$d" > "$work/day-$d.tsv" 2>> "$work/cal.err"; then

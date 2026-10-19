@@ -6,6 +6,7 @@ again by the next tick's overlap never routes twice. A Now line is skipped when 
 holds the same link (chat triage's lines included), when an open line's statement already says it, or, for a meeting
 commitment, when a fetched calendar event names the person.
 """
+import re
 from datetime import date
 
 from vaultlib import now as nowmod
@@ -16,6 +17,8 @@ from .common import alert, append, records, state
 MAX_ALERTS = 3
 NOW_KINDS = {"deadline": "owed", "blocked": "waiting", "commitment": "owed"}
 ALERT_CHANGES = ("cancelled", "moved")
+SAID_WORDS = 4
+STOPWORDS = {"team", "with", "from", "group", "everyone", "folks", "people", "them", "they"}
 
 
 def ledger_path(vault, day: str):
@@ -25,7 +28,8 @@ def ledger_path(vault, day: str):
 def seen(vault, day: str) -> set:
     first = date.fromisoformat(day).replace(day=1)
     prev = date.fromordinal(first.toordinal() - 1).isoformat()
-    return {r.get("key") for d in (prev, day) for r in records(ledger_path(vault, d))}
+    rows = [r for d in (prev, day) for r in records(ledger_path(vault, d))]
+    return {r.get("key") for r in rows} | {k for r in rows for k in r.get("keys") or []}
 
 
 def _norm(text: str) -> str:
@@ -40,17 +44,25 @@ def _known_link(vault, partition: str, link: str, day: str) -> bool:
 
 
 def _said(vault, partition: str, what: str) -> bool:
+    """An open line says the same task: the same statement, or one that holds it as whole words when it has at least
+    SAID_WORDS words (a shorter phrase, "follow up", names an action, not a task)."""
     w = _norm(what)
     for line in nowmod.open_lines(nowmod.read(vault, partition)):
         m = nowmod.parse(line)
-        if m and w in _norm(nowmod.fields(m.group("statement"))[0]):
+        s = _norm(nowmod.fields(m.group("statement"))[0]) if m else ""
+        if m and (w == s or (len(w.split()) >= SAID_WORDS and f" {w} " in f" {s} ")):
             return True
     return False
 
 
+def _words(text: str) -> set:
+    return set(re.findall(r"\w+", _norm(text)))
+
+
 def _calendar_names(events: list, who: str) -> bool:
-    token = next((t for t in _norm(who).split() if len(t) >= 3), "")
-    return bool(token) and any(token in _norm(e["title"]) for e in events)
+    """A fetched event's title names the person: a whole word of 4+ letters from `who`, not a stopword."""
+    names = {t for t in _words(who) if len(t) >= 4} - STOPWORDS
+    return any(names & _words(e["title"]) for e in events)
 
 
 def _span(start: str, end: str) -> str:
@@ -60,7 +72,8 @@ def _span(start: str, end: str) -> str:
 def now_line(vault, partition: str, item: dict, day: str, events: list) -> tuple:
     """(status, line) for an item that makes a Now line: "added", "exists", "covered" or "refused"."""
     kind = NOW_KINDS[item["kind"]]
-    if _known_link(vault, partition, item["link"], day):
+    # A mail link is the thread's: a later commitment in the same thread is new, so mail relies on the ledger and _said.
+    if item["label"] != "mail" and _known_link(vault, partition, item["link"], day):
         return "covered", ""
     if item["kind"] == "commitment" and (_said(vault, partition, item["what"])
                                          or (item["meeting"] and _calendar_names(events, item["who"]))):
@@ -85,7 +98,8 @@ def route(vault, partition: str, found: dict, flags: list, crossed: list, events
     alerts, counts = [], {"items": 0, "now": 0, "alerts": 0}
 
     def log(key, kind, text, link="", now=""):
-        append(path, {"key": key, "day": day, "time": clock[:5], "kind": kind, "text": text, "link": link, "now": now})
+        append(path, {"key": key, "day": day, "time": clock[:5], "kind": kind, "text": text, "link": link, "now": now,
+                      "partition": partition})
         done.add(key)
         counts["items"] += 1
 
@@ -106,7 +120,9 @@ def route(vault, partition: str, found: dict, flags: list, crossed: list, events
                             nowmod.note(vault, partition, item["what"], f"free: {', '.join(slots)}", day)
                         except ValueError:
                             pass   # another open line holds the same text: the slots are an offer, not the item
-        text = f"{item['what']} ({item['label']})"
+        e = next((e for i, e in crossed if i is item), None)   # a cancellation the calendar still lists: one line
+        text = (f"{e['title']}{_span(e['start'], e['end'])} cancelled per {item['label']} (calendar still confirmed)"
+                if e else f"{item['what']} ({item['label']})")
         log(key, "meeting" if item["kind"] == "meeting_change" else item["kind"], text, item["link"], status)
         if item["kind"] == "incident" or (item["kind"] == "meeting_change" and item["change"] in ALERT_CHANGES):
             alerts.append(f"{text} {item['link']}")
@@ -123,13 +139,6 @@ def route(vault, partition: str, found: dict, flags: list, crossed: list, events
         log(key, "meeting", text)
         if f["change"] in ALERT_CHANGES:
             alerts.append(text)
-    for item, e in crossed:
-        key = f"cross:{day}:{e['title']}:{e['start']}"
-        if key in done:
-            continue
-        text = f"{e['title']}{_span(e['start'], e['end'])} cancelled per {item['label']} (calendar still confirmed)"
-        log(key, "meeting", text, item["link"])
-        alerts.append(f"{text} {item['link']}")
     for text in alerts[:MAX_ALERTS]:
         alert(vault, day, clock, "watch", text)
         counts["alerts"] += 1
@@ -140,6 +149,19 @@ def route(vault, partition: str, found: dict, flags: list, crossed: list, events
     return counts
 
 
-def captured(vault, day: str, clock: str, rel: str, n: int) -> None:
+def _capture_key(m: dict) -> str:
+    return f"capture:{m['channel']}/{m['ts']}"
+
+
+def new_captures(vault, day: str, messages: list) -> list:
+    """The capture messages no earlier tick wrote: the capture search reads back through the cursor's overlap."""
+    done = seen(vault, day)
+    return [m for m in messages if _capture_key(m) not in done]
+
+
+def captured(vault, day: str, clock: str, rel: str, messages: list, partition: str) -> None:
+    """One ledger row per capture file (one today-file line), holding each message's key in `keys`."""
+    n = len(messages)
     append(ledger_path(vault, day), {"key": f"capture:{rel}", "day": day, "time": clock[:5], "kind": "capture",
-                                     "text": f"{n} message{'s' if n != 1 else ''} → {rel}", "link": "", "now": ""})
+                                     "text": f"{n} message{'s' if n != 1 else ''} → {rel}", "link": "", "now": "",
+                                     "partition": partition, "keys": [_capture_key(m) for m in messages]})

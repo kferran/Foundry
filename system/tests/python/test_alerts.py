@@ -48,3 +48,5 @@ def test_extension_tags_reads_tag_entries_with_a_severity_from_enabled_manifests
     write(vault, "extensions/w/extension.md", "---\nname: w\ncontract: 1\nalert_tags: [plain, {tag: watch, severity: now},"
           " {tag: odd, severity: loud}]\n---\nbody\n")
     assert alerts.extension_tags(vault) == {"watch": "now"}
+    (vault / "extensions" / "w" / "extension.md").write_bytes(b"---\nname: w\xff\n---\n")
+    assert alerts.extension_tags(vault) == {}   # an unreadable manifest stops no Slack notice

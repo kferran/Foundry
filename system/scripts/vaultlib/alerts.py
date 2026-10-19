@@ -35,7 +35,11 @@ def extension_tags(vault) -> dict:
     """{tag: severity} from enabled manifests' `alert_tags` entries written as {tag, severity} (phase D spec §2
     decision 10). A bare tag, or one core already has, waits for the brief or keeps core's rule."""
     from . import extensions
-    return {str(t["tag"]): str(t.get("severity", "brief")) for _, d in extensions.enabled(vault)
+    try:
+        loaded = extensions.enabled(vault)
+    except (OSError, UnicodeDecodeError):
+        return {}   # one unreadable manifest must not stop every Slack notice
+    return {str(t["tag"]): str(t.get("severity", "brief")) for _, d in loaded
             for t in d.get("alert_tags") or [] if isinstance(t, dict) and t.get("tag")
             and str(t.get("severity", "brief")) in ("now", "brief", "never")}
 

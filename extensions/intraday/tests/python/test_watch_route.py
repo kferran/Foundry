@@ -25,10 +25,20 @@ def test_the_diff_flags_cancelled_moved_and_new_events_by_title():
     assert next(f for f in cal.diff(old, new) if f["change"] == "moved")["was"] == "10:00-10:30"
 
 
-def test_the_days_first_snapshot_is_a_baseline(vault):
+def test_the_days_first_snapshot_is_a_baseline_and_a_change_shows_when_the_next_tick_still_has_it(vault):
     assert cal.snapshot(vault, DAY, [ev("Weekly Huddle")]) == []
+    assert cal.snapshot(vault, DAY, []) == []
     assert [f["change"] for f in cal.snapshot(vault, DAY, [])] == ["cancelled"]
+    assert cal.snapshot(vault, DAY, []) == []
     assert cal.snapshot(vault, "2026-10-20", []) == []
+
+
+def test_an_event_one_tick_drops_and_the_next_lists_again_flags_nothing(vault):
+    events = [ev("Weekly Huddle"), ev("Deck review", "14:00", "15:00")]
+    cal.snapshot(vault, DAY, events)
+    assert cal.snapshot(vault, DAY, events[1:]) == []
+    assert cal.snapshot(vault, DAY, events) == []
+    assert cal.snapshot(vault, DAY, [ev("Weekly huddle "), events[1]]) == []   # reworded: same title once folded
 
 
 def test_tsv_rows_parse_and_all_day_events_keep_no_times():
@@ -58,7 +68,14 @@ def test_free_slots_skip_busy_times_and_all_day_events_and_stay_within_work_hour
     assert cal.workdays("2026-10-23", "") == ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30"]
 
 
-def run(vault, found, flags=(), crossed=(), events=(), fetched=(DAY,), clock="09:10:00"):
+def test_slot_days_fetch_at_most_two_workdays_for_the_meeting_commitments():
+    items = [{"kind": "commitment", "meeting": True, "by": ""}, {"kind": "commitment", "meeting": False, "by": ""},
+             {"kind": "deadline", "meeting": True, "by": ""}]
+    assert cal.slot_days(DAY, items) == ["2026-10-20", "2026-10-21"]   # each fetch is one 190 s calendar session
+    assert cal.slot_days(DAY, items[1:]) == []
+
+
+def run(vault, found,flags=(), crossed=(), events=(), fetched=(DAY,), clock="09:10:00"):
     return route.route(vault, "work", found, list(flags), list(crossed), list(events), list(fetched), DAY, clock)
 
 
@@ -75,7 +92,7 @@ def test_a_meeting_change_is_logged_and_alerted_once_and_never_routes_twice(vaul
     assert run(vault, {"items": [item()]}) == {"items": 1, "now": 0, "alerts": 1}
     assert alerts(vault) == [f"- 09:10:00 [watch] Weekly Huddle cancelled today (#ops) {LINK}"]
     assert run(vault, {"items": [item()]}) == {"items": 0, "now": 0, "alerts": 0}
-    assert [r["kind"] for r in ledger(vault)] == ["meeting"]
+    assert [(r["kind"], r["partition"]) for r in ledger(vault)] == [("meeting", "work")]
 
 
 def test_each_kind_goes_where_the_spec_routes_it(vault):
@@ -105,6 +122,20 @@ def test_a_link_already_on_the_now_page_or_archive_and_a_said_commitment_are_cov
     assert len(nowmod.open_lines(nowmod.read(vault, "work"))) == 2
 
 
+def test_a_thread_link_a_short_phrase_or_a_partial_name_does_not_cover_a_commitment(vault):
+    thread = "https://mail.google.com/mail/#all/thread-a:1"
+    nowmod.add(vault, "work", "owed", "Send the export numbers", DAY, "Pat", thread)   # an earlier commitment in the thread
+    nowmod.add(vault, "work", "owed", "Follow up with the vendor on the export retries", DAY)
+    items = [item(kind="commitment", query="mail", what="Book the review room", key="m1", link=thread, label="mail"),
+             item(kind="commitment", query="own", what="follow up", key="k2", link=LINK + "2"),
+             item(kind="commitment", query="own", what="Set up a sync with the team", who="the team", meeting=True,
+                  key="k3", link=LINK + "3"),
+             item(kind="commitment", query="own", what="Set up a call with Sam", who="Sam", meeting=True, key="k4",
+                  link=LINK + "4")]
+    run(vault, {"items": items}, events=[ev("Other vendors sync", "15:00", "15:30"), ev("Samsung review", "16:00", "16:30")])
+    assert [r["now"] for r in ledger(vault)] == ["added", "added", "added", "added"]
+
+
 def test_a_meeting_commitment_gets_free_slots_unless_the_calendar_already_names_the_person(vault):
     c = item(kind="commitment", query="own", what="Set up a sync with Sam", who="Sam Sample", meeting=True, by="2026-10-21",
              key="k1", link=LINK + "1", label="group DM")
@@ -121,12 +152,21 @@ def test_calendar_flags_and_cross_hits_are_logged_and_cancellations_and_moves_al
     flags = [{"change": "cancelled", "title": "Weekly Huddle", "start": "09:00", "end": "09:30", "was": ""},
              {"change": "moved", "title": "1:1 Pat", "start": "11:00", "end": "11:30", "was": "10:00-10:30"},
              {"change": "new", "title": "Deck review", "start": "14:00", "end": "15:00", "was": ""}]
-    crossed = [(item(), ev("Standup", "08:30", "08:45"))]
-    run(vault, {"items": []}, flags=flags, crossed=crossed)
+    cancel = item()
+    crossed = [(cancel, ev("Standup", "08:30", "08:45"))]
+    run(vault, {"items": [cancel]}, flags=flags, crossed=crossed)
     assert [r["text"] for r in ledger(vault)] == [
+        "Standup 08:30-08:45 cancelled per #ops (calendar still confirmed)",
         "Weekly Huddle 09:00-09:30 is gone from the calendar", "1:1 Pat moved from 10:00-10:30 to 11:00-11:30",
-        "new in the calendar: Deck review 14:00-15:00", "Standup 08:30-08:45 cancelled per #ops (calendar still confirmed)"]
+        "new in the calendar: Deck review 14:00-15:00"]
     assert len(alerts(vault)) == 3
+
+
+def test_a_cancellation_the_calendar_still_lists_is_one_alert_and_one_today_line(vault):
+    cancel = item()
+    assert run(vault, {"items": [cancel]}, crossed=[(cancel, ev("Weekly Huddle"))]) == {"items": 1, "now": 0, "alerts": 1}
+    assert alerts(vault) == [f"- 09:10:00 [watch] Weekly Huddle 09:00-09:30 cancelled per #ops (calendar still confirmed) {LINK}"]
+    assert run(vault, {"items": [cancel]}, crossed=[(cancel, ev("Weekly Huddle"))]) == {"items": 0, "now": 0, "alerts": 0}
 
 
 def test_more_than_three_alerts_in_a_tick_end_with_one_count_line(vault):
@@ -138,7 +178,7 @@ def test_more_than_three_alerts_in_a_tick_end_with_one_count_line(vault):
 
 def test_a_capture_file_holds_each_message_and_its_link_under_a_name_the_intake_accepts(vault):
     now = datetime(2026, 10, 19, 9, 10, tzinfo=ZoneInfo("America/Denver"))
-    msgs = [{"ts": "1792429200.000100", "sender": "Alex Owner", "text": "idea: retry the export\nsecond line",
+    msgs = [{"ts": "1792429200.000100", "channel": "C0CAP", "sender": "Alex Owner", "text": "idea: retry the export\nsecond line",
              "link": "https://example.slack.com/archives/C0CAP/p1792429200000100"}]
     path = capture.write(vault, msgs, "work", "C0CAP", now)
     assert RAW_NAME.match(path.name) and path.parent == vault / "raw" / "inbox"
@@ -146,6 +186,10 @@ def test_a_capture_file_holds_each_message_and_its_link_under_a_name_the_intake_
     assert text.startswith('---\npartition: "work"\nsource: "slack"\nchannel: "C0CAP"\ncaptured_at: "2026-10-19T09:10:00-06:00"\n---\n')
     assert "## 11:00 Alex Owner\n\nidea: retry the export\nsecond line\n\nLink: https://example.slack.com/archives/C0CAP/p1792429200000100" in text
     assert capture.write(vault, msgs, "work", "C0CAP", now).name == "slack-2026-10-19T091000-2.md"
-    route.captured(vault, DAY, "09:10:00", "raw/inbox/slack-2026-10-19T091000.md", 1)
+    route.captured(vault, DAY, "09:10:00", "raw/inbox/slack-2026-10-19T091000.md", msgs, "personal")
     assert ledger(vault)[-1]["text"] == "1 message → raw/inbox/slack-2026-10-19T091000.md"
+    assert ledger(vault)[-1]["partition"] == "personal"
+    # The next tick's overlap reads the same message again: only the new one is captured.
+    later = {**msgs[0], "ts": "1792429300.000100"}
+    assert route.new_captures(vault, DAY, [msgs[0], later]) == [later]
     assert json.loads(json.dumps(ledger(vault)[-1]))["kind"] == "capture"

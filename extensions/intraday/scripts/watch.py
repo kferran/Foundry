@@ -61,22 +61,26 @@ def do_route(intake, args: list) -> str:
         flags = cal.snapshot(VAULT, day, events) if today_tsv is not None else []
         crossed = cal.cross(found["items"], events, day)
         counts = route.route(VAULT, partition, found, flags, crossed, events, fetched, day, clock)
-        if slack and slack[0].get("captures"):
-            caps = slack[0]["captures"]
-            path = capture.write(VAULT, caps, common.capture_partition(VAULT),
-                                 str(triage.config(VAULT).get("capture_channel") or ""), now)
-            route.captured(VAULT, day, clock, path.relative_to(VAULT).as_posix(), len(caps))
+        caps = route.new_captures(VAULT, day, slack[0].get("captures") or []) if slack else []
+        if caps:
+            cap_partition = common.capture_partition(VAULT)
+            path = capture.write(VAULT, caps, cap_partition, str(triage.config(VAULT).get("capture_channel") or ""), now)
+            route.captured(VAULT, day, clock, path.relative_to(VAULT).as_posix(), caps, cap_partition)
             counts["captured"] = len(caps)
         names = list(slack[1]) if slack else []
         if slack and query.first_capture(VAULT):
             names.append("capture")
         if mail is not None:
             names.append("mail")
-        query.advance(VAULT, names, start)
+        resume = {n: e for n, e in (slack[0].get("resume") or {}).items() if n in names} if slack else {}
+        query.advance(VAULT, [n for n in names if n not in resume], start)
+        for n, epoch in resume.items():
+            query.advance(VAULT, [n], epoch)
         for name in [*(slack[0].get("full") or [] if slack else []), *(mail.get("full") or [] if mail else [])]:
             key = f"the {name} search read its full page limit:"
-            common.alert(VAULT, day, clock, "intraday", f"{key} the oldest messages since the last tick were not read",
-                         key=key)
+            rest = ("the next tick reads on from the last message read" if name in resume
+                    else "the oldest messages since the last tick were not read")
+            common.alert(VAULT, day, clock, "intraday", f"{key} {rest}", key=key)
     return " ".join(f"{k} {v}" for k, v in counts.items())
 
 
@@ -98,14 +102,13 @@ def main(argv) -> int:
             if reason:
                 print(reason)
         elif len(args) == 2 and args[0] == "extract-slack":
-            print(json.dumps(check.slack_extract(messages(sys.stdin.read()), query.slack_tool(VAULT), json.loads(args[1]))))
+            print(json.dumps(check.slack_extract(messages(sys.stdin.read()), query.slack_tool(VAULT), json.loads(args[1]),
+                                                 str(triage.config(VAULT).get("slack_notify_channel") or ""))))
         elif len(args) == 2 and args[0] == "extract-mail":
             print(json.dumps(check.mail_extract(messages(sys.stdin.read()), args[1])))
         elif args[:1] == ["slot-days"] and len(args) > 1:
             items = [i for p in args[1:] for i in _found(p).get("items") or []]
-            days = sorted({d for i in items if i["kind"] == "commitment" and i["meeting"]
-                           for d in cal.workdays(intake.today(), i["by"])})
-            print("".join(f"{d}\n" for d in days[:cal.MAX_DAYS]), end="")
+            print("".join(f"{d}\n" for d in cal.slot_days(intake.today(), items)), end="")
         elif args[:1] == ["route"] and len(args) >= 2 and args[1].isdigit():
             print(do_route(intake, args[1:]))
         else:

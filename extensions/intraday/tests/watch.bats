@@ -54,8 +54,8 @@ slack_says() {
       [[ ! -f "$BATS_TEST_TMPDIR/page-$name.md" ]] || res="$(printf '## Messages (1 results)\n%s' "$(cat "$BATS_TEST_TMPDIR/page-$name.md")")"
       jq -cn --arg t "${SLACK_TOOL_USED:-$SLACK}" --argjson i "$(jq -c --arg n "$name" '.[$n]' <<< "$inputs")" --arg id "t$n" \
         '{type: "assistant", message: {content: [{type: "tool_use", id: $id, name: $t, input: $i}]}}'
-      jq -cn --arg id "t$n" --arg r "$res" \
-        '{type: "user", message: {content: [{type: "tool_result", tool_use_id: $id, content: [{type: "text", text: ({results: $r, pagination_info: "End of results"} | tojson)}]}]}}'
+      jq -cn --arg id "t$n" --arg r "$res" --arg p "${SLACK_PAGINATION:-End of results}" \
+        '{type: "user", message: {content: [{type: "tool_result", tool_use_id: $id, content: [{type: "text", text: ({results: $r, pagination_info: $p} | tojson)}]}]}}'
       n=$((n + 1))
     done
     jq -cn --arg r "$1" '{type: "result", subtype: "success", is_error: false, result: $r}'
@@ -67,23 +67,24 @@ cal_says() {
   jq -cn --argjson e "$1" '{type: "result", subtype: "success", is_error: false, structured_output: {status: "ok", reason: "", events: $e}}' > "$STUB_CAL_STREAM"
 }
 
-@test "a non-mention cancellation in a watched channel is one today line and [watch] alerts, with the calendar cross-check" {
+@test "a non-mention cancellation in a watched channel is one today line and one [watch] alert, with the calendar cross-check" {
   result "#ops (ID: C0OPS)" C0OPS 1792430610.351069 "Heads up: the Weekly Huddle is cancelled today." > "$BATS_TEST_TMPDIR/page-watch.md"
   cal_says "[{\"start_date\": \"$TODAY\", \"start_time\": \"09:30\", \"end_date\": \"$TODAY\", \"end_time\": \"10:00\", \"title\": \"Weekly Huddle\"}]"
   slack_says '{"items": [{"query": "watch", "channel_id": "C0OPS", "ts": "1792430610.351069", "kind": "meeting_change", "who": "Pat", "what": "Weekly Huddle cancelled today", "by": "", "change": "cancelled", "meeting": false}]}'
   run "$WF"
   [ "$status" -eq 0 ]
-  grep -qF '[watch] Weekly Huddle cancelled today (#ops) https://example.slack.com/archives/C0OPS/p1792430610351069' "$ALERTS"
-  grep -qF '[watch] Weekly Huddle 09:30-10:00 cancelled per #ops (calendar still confirmed)' "$ALERTS"
+  [ "$(grep -c '\[watch\]' "$ALERTS")" -eq 1 ]
+  grep -qF '[watch] Weekly Huddle 09:30-10:00 cancelled per #ops (calendar still confirmed) https://example.slack.com/archives/C0OPS/p1792430610351069' "$ALERTS"
   run extensions/intraday/scripts/today_log.py tick
   [ "$status" -eq 0 ]
-  grep -qF '**meeting** Weekly Huddle cancelled today (#ops) https://example.slack.com/archives/C0OPS/p1792430610351069' "briefings/$TODAY.today.md"
+  [ "$(grep -c '\*\*meeting\*\*' "briefings/$TODAY.today.md")" -eq 1 ]
+  grep -qF '**meeting** Weekly Huddle 09:30-10:00 cancelled per #ops (calendar still confirmed) https://example.slack.com/archives/C0OPS/p1792430610351069' "briefings/$TODAY.today.md"
   run system/scripts/vault_index.py validate "briefings/$TODAY.today.md"
   [ "$status" -eq 0 ]
   # The next tick reads the same message again through its overlap: nothing routes twice.
   slack_says '{"items": [{"query": "watch", "channel_id": "C0OPS", "ts": "1792430610.351069", "kind": "meeting_change", "who": "Pat", "what": "Weekly Huddle cancelled today", "by": "", "change": "cancelled", "meeting": false}]}'
   run "$WF"
-  [ "$(grep -c 'Weekly Huddle cancelled today' "$ALERTS")" -eq 1 ]
+  [ "$(grep -c '\[watch\]' "$ALERTS")" -eq 1 ]
 }
 
 @test "a commitment in a group DM becomes one owed line with the message link" {
@@ -114,6 +115,29 @@ cal_says() {
   [ "$status" -eq 0 ]
   [ ! -e "$f" ]
   ls raw/archive | grep -q '^slack-'
+  # The next tick reads the same message again through its overlap: it is not captured twice.
+  slack_says '{"items": []}'
+  run "$WF"
+  [ "$status" -eq 0 ]
+  [ -z "$(ls raw/inbox 2>/dev/null)" ]
+}
+
+@test "a search that reads its full page limit resumes next tick from the last message it read" {
+  result "#ops (ID: C0OPS)" C0OPS 1792430610.351069 "Status as usual." > "$BATS_TEST_TMPDIR/page-watch.md"
+  SLACK_PAGINATION='For the next page of results use cursor `Q1`' slack_says '{"items": []}'
+  run "$WF"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .watch system/logs/watch/cursors.json)" = 1792430610 ]
+  [ "$(jq -r .own system/logs/watch/cursors.json)" -ne 1800000000 ]   # no message read: the tick's start
+  grep -qF '[intraday] the watch search read its full page limit: the next tick reads on from the last message read' "$ALERTS"
+}
+
+@test "with only a capture channel set, the first tick still sets its cursor" {
+  sed -i '/^watch_channels:/d; /^watch_user_id:/d' system/config.md
+  [ "$(extensions/intraday/scripts/watch.py slack-input)" = "{}" ]
+  run "$WF"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .capture system/logs/watch/cursors.json)" != null ]
 }
 
 @test "a Slack session outside the rules writes nothing, keeps its cursors and alerts once a day; the calendar still runs" {
@@ -153,7 +177,7 @@ cal_says() {
     jq -cn --arg t "$GMAIL" --arg q "$q" '{type: "assistant", message: {content: [{type: "tool_use", id: "m1", name: $t, input: {query: $q, pageSize: 50, view: "THREAD_VIEW_MINIMAL"}}]}}'
     jq -cn '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "m1", content: "…"}]},
       tool_use_result: {structuredContent: {threads: [{id: "th1", viewUrl: "https://mail.google.com/mail/#all/thread-a:1",
-        messages: [{labelIds: ["SENT"], internalDate: "1792428384000", subject: "Deck", snippet: "I will send the deck Friday"}]}]}}}'
+        messages: [{labelIds: ["SENT"], internalDate: "1800000100000", subject: "Deck", snippet: "I will send the deck Friday"}]}]}}}'
     jq -cn '{type: "result", subtype: "success", is_error: false, result: ({items: [{thread_id: "th1", kind: "commitment", who: "Pat Sample", what: "Send Pat the deck", by: "", meeting: false}]} | tojson)}'
   } > "$STUB_MAIL_STREAM"
   run "$WF"

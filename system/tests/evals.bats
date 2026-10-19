@@ -74,7 +74,7 @@ stub_case() {
 
 @test "every golden case has its parts and an expect.yaml whose keys all load" {
   cases="$(ls "$REPO/system/tests/golden/ingest" | tr '\n' ' ')"
-  [ "$cases" = "alias-patch batch-merge correction-patch format-docx format-pdf format-pptx format-xlsx friction-flag inbox-injection no-shrink no-shrink-long-note restated-noop shared-placement supersede wall-respect " ]
+  [ "$cases" = "alias-patch batch-merge correction-patch format-docx format-pdf format-pptx format-xlsx friction-flag inbox-injection no-shrink no-shrink-long-note restated-noop shared-placement slack-capture supersede wall-respect " ]
   for d in "$REPO"/system/tests/golden/ingest/*/; do
     [ -f "$d/README.md" ]
     [ -d "$d/vault" ]

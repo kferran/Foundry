@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from vaultlib.notify import prefix
 
-from .common import Fail, QUERIES, config, load, save, state, truthy
+from .common import Fail, QUERIES, config, load, partition, save, state, truthy
 
 SLACK_TOOL = "slack_search_public_and_private"
 GMAIL_TOOL = "mcp__claude_ai_Gmail__search_threads"
@@ -20,7 +20,7 @@ OVERLAP_SECONDS = 300
 FIRST_LOOKBACK_SECONDS = 2 * 3600
 SLACK_ID = re.compile(r"[CGD][A-Z0-9]{2,}")
 USER_ID = re.compile(r"[UW][A-Z0-9]{2,}")
-COMMON = {"sort": "timestamp", "limit": 20, "include_bots": False, "include_context": False,
+COMMON = {"sort": "timestamp", "sort_dir": "asc", "limit": 20, "include_bots": False, "include_context": False,
           "response_format": "detailed", "content_types": "messages"}
 
 
@@ -60,6 +60,7 @@ def _after(cursor_epoch: int) -> tuple:
 def slack(vault, now_epoch: int) -> dict:
     """{query name: search input} for this tick, in QUERIES order. An empty dict means no Slack session runs."""
     cfg, cur, out = config(vault), cursors(vault), {}
+    partition(vault)   # a bad watch_partition stops the tick before a session runs, not after
 
     def since(name):
         return cur[name] - OVERLAP_SECONDS if name in cur else now_epoch - FIRST_LOOKBACK_SECONDS
@@ -81,6 +82,8 @@ def slack(vault, now_epoch: int) -> dict:
     if capture:
         if not SLACK_ID.fullmatch(capture):
             raise Fail(2, f"capture_channel: {capture!r} is not a Slack channel ID")
+        if capture == str(cfg.get("slack_notify_channel") or ""):
+            raise Fail(2, "capture_channel is slack_notify_channel: the capture would copy the Foundry's own notices")
         if "capture" in cur:
             date, after = _after(cur["capture"] - OVERLAP_SECONDS)
             out["capture"] = {"filters": f"in:<#{capture}> {date}", "after": after, **COMMON}
@@ -96,6 +99,7 @@ def mail(vault, now_epoch: int) -> str:
     """The sent-mail query since the last mail tick, or "" when watch_commitments_mail is off."""
     if not truthy(config(vault).get("watch_commitments_mail"), True):
         return ""
+    partition(vault)
     cur = cursors(vault)
     after = cur["mail"] - OVERLAP_SECONDS if "mail" in cur else now_epoch - FIRST_LOOKBACK_SECONDS
     return f"in:sent after:{after}"

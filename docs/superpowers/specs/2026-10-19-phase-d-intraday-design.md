@@ -56,7 +56,7 @@ State lives in `system/logs/watch/`: the cursor for each query (`cursors.json`),
 
 ### 3.2 Slack session
 
-The session is allowed only `slack_search_public_and_private`, with every other Slack tool denied by name. It runs the queries below, each built only from settings and the cursor. The checker compares each call's input dict with the one built for the tick; only `cursor` may differ between pages. Results are the `### Result N of M` blocks probed for triage (`Channel:`, `From:`, `Time:`, `Message_ts:`, `Permalink:`, `Text:`). Each query reads at most 5 pages of 20; a query that ends on a full fifth page raises one `[watch]` alert a day, and the next tick resumes from its cursor.
+The session is allowed only `slack_search_public_and_private`, with every other Slack tool denied by name. It runs the queries below, each built only from settings and the cursor. The checker compares each call's input dict with the one built for the tick; only `cursor` may differ between pages. Results are the `### Result N of M` blocks probed for triage (`Channel:`, `From:`, `Time:`, `Message_ts:`, `Permalink:`, `Text:`). Each query reads at most 5 pages of 20, oldest first (`sort: timestamp`, `sort_dir: asc`, from the tool's schema; not live-probed); a query that ends on a full fifth page raises one `[intraday]` alert a day, and its cursor moves to the last message it read instead of the tick's start, so the next tick reads on from there. If the connector ignored `sort_dir`, the last message read would be the newest and the oldest would be skipped, as before.
 
 | Query | Filters | Used for |
 |---|---|---|
@@ -71,7 +71,7 @@ Each query keeps an `after:<date>` filter, since a filter-only query needs one, 
 
 ### 3.3 Gmail session
 
-This session runs only when `watch_commitments_mail` is `true`. It may call only `search_threads`, with `query: "in:sent after:<cursor date>"` and `view: THREAD_VIEW_MINIMAL`. The cursor epoch is checked against each message's `internalDate`. The minimal view gives `subject` and `snippet` but no body, so v1 classifies from those two fields. The prompt classifies messages into the same item shape with `kind: commitment`. Each item's link is the thread's `viewUrl`.
+This session runs only when `watch_commitments_mail` is `true`. It may call only `search_threads`, with `query: "in:sent after:<cursor date>"` and `view: THREAD_VIEW_MINIMAL`. The cursor epoch is checked against each message's `internalDate`. The thread search has no ascending sort, so a search that fills its 3 pages moves the cursor to the tick's start and its oldest threads are not read; the `[intraday]` alert says so. The minimal view gives `subject` and `snippet` but no body, so v1 classifies from those two fields. The prompt classifies messages into the same item shape with `kind: commitment`. Each item's link is the thread's `viewUrl`.
 
 ### 3.4 Calendar session and the diff
 
@@ -181,9 +181,9 @@ The Slack and Gmail connectors are core's `slack_connector` and the Gmail connec
 ### 3.11 As built (2026-10-19)
 
 - **Calendar.** The extension reuses core's `calendar_fetch.sh`, one session per day, whose rows hold only times and a title: no event ID, status, organizer or attendees.
-  - The diff therefore covers today only and matches events by title: a title that disappears is flagged as gone from the calendar, a changed time as moved, a new title as new. "Organizer out" is not detected.
+  - The diff therefore covers today only and matches events by title: a title that disappears is flagged as gone from the calendar, a changed time as moved, a new title as new. "Organizer out" is not detected. Each tick's list is a model's transcription, so a change is flagged only when the next tick lists the same events (30 minutes later); an event one tick drops or rewords and the next lists again flags nothing. A channel's cancellation still alerts at once, as its own item.
   - A meeting commitment counts as covered when a fetched event's title names the person, since there are no attendees to check.
-  - The days its free slots need are fetched only when a meeting commitment is found, at most 5.
+  - The days its free slots need are fetched only when a meeting commitment is found, at most 2 (one 190-second session each), and never under `--check`. A tick is then up to five sessions, and `foundry-watch.service` allows 25 minutes (Slack 420 s, mail 300 s, calendar 3 × 190 s, route 120 s).
 - **Core budget.** The two loader generalizations (§2 decision 10) took core from 13,802 to 13,822 lines, inside its 13,850 budget, so the budget did not change.
 - **Alert tags.** The extension has two: `watch` (Slack at once, for meeting changes and incidents) and `intraday` (the next brief, for failed sessions and full search pages).
 - **Debrief.** Extension debrief sections are written to `system/logs/inputs/<date>/debrief_sections/`, apart from the brief's `sections/`, because each prep clears its own folder.

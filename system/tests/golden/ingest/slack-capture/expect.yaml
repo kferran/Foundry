@@ -1,0 +1,8 @@
+min_pass_rate: 0.67
+publish: published
+creates:
+  wiki/work/**:
+    is_friction: "true"
+body_contains:
+  wiki/work/**: [https://example.com/runbooks/export-retries]
+walls: true
