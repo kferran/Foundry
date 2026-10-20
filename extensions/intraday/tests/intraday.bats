@@ -14,7 +14,7 @@ setup() {
   run system/scripts/extensions.py check
   [ "$status" -eq 0 ]
   run system/scripts/extensions.py smoke
-  [ "$output" = "$(printf 'watch\t960\t1\textensions/intraday/scripts/watch_fetch.sh --check')" ]
+  [ "$output" = "$(printf 'watch\t1020\t1\textensions/intraday/scripts/watch_fetch.sh --check')" ]
   run system/scripts/extensions.py units server
   [ "$output" = "$(printf 'intraday\tfoundry-watch')" ]
   run system/scripts/extensions.py units client
@@ -36,6 +36,8 @@ watch_group_dms: "true"
 watch_user_id: "U0OWNER"
 watch_partition: "work"
 watch_commitments_mail: "false"
+watch_inbound_mail: "true"
+watch_inbound_skip: ["news@example.com", "@lists.example.com"]
 capture_channel: "C0CAPTURE"
 capture_partition: ""
 ---
@@ -72,6 +74,8 @@ print(alerts.severity("- 09:00:00 [watch] Weekly huddle cancelled", ext), alerts
   [ "$status" -eq 0 ]
   grep -q '^OnCalendar=Mon..Fri \*-\*-\* 08..17:15,45:00 America/Denver$' "$SYSTEMD_USER_DIR/foundry-watch.timer"
   grep -qF 'extensions/intraday/scripts/watch_fetch.sh' "$SYSTEMD_USER_DIR/foundry-watch.service"
+  # Slack 420 s + mail 360 s + calendar 3 x 190 s + route 120 s = 1,470 s, inside the 30-minute timer interval.
+  grep -qx 'TimeoutStartSec=25min' "$SYSTEMD_USER_DIR/foundry-watch.service"
   # A client keeps no units: a plain install there removes the ones this vault installed.
   system/scripts/vault_index.py set system/config.md machine_role client > /dev/null
   run system/scripts/install_units.sh

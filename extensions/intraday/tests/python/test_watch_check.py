@@ -94,13 +94,37 @@ def test_results_in_the_notify_channel_are_skipped():
     assert len(check.slack_extract(s, TOOL, Q, "C0OTHER")["items"]) == 1
 
 
-def test_mail_query_follows_its_own_cursor_and_its_switch(vault):
-    assert query.mail(vault, 1_800_000_000) == f"in:sent after:{1_800_000_000 - 7200}"
+INBOUND = "-in:sent -category:promotions -category:social -category:forums"
+
+
+def test_mail_queries_follow_their_own_cursors_and_switches(vault):
+    assert query.mail(vault, 1_800_000_000) == {"mail": f"in:sent after:{1_800_000_000 - 7200}",
+                                               "inbound": f"{INBOUND} after:{1_800_000_000 - 7200}"}
     query.advance(vault, ["mail"], 1_800_000_000)
-    assert query.mail(vault, 1_800_000_500) == f"in:sent after:{1_800_000_000 - 300}"
+    got = query.mail(vault, 1_800_000_500)
+    assert got["mail"] == f"in:sent after:{1_800_000_000 - 300}" and got["inbound"].endswith(f"after:{1_800_000_500 - 7200}")
+    query.advance(vault, ["inbound"], 1_800_000_400)
+    assert query.mail(vault, 1_800_000_500)["inbound"] == f"{INBOUND} after:{1_800_000_400 - 300}"
     cfg = vault / "system" / "config.md"
     cfg.write_text(cfg.read_text().replace("---\n", '---\nwatch_commitments_mail: "false"\n', 1))
-    assert query.mail(vault, 1_800_000_500) == ""
+    assert list(query.mail(vault, 1_800_000_500)) == ["inbound"]
+    cfg.write_text(cfg.read_text().replace("---\n", '---\nwatch_inbound_mail: "false"\n', 1))
+    assert query.mail(vault, 1_800_000_500) == {}
+
+
+def test_the_inbound_skip_list_adds_from_terms_and_refuses_an_entry_that_could_change_the_query(vault):
+    cfg = vault / "system" / "config.md"
+    base = cfg.read_text()
+    cfg.write_text(base.replace("---\n", '---\nwatch_inbound_skip: ["news@example.com", "@lists.example.com", "example.org"]\n', 1))
+    assert query.mail(vault, 1_800_000_000)["inbound"] == (
+        f"{INBOUND} after:{1_800_000_000 - 7200} -from:news@example.com -from:@lists.example.com -from:example.org")
+    cfg.write_text(base.replace("---\n", '---\nwatch_inbound_skip: "news@example.com"\n', 1))   # one entry, not a list
+    assert query.mail(vault, 1_800_000_000)["inbound"].endswith(" -from:news@example.com")
+    for bad in ('"a@example.com OR in:sent"', '"{x}"', '"example"', '"(a@example.com)"', "[1]"):
+        cfg.write_text(base.replace("---\n", f"---\nwatch_inbound_skip: [{bad}]\n", 1))
+        with pytest.raises(Fail) as e:
+            query.mail(vault, 1_800_000_000)
+        assert e.value.code == 2 and "watch_inbound_skip" in e.value.reason
 
 
 Q = {"watch": {"filters": "in:<#C0OPS> after:2026-10-17", "after": "1"}, "own": {"filters": "from:<@U0OWNER>", "after": "1"},
@@ -170,13 +194,21 @@ def test_message_text_cannot_forge_a_result():
     assert got["items"] == []   # a label holds only what a channel name can: no [[ to reach a Now line
 
 
-def sent_stream(threads, items=(), q="in:sent after:1"):
-    s = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t1", "name": query.GMAIL_TOOL,
-                                                         "input": {"query": q, "pageSize": 50, "view": "THREAD_VIEW_MINIMAL"}}]}},
-         {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "…"}]},
-          "tool_use_result": {"structuredContent": {"threads": threads}}},
-         {"type": "result", "subtype": "success", "is_error": False, "result": json.dumps({"items": list(items)})}]
+def mail_stream(calls, items=()):
+    """calls: [(query, threads, nextPageToken)], each one search page."""
+    s = []
+    for n, (q, threads, token) in enumerate(calls, 1):
+        s.append({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": f"t{n}", "name": query.GMAIL_TOOL,
+                                                                "input": {"query": q, "pageSize": 50, "view": "THREAD_VIEW_MINIMAL",
+                                                                          **({"pageToken": "p"} if n > 1 else {})}}]}})
+        s.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": f"t{n}", "content": "…"}]},
+                  "tool_use_result": {"structuredContent": {"threads": threads, **({"nextPageToken": token} if token else {})}}})
+    s.append({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps({"items": list(items)})})
     return s
+
+
+def sent_stream(threads, items=(), q="in:sent after:1"):
+    return mail_stream([(q, threads, "")], items)
 
 
 def test_sent_mail_commitments_link_the_thread_and_key_on_the_latest_sent_message():
@@ -187,15 +219,60 @@ def test_sent_mail_commitments_link_the_thread_and_key_on_the_latest_sent_messag
                 "messages": [{"labelIds": ["INBOX"], "internalDate": "1"}]}]
     got = check.mail_extract(sent_stream(threads, items=[
         {"thread_id": "th1", "kind": "commitment", "what": "Send the deck", "who": "Pat Sample", "by": "2026-10-21"},
-        {"thread_id": "th2", "kind": "commitment", "what": "not mine"}]), "in:sent after:1")
+        {"thread_id": "th2", "kind": "commitment", "what": "not mine"}]), {"mail": "in:sent after:1"})
     assert got["items"] == [{"query": "mail", "key": "th1/1792428384000", "kind": "commitment", "what": "Send the deck",
                              "who": "Pat Sample", "by": "2026-10-21", "meeting": False, "change": "other",
                              "link": "https://mail.google.com/mail/#all/thread-a:1", "ts": "1792428384000",
                              "label": "mail", "text": ""}]
     with pytest.raises(Fail) as e:
-        check.mail_extract(sent_stream(threads, q="in:inbox"), "in:sent after:1")
+        check.mail_extract(sent_stream(threads, q="in:inbox"), {"mail": "in:sent after:1"})
     assert e.value.code == 7
     # A thread the search returns for an older sent message is not a new commitment (spec §3.3: internalDate >= cursor).
     q = "in:sent after:1792428400"
-    got = check.mail_extract(sent_stream(threads, q=q, items=[{"thread_id": "th1", "kind": "commitment", "what": "Send"}]), q)
+    got = check.mail_extract(sent_stream(threads, q=q, items=[{"thread_id": "th1", "kind": "commitment", "what": "Send"}]),
+                             {"mail": q})
+    assert got["items"] == []
+
+
+MQ = {"mail": "in:sent after:1792428000", "inbound": f"{INBOUND} after:1792428000"}
+SENT = {"id": "th1", "viewUrl": "https://mail.google.com/mail/#all/thread-a:1",
+        "messages": [{"labelIds": ["SENT"], "internalDate": "1792428384000", "subject": "Deck", "snippet": "I'll send it"}]}
+REVIEW = {"id": "th3", "viewUrl": "https://mail.google.com/mail/#all/thread-a:3",
+          "messages": [{"labelIds": ["INBOX"], "internalDate": "1792420000000"},
+                       {"labelIds": ["SENT"], "internalDate": "1792428390000"},
+                       {"labelIds": ["INBOX", "UNREAD"], "internalDate": "1792428500000", "subject": "Review requested: PR #12",
+                        "snippet": "Pat Sample added you as a reviewer"}]}
+OLD = {"id": "th4", "viewUrl": "https://mail.google.com/mail/#all/thread-a:4",
+       "messages": [{"labelIds": ["INBOX"], "internalDate": "1792427000000", "subject": "Weekly digest"}]}
+
+
+def test_inbound_items_join_to_the_inbound_search_and_key_on_the_latest_incoming_message():
+    items = [{"thread_id": "th3", "kind": "request", "who": "Pat (Sample), ops", "what": "Review PR #12: [[Fix]] retries",
+              "link": "https://evil.example"},
+             {"thread_id": "th3", "kind": "request", "what": "again"},
+             {"thread_id": "th1", "kind": "request", "what": "a sent thread is not incoming"},
+             {"thread_id": "th3", "kind": "commitment", "what": "an incoming thread holds no commitment"},
+             {"thread_id": "th4", "kind": "incident", "what": "older than the cursor"},
+             {"thread_id": "zz", "kind": "incident", "what": "a thread no search returned"},
+             {"thread_id": "th3", "kind": "newsletter", "what": "not a kind"}]
+    got = check.mail_extract(mail_stream([(MQ["mail"], [SENT], ""), (MQ["inbound"], [REVIEW, OLD], "")], items), MQ)
+    assert got["items"] == [{"query": "inbound", "key": "th3/1792428500000", "kind": "request",
+                             "what": "Review PR #12: ((Fix)) retries", "who": "Pat Sample ops", "by": "", "meeting": False,
+                             "change": "other", "link": "https://mail.google.com/mail/#all/thread-a:3",
+                             "ts": "1792428500000", "label": "mail", "text": ""}]
+    assert got["full"] == []
+
+
+def test_a_mail_session_off_its_built_searches_fails_closed_and_a_full_inbound_search_is_flagged():
+    for calls, code in [([(MQ["mail"], [SENT], ""), ("-in:sent after:1", [REVIEW], "")], 7),   # a query not built
+                        ([(MQ["mail"], [SENT], "")], 1),                                     # a built search not run
+                        ([(MQ["mail"], [SENT], "")] + [(MQ["inbound"], [REVIEW], "n")] * 4, 7)]:   # over 3 pages
+        with pytest.raises(Fail) as e:
+            check.mail_extract(mail_stream(calls), MQ)
+        assert e.value.code == code
+    got = check.mail_extract(mail_stream([(MQ["mail"], [SENT], "")] + [(MQ["inbound"], [REVIEW], "n")] * 3), MQ)
+    assert got["full"] == ["inbound"]
+    # A sent page cannot vouch for an incoming item: each page belongs to the search that read it.
+    got = check.mail_extract(mail_stream([(MQ["mail"], [REVIEW], ""), (MQ["inbound"], [], "")],
+                                         [{"thread_id": "th3", "kind": "request", "what": "Review PR #12"}]), MQ)
     assert got["items"] == []

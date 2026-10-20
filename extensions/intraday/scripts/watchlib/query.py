@@ -20,6 +20,9 @@ OVERLAP_SECONDS = 300
 FIRST_LOOKBACK_SECONDS = 2 * 3600
 SLACK_ID = re.compile(r"[CGD][A-Z0-9]{2,}")
 USER_ID = re.compile(r"[UW][A-Z0-9]{2,}")
+LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
+SKIP = re.compile(rf"(?:[A-Za-z0-9._%+-]*@)?{LABEL}(?:\.{LABEL})+")   # it enters the search: no space, colon or bracket
+INBOUND = "-in:sent -category:promotions -category:social -category:forums"
 COMMON = {"sort": "timestamp", "sort_dir": "asc", "limit": 20, "include_bots": False, "include_context": False,
           "response_format": "detailed", "content_types": "messages"}
 
@@ -95,11 +98,23 @@ def first_capture(vault) -> bool:
     return bool(config(vault).get("capture_channel")) and "capture" not in cursors(vault)
 
 
-def mail(vault, now_epoch: int) -> str:
-    """The sent-mail query since the last mail tick, or "" when watch_commitments_mail is off."""
-    if not truthy(config(vault).get("watch_commitments_mail"), True):
-        return ""
+def mail(vault, now_epoch: int) -> dict:
+    """{query name: Gmail query} for the one mail session, each since its own cursor: `mail`, the owner's sent mail
+    (watch_commitments_mail), and `inbound`, incoming mail less the senders in watch_inbound_skip (watch_inbound_mail).
+    An empty dict means no mail session runs."""
+    cfg, cur, out = config(vault), cursors(vault), {}
     partition(vault)
-    cur = cursors(vault)
-    after = cur["mail"] - OVERLAP_SECONDS if "mail" in cur else now_epoch - FIRST_LOOKBACK_SECONDS
-    return f"in:sent after:{after}"
+
+    def since(name):
+        return cur[name] - OVERLAP_SECONDS if name in cur else now_epoch - FIRST_LOOKBACK_SECONDS
+
+    if truthy(cfg.get("watch_commitments_mail"), True):
+        out["mail"] = f"in:sent after:{since('mail')}"
+    if truthy(cfg.get("watch_inbound_mail"), True):
+        skip = cfg.get("watch_inbound_skip") or []
+        skip = skip if isinstance(skip, list) else [skip]
+        for s in skip:
+            if not (isinstance(s, str) and SKIP.fullmatch(s)):
+                raise Fail(2, f"watch_inbound_skip: {s!r} is not an address or a domain (@example.com or example.com)")
+        out["inbound"] = " ".join([INBOUND, f"after:{since('inbound')}", *(f"-from:{s}" for s in skip)])
+    return out

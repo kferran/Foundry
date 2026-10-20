@@ -322,10 +322,11 @@ def record(vault, partition: str, found: dict, today: str, now_iso: str, now_epo
     caller holds run.lock. Returns the lines added."""
     known = {(r.get("thread_id"), r.get("date")) for r in records(vault, today)
              if r.get("kind") == "item" and r.get("source", "mail") == source}
-    added = []
+    added, mine, prev = [], {t for t, _ in known}, (date.fromisoformat(today).replace(day=1) - timedelta(days=1)).isoformat()
+    held = "\n".join([nowmod.read(vault, partition), *nowmod.archived(vault, partition, prev, today)])
     for i in found.get("items") or []:
-        if (i["thread_id"], i["date"]) in known:
-            continue
+        if (i["thread_id"], i["date"]) in known or (i["link"] in held and i["thread_id"] not in mine):
+            continue   # seen, or another source's line (the intraday watch's) already holds the thread
         statement = f"{i['who']}: {i['ask'].rstrip('.')}." + (f" Next: {i['next_step']}" if i.get("next_step") else "")
         try:
             status, line = nowmod.add(vault, partition, "owed", statement, today, i["sender"], i["link"])

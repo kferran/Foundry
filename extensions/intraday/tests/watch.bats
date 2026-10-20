@@ -23,6 +23,7 @@ watch_channels: [{id: "C0OPS", label: "ops"}]
 watch_group_dms: "false"
 watch_user_id: "U0OWNER"
 watch_commitments_mail: "false"
+watch_inbound_mail: "false"
 watch_partition: "work"
 capture_channel: "C0CAP"
 capture_partition: "work"
@@ -65,6 +66,23 @@ slack_says() {
 # cal_says <events json>: the calendar session's structured output for today.
 cal_says() {
   jq -cn --argjson e "$1" '{type: "result", subtype: "success", is_error: false, structured_output: {status: "ok", reason: "", events: $e}}' > "$STUB_CAL_STREAM"
+}
+
+# inbound_says: the Gmail session runs this tick's incoming-mail search and finds a review request and a monitoring alert.
+inbound_says() {
+  {
+    jq -cn --arg t "$GMAIL" --arg q "$(extensions/intraday/scripts/watch.py mail-query | jq -r .inbound)" \
+      '{type: "assistant", message: {content: [{type: "tool_use", id: "m1", name: $t, input: {query: $q, pageSize: 50, view: "THREAD_VIEW_MINIMAL"}}]}}'
+    jq -cn '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "m1", content: "…"}]},
+      tool_use_result: {structuredContent: {threads: [
+        {id: "th1", viewUrl: "https://mail.google.com/mail/#all/thread-a:1",
+         messages: [{labelIds: ["INBOX"], internalDate: "1800000100000", subject: "Review requested: PR #12", snippet: "Pat Sample added you as a reviewer"}]},
+        {id: "th2", viewUrl: "https://mail.google.com/mail/#all/thread-a:2",
+         messages: [{labelIds: ["INBOX"], internalDate: "1800000200000", subject: "Alert fired: CPU on vm-app-1", snippet: "Severity 1"}]}]}}}'
+    jq -cn '{type: "result", subtype: "success", is_error: false, result: ({items: [
+      {thread_id: "th1", kind: "request", who: "Pat Sample", what: "Review PR #12: Fix the export retries", by: "", meeting: false},
+      {thread_id: "th2", kind: "incident", who: "Monitoring", what: "CPU alert on vm-app-1", by: "", meeting: false}]} | tojson)}'
+  } > "$STUB_MAIL_STREAM"
 }
 
 @test "a non-mention cancellation in a watched channel is one today line and one [watch] alert, with the calendar cross-check" {
@@ -153,7 +171,7 @@ cal_says() {
 @test "--check runs the sessions and writes nothing; a client and a tick outside workdays 08:00-18:00 run nothing" {
   run "$WF" --check
   [ "$status" -eq 0 ]
-  [[ "$output" == "watch_fetch: 0 from Slack, - from mail, 0 events today" ]]
+  [[ "$output" == "watch_fetch: 0 from Slack, - from sent mail, - from incoming mail, 0 events today" ]]
   [ ! -e "system/logs/watch/calendar-$TODAY.json" ]
   [ "$(jq -r .watch system/logs/watch/cursors.json)" = 1800000000 ]
   rm -f "$STUB_ARGS_SLACK"
@@ -171,7 +189,7 @@ cal_says() {
   system/scripts/vault_index.py set system/config.md watch_commitments_mail true > /dev/null
   export STUB_MAIL_STREAM="$BATS_TEST_TMPDIR/mail.jsonl"
   printf '{"watch": 1800000000, "own": 1800000000, "mail": 1800000000}\n' > system/logs/watch/cursors.json
-  q="$(extensions/intraday/scripts/watch.py mail-query)"
+  q="$(extensions/intraday/scripts/watch.py mail-query | jq -r .mail)"
   [ "$q" = "in:sent after:1799999700" ]
   {
     jq -cn --arg t "$GMAIL" --arg q "$q" '{type: "assistant", message: {content: [{type: "tool_use", id: "m1", name: $t, input: {query: $q, pageSize: 50, view: "THREAD_VIEW_MINIMAL"}}]}}'
@@ -184,4 +202,30 @@ cal_says() {
   [ "$status" -eq 0 ]
   grep -qF -- '- [ ] owed: Send Pat the deck [due:: ' wiki/work/Now.md
   grep -qF 'https://mail.google.com/mail/#all/thread-a:1)' wiki/work/Now.md
+}
+
+@test "incoming mail: a review request becomes an owed line, a monitoring alert a [watch] alert, and --check counts both" {
+  system/scripts/vault_index.py set system/config.md watch_inbound_mail true > /dev/null
+  export STUB_MAIL_STREAM="$BATS_TEST_TMPDIR/mail.jsonl"
+  printf '{"watch": 1800000000, "own": 1800000000, "inbound": 1800000000}\n' > system/logs/watch/cursors.json
+  [ "$(extensions/intraday/scripts/watch.py mail-query)" = '{"inbound": "-in:sent -category:promotions -category:social -category:forums after:1799999700"}' ]
+  inbound_says
+  run "$WF" --check
+  [ "$status" -eq 0 ]
+  [[ "$output" == "watch_fetch: 0 from Slack, - from sent mail, 2 from incoming mail, 0 events today" ]]
+  run "$WF"
+  [ "$status" -eq 0 ]
+  grep -qF -- '- [ ] owed: Review PR #12: Fix the export retries [due:: ' wiki/work/Now.md
+  grep -qF "(Pat Sample, since $TODAY, https://mail.google.com/mail/#all/thread-a:1)" wiki/work/Now.md
+  [ "$(grep -c 'vm-app-1' wiki/work/Now.md)" -eq 0 ]
+  grep -qF '[watch] CPU alert on vm-app-1 (mail) https://mail.google.com/mail/#all/thread-a:2' "$ALERTS"
+  [ "$(jq -r .inbound system/logs/watch/cursors.json)" -ne 1800000000 ]
+  [ "$(jq -s 'map(select(.step == "inbound")) | .[-1].count' system/logs/watch_fetch-*.jsonl)" -eq 2 ]
+  # The next tick reads the same threads again through its overlap: no second line, no second alert.
+  inbound_says
+  slack_says '{"items": []}'
+  run "$WF"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'Review PR #12' wiki/work/Now.md)" -eq 1 ]
+  [ "$(grep -c '\[watch\]' "$ALERTS")" -eq 1 ]
 }
