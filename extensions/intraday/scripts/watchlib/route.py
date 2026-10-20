@@ -15,7 +15,7 @@ from . import calendar as cal
 from .common import alert, append, records, state
 
 MAX_ALERTS = 3
-NOW_KINDS = {"deadline": "owed", "blocked": "waiting", "commitment": "owed"}
+NOW_KINDS = {"deadline": "owed", "blocked": "waiting", "commitment": "owed", "request": "owed"}
 ALERT_CHANGES = ("cancelled", "moved")
 SAID_WORDS = 4
 STOPWORDS = {"team", "with", "from", "group", "everyone", "folks", "people", "them", "they"}
@@ -72,11 +72,12 @@ def _span(start: str, end: str) -> str:
 def now_line(vault, partition: str, item: dict, day: str, events: list) -> tuple:
     """(status, line) for an item that makes a Now line: "added", "exists", "covered" or "refused"."""
     kind = NOW_KINDS[item["kind"]]
-    # A mail link is the thread's: a later commitment in the same thread is new, so mail relies on the ledger and _said.
-    if item["label"] != "mail" and _known_link(vault, partition, item["link"], day):
+    # A sent-mail link is the thread's: a later commitment in the same thread is new, so sent mail relies on the ledger
+    # and _said. An incoming thread is one item, so its link counts, as triage's line for the same thread does.
+    if item["query"] != "mail" and _known_link(vault, partition, item["link"], day):
         return "covered", ""
-    if item["kind"] == "commitment" and (_said(vault, partition, item["what"])
-                                         or (item["meeting"] and _calendar_names(events, item["who"]))):
+    if item["kind"] in ("commitment", "request") and (_said(vault, partition, item["what"])
+                                                      or (item["meeting"] and _calendar_names(events, item["who"]))):
         return "covered", ""
     where = "" if item["label"] == "mail" else f" (in {item['label']})"
     statement = f"{item['what']}{where}"

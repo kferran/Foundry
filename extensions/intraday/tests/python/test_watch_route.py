@@ -136,6 +136,34 @@ def test_a_thread_link_a_short_phrase_or_a_partial_name_does_not_cover_a_commitm
     assert [r["now"] for r in ledger(vault)] == ["added", "added", "added", "added"]
 
 
+THREAD = "https://mail.google.com/mail/#all/thread-a:3"
+
+
+def inbound(kind="request", what="Review PR #12: Fix the export retries", key="th3/1792428500000", **kw):
+    return item(kind=kind, query="inbound", what=what, key=key, label="mail", text="", change="other", **{"link": THREAD, **kw})
+
+
+def test_an_incoming_request_is_an_owed_line_and_an_incoming_alert_only_alerts(vault):
+    alert = inbound("incident", "CPU alert on vm-app-1", "th5/1792428600000", who="Monitoring",
+                    link="https://mail.google.com/mail/#all/thread-a:5")
+    assert run(vault, {"items": [inbound(), alert]}) == {"items": 2, "now": 1, "alerts": 1}
+    page = nowmod.read(vault, "work")
+    assert f"- [ ] owed: Review PR #12: Fix the export retries [due:: " in page
+    assert f"(Pat Sample, since {DAY}, {THREAD})" in page and "vm-app-1" not in page
+    assert alerts(vault) == ["- 09:10:00 [watch] CPU alert on vm-app-1 (mail) https://mail.google.com/mail/#all/thread-a:5"]
+    # The next tick reads a new message in the same thread: its link is on the Now page, so no second line.
+    run(vault, {"items": [inbound(what="Re-review PR #12 after the fix", key="th3/1792429000000")]})
+    assert [r["now"] for r in ledger(vault)] == ["added", "", "covered"]
+    assert len(nowmod.open_lines(nowmod.read(vault, "work"))) == 1
+
+
+def test_an_incoming_thread_triage_already_put_on_the_now_page_is_covered(vault):
+    nowmod.add(vault, "work", "owed", "Pat: asks you to review PR #12.", DAY, "pat@example.com", THREAD)   # triage's line
+    run(vault, {"items": [inbound()]})
+    assert [r["now"] for r in ledger(vault)] == ["covered"]
+    assert len(nowmod.open_lines(nowmod.read(vault, "work"))) == 1
+
+
 def test_a_meeting_commitment_gets_free_slots_unless_the_calendar_already_names_the_person(vault):
     c = item(kind="commitment", query="own", what="Set up a sync with Sam", who="Sam Sample", meeting=True, by="2026-10-21",
              key="k1", link=LINK + "1", label="group DM")

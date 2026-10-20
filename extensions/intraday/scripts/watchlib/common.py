@@ -12,6 +12,7 @@ from vaultlib.triage import Fail, config  # noqa: F401  (re-exported for the wat
 STATE = Path("system") / "logs" / "watch"
 QUERIES = ("watch", "mpim", "own", "capture")
 WATCH_KINDS = ("meeting_change", "deadline", "incident", "blocked", "decision", "partner")
+INBOUND_KINDS = ("request", "incident", "deadline")
 CHANGES = ("cancelled", "moved", "other")
 
 

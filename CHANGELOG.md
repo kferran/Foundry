@@ -9,6 +9,10 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## Changes
 
+## 2026-10-20
+- Fixed: the intraday watch reads incoming mail again each tick, as the in-session sweep did. Its Gmail session also searches mail since its own cursor, less promotions, social, forums and the senders in `watch_inbound_skip`. A review request or a task assigned to you becomes an `owed` Now line, a production alert a `[watch]` alert, and a deadline an `owed` line; triage and the watch never both add a line for the same thread. `watch_inbound_mail` (default on) turns it off, and `--check` counts incoming mail next to Slack and sent mail. `foundry-watch.service` now really allows 25 minutes (it still said 20). (#290, #289)
+  - Action: on a server with `intraday` on, run `system/scripts/install_units.sh --update` to install the 25-minute `foundry-watch.service`; optionally list bot and newsletter senders in `watch_inbound_skip`.
+
 ## 2026-10-19
 - Intraday fixes: a captured message is captured once; the watch skips the Foundry's own Slack notices (and refuses a capture channel that is the notify channel); a Slack search cut at its page limit resumes from its last message read; a thread link, a short phrase or part of a name no longer marks a commitment as already on the Now page; a channel's cancellation the calendar still lists is one alert and one today line; a block names no one when nobody was named; the today file holds only work items; a capture-only setup starts; a tick fetches at most two extra calendar days and its unit allows 25 minutes; a calendar change alerts only when the next tick still has it; an unreadable extension manifest no longer stops Slack notices. (#285 follow-up)
   - Action: on a server with `intraday` on, run `system/scripts/install_units.sh --update` to install the 25-minute `foundry-watch.service`; the smoke check names it until then.

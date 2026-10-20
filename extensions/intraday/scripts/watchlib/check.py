@@ -12,7 +12,7 @@ from vaultlib import now as nowmod
 from vaultlib.stream import blocks
 from vaultlib.triage import _structured, _text_json, one_line, reply
 
-from .common import CHANGES, WATCH_KINDS, Fail
+from .common import CHANGES, INBOUND_KINDS, WATCH_KINDS, Fail
 
 MAX_PAGES = 5
 MAIL_PAGES = 3
@@ -28,8 +28,11 @@ def _strip_cursor(i: dict) -> dict:
     return {k: v for k, v in i.items() if k != "cursor"}
 
 
-def slack_pages(stream, tool: str, queries: dict) -> tuple:
-    """({query name: [page payloads]}, the result message) after the tool-use and error checks."""
+def query_pages(stream, tool: str, queries: dict, name_of=None, take=_text_json, limit=MAX_PAGES,
+                server="Slack") -> tuple:
+    """({query name: [page payloads]}, the result message) after the tool-use and error checks. name_of(input) names
+    the built query a search input runs (by default: the Slack input itself, less a later page's cursor)."""
+    name_of = name_of or (lambda i: next((n for n, q in queries.items() if _strip_cursor(i) == q), None))
     calls, pages, errors, named = {}, {n: [] for n in queries}, [], False
     for m in stream:
         if m.get("type") == "assistant":
@@ -37,8 +40,7 @@ def slack_pages(stream, tool: str, queries: dict) -> tuple:
                 if b.get("name") not in ("ToolSearch", tool):
                     raise Fail(7, f"the session used an unexpected tool: {b.get('name')}")
                 if b.get("name") == tool:
-                    i = b.get("input") if isinstance(b.get("input"), dict) else {}
-                    name = next((n for n, q in queries.items() if _strip_cursor(i) == q), None)
+                    name = name_of(b.get("input") if isinstance(b.get("input"), dict) else {})
                     if name is None:
                         raise Fail(7, "the session searched with another query than the ones built for this tick")
                     b = {**b, "query": name}
@@ -57,19 +59,19 @@ def slack_pages(stream, tool: str, queries: dict) -> tuple:
                     continue
                 if "<persisted-output>" in json.dumps(content):
                     raise Fail(6, "a search result was too large for the stream; lower limit in watchlib/query.py")
-                pages[call["query"]].append(_text_json(b, m))
+                pages[call["query"]].append(take(b, m))
     result = next((m for m in reversed(stream) if m.get("type") == "result"), None)
     if result is None:
         raise Fail(1, "claude produced no result")
     if errors:
         raise Fail(6, f"the connector returned an error: {errors[0]}")
     if not any(c.get("name") == tool for c in calls.values()):
-        raise Fail(1 if named else 3, f"the session never called {tool}" if named else "no Slack connector reachable")
+        raise Fail(1 if named else 3, f"the session never called {tool}" if named else f"no {server} connector reachable")
     if result.get("is_error") or result.get("subtype") != "success":
         raise Fail(1, f"claude returned an error result ({result.get('subtype')})")
     for name, got in pages.items():
-        if len(got) > MAX_PAGES:
-            raise Fail(7, f"the session read {len(got)} pages of the {name} search; the limit is {MAX_PAGES}")
+        if len(got) > limit:
+            raise Fail(7, f"the session read {len(got)} pages of the {name} search; the limit is {limit}")
     return pages, result
 
 
@@ -121,7 +123,7 @@ def _by(value) -> str:
 def slack_extract(stream, tool: str, queries: dict, notify: str = "") -> dict:
     """{"items": [...], "captures": [...], "full": [query names]}: the classified watch and own messages joined to
     the results, and every message of the capture search (never classified)."""
-    pages, result = slack_pages(stream, tool, queries)
+    pages, result = query_pages(stream, tool, queries)
     known = {n: messages(got, notify) for n, got in pages.items()}
     items, seen = [], set()
     for r in reply(result):
@@ -146,9 +148,10 @@ def slack_extract(stream, tool: str, queries: dict, notify: str = "") -> dict:
     return {"items": items, "captures": captures, "full": full, "resume": resume}
 
 
-def sent_threads(got: list, since: int = 0) -> dict:
-    """thread id -> {link, date (epoch ms of its latest sent message)}, from the search results only; a thread whose
-    sent messages are all older than `since` (epoch seconds) is left out (spec §3.3)."""
+def sent_threads(got: list, since: int = 0, sent: bool = True) -> dict:
+    """thread id -> {link, date (epoch ms of its latest sent message, or with sent=False its latest incoming one)},
+    from the search results only; a thread whose such messages are all older than `since` (epoch seconds) is left out
+    (spec §3.3)."""
     out = {}
     for sc in got:
         listed = sc.get("threads", [])
@@ -158,30 +161,40 @@ def sent_threads(got: list, since: int = 0) -> dict:
             msgs = [m for m in (t.get("messages") or []) if isinstance(m, dict)] if isinstance(t, dict) else []
             if not (isinstance(t, dict) and isinstance(t.get("id"), str) and str(t.get("viewUrl", "")).startswith("https://")):
                 raise Fail(1, "a thread lacks an id or a link")
-            sent = [str(m.get("internalDate", "")) for m in msgs if "SENT" in (m.get("labelIds") or [])
-                    and str(m.get("internalDate", "")).isdigit() and int(m["internalDate"]) >= since * 1000]
-            if sent:
-                out[t["id"]] = {"link": t["viewUrl"], "date": max(sent, key=lambda d: int(d) if d.isdigit() else 0)}
+            dates = [str(m.get("internalDate", "")) for m in msgs if ("SENT" in (m.get("labelIds") or [])) == sent
+                     and "DRAFT" not in (m.get("labelIds") or [])
+                     and str(m.get("internalDate", "")).isdigit() and int(m["internalDate"]) >= since * 1000]
+            if dates:
+                out[t["id"]] = {"link": t["viewUrl"], "date": max(dates, key=int)}
     return out
 
 
-def mail_extract(stream, q: str) -> dict:
-    """{"items": [...], "full": [] or ["mail"]}: the sent-mail commitments joined to the search results."""
-    from vaultlib.triage import pages
+def mail_extract(stream, queries: dict) -> dict:
+    """{"items": [...], "full": [query names]}: the sent-mail commitments and the incoming requests, incidents and
+    deadlines, each joined to the threads its own search returned."""
     from .query import GMAIL_TOOL
-    got, result = pages(stream, GMAIL_TOOL, lambda i: i.get("query") == q and i.get("view") == "THREAD_VIEW_MINIMAL",
-                        _structured, MAIL_PAGES, "Gmail")
-    since = re.search(r"after:(\d+)", q)
-    known = sent_threads(got, int(since.group(1)) if since else 0)
+    names = {q: n for n, q in queries.items()}
+    pages, result = query_pages(stream, GMAIL_TOOL, queries,
+                                lambda i: names.get(i.get("query")) if i.get("view") == "THREAD_VIEW_MINIMAL" else None,
+                                _structured, MAIL_PAGES, "Gmail")
+    for name, got in pages.items():
+        if not got:   # its cursor would move past mail no one read
+            raise Fail(1, f"the session never ran the {name} search")
+    known = {}
+    for name, got in pages.items():
+        since = re.search(r"after:(\d+)", queries[name])
+        known[name] = sent_threads(got, int(since.group(1)) if since else 0, sent=name == "mail")
     items, seen = [], set()
     for r in reply(result):
-        tid, what = r.get("thread_id"), one_line(r.get("what"))
-        if r.get("kind") != "commitment" or tid not in known or tid in seen or not what:
-            continue
-        seen.add(tid)
-        t = known[tid]
-        items.append({"query": "mail", "key": f"{tid}/{t['date']}", "kind": "commitment", "what": what,
-                      "who": _who(r.get("who")), "by": _by(r.get("by")), "meeting": r.get("meeting") is True,
+        tid, what, kind = r.get("thread_id"), one_line(r.get("what")), r.get("kind")
+        q = "mail" if kind == "commitment" else "inbound" if kind in INBOUND_KINDS else ""
+        if tid not in known.get(q, {}) or (q, tid) in seen or not what:
+            continue   # a thread its search never returned, or a kind that search cannot give, is dropped
+        seen.add((q, tid))
+        t = known[q][tid]
+        items.append({"query": q, "key": f"{tid}/{t['date']}", "kind": kind, "what": what,
+                      "who": _who(r.get("who")), "by": _by(r.get("by")), "meeting": q == "mail" and r.get("meeting") is True,
                       "change": "other", "link": t["link"], "ts": t["date"], "label": "mail", "text": ""})
-    full = ["mail"] if len(got) == MAIL_PAGES and got[-1].get("nextPageToken") else []
+    # No ascending sort: a search that fills its pages leaves its oldest threads unread (spec §3.3).
+    full = [n for n, got in pages.items() if len(got) == MAIL_PAGES and got[-1].get("nextPageToken")]
     return {"items": items, "captures": [], "full": full}

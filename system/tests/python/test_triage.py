@@ -110,6 +110,14 @@ def test_record_adds_one_owed_line_per_new_message_and_records_the_tick(vault):
     assert ticks == [5_000, 6_000, 7_000]
 
 
+def test_a_thread_another_source_already_put_on_the_now_page_adds_no_second_line(vault):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Review the rejected case", TODAY, "Blake", "https://mail.google.com/mail/#all/a1")
+    found = tr.extract(stream([thread()], items=[item()]), Q)
+    assert tr.record(vault, "work", found, TODAY, "t", 5_000) == []   # the intraday watch's line for the thread
+    assert len(now.open_lines(now.read(vault, "work"))) == 1
+
+
 def test_a_link_the_now_line_cannot_hold_keeps_the_item(vault):
     prepare(vault)
     found = tr.extract(stream([thread(link="https://mail.example/a,b")], items=[item()]), Q)

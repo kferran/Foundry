@@ -3,12 +3,12 @@
 
 Usage: watch.py slack-input                       print this tick's Slack search inputs as {query name: input} JSON
        watch.py slack-tool                        print the Slack search tool's name
-       watch.py mail-query                        print the sent-mail query, or nothing when the mail session is off
+       watch.py mail-query                        print the mail session's queries as {query name: query} JSON ({}: off)
        watch.py hold                              print why this tick is skipped (usage ceiling), or nothing
        watch.py extract-slack <inputs JSON>       check a Slack session's stream on stdin; print the found JSON
-       watch.py extract-mail <query>              check a Gmail session's stream on stdin; print the found JSON
+       watch.py extract-mail <queries JSON>       check a Gmail session's stream on stdin; print the found JSON
        watch.py slot-days <found file>…           print the workdays whose calendar the free slots need, one a line
-       watch.py route <start epoch> [--slack <found file> <inputs JSON>] [--mail <found file>]
+       watch.py route <start epoch> [--slack <found file> <inputs JSON>] [--mail <found file> <queries JSON>]
                       [--today <tsv file>] [--day <date> <tsv file>]…
                                                   under run.lock: the calendar diff, the cross-check, the Now lines,
                                                   the alerts, the capture file and the cursors of the sessions given
@@ -41,7 +41,7 @@ def do_route(intake, args: list) -> str:
         if args[i] == "--slack":
             slack, i = (_found(args[i + 1]), json.loads(args[i + 2])), i + 3
         elif args[i] == "--mail":
-            mail, i = _found(args[i + 1]), i + 2
+            mail, i = (_found(args[i + 1]), json.loads(args[i + 2])), i + 3
         elif args[i] == "--today":
             today_tsv, i = Path(args[i + 1]).read_text(encoding="utf-8"), i + 2
         elif args[i] == "--day":
@@ -51,7 +51,7 @@ def do_route(intake, args: list) -> str:
     day, now = intake.today(), intake.dt()
     clock = now.strftime("%H:%M:%S")
     partition = common.partition(VAULT)
-    found = {"items": [*(slack[0]["items"] if slack else []), *(mail["items"] if mail else [])]}
+    found = {"items": [*(slack[0]["items"] if slack else []), *(mail[0]["items"] if mail else [])]}
     events = cal.parse_tsv(today_tsv) if today_tsv is not None else []
     fetched = [day] if today_tsv is not None else []
     for d, text in days.items():
@@ -71,12 +71,12 @@ def do_route(intake, args: list) -> str:
         if slack and query.first_capture(VAULT):
             names.append("capture")
         if mail is not None:
-            names.append("mail")
+            names += list(mail[1])
         resume = {n: e for n, e in (slack[0].get("resume") or {}).items() if n in names} if slack else {}
         query.advance(VAULT, [n for n in names if n not in resume], start)
         for n, epoch in resume.items():
             query.advance(VAULT, [n], epoch)
-        for name in [*(slack[0].get("full") or [] if slack else []), *(mail.get("full") or [] if mail else [])]:
+        for name in [*(slack[0].get("full") or [] if slack else []), *(mail[0].get("full") or [] if mail else [])]:
             key = f"the {name} search read its full page limit:"
             rest = ("the next tick reads on from the last message read" if name in resume
                     else "the oldest messages since the last tick were not read")
@@ -94,9 +94,7 @@ def main(argv) -> int:
         elif args == ["slack-tool"]:
             print(query.slack_tool(VAULT))
         elif args == ["mail-query"]:
-            q = query.mail(VAULT, now)
-            if q:
-                print(q)
+            print(json.dumps(query.mail(VAULT, now)))
         elif args == ["hold"]:
             reason = triage.hold(VAULT, intake.dt())
             if reason:
@@ -105,7 +103,7 @@ def main(argv) -> int:
             print(json.dumps(check.slack_extract(messages(sys.stdin.read()), query.slack_tool(VAULT), json.loads(args[1]),
                                                  str(triage.config(VAULT).get("slack_notify_channel") or ""))))
         elif len(args) == 2 and args[0] == "extract-mail":
-            print(json.dumps(check.mail_extract(messages(sys.stdin.read()), args[1])))
+            print(json.dumps(check.mail_extract(messages(sys.stdin.read()), json.loads(args[1]))))
         elif args[:1] == ["slot-days"] and len(args) > 1:
             items = [i for p in args[1:] for i in _found(p).get("items") or []]
             print("".join(f"{d}\n" for d in cal.slot_days(intake.today(), items)), end="")
@@ -113,7 +111,7 @@ def main(argv) -> int:
             print(do_route(intake, args[1:]))
         else:
             raise Fail(2, "usage: watch.py slack-input | slack-tool | mail-query | hold | extract-slack <inputs> | "
-                          "extract-mail <query> | slot-days <found>… | route <start epoch> [options]")
+                          "extract-mail <queries> | slot-days <found>… | route <start epoch> [options]")
     except Fail as f:
         print(f"watch: {f.reason}", file=sys.stderr)
         return f.code
