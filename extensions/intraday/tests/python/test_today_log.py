@@ -80,3 +80,9 @@ def test_only_digests_named_for_the_day_are_read(vault, monkeypatch):
 def test_nothing_new_writes_no_file(vault):
     tl.write(vault, DAY, "09:00:00")
     assert not (vault / "briefings" / f"{DAY}.today.md").exists()
+
+
+def test_a_bulleted_bold_outcome_reads_as_plain_text():
+    body = ("## Outcome\n- **Intraday is on.** The config lists the channels. More.\n\n## Delivered\n"
+            "- **decision** — intraday turned on — https://x\n")
+    assert tl.digest_entry(body) == ["Intraday is on.", "  - delivered: decision — intraday turned on — https://x"]
