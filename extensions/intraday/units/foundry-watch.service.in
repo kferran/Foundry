@@ -6,6 +6,6 @@ Type=oneshot
 WorkingDirectory={{VAULT_ROOT}}
 Environment="TZ={{TZ}}"
 Environment="PATH={{UNIT_PATH}}"
-TimeoutStartSec=25min
+TimeoutStartSec=29min
 SuccessExitStatus=1 4
 ExecStart="{{VAULT_ROOT}}/extensions/intraday/scripts/watch_fetch.sh"
