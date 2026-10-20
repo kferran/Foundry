@@ -105,10 +105,10 @@ def now_line(vault, partition: str, item: dict, day: str, events: list) -> tuple
     statement = f"{item['what']}{where}"
     due = item["by"] if item["by"] and item["by"] >= day else ""
     try:
-        status, line = nowmod.add(vault, partition, kind, statement, day, item["who"], item["link"], due=due)
+        status, line = nowmod.add(vault, partition, kind, statement, day, item["who"], item["link"], due=due, fit=True)
     except ValueError:
         try:
-            status, line = nowmod.add(vault, partition, kind, statement, day, "", item["link"], due=due)
+            status, line = nowmod.add(vault, partition, kind, statement, day, "", item["link"], due=due, fit=True)
         except ValueError:
             return "refused", ""
     return ("added" if status == "added" else "exists"), line

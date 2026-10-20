@@ -329,9 +329,12 @@ def record(vault, partition: str, found: dict, today: str, now_iso: str, now_epo
             continue   # seen, or another source's line (the intraday watch's) already holds the thread
         statement = f"{i['who']}: {i['ask'].rstrip('.')}." + (f" Next: {i['next_step']}" if i.get("next_step") else "")
         try:
-            status, line = nowmod.add(vault, partition, "owed", statement, today, i["sender"], i["link"])
+            status, line = nowmod.add(vault, partition, "owed", statement, today, i["sender"], i["link"], fit=True)
         except ValueError:  # a link or sender the Now line cannot hold: keep the item, drop the metadata
-            status, line = nowmod.add(vault, partition, "owed", f"{statement} ({i['link']})", today)
+            try:
+                status, line = nowmod.add(vault, partition, "owed", f"{statement} ({i['link']})", today, fit=True)
+            except ValueError:   # still no valid line: record the item so the tick and the items after it go on
+                status, line = "refused", ""
         _append(vault, today, {"kind": "item", "thread_id": i["thread_id"], "date": i["date"], "line": line,
                                "time": now_iso, "source": source})
         known.add((i["thread_id"], i["date"]))

@@ -110,6 +110,18 @@ def test_record_adds_one_owed_line_per_new_message_and_records_the_tick(vault):
     assert ticks == [5_000, 6_000, 7_000]
 
 
+def test_a_long_ask_is_cut_to_fit_and_the_items_after_it_still_land(vault):
+    prepare(vault)
+    found = tr.extract(stream([thread("a1"), thread("b2")], items=[item("a1", ask="a" * 300, nxt="n" * 300),
+                                                                   item("b2", ask="asks for the deck")]), Q)
+    assert len(tr.record(vault, "work", found, TODAY, "t", 5_000)) == 2
+    lines = now.open_lines(now.read(vault, "work"))
+    assert len(lines) == 2
+    assert all(len(line) <= now.MAX_LINE for line in lines)
+    assert "…" in lines[0]
+    assert [r["epoch"] for r in tr.records(vault, TODAY) if r["kind"] == "tick"] == [5_000]
+
+
 def test_a_thread_another_source_already_put_on_the_now_page_adds_no_second_line(vault):
     prepare(vault)
     now.add(vault, "work", "owed", "Review the rejected case", TODAY, "Blake", "https://mail.google.com/mail/#all/a1")
