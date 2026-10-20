@@ -259,7 +259,7 @@ def test_inbound_items_join_to_the_inbound_search_and_key_on_the_latest_incoming
     assert got["items"] == [{"query": "inbound", "key": "th3/1792428500000", "kind": "request",
                              "what": "Review PR #12: ((Fix)) retries", "who": "Pat Sample ops", "by": "", "meeting": False,
                              "change": "other", "link": "https://mail.google.com/mail/#all/thread-a:3",
-                             "ts": "1792428500000", "label": "mail", "text": ""}]
+                             "ts": "1792428500000", "label": "mail", "text": "Review requested: PR #12"}]   # route reads ids in it
     assert got["full"] == []
 
 

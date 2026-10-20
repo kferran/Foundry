@@ -210,8 +210,12 @@ inbound_says() {
   printf '{"watch": 1800000000, "own": 1800000000, "inbound": 1800000000}\n' > system/logs/watch/cursors.json
   [ "$(extensions/intraday/scripts/watch.py mail-query)" = '{"inbound": "-in:sent -category:promotions -category:social -category:forums after:1799999700"}' ]
   inbound_says
+  export STUB_ARGS_MAIL="$BATS_TEST_TMPDIR/mail.args"
   run "$WF" --check
   [ "$status" -eq 0 ]
+  # The prompt keeps merge and approve events and other people's tickets out of request (#289 live tick).
+  grep -qF 'Give request only when the newest incoming message asks the owner to review (such as "added you as a reviewer" or "requested your review") or assigns work to the owner; an approved, merged, declined, updated or commented event is not a request: skip it.' "$STUB_ARGS_MAIL"
+  grep -qF 'A ticket created or updated mail is a request only when its newest message shows the owner as the assignee; otherwise skip it, or list it as incident when it is a blocker or a production problem.' "$STUB_ARGS_MAIL"
   [[ "$output" == "watch_fetch: 0 from Slack, - from sent mail, 2 from incoming mail, 0 events today" ]]
   run "$WF"
   [ "$status" -eq 0 ]

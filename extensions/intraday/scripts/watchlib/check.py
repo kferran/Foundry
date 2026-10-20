@@ -230,7 +230,8 @@ def mail_extract(stream, queries: dict, rules=()) -> dict:
         t = known[q][tid]
         items[q, tid] = {"query": q, "key": f"{tid}/{t['date']}", "kind": kind, "what": what,
                          "who": _who(r.get("who")), "by": _by(r.get("by")), "meeting": q == "mail" and r.get("meeting") is True,
-                         "change": "other", "link": t["link"], "ts": t["date"], "label": "mail", "text": ""}
+                         "change": "other", "link": t["link"], "ts": t["date"], "label": "mail",
+                         "text": one_line(t["subject"]) if q == "inbound" else ""}   # the subject: route reads its PR or ticket
     for tid, t in known.get("inbound", {}).items():
         name, addr = _sender(t["sender"])
         kind = next((k for p, subj, snip, k in rules if _rule_hit(p, addr)
@@ -247,7 +248,7 @@ def mail_extract(stream, queries: dict, rules=()) -> dict:
         if what:
             items["inbound", tid] = {"query": "inbound", "key": f"{tid}/{t['date']}", "kind": kind, "what": what,
                                      "who": _who(name or addr), "by": "", "meeting": False, "change": "other",
-                                     "link": t["link"], "ts": t["date"], "label": "mail", "text": ""}
+                                     "link": t["link"], "ts": t["date"], "label": "mail", "text": what}
     for s in stats.values():
         s["dropped_kinds"] = sorted(s["dropped_kinds"])[:10]
     # No ascending sort: a search that fills its pages leaves its oldest threads unread (spec §3.3).
