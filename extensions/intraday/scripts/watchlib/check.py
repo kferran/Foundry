@@ -196,7 +196,7 @@ def mail_extract(stream, queries: dict, rules=()) -> dict:
     incoming requests, incidents and deadlines, each joined to the threads its own search returned, plus each incoming
     thread whose latest incoming message matches one of `rules` (query.inbound_rules). stats counts, per search, the
     threads returned, those with a message at or after the cursor (fresh), the reply's rows, the rows kept, the threads
-    a rule matched, the rows dropped by reason and the dropped rows' kinds (cut to 20 safe characters)."""
+    a rule matched, those of them the model gave no row for (missed), the rows dropped by reason and the dropped rows' kinds (cut to 20 safe characters)."""
     from .query import GMAIL_TOOL
     names = {q: n for n, q in queries.items()}
     pages, result = query_pages(stream, GMAIL_TOOL, queries,
@@ -210,7 +210,7 @@ def mail_extract(stream, queries: dict, rules=()) -> dict:
         since = re.search(r"after:(\d+)", queries[name])
         known[name] = sent_threads(got, int(since.group(1)) if since else 0, sent=name == "mail")
     stats = {n: {"threads": sum(len(p.get("threads") or []) for p in got), "fresh": len(known[n]), "rows": 0,
-                 "kept": 0, "rules": 0, "dropped": dict.fromkeys(DROPS, 0), "dropped_kinds": set()}
+                 "kept": 0, "rules": 0, "missed": 0, "dropped": dict.fromkeys(DROPS, 0), "dropped_kinds": set()}
              for n, got in pages.items()}
     items, seen = {}, set()
     for r in reply(result):
@@ -242,6 +242,7 @@ def mail_extract(stream, queries: dict, rules=()) -> dict:
         if ("inbound", tid) in items:   # the model's row stays, with the rule's kind
             items["inbound", tid]["kind"] = kind
             continue
+        stats["inbound"]["missed"] += 1   # a thread the owner said matters, and the model gave no row for
         what = one_line(t["subject"])
         if what:
             items["inbound", tid] = {"query": "inbound", "key": f"{tid}/{t['date']}", "kind": kind, "what": what,

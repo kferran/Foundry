@@ -171,9 +171,9 @@ kind is only commitment (sent mail) or request, incident or deadline (incoming m
       for n in $(jq -r 'keys[]' <<< "$mq"); do
         logline "$n" 0 "" "$(mcount "$n")" "$(jq -c --arg n "$n" '{stats: (.stats[$n] // {})}' "$work/mail.json")"
       done
-      if (( ! check )) && [[ "$(jq '.stats.inbound.threads > 0 and .stats.inbound.rows == 0' "$work/mail.json")" == true ]]; then
-        alert_once "the incoming-mail search returned threads but the model listed none:" \
-          "$(jq -r '"\(.stats.inbound.threads) threads, \(.stats.inbound.rules) matched by watch_inbound_rules; see the inbound line in system/logs/watch_fetch-*.jsonl"' "$work/mail.json")"
+      if (( ! check )) && [[ "$(jq '(.stats.inbound.missed // 0) > 0' "$work/mail.json")" == true ]]; then
+        alert_once "watch_inbound_rules matched incoming mail the model gave no row for:" \
+          "$(jq -r '"\(.stats.inbound.missed) thread(s) this tick; see the inbound line in system/logs/watch_fetch-*.jsonl"' "$work/mail.json")"
       fi
     else
       failed mail "$CONNECTOR_EXIT" "$CONNECTOR_REASON"

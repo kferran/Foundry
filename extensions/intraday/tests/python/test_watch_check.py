@@ -289,10 +289,10 @@ def test_mail_extract_counts_each_searchs_threads_and_rows_and_why_each_row_was_
              {"thread_id": "th3", "kind": "<script>very-long-kind-name-here-x", "what": "x"},   # a kind no search gives
              {"thread_id": "th3", "kind": "commitment", "what": "an incoming thread holds no commitment"}]
     got = check.mail_extract(mail_stream([(MQ["mail"], [SENT], ""), (MQ["inbound"], [REVIEW, OLD], "")], items), MQ)
-    assert got["stats"]["inbound"] == {"threads": 2, "fresh": 1, "rows": 7, "kept": 1, "rules": 0,
+    assert got["stats"]["inbound"] == {"threads": 2, "fresh": 1, "rows": 7, "kept": 1, "rules": 0, "missed": 0,
                                        "dropped": {"unknown_thread": 3, "wrong_kind": 1, "empty_what": 1, "duplicate": 1},
                                        "dropped_kinds": ["deadline", "incident", "request", "scriptvery-long-kind"]}
-    assert got["stats"]["mail"] == {"threads": 1, "fresh": 1, "rows": 1, "kept": 0, "rules": 0,
+    assert got["stats"]["mail"] == {"threads": 1, "fresh": 1, "rows": 1, "kept": 0, "rules": 0, "missed": 0,
                                     "dropped": {"unknown_thread": 1, "wrong_kind": 0, "empty_what": 0, "duplicate": 0},
                                     "dropped_kinds": ["commitment"]}
 
@@ -377,7 +377,7 @@ def test_inbound_rules_turn_matching_threads_into_items_without_the_model(vault)
         (f"th16/{NEWER}", "request", PR, "Code", "https://mail.google.com/mail/#all/thread-th16"),
         (f"th17/{FRESH}", "deadline", "Report due 2026-10-23", "Reminders", "https://mail.google.com/mail/#all/thread-th17")]
     assert all(i["query"] == "inbound" and i["label"] == "mail" and i["meeting"] is False for i in got["items"])
-    assert got["stats"]["inbound"]["rows"] == 0 and got["stats"]["inbound"]["rules"] == 7
+    assert got["stats"]["inbound"]["rows"] == 0 and got["stats"]["inbound"]["rules"] == 7 and got["stats"]["inbound"]["missed"] == 7
 
 
 def test_a_model_row_for_a_rule_thread_is_one_item_with_the_rules_kind_and_the_models_words(vault):
@@ -388,7 +388,7 @@ def test_a_model_row_for_a_rule_thread_is_one_item_with_the_rules_kind_and_the_m
     assert [(i["key"], i["kind"], i["what"], i["who"], i["by"]) for i in got["items"]] == [
         (f"th5/{FRESH}", "request", "Review PR #12: Fix retries", "Pat Sample", "2026-10-21"),
         (f"th6/{FRESH}", "incident", "(SEV1) Checkout errors", "alerts@example.com", "")]
-    assert got["stats"]["inbound"]["kept"] == 1 and got["stats"]["inbound"]["rules"] == 2
+    assert got["stats"]["inbound"]["kept"] == 1 and got["stats"]["inbound"]["rules"] == 2 and got["stats"]["inbound"]["missed"] == 1
 
 
 def test_inbound_since_replays_the_incoming_search_from_an_epoch_of_the_last_seven_days(vault):

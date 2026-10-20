@@ -228,6 +228,7 @@ inbound_says() {
   [ "$status" -eq 0 ]
   [ "$(grep -c 'Review PR #12' wiki/work/Now.md)" -eq 1 ]
   [ "$(grep -c '\[watch\]' "$ALERTS")" -eq 1 ]
+  [ "$(grep -c '\[intraday\]' "$ALERTS")" -eq 0 ]   # no rule set: nothing the model missed to report
 }
 
 @test "incoming-mail rules: with no model rows, a reviewer mail becomes an owed line and an alert mail a [watch] alert; the log counts why" {
@@ -261,8 +262,8 @@ EOF
   grep -qF -- '- [ ] owed: Re: (Tool) Pull request #12: Fix retries (app) [due:: ' wiki/work/Now.md
   grep -qF "(Code, since $TODAY, https://mail.google.com/mail/#all/thread-a:1)" wiki/work/Now.md
   grep -qF '[watch] (SEV1) Checkout errors (mail) https://mail.google.com/mail/#all/thread-a:2' "$ALERTS"
-  [ "$(grep -c '\[intraday\] the incoming-mail search returned threads but the model listed none' "$ALERTS")" -eq 1 ]
-  [ "$(jq -sc 'map(select(.step == "inbound")) | .[-1] | [.count, .stats.threads, .stats.fresh, .stats.rows, .stats.rules]' system/logs/watch_fetch-*.jsonl)" = '[2,3,3,0,2]' ]
+  [ "$(grep -c '\[intraday\] watch_inbound_rules matched incoming mail the model gave no row for:' "$ALERTS")" -eq 1 ]
+  [ "$(jq -sc 'map(select(.step == "inbound")) | .[-1] | [.count, .stats.threads, .stats.fresh, .stats.rows, .stats.rules, .stats.missed]' system/logs/watch_fetch-*.jsonl)" = '[2,3,3,0,2,2]' ]
 }
 
 @test "--inbound-since takes only an epoch of the last 7 days, and a bad inbound rule stops the tick before any session runs" {
