@@ -59,11 +59,16 @@ def section(body: str, start) -> list:
     return out
 
 
+def _plain(line: str) -> str:
+    """A digest line without its bullet marker or bold markers: Outcome is often written as `- **Label:** text`."""
+    return re.sub(r"^[-*+]\s+", "", line.strip()).replace("**", "")
+
+
 def digest_entry(body: str) -> list:
-    outcome = " ".join(x.strip() for x in section(body, OUTCOME) if x.strip())
+    outcome = " ".join(_plain(x) for x in section(body, OUTCOME) if x.strip())
     first = re.split(r"(?<=[.!?])\s", outcome, maxsplit=1)[0] if outcome else "a session ended"
     lines = [clean(first)]
-    lines += [f"  - delivered: {clean(x.strip()[2:])}" for x in section(body, DELIVERED) if x.strip().startswith("- ")]
+    lines += [f"  - delivered: {clean(_plain(x))}" for x in section(body, DELIVERED) if x.strip().startswith("- ")]
     return lines
 
 
