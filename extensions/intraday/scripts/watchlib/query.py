@@ -88,11 +88,18 @@ def slack(vault, now_epoch: int) -> dict:
     if capture:
         if not SLACK_ID.fullmatch(capture):
             raise Fail(2, f"capture_channel: {capture!r} is not a Slack channel ID")
-        if capture == str(cfg.get("slack_notify_channel") or ""):
-            raise Fail(2, "capture_channel is slack_notify_channel: the capture would copy the Foundry's own notices")
+        # #293: with notices in a daily thread the notify channel is also the capture channel, read for the owner's
+        # posts only; capture.keep drops Foundry's own by their recorded ts.
+        shared = capture == str(cfg.get("slack_notify_channel") or "")
+        if shared and cfg.get("slack_notify_thread") != "daily":
+            raise Fail(2, "capture_channel is slack_notify_channel: the capture would copy the Foundry's own notices "
+                          "(set slack_notify_thread: daily to share the channel)")
+        if shared and not user:
+            raise Fail(2, "capture_channel is slack_notify_channel: set watch_user_id, whose posts it captures")
         if "capture" in cur:
             date, after = _after(cur["capture"] - OVERLAP_SECONDS)
-            out["capture"] = {"filters": f"in:<#{capture}> {date}", "after": after, **COMMON}
+            owner = f" from:<@{user}>" if shared else ""
+            out["capture"] = {"filters": f"in:<#{capture}>{owner} {date}", "after": after, **COMMON}
     return {n: out[n] for n in QUERIES if n in out}
 
 

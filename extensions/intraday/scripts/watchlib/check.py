@@ -124,7 +124,8 @@ def slack_extract(stream, tool: str, queries: dict, notify: str = "") -> dict:
     """{"items": [...], "captures": [...], "full": [query names]}: the classified watch and own messages joined to
     the results, and every message of the capture search (never classified)."""
     pages, result = query_pages(stream, tool, queries)
-    known = {n: messages(got, notify) for n, got in pages.items()}
+    known = {n: messages(got, "" if n == "capture" else notify) for n, got in pages.items()}   # #293: query.slack
+    # builds a capture in the notify channel only with notices in a daily thread
     items, seen = [], set()
     for r in reply(result):
         q, key = r.get("query"), f"{r.get('channel_id')}/{r.get('ts')}"

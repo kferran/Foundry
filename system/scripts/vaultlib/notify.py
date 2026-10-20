@@ -5,7 +5,7 @@ import json
 import re
 import shlex
 import subprocess
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -14,6 +14,8 @@ from .redact import redact
 from .stream import blocks
 
 STATE = Path("system/logs/notify/state.json")
+THREAD = Path("system/logs/notify/thread.json")   # #293: each day's parent and every post's ts, kept THREAD_DAYS
+THREAD_DAYS = 7
 LINE_MAX = 300
 MESSAGE_MAX = 4000
 TRIAGE_TEXT = re.compile(r"(?<=\[triage\] )(\d+) new: .*$")
@@ -75,12 +77,37 @@ def _load(vault) -> dict:
         return {}
 
 
-def commit(vault, cursor: dict) -> None:
-    path = Path(vault) / STATE
+def commit(vault, cursor: dict, rel: Path = STATE) -> None:
+    path = Path(vault) / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(cursor, indent=1, sort_keys=True))
     tmp.replace(path)
+
+
+def thread_state(vault) -> dict:
+    """{"parents": {date: ts}, "posts": {ts: {day, thread, text}}}: every post notify made with threading on (#293)."""
+    try:
+        data = json.loads((Path(vault) / THREAD).read_text())
+    except (OSError, ValueError):
+        data = {}
+    data = data if isinstance(data, dict) else {}
+    return {k: dict(data.get(k) or {}) if isinstance(data.get(k), dict) else {} for k in ("parents", "posts")}
+
+
+def parent(vault, day: str) -> str:
+    return str(thread_state(vault)["parents"].get(day) or "")
+
+
+def record(vault, day: str, ts: str, text: str, thread: str) -> None:
+    """Record a post: with no thread, the day's parent. Days older than THREAD_DAYS go."""
+    s = thread_state(vault)
+    if not thread:
+        s["parents"][day] = ts
+    s["posts"][ts] = {"day": day, "thread": thread, "text": text}
+    first = (date.fromisoformat(day) - timedelta(days=THREAD_DAYS)).isoformat()
+    commit(vault, {"parents": {d: t for d, t in s["parents"].items() if d >= first},
+                   "posts": {t: p for t, p in s["posts"].items() if str(p.get("day")) >= first}}, THREAD)
 
 
 def _new_lines(path: Path, offset: int) -> tuple:
@@ -278,21 +305,40 @@ def _norm(text: str) -> str:
     return " ".join(text.split())
 
 
-def check(stream, tool: str, channel: str, message_text: str, lines: list) -> str:
-    """Read a posting session. Returns "" when it posted as asked, or the drift when the post reached the channel
-    but not exactly (posted twice, an event line missing): the events count as sent either way, so a good post is
-    never repeated. Raises Fail 7 when the session broke its rules (another tool, another channel, an argument
-    other than the channel, the text and link previews, or text nobody collected), so notify.sh holds notices
-    until the owner looks; Fail 1, 3, 4 or 6 when nothing was posted."""
-    calls, named, errors, ok, result = {}, False, set(), set(), None
+def _posted(content, channel: str, thread) -> str:
+    """The ts of the first link to a message in the channel in a send result, or ""; Fail 7 when it names another
+    thread than the expected one (#293)."""
+    text = content if isinstance(content, str) else " ".join(
+        str(c.get("text") or "") for c in content or [] if isinstance(c, dict))
+    m = re.search(rf"https://(?:[a-z0-9-]+\.)+slack\.com/archives/{re.escape(channel)}/p(\d{{10}})(\d{{6}})(\S*)", text)
+    if not m:
+        return ""
+    ts, parent_ts = f"{m.group(1)}.{m.group(2)}", re.search(r"thread_ts=(\d+\.\d+)", m.group(3))
+    if parent_ts and parent_ts.group(1) != (thread or ts):
+        raise Fail(7, "the post landed in another thread")
+    return ts
+
+
+def check(stream, tool: str, channel: str, message_text: str, lines: list, thread=None) -> tuple:
+    """Read a posting session. Returns (drift, posted ts): drift is "" when it posted as asked, or what differs when
+    the post reached the channel but not exactly (posted twice, an event line missing): the events count as sent
+    either way, so a good post is never repeated. The ts are read from the send results' message links. Raises Fail 7
+    when the session broke its rules (another tool, another channel, an argument other than the channel, the text and
+    link previews, or text nobody collected), so notify.sh holds notices until the owner looks; Fail 1, 3, 4 or 6
+    when nothing was posted. thread (#293): None with threading off; "" for the day's parent, posted with no
+    thread_ts; else the parent ts the post must carry as thread_ts. With threading on, a post whose ts cannot be
+    read is Fail 7: the watch could not tell it from the owner's own post."""
+    calls, named, errors, ok, result, texts = {}, False, set(), set(), None, {}
+    allowed = POST_ARGS | ({"thread_ts"} if thread else set())
     for m in stream:
         if m.get("type") == "assistant":
             for b in blocks(m, "tool_use"):
                 if b.get("name") not in ("ToolSearch", tool):
                     raise Fail(7, f"the session used an unexpected tool: {b.get('name')}")
                 args = b.get("input") or {}
-                if b.get("name") == tool and (args.get("channel_id") != channel or set(args) - POST_ARGS):
-                    raise Fail(7, "the session posted to another channel or with other arguments")
+                if b.get("name") == tool and (args.get("channel_id") != channel or set(args) - allowed
+                                              or (thread and args.get("thread_ts") != thread)):
+                    raise Fail(7, "the session posted to another channel or thread, or with other arguments")
                 if b.get("name") == tool and len(str(args.get("message") or "")) > len(message_text) + EXTRA_TEXT:
                     raise Fail(7, "the session posted text nobody collected")
                 calls[b.get("id")] = b
@@ -305,6 +351,7 @@ def check(stream, tool: str, channel: str, message_text: str, lines: list) -> st
                     named = True
                 if call.get("name") == tool:
                     (errors if b.get("is_error") else ok).add(b.get("tool_use_id"))
+                    texts[b.get("tool_use_id")] = content
         if m.get("type") == "result":
             result = m
     posted = [c for i, c in calls.items() if c.get("name") == tool and i in ok]
@@ -322,9 +369,12 @@ def check(stream, tool: str, channel: str, message_text: str, lines: list) -> st
                   and prefix(str(s.get("name"))) != tool.rsplit("__", 1)[0]]
         hint = f'; this session loaded "{loaded[0]}": set slack_connector to "{loaded[0]}"' if loaded else ""
         raise Fail(3, f"no Slack connector reachable as {tool}{hint}")
+    ts = [_posted(texts.get(c.get("id")), channel, thread) for c in posted]
+    if thread is not None and not all(ts):
+        raise Fail(7, "the post's result names no message link, so its ts cannot be recorded")
     drift = [f"posted {len(posted)} times"] if len(posted) > 1 else []
     text = _norm(str(posted[0].get("input", {}).get("message") or ""))
     missing = [x for x in lines if _norm(x) not in text]
     if missing:
         drift.append(f"{len(missing)} of {len(lines)} event lines missing from the post")
-    return "; ".join(drift)
+    return "; ".join(drift), [t for t in ts if t]

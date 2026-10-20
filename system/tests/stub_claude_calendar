@@ -25,4 +25,6 @@ pwd > "${STUB_CWD:-/dev/null}"
 printf '%s\n' "${FOUNDRY_HEADLESS:-}" > "${STUB_ENV:-/dev/null}"
 [[ -n "${STUB_SLEEP:-}" ]] && sleep "$STUB_SLEEP"
 [[ -n "${STUB_STREAM:-}" ]] && cat "$STUB_STREAM"
+# A second session in the same run (notices' daily parent, then the notice) gets $STUB_STREAM.next when it exists.
+[[ -n "${STUB_STREAM:-}" && -e "$STUB_STREAM.next" ]] && mv "$STUB_STREAM.next" "$STUB_STREAM"
 exit "${STUB_RC:-0}"

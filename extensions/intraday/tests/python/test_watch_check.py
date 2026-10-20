@@ -406,3 +406,29 @@ def test_inbound_since_replays_the_incoming_search_from_an_epoch_of_the_last_sev
     with pytest.raises(Fail) as e:
         query.mail(vault, now, str(now - 60))
     assert e.value.code == 2 and "watch_inbound_mail" in e.value.reason
+
+
+def test_the_notify_channel_is_a_capture_channel_only_with_notices_in_a_daily_thread(vault):
+    # #293: with notices in a daily thread, capture takes the owner's posts in the notify channel.
+    cfg = vault / "system" / "config.md"
+    base = cfg.read_text().replace("---\n", '---\nslack_notify_channel: "C0CAP"\n', 1)
+    cfg.write_text(base.replace("---\n", '---\nslack_notify_thread: "daily"\n', 1))
+    query.advance(vault, ["capture"], 1_800_000_000)
+    assert query.slack(vault, 1_800_003_600)["capture"]["filters"] == "in:<#C0CAP> from:<@U0OWNER> after:2027-01-13"
+    cfg.write_text(base.replace("---\n", '---\nslack_notify_thread: "off"\n', 1))
+    with pytest.raises(Fail) as e:
+        query.slack(vault, 1_800_003_600)
+    assert e.value.code == 2 and "slack_notify_thread" in e.value.reason
+    cfg.write_text(base.replace("---\n", '---\nslack_notify_thread: "daily"\n', 1).replace('watch_user_id: "U0OWNER"\n', ""))
+    with pytest.raises(Fail) as e:
+        query.slack(vault, 1_800_003_600)
+    assert e.value.code == 2 and "watch_user_id" in e.value.reason
+
+
+def test_capture_results_in_the_notify_channel_are_kept_and_the_other_queries_still_skip_it():
+    cap = block(channel="#foundry (ID: C0CAP)", cid="C0CAP", ts=TS2, text="read this later")
+    mine = block(channel="#foundry (ID: C0CAP)", cid="C0CAP", ts=TS2, sender="Alex Owner <a@example.com> (ID: U0OWNER)",
+                 text="I'll send it today")
+    s = stream([(Q["own"], page(mine)), (Q["capture"], page(cap))], items=[item("own", "C0CAP", TS2, "commitment", "Send it")])
+    got = check.slack_extract(s, TOOL, Q, "C0CAP")
+    assert got["items"] == [] and [c["text"] for c in got["captures"]] == ["read this later"]

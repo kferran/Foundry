@@ -10,6 +10,8 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-20
+- Added: Slack notices in a daily thread. With `slack_notify_thread: daily`, the day's first notice posts one parent message, `Foundry updates <date>`, and every notice that day (brief, debrief, alerts, Work Orders) is a reply under it. The intraday capture can then read the same channel: your top-level posts and your replies in those threads become inbox drops, each reply with the notice above it; the Foundry's own posts are never captured. (#293)
+  - Action: optional. To use one channel both ways, set `slack_notify_thread: daily` and set `capture_channel` to the `slack_notify_channel` ID (`watch_user_id` must be set).
 - Fixed: a session line in the today file no longer starts with the digest's bullet and bold markers (`- **…**`); it reads as plain text. (#291)
 - Fixed: the intraday watch reads incoming mail again each tick, as the in-session sweep did. Its Gmail session also searches mail since its own cursor, less promotions, social, forums and the senders in `watch_inbound_skip`. A review request or a task assigned to you becomes an `owed` Now line, a production alert a `[watch]` alert, and a deadline an `owed` line; triage and the watch never both add a line for the same thread. `watch_inbound_mail` (default on) turns it off, and `--check` counts incoming mail next to Slack and sent mail. `foundry-watch.service` now really allows 25 minutes (it still said 20). (#290, #289)
   - Action: on a server with `intraday` on, run `system/scripts/install_units.sh --update` to install the 25-minute `foundry-watch.service`; optionally list bot and newsletter senders in `watch_inbound_skip`.

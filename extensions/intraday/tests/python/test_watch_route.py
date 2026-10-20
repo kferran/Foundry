@@ -241,3 +241,34 @@ def test_a_capture_file_holds_each_message_and_its_link_under_a_name_the_intake_
     later = {**msgs[0], "ts": "1792429300.000100"}
     assert route.new_captures(vault, DAY, [msgs[0], later]) == [later]
     assert json.loads(json.dumps(ledger(vault)[-1]))["kind"] == "capture"
+
+
+def test_in_the_notify_channel_capture_skips_foundry_posts_and_replies_outside_its_threads(vault):
+    # #293: the parent and every notice are excluded by their recorded ts; an owner reply in a daily thread carries
+    # the notice just above it; a reply in another thread is not captured.
+    from vaultlib import notify
+    cfg = vault / "system" / "config.md"
+    cfg.write_text(cfg.read_text().replace("---\n", '---\nslack_notify_channel: "C0CAP"\nslack_notify_thread: "daily"\n', 1))
+    parent, notice, later = "1792429200.000100", "1792429260.000100", "1792429900.000100"
+    notify.record(vault, DAY, parent, "Foundry updates 2026-10-19", "")
+    notify.record(vault, DAY, notice, "• Brief 2026-10-19: 2 need you", parent)
+    notify.record(vault, DAY, later, "• Debrief 2026-10-19 is ready", parent)
+
+    def msg(ts, thread=""):
+        link = f"https://example.slack.com/archives/C0CAP/p{ts.replace('.', '')}" + (f"?thread_ts={thread}&cid=C0CAP" if thread else "")
+        return {"ts": ts, "channel": "C0CAP", "sender": "Alex Owner", "sender_id": "U0OWNER", "text": f"text {ts}", "link": link}
+
+    top, reply, elsewhere = msg("1792429300.000100"), msg("1792429500.000100", parent), msg("1792429600.000100", "1792420000.000100")
+    got = capture.keep(vault, [msg(parent), msg(notice, parent), msg(later, parent), top, reply, elsewhere])
+    assert [m["ts"] for m in got] == [top["ts"], reply["ts"]]
+    assert got[0]["context"] == "" and got[1]["context"] == "• Brief 2026-10-19: 2 need you"
+    now = datetime(2026, 10, 19, 9, 10, tzinfo=ZoneInfo("America/Denver"))
+    text = capture.write(vault, got, "work", "C0CAP", now).read_text()
+    assert "text 1792429500.000100\n\nIn reply to the Foundry notice:\n\n> • Brief 2026-10-19: 2 need you\n\nLink: " in text
+    assert text.count("In reply to") == 1
+
+
+def test_capture_in_its_own_channel_keeps_every_message(vault):
+    msgs = [{"ts": "1792429300.000100", "channel": "C0CAP", "sender": "Pat", "sender_id": "U0PAT", "text": "x",
+             "link": "https://example.slack.com/archives/C0CAP/p1792429300000100?thread_ts=1792420000.000100&cid=C0CAP"}]
+    assert capture.keep(vault, msgs) == msgs

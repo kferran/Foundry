@@ -111,3 +111,63 @@ slack_posts() {
   [ "$status" -eq 0 ]
   grep -qF '"message":"Foundry notices are on for' "$STUB_ARGS"
 }
+
+# thread_posts <file> <message> <posted ts> [thread_ts]: a session that posts <message>, in a thread when given, and
+# whose send result names the posted message's link.
+thread_posts() {
+  local url="https://example.slack.com/archives/C0EXAMPLE/p${3/./}${4:+?thread_ts=$4&cid=C0EXAMPLE}"
+  {
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"ToolSearch","input":{}}]}}\n'
+    printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"tool_reference","tool_name":"%s"}]}]}}\n' "$T"
+    jq -cn --arg t "$T" --arg m "$2" --arg th "${4:-}" '{type: "assistant", message: {content: [{type: "tool_use", id: "t2",
+      name: $t, input: ({channel_id: "C0EXAMPLE", message: $m} + if $th == "" then {} else {thread_ts: $th} end)}]}}'
+    jq -cn --arg u "Message sent: $url" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "t2",
+      content: [{type: "text", text: $u}]}]}}'
+    printf '{"type":"result","subtype":"success","is_error":false}\n'
+  } > "$1"
+}
+
+@test "with slack_notify_thread daily, the day's first notice posts the parent, then every notice replies under it (#293)" {
+  sed -i '$d' system/config.md
+  printf '%s\n' 'slack_notify_thread: "daily"' '---' >> system/config.md
+  day="$(TZ=America/Denver date +%F)"
+  printf -- '- 06:10:00 [intake] one\n' >> "$ALERTS"
+  thread_posts "$STUB_STREAM" "Foundry updates $day" 1792430610.351069
+  thread_posts "$STUB_STREAM.next" "$(system/scripts/notify.py collect | jq -r .message)" 1792430700.000200 1792430610.351069
+  run "$N"
+  [ "$status" -eq 0 ]
+  grep -qF '"thread_ts":"1792430610.351069"' "$STUB_ARGS"
+  [ "$(system/scripts/notify.py parent)" = 1792430610.351069 ]
+  [ "$(jq -r '.posts["1792430700.000200"].thread' system/logs/notify/thread.json)" = 1792430610.351069 ]
+  # The same day: one session, a reply under the same parent.
+  printf -- '- 06:20:00 [intake] two\n' >> "$ALERTS"
+  thread_posts "$STUB_STREAM" "$(system/scripts/notify.py collect | jq -r .message)" 1792431300.000300 1792430610.351069
+  run "$N"
+  [ "$status" -eq 0 ]
+  grep -qF '"thread_ts":"1792430610.351069"' "$STUB_ARGS"
+  [ "$(jq '.posts | length' system/logs/notify/thread.json)" -eq 3 ]
+}
+
+@test "a parent post whose result names no link holds notices and sends no notice top-level (#293)" {
+  sed -i '$d' system/config.md
+  printf '%s\n' 'slack_notify_thread: "daily"' '---' >> system/config.md
+  printf -- '- 06:10:00 [intake] one\n' >> "$ALERTS"
+  slack_posts "Foundry updates $(TZ=America/Denver date +%F)"
+  run "$N"
+  [ "$status" -eq 7 ]
+  [ -s system/logs/notify/hold ]
+  [ ! -e system/logs/notify/thread.json ]
+  rm system/logs/notify/hold
+  msg="$(system/scripts/notify.py collect | jq -r .message)"
+  [ "$msg" = "• Alert 06:10:00 [intake] one" ]
+}
+
+@test "slack_notify_thread daily with a user ID for a DM is refused before any session (#293)" {
+  sed -i 's/^slack_notify_channel: "C0EXAMPLE"$/slack_notify_channel: "U0OWNER"/; $d' system/config.md
+  printf '%s\n' 'slack_notify_thread: "daily"' '---' >> system/config.md
+  printf -- '- 06:10:00 [intake] one\n' >> "$ALERTS"
+  rm -f "$STUB_ARGS"
+  run "$N"
+  [ "$status" -eq 2 ]
+  [ ! -e "$STUB_ARGS" ]
+}

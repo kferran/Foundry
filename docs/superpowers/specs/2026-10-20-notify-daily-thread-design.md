@@ -11,7 +11,7 @@
 
 ## Config
 
-`slack_notify_thread: daily | off`, default `off`. Off keeps today's behaviour: one top-level post per notice, no thread state, and the watch still refuses `capture_channel == slack_notify_channel`. An existing vault changes nothing until the owner turns it on, and turning it on is the act that says the notify channel is also the capture channel's home.
+`slack_notify_thread: daily | off`, default `off`. Off keeps today's behaviour: one top-level post per notice, no thread state, and the watch still refuses `capture_channel == slack_notify_channel`. An existing vault changes nothing until the owner turns it on, and turning it on is the act that says the notify channel is also the capture channel's home. Daily needs a channel ID (`C…`/`G…`): a DM's link names its `D…` conversation, never the user ID, so notify.sh refuses a user ID with exit 2.
 
 ## State
 
