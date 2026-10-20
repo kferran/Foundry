@@ -247,12 +247,16 @@ def default_due(statement: str, since: str, who: str) -> str:
 
 
 def add(vault, partition: str, kind: str, statement: str, today: str, who: str = "", evidence: str = "",
-        rec: str = "", due: str = "") -> tuple:
+        rec: str = "", due: str = "", fit: bool = False) -> tuple:
     """("added"|"exists"|"tightened"|"updated", line). An open line with the same kind and bare statement is not
     added twice: a repeat add moves its clock earlier ("tightened"), sets or replaces rec and sets missing evidence
-    ("updated"), writes nothing when nothing is new, and raises ValueError when it would move the clock later."""
+    ("updated"), writes nothing when nothing is new, and raises ValueError when it would move the clock later.
+    fit (machine writers: triage, the watch) cuts a statement that would put the line over MAX_LINE."""
     statement, who, rec = statement.strip(), who.strip(), rec.strip()
     validate(partition, kind, statement, who, evidence, rec, due)
+    over = len(render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who))) - MAX_LINE
+    if fit and over > 0:
+        statement = statement[:max(len(statement) - over - 1, 40)].rstrip() + "…"
     text = read(vault, partition) or new_page(vault, partition, today)
     for existing in open_lines(text):
         m = LINE.match(existing)
