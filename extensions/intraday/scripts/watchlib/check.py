@@ -15,7 +15,7 @@ from vaultlib.triage import _structured, _text_json, one_line, reply
 from .common import CHANGES, INBOUND_KINDS, WATCH_KINDS, Fail
 
 MAX_PAGES = 5
-MAIL_PAGES = 3
+MAIL_PAGES = 6   # of 10 threads (watch_fetch.sh): a busy 30-minute window of about 50 incoming threads
 FIELDS = {"channel": re.compile(r"^Channel: (?:#([\w-]+)|(Group DM|DM)) \(ID: ([CGD][A-Z0-9]+)\)", re.M),
           "sender": re.compile(r"^From: (.*?) \(ID: ([A-Z0-9]+)\)", re.M),
           "ts": re.compile(r"^Message_ts: (\d+\.\d+)", re.M),
@@ -28,10 +28,23 @@ def _strip_cursor(i: dict) -> dict:
     return {k: v for k, v in i.items() if k != "cursor"}
 
 
+def too_large(content) -> bool:
+    """True when the model saw claude's stand-in for a result over its token limit instead of the result: the MCP note
+    ("Error: result (… characters) exceeds maximum allowed tokens. Output has been saved to …"), a <persisted-output>
+    preview, or a cut that ends "[OUTPUT TRUNCATED - exceeded …". Each is matched where claude puts it, before or after
+    the result's JSON text (which cannot start with it or hold a raw newline), so mail or chat text cannot fake one."""
+    text = ("".join(c.get("text", "") for c in content if isinstance(c, dict)) if isinstance(content, list)
+            else str(content or "")).strip()
+    return (text.startswith("<persisted-output>") or "\n\n[OUTPUT TRUNCATED - exceeded " in text
+            or (text.startswith("Error: result (") and "exceeds maximum allowed tokens" in text[:200]))
+
+
 def query_pages(stream, tool: str, queries: dict, name_of=None, take=_text_json, limit=MAX_PAGES,
-                server="Slack") -> tuple:
+                server="Slack", persisted=None) -> tuple:
     """({query name: [page payloads]}, the result message) after the tool-use and error checks. name_of(input) names
-    the built query a search input runs (by default: the Slack input itself, less a later page's cursor)."""
+    the built query a search input runs (by default: the Slack input itself, less a later page's cursor). A page the
+    model saw only as too_large fails the session, or with a `persisted` dict is counted there by query name (its
+    payload is still taken: the stream's structuredContent holds the whole result)."""
     name_of = name_of or (lambda i: next((n for n, q in queries.items() if _strip_cursor(i) == q), None))
     calls, pages, errors, named = {}, {n: [] for n in queries}, [], False
     for m in stream:
@@ -54,11 +67,13 @@ def query_pages(stream, tool: str, queries: dict, name_of=None, take=_text_json,
                     named = True
                 if call.get("name") != tool:
                     continue
-                if b.get("is_error"):
+                if too_large(content):
+                    if persisted is None:
+                        raise Fail(6, "a search result was too large for the model to read; lower limit in watchlib/query.py")
+                    persisted[call["query"]] = persisted.get(call["query"], 0) + 1
+                elif b.get("is_error"):
                     errors.append(json.dumps(content)[:200])
                     continue
-                if "<persisted-output>" in json.dumps(content):
-                    raise Fail(6, "a search result was too large for the stream; lower limit in watchlib/query.py")
                 pages[call["query"]].append(take(b, m))
     result = next((m for m in reversed(stream) if m.get("type") == "result"), None)
     if result is None:
@@ -187,21 +202,51 @@ def _rule_hit(pattern: str, addr: str) -> bool:
     return bool(addr) and (host == domain or host.endswith("." + domain))
 
 
+# A leading Re:/Fwd: or a tag of letters only ([EXTERNAL], (Tool)); a tag with a digit ([SEV1], (OPS-101)) says something.
+LEAD = re.compile(r"(?:(?:re|fwd?|fw)\s*:|[\[(][A-Za-z][A-Za-z .&_-]{0,30}[\])])\s*", re.I)
+BOT = re.compile(r"(?:no-?reply|do-?not-?reply|notifications?|notify|pullrequests-reply|jira|alerts?)(?:[+._-].*)?", re.I)
+ACTOR = re.compile(r"([A-Z][\w'.-]*(?: [A-Z][\w'.-]*){1,3}) (?:added|assigned|created|requested|mentioned|commented|"
+                   r"replied|updated|changed|opened|reopened|resolved|closed|shared|invited|asked|approved|merged|"
+                   r"declined|reviewed|edited|left|wants)\b")
+
+
+def clean_subject(subject: str) -> str:
+    """A subject less its leading Re:/Fwd: chain and letter-only tags; the subject itself when nothing would be left."""
+    s = subject.strip()
+    while m := LEAD.match(s):
+        s = s[m.end():]
+    return s or subject.strip()
+
+
+def sender_who(raw: str, snippet: str, bot_domain: bool = False) -> str:
+    """Who a rule item names. A bot sender (a no-reply style address, or one a rule's domain matched) gives the person
+    its snippet starts with ("Pat Sample added you as a reviewer"); else the display name less a "(Tool)" or "via …"
+    tail, else the address."""
+    name, addr = _sender(raw)
+    if bot_domain or BOT.fullmatch(addr.partition("@")[0]):
+        m = ACTOR.match(clean_subject(snippet))
+        if m:
+            return _who(m.group(1))
+    return _who(re.sub(r"\s*(?:\(.*\)|\bvia\b.*)$", "", name) or addr)
+
+
 DROPS = ("unknown_thread", "wrong_kind", "empty_what", "duplicate")
 SUBJECT_SCAN = 1000   # ponytail: the owner's regex runs on at most this much of a subject; Python's re has no timeout
 
 
 def mail_extract(stream, queries: dict, rules=()) -> dict:
-    """{"items": [...], "full": [query names], "stats": {query name: counts}}: the sent-mail commitments and the
-    incoming requests, incidents and deadlines, each joined to the threads its own search returned, plus each incoming
-    thread whose latest incoming message matches one of `rules` (query.inbound_rules). stats counts, per search, the
-    threads returned, those with a message at or after the cursor (fresh), the reply's rows, the rows kept, the threads
-    a rule matched, those of them the model gave no row for (missed), the rows dropped by reason and the dropped rows' kinds (cut to 20 safe characters)."""
+    """{"items": [...], "full": [query names], "hold": [query names], "stats": {query name: counts}}: the sent-mail
+    commitments and the incoming requests, incidents and deadlines, each joined to the threads its own search returned,
+    plus each incoming thread whose latest incoming message matches one of `rules` (query.inbound_rules). stats counts,
+    per search, the threads returned, those with a message at or after the cursor (fresh), the reply's rows, the rows
+    kept, the threads a rule matched, those of them the model gave no row for (missed), the pages the model saw only as
+    too large to read (persisted), the rows dropped by reason and the dropped rows' kinds (cut to 20 safe characters).
+    hold names the searches with a persisted page: the model never read it, so their cursors stay."""
     from .query import GMAIL_TOOL
-    names = {q: n for n, q in queries.items()}
+    names, persisted = {q: n for n, q in queries.items()}, {}
     pages, result = query_pages(stream, GMAIL_TOOL, queries,
                                 lambda i: names.get(i.get("query")) if i.get("view") == "THREAD_VIEW_MINIMAL" else None,
-                                _structured, MAIL_PAGES, "Gmail")
+                                _structured, MAIL_PAGES, "Gmail", persisted)
     for name, got in pages.items():
         if not got:   # its cursor would move past mail no one read
             raise Fail(1, f"the session never ran the {name} search")
@@ -210,7 +255,8 @@ def mail_extract(stream, queries: dict, rules=()) -> dict:
         since = re.search(r"after:(\d+)", queries[name])
         known[name] = sent_threads(got, int(since.group(1)) if since else 0, sent=name == "mail")
     stats = {n: {"threads": sum(len(p.get("threads") or []) for p in got), "fresh": len(known[n]), "rows": 0,
-                 "kept": 0, "rules": 0, "missed": 0, "dropped": dict.fromkeys(DROPS, 0), "dropped_kinds": set()}
+                 "kept": 0, "rules": 0, "missed": 0, "persisted": persisted.get(n, 0), "dropped": dict.fromkeys(DROPS, 0),
+                 "dropped_kinds": set()}
              for n, got in pages.items()}
     items, seen = {}, set()
     for r in reply(result):
@@ -233,24 +279,29 @@ def mail_extract(stream, queries: dict, rules=()) -> dict:
                          "change": "other", "link": t["link"], "ts": t["date"], "label": "mail",
                          "text": one_line(t["subject"]) if q == "inbound" else ""}   # the subject: route reads its PR or ticket
     for tid, t in known.get("inbound", {}).items():
-        name, addr = _sender(t["sender"])
-        kind = next((k for p, subj, snip, k in rules if _rule_hit(p, addr)
-                     and all(rx is None or rx.search(t[f][:SUBJECT_SCAN]) for f, rx in (("subject", subj), ("snippet", snip)))),
+        addr = _sender(t["sender"])[1]
+        rule = next((r for r in rules if _rule_hit(r[0], addr)
+                     and all(rx is None or rx.search(t[f][:SUBJECT_SCAN]) for f, rx in (("subject", r[1]), ("snippet", r[2])))),
                     None)
-        if kind is None:
+        if rule is None:
             continue
+        kind = rule[3]
         stats["inbound"]["rules"] += 1
         if ("inbound", tid) in items:   # the model's row stays, with the rule's kind
             items["inbound", tid]["kind"] = kind
             continue
         stats["inbound"]["missed"] += 1   # a thread the owner said matters, and the model gave no row for
-        what = one_line(t["subject"])
+        what = one_line(clean_subject(t["subject"]))
         if what:
+            bot_domain = "@" not in rule[0] or rule[0].startswith("@")
             items["inbound", tid] = {"query": "inbound", "key": f"{tid}/{t['date']}", "kind": kind, "what": what,
-                                     "who": _who(name or addr), "by": "", "meeting": False, "change": "other",
-                                     "link": t["link"], "ts": t["date"], "label": "mail", "text": what}
+                                     "who": sender_who(t["sender"], t["snippet"], bot_domain), "by": "", "meeting": False,
+                                     "change": "other", "link": t["link"], "ts": t["date"], "label": "mail",
+                                     "text": one_line(t["subject"])}
     for s in stats.values():
         s["dropped_kinds"] = sorted(s["dropped_kinds"])[:10]
-    # No ascending sort: a search that fills its pages leaves its oldest threads unread (spec §3.3).
-    full = [n for n, got in pages.items() if len(got) == MAIL_PAGES and got[-1].get("nextPageToken")]
-    return {"items": list(items.values()), "captures": [], "full": full, "stats": stats}
+    hold = [n for n in pages if persisted.get(n)]
+    # No ascending sort: a search the model left with a page token (at its page limit, or stopping early) leaves its
+    # oldest threads unread (spec §3.3).
+    full = [n for n, got in pages.items() if n not in hold and got[-1].get("nextPageToken")]
+    return {"items": list(items.values()), "captures": [], "full": full, "hold": hold, "stats": stats}

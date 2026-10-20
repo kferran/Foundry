@@ -72,7 +72,7 @@ cal_says() {
 inbound_says() {
   {
     jq -cn --arg t "$GMAIL" --arg q "$(extensions/intraday/scripts/watch.py mail-query | jq -r .inbound)" \
-      '{type: "assistant", message: {content: [{type: "tool_use", id: "m1", name: $t, input: {query: $q, pageSize: 50, view: "THREAD_VIEW_MINIMAL"}}]}}'
+      '{type: "assistant", message: {content: [{type: "tool_use", id: "m1", name: $t, input: {query: $q, pageSize: 10, view: "THREAD_VIEW_MINIMAL"}}]}}'
     jq -cn '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "m1", content: "…"}]},
       tool_use_result: {structuredContent: {threads: [
         {id: "th1", viewUrl: "https://mail.google.com/mail/#all/thread-a:1",
@@ -192,7 +192,7 @@ inbound_says() {
   q="$(extensions/intraday/scripts/watch.py mail-query | jq -r .mail)"
   [ "$q" = "in:sent after:1799999700" ]
   {
-    jq -cn --arg t "$GMAIL" --arg q "$q" '{type: "assistant", message: {content: [{type: "tool_use", id: "m1", name: $t, input: {query: $q, pageSize: 50, view: "THREAD_VIEW_MINIMAL"}}]}}'
+    jq -cn --arg t "$GMAIL" --arg q "$q" '{type: "assistant", message: {content: [{type: "tool_use", id: "m1", name: $t, input: {query: $q, pageSize: 10, view: "THREAD_VIEW_MINIMAL"}}]}}'
     jq -cn '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "m1", content: "…"}]},
       tool_use_result: {structuredContent: {threads: [{id: "th1", viewUrl: "https://mail.google.com/mail/#all/thread-a:1",
         messages: [{labelIds: ["SENT"], internalDate: "1800000100000", subject: "Deck", snippet: "I will send the deck Friday"}]}]}}}'
@@ -216,6 +216,9 @@ inbound_says() {
   # The prompt keeps merge and approve events and other people's tickets out of request (#289 live tick).
   grep -qF 'Give request only when the newest incoming message asks the owner to review (such as "added you as a reviewer" or "requested your review") or assigns work to the owner; an approved, merged, declined, updated or commented event is not a request: skip it.' "$STUB_ARGS_MAIL"
   grep -qF 'A ticket created or updated mail is a request only when its newest message shows the owner as the assignee; otherwise skip it, or list it as incident when it is a blocker or a production problem.' "$STUB_ARGS_MAIL"
+  # Small pages fit under claude's MCP output limit, and the model follows nextPageToken (#289 live replay).
+  grep -qF 'with exactly its query, pageSize 10 and view "THREAD_VIEW_MINIMAL"' "$STUB_ARGS_MAIL"
+  grep -qF 'Follow nextPageToken: while a result has one, call it again with the same query, pageSize and view and with pageToken set to it, until a result has none or the search has had 6 calls.' "$STUB_ARGS_MAIL"
   [[ "$output" == "watch_fetch: 0 from Slack, - from sent mail, 2 from incoming mail, 0 events today" ]]
   run "$WF"
   [ "$status" -eq 0 ]
@@ -248,7 +251,7 @@ EOF
   printf '{"watch": 1800000000, "own": 1800000000, "inbound": 1800000000}\n' > system/logs/watch/cursors.json
   {
     jq -cn --arg t "$GMAIL" --arg q "$(extensions/intraday/scripts/watch.py mail-query | jq -r .inbound)" \
-      '{type: "assistant", message: {content: [{type: "tool_use", id: "m1", name: $t, input: {query: $q, pageSize: 50, view: "THREAD_VIEW_MINIMAL"}}]}}'
+      '{type: "assistant", message: {content: [{type: "tool_use", id: "m1", name: $t, input: {query: $q, pageSize: 10, view: "THREAD_VIEW_MINIMAL"}}]}}'
     jq -cn '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "m1", content: "…"}]},
       tool_use_result: {structuredContent: {threads: [
         {id: "th1", viewUrl: "https://mail.google.com/mail/#all/thread-a:1",
@@ -263,11 +266,43 @@ EOF
   } > "$STUB_MAIL_STREAM"
   run "$WF"
   [ "$status" -eq 0 ]
-  grep -qF -- '- [ ] owed: Re: (Tool) Pull request #12: Fix retries (app) [due:: ' wiki/work/Now.md
-  grep -qF "(Code, since $TODAY, https://mail.google.com/mail/#all/thread-a:1)" wiki/work/Now.md
+  # The rule item reads as a task: no reply or tool tags, and the person the bot mail names (#289 live replay).
+  grep -qF -- '- [ ] owed: Pull request #12: Fix retries (app) [due:: ' wiki/work/Now.md
+  grep -qF "(Pat Sample, since $TODAY, https://mail.google.com/mail/#all/thread-a:1)" wiki/work/Now.md
   grep -qF '[watch] (SEV1) Checkout errors (mail) https://mail.google.com/mail/#all/thread-a:2' "$ALERTS"
   [ "$(grep -c '\[intraday\] watch_inbound_rules matched incoming mail the model gave no row for:' "$ALERTS")" -eq 1 ]
   [ "$(jq -sc 'map(select(.step == "inbound")) | .[-1] | [.count, .stats.threads, .stats.fresh, .stats.rows, .stats.rules, .stats.missed]' system/logs/watch_fetch-*.jsonl)" = '[2,3,3,0,2,2]' ]
+}
+
+@test "an incoming page too large for the model is counted, keeps the inbound cursor and alerts once a day (#289)" {
+  system/scripts/vault_index.py set system/config.md watch_inbound_mail true > /dev/null
+  sed -i '$d' system/config.md
+  printf 'watch_inbound_rules: [{from: "news@example.com", subject: "digest", kind: deadline}]\n---\n' >> system/config.md
+  export STUB_MAIL_STREAM="$BATS_TEST_TMPDIR/mail.jsonl"
+  printf '{"watch": 1800000000, "own": 1800000000, "inbound": 1800000000}\n' > system/logs/watch/cursors.json
+  {
+    jq -cn --arg t "$GMAIL" --arg q "$(extensions/intraday/scripts/watch.py mail-query | jq -r .inbound)" \
+      '{type: "assistant", message: {content: [{type: "tool_use", id: "m1", name: $t, input: {query: $q, pageSize: 10, view: "THREAD_VIEW_MINIMAL"}}]}}'
+    jq -cn '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "m1",
+        content: [{type: "text", text: "Error: result (123,456 characters) exceeds maximum allowed tokens. Output has been saved to /tmp/x/mcp.txt.\nFormat: JSON\n"}]}]},
+      tool_use_result: {structuredContent: {nextPageToken: "n", threads: [
+        {id: "th1", viewUrl: "https://mail.google.com/mail/#all/thread-a:1",
+         messages: [{labelIds: ["INBOX"], internalDate: "1800000100000", sender: "news@example.com", subject: "Weekly digest", snippet: "…"}]}]}}}'
+    jq -cn '{type: "result", subtype: "success", is_error: false, result: ({items: []} | tojson)}'
+  } > "$STUB_MAIL_STREAM"
+  run "$WF"
+  [ "$status" -eq 0 ]
+  grep -qF -- '- [ ] owed: Weekly digest [due:: ' wiki/work/Now.md   # the rules still read the whole result
+  [ "$(grep -c 'watch_inbound_rules matched' "$ALERTS")" -eq 0 ]   # one cause, one alert
+  [ "$(jq -r .inbound system/logs/watch/cursors.json)" = 1800000000 ]
+  [ "$(jq -r .watch system/logs/watch/cursors.json)" -ne 1800000000 ]   # the other searches move on
+  [ "$(jq -s 'map(select(.step == "inbound")) | .[-1].stats.persisted' system/logs/watch_fetch-*.jsonl)" -eq 1 ]
+  grep -qF '[intraday] the inbound search returned a page too large for the model to read: its cursor stays, so the next tick reads it again' "$ALERTS"
+  [ "$(grep -c 'left result pages unread' "$ALERTS")" -eq 0 ]
+  slack_says '{"items": []}'   # the Slack cursors moved: the same mail stream reads again from the held cursor
+  run "$WF"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'too large for the model' "$ALERTS")" -eq 1 ]
 }
 
 @test "--inbound-since takes only an epoch of the last 7 days, and a bad inbound rule stops the tick before any session runs" {
