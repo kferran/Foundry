@@ -276,6 +276,8 @@ EOF
 
 @test "an incoming page too large for the model is counted, keeps the inbound cursor and alerts once a day (#289)" {
   system/scripts/vault_index.py set system/config.md watch_inbound_mail true > /dev/null
+  sed -i '$d' system/config.md
+  printf 'watch_inbound_rules: [{from: "news@example.com", subject: "digest", kind: deadline}]\n---\n' >> system/config.md
   export STUB_MAIL_STREAM="$BATS_TEST_TMPDIR/mail.jsonl"
   printf '{"watch": 1800000000, "own": 1800000000, "inbound": 1800000000}\n' > system/logs/watch/cursors.json
   {
@@ -285,11 +287,13 @@ EOF
         content: [{type: "text", text: "Error: result (123,456 characters) exceeds maximum allowed tokens. Output has been saved to /tmp/x/mcp.txt.\nFormat: JSON\n"}]}]},
       tool_use_result: {structuredContent: {nextPageToken: "n", threads: [
         {id: "th1", viewUrl: "https://mail.google.com/mail/#all/thread-a:1",
-         messages: [{labelIds: ["INBOX"], internalDate: "1800000100000", subject: "Weekly digest", snippet: "…"}]}]}}}'
+         messages: [{labelIds: ["INBOX"], internalDate: "1800000100000", sender: "news@example.com", subject: "Weekly digest", snippet: "…"}]}]}}}'
     jq -cn '{type: "result", subtype: "success", is_error: false, result: ({items: []} | tojson)}'
   } > "$STUB_MAIL_STREAM"
   run "$WF"
   [ "$status" -eq 0 ]
+  grep -qF -- '- [ ] owed: Weekly digest [due:: ' wiki/work/Now.md   # the rules still read the whole result
+  [ "$(grep -c 'watch_inbound_rules matched' "$ALERTS")" -eq 0 ]   # one cause, one alert
   [ "$(jq -r .inbound system/logs/watch/cursors.json)" = 1800000000 ]
   [ "$(jq -r .watch system/logs/watch/cursors.json)" -ne 1800000000 ]   # the other searches move on
   [ "$(jq -s 'map(select(.step == "inbound")) | .[-1].stats.persisted' system/logs/watch_fetch-*.jsonl)" -eq 1 ]
