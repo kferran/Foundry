@@ -7,7 +7,7 @@ import os
 import re
 import time
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import kusto, sentry, telemetry as t
@@ -23,7 +23,8 @@ LOCK_WAIT = int(os.environ.get("TELEMETRY_LOCK_WAIT", "120"))
 MAX_GROUPS = 500
 MAX_LOOKUPS = 20
 MAX_STATUS = 20
-FAIL_ALERT = 3
+REMIND = timedelta(hours=4)   # a source still failing posts again this often (#293)
+JITTER = timedelta(minutes=5)  # an hourly run a few seconds early still counts as four hours on
 
 
 def _parser():
@@ -50,10 +51,35 @@ def _alert(vault: Path, store: Store, now: datetime, key: str, msg: str, tag: st
     if store.state["alerts"].get(key) == day:
         return
     store.state["alerts"][key] = day
-    path = vault / "system" / "logs" / f"alerts_{day}.md"
+    _append(vault, now, msg, tag)
+
+
+def _append(vault: Path, now: datetime, msg: str, tag: str = "telemetry") -> None:
+    path = vault / "system" / "logs" / f"alerts_{now.astimezone():%Y-%m-%d}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(f"- {now.astimezone().strftime('%H:%M:%S')} [{tag}] {CONTROL.sub(' ', msg)}\n")
+
+
+def _at(d: datetime) -> str:
+    return d.astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+def _failing(vault: Path, now: datetime, src, st: dict, error: str) -> None:
+    """A source failure reaches Slack (#293): one line when the source starts failing, then one every REMIND while it
+    keeps failing. The per-source stamps live in the state file beside the checkpoint the failure holds."""
+    try:
+        since, posted = (datetime.fromisoformat(st[k]) for k in ("failing_since", "failure_posted"))
+        if since.tzinfo is None or posted.tzinfo is None:
+            raise ValueError("naive stamp")
+    except (KeyError, TypeError, ValueError):   # no stamps yet, or a damaged one: the failure starts now
+        st["failing_since"] = st["failure_posted"] = now.isoformat()
+        _append(vault, now, f"{src.name}: failing since {_at(now)} ({error})", tag="telemetry_source")
+        return
+    if now - posted >= REMIND - JITTER:
+        st["failure_posted"] = now.isoformat()
+        _append(vault, now, f"{src.name}: still failing for {round((now - since).total_seconds() / 3600)} h, "
+                f"since {_at(since)} ({error})", tag="telemetry_source")
 
 
 def _push(vault: Path, store: Store, now: datetime, src, pushes: list) -> None:
@@ -293,6 +319,17 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
                 try:
                     start, end, moved, counters = _run_source(vault, src, store, by_name, now, dry, line)
                     line.update(moved=moved, exit=0, **counters)
+                    st = store.state["sources"][src.name]
+                    since = st.pop("failing_since", None)
+                    st.pop("failure_posted", None)
+                    if since and not dry:
+                        try:
+                            hours = f" after {round((now - datetime.fromisoformat(since)).total_seconds() / 3600)} h"
+                        except (TypeError, ValueError):
+                            hours = ""
+                        _append(vault, now, f"{src.name}: recovered{hours}; backfilled {_at(start)} to {_at(end)}"
+                                f"{' (capped)' if moved else ''}: {counters['new']} new, {counters['resolved']} resolved",
+                                tag="telemetry_source")
                     if counters["truncated"] and not dry:
                         _alert(vault, store, now, f"{src.name}/truncated", f"{src.name}: {counters['truncated']} groups; only {MAX_GROUPS} kept")
                 except Exception as exc:
@@ -310,8 +347,8 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
                     st = store.state["sources"].setdefault(src.name, {})
                     st["failures"] = st.get("failures", 0) + 1
                     line.update(exit=1, error=f"{kind}: {reason}", new=0, updated=0, resolved=0, covered=0, truncated=0)
-                    if not dry and (kind == "auth" or st["failures"] >= FAIL_ALERT):
-                        _alert(vault, store, now, f"{src.name}/{kind}", f"{src.name}: {reason}")
+                    if not dry:
+                        _failing(vault, now, src, st, line["error"])
                 if not dry:
                     _log(vault, now, line)
             for name, bad in ([] if wanted else invalid):
