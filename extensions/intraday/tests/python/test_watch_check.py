@@ -276,3 +276,133 @@ def test_a_mail_session_off_its_built_searches_fails_closed_and_a_full_inbound_s
     got = check.mail_extract(mail_stream([(MQ["mail"], [REVIEW], ""), (MQ["inbound"], [], "")],
                                          [{"thread_id": "th3", "kind": "request", "what": "Review PR #12"}]), MQ)
     assert got["items"] == []
+
+
+def test_mail_extract_counts_each_searchs_threads_and_rows_and_why_each_row_was_dropped():
+    # #289 follow-up: a replay kept 0 of 38 threads and nothing told whether the model listed none or the join dropped them.
+    items = [{"thread_id": "th3", "kind": "request", "what": "Review PR #12"},
+             {"thread_id": "th3", "kind": "request", "what": "again"},                  # duplicate
+             {"thread_id": "th3", "kind": "deadline", "what": "  "},                    # empty what
+             {"thread_id": "th1", "kind": "request", "what": "a sent thread"},          # unknown to inbound
+             {"thread_id": "th4", "kind": "incident", "what": "older than the cursor"},  # unknown: filtered by the cursor
+             {"thread_id": "zz", "kind": "incident", "what": "no search returned it"},  # unknown
+             {"thread_id": "th3", "kind": "<script>very-long-kind-name-here-x", "what": "x"},   # a kind no search gives
+             {"thread_id": "th3", "kind": "commitment", "what": "an incoming thread holds no commitment"}]
+    got = check.mail_extract(mail_stream([(MQ["mail"], [SENT], ""), (MQ["inbound"], [REVIEW, OLD], "")], items), MQ)
+    assert got["stats"]["inbound"] == {"threads": 2, "fresh": 1, "rows": 7, "kept": 1, "rules": 0,
+                                       "dropped": {"unknown_thread": 3, "wrong_kind": 1, "empty_what": 1, "duplicate": 1},
+                                       "dropped_kinds": ["deadline", "incident", "request", "scriptvery-long-kind"]}
+    assert got["stats"]["mail"] == {"threads": 1, "fresh": 1, "rows": 1, "kept": 0, "rules": 0,
+                                    "dropped": {"unknown_thread": 1, "wrong_kind": 0, "empty_what": 0, "duplicate": 0},
+                                    "dropped_kinds": ["commitment"]}
+
+
+RULES = (r'watch_inbound_rules: [{from: "@ci.example.com", subject: "added you as a reviewer", kind: request}, '
+         r'{from: "alerts@example.com", subject: "^\\[?sev ?1", kind: incident}, '
+         r'{from: "@code.example.com", subject: "pull request", snippet: "added you as a reviewer", kind: request}, '
+         r'{from: "tracker@example.com", snippet: "priority: blocker", kind: incident}, '
+         r'{from: "@cal.example.com", subject: "\\bdue\\b", kind: deadline}]')
+
+
+def rules_vault(vault, line=RULES):
+    cfg = vault / "system" / "config.md"
+    cfg.write_text(cfg.read_text().replace("---\n", f"---\n{line}\n", 1))
+    return query.inbound_rules(vault)
+
+
+def test_inbound_rules_are_checked_before_any_session_runs(vault):
+    rules = rules_vault(vault)
+    assert [(f, subj is None, snip is None, k) for f, subj, snip, k in rules] == [
+        ("@ci.example.com", False, True, "request"), ("alerts@example.com", False, True, "incident"),
+        ("@code.example.com", False, False, "request"), ("tracker@example.com", True, False, "incident"),
+        ("@cal.example.com", False, True, "deadline")]
+    base = (vault / "system" / "config.md").read_text()
+    shape = "a subject or a snippet"
+    for bad, why in [('[{from: "@ci.example.com", subject: "(", kind: request}]', "not a valid regex"),
+                     ('[{from: "@ci.example.com", snippet: "[", kind: request}]', "snippet '[' is not a valid regex"),
+                     ('[{from: "@ci.example.com", subject: "x", kind: meeting}]', "kind"),
+                     ('[{from: "a@example.com OR in:sent", subject: "x", kind: request}]', "address or a domain"),
+                     ('[{from: "@ci.example.com", kind: request}]', shape),
+                     ('[{subject: "x", kind: request}]', shape),
+                     ('[{from: "@ci.example.com", subject: "x", kind: request, to: "me"}]', shape),
+                     (f'[{{from: "@ci.example.com", subject: "{"a" * 201}", kind: request}}]', "1 to 200"),
+                     (f'[{{from: "@ci.example.com", snippet: "{"a" * 201}", kind: request}}]', "1 to 200"),
+                     ('[{from: "@ci.example.com", subject: "", kind: request}]', "1 to 200"),
+                     ('"@ci.example.com"', "a list"), ('["@ci.example.com"]', shape)]:
+        (vault / "system" / "config.md").write_text(base.replace("watch_inbound_rules: [", f"watch_inbound_rules: {bad} #", 1))
+        with pytest.raises(Fail) as e:
+            query.mail(vault, 1_800_000_000)
+        assert e.value.code == 2 and "watch_inbound_rules" in e.value.reason and why in e.value.reason, bad
+
+
+def msg(when, sender, subject, snippet="…", labels=("INBOX",)):
+    return {"labelIds": list(labels), "internalDate": str(when), "sender": sender, "subject": subject, "snippet": snippet}
+
+
+def thread(tid, *msgs):
+    return {"id": tid, "viewUrl": f"https://mail.google.com/mail/#all/thread-{tid}", "messages": list(msgs)}
+
+
+FRESH, NEWER, STALE = 1792428500000, 1792428600000, 1792427000000
+PR, CODE = "Re: (Tool) Pull request #12: Fix retries (app)", "Code <notify@code.example.com>"
+FLOOR = [thread("th5", msg(FRESH, '"CI Bot" <noreply@ci.example.com>', "Pat Sample added you as a reviewer on PR #12")),
+         thread("th6", msg(FRESH, "alerts@example.com", "[SEV1] Checkout errors")),
+         thread("th7", msg(STALE, "noreply@ci.example.com", "Pat Sample added you as a reviewer on PR #9")),   # before the cursor
+         thread("th8", msg(FRESH, "noreply@ci.example.org", "Pat Sample added you as a reviewer on PR #8")),   # another domain
+         thread("th9", msg(FRESH, "Build <x@build.ci.example.com>", "Sam Sample ADDED YOU AS A REVIEWER")),   # a subdomain
+         thread("th10", msg(FRESH, "", "[SEV1] no sender")),                                                   # no sender
+         thread("th11", msg(STALE, "alerts@example.com", "[SEV1] old"),                                        # latest one
+                msg(FRESH, "alerts@example.com", "resolved")),                                                 # does not match
+         thread("th12", msg(FRESH, CODE, PR, "Pat Sample added you as a reviewer")),                          # subject and snippet
+         thread("th13", msg(FRESH, CODE, PR, "Pat Sample approved this pull request")),                       # snippet misses
+         thread("th14", msg(FRESH, "tracker@example.com", "(OPS-101) Checkout broken",                         # snippet only
+                            "Priority: Blocker Assignee: Alex Owner")),
+         thread("th15", msg(FRESH, CODE, PR, "Pat Sample added you as a reviewer"),                           # the newest incoming
+                msg(NEWER, CODE, PR, "Pat Sample approved this pull request")),                               # message misses
+         thread("th16", msg(FRESH, CODE, PR, "Pat Sample commented"),                                         # the newest incoming
+                msg(NEWER, CODE, PR, "Sam Sample added you as a reviewer"),                                   # message matches;
+                msg(NEWER + 1, "Alex Owner <me@example.com>", PR, "Thanks", labels=("SENT",))),                # the owner's reply
+         thread("th17", msg(FRESH, "Reminders <r@cal.example.com>", "Report due 2026-10-23"))]                # a deadline
+
+
+def test_inbound_rules_turn_matching_threads_into_items_without_the_model(vault):
+    rules = rules_vault(vault)
+    got = check.mail_extract(mail_stream([(MQ["mail"], [SENT], ""), (MQ["inbound"], FLOOR, "")]), MQ, rules)
+    assert [(i["key"], i["kind"], i["what"], i["who"], i["link"]) for i in got["items"]] == [
+        (f"th5/{FRESH}", "request", "Pat Sample added you as a reviewer on PR #12", "CI Bot", "https://mail.google.com/mail/#all/thread-th5"),
+        (f"th6/{FRESH}", "incident", "(SEV1) Checkout errors", "alerts@example.com", "https://mail.google.com/mail/#all/thread-th6"),
+        (f"th9/{FRESH}", "request", "Sam Sample ADDED YOU AS A REVIEWER", "Build", "https://mail.google.com/mail/#all/thread-th9"),
+        (f"th12/{FRESH}", "request", PR, "Code", "https://mail.google.com/mail/#all/thread-th12"),
+        (f"th14/{FRESH}", "incident", "(OPS-101) Checkout broken", "tracker@example.com", "https://mail.google.com/mail/#all/thread-th14"),
+        (f"th16/{NEWER}", "request", PR, "Code", "https://mail.google.com/mail/#all/thread-th16"),
+        (f"th17/{FRESH}", "deadline", "Report due 2026-10-23", "Reminders", "https://mail.google.com/mail/#all/thread-th17")]
+    assert all(i["query"] == "inbound" and i["label"] == "mail" and i["meeting"] is False for i in got["items"])
+    assert got["stats"]["inbound"]["rows"] == 0 and got["stats"]["inbound"]["rules"] == 7
+
+
+def test_a_model_row_for_a_rule_thread_is_one_item_with_the_rules_kind_and_the_models_words(vault):
+    rules = rules_vault(vault)
+    items = [{"thread_id": "th5", "kind": "deadline", "who": "Pat Sample", "what": "Review PR #12: Fix retries", "by": "2026-10-21"},
+             {"thread_id": "th6", "kind": "incident", "who": "", "what": ""}]   # an empty row: the rule's subject stands
+    got = check.mail_extract(mail_stream([(MQ["mail"], [SENT], ""), (MQ["inbound"], FLOOR[:2], "")], items), MQ, rules)
+    assert [(i["key"], i["kind"], i["what"], i["who"], i["by"]) for i in got["items"]] == [
+        (f"th5/{FRESH}", "request", "Review PR #12: Fix retries", "Pat Sample", "2026-10-21"),
+        (f"th6/{FRESH}", "incident", "(SEV1) Checkout errors", "alerts@example.com", "")]
+    assert got["stats"]["inbound"]["kept"] == 1 and got["stats"]["inbound"]["rules"] == 2
+
+
+def test_inbound_since_replays_the_incoming_search_from_an_epoch_of_the_last_seven_days(vault):
+    now = 1_800_000_000
+    query.advance(vault, ["inbound", "mail"], now - 600)
+    got = query.mail(vault, now, str(now - 6 * 86400))
+    assert got["inbound"] == f"{INBOUND} after:{now - 6 * 86400}"   # no overlap taken off
+    assert got["mail"] == f"in:sent after:{now - 900}"               # sent mail keeps its cursor
+    for bad in ("abc", "", "-5", str(now + 10), str(now - 7 * 86400 - 1)):
+        with pytest.raises(Fail) as e:
+            query.mail(vault, now, bad)
+        assert e.value.code == 2 and "--inbound-since" in e.value.reason, bad
+    cfg = vault / "system" / "config.md"
+    cfg.write_text(cfg.read_text().replace("---\n", '---\nwatch_inbound_mail: "false"\n', 1))
+    with pytest.raises(Fail) as e:
+        query.mail(vault, now, str(now - 60))
+    assert e.value.code == 2 and "watch_inbound_mail" in e.value.reason

@@ -229,3 +229,60 @@ inbound_says() {
   [ "$(grep -c 'Review PR #12' wiki/work/Now.md)" -eq 1 ]
   [ "$(grep -c '\[watch\]' "$ALERTS")" -eq 1 ]
 }
+
+@test "incoming-mail rules: with no model rows, a reviewer mail becomes an owed line and an alert mail a [watch] alert; the log counts why" {
+  system/scripts/vault_index.py set system/config.md watch_inbound_mail true > /dev/null
+  sed -i '$d' system/config.md
+  cat >> system/config.md <<'EOF'
+watch_inbound_rules: [{from: "@code.example.com", subject: "pull request", snippet: "added you as a reviewer", kind: request}, {from: "alerts@example.com", subject: "^\\[?sev ?1", kind: incident}]
+---
+EOF
+  run system/scripts/vault_index.py validate system/config.md
+  [ "$status" -eq 0 ]
+  export STUB_MAIL_STREAM="$BATS_TEST_TMPDIR/mail.jsonl"
+  printf '{"watch": 1800000000, "own": 1800000000, "inbound": 1800000000}\n' > system/logs/watch/cursors.json
+  {
+    jq -cn --arg t "$GMAIL" --arg q "$(extensions/intraday/scripts/watch.py mail-query | jq -r .inbound)" \
+      '{type: "assistant", message: {content: [{type: "tool_use", id: "m1", name: $t, input: {query: $q, pageSize: 50, view: "THREAD_VIEW_MINIMAL"}}]}}'
+    jq -cn '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "m1", content: "…"}]},
+      tool_use_result: {structuredContent: {threads: [
+        {id: "th1", viewUrl: "https://mail.google.com/mail/#all/thread-a:1",
+         messages: [{labelIds: ["INBOX"], internalDate: "1800000100000", sender: "Code <notify@code.example.com>",
+                     subject: "Re: (Tool) Pull request #12: Fix retries (app)", snippet: "Pat Sample added you as a reviewer"}]},
+        {id: "th2", viewUrl: "https://mail.google.com/mail/#all/thread-a:2",
+         messages: [{labelIds: ["INBOX"], internalDate: "1800000200000", sender: "alerts@example.com",
+                     subject: "[SEV1] Checkout errors", snippet: "Error rate above 5%"}]},
+        {id: "th3", viewUrl: "https://mail.google.com/mail/#all/thread-a:3",
+         messages: [{labelIds: ["INBOX"], internalDate: "1800000300000", sender: "news@example.com", subject: "Weekly digest", snippet: "…"}]}]}}}'
+    jq -cn '{type: "result", subtype: "success", is_error: false, result: ({items: []} | tojson)}'
+  } > "$STUB_MAIL_STREAM"
+  run "$WF"
+  [ "$status" -eq 0 ]
+  grep -qF -- '- [ ] owed: Re: (Tool) Pull request #12: Fix retries (app) [due:: ' wiki/work/Now.md
+  grep -qF "(Code, since $TODAY, https://mail.google.com/mail/#all/thread-a:1)" wiki/work/Now.md
+  grep -qF '[watch] (SEV1) Checkout errors (mail) https://mail.google.com/mail/#all/thread-a:2' "$ALERTS"
+  [ "$(grep -c '\[intraday\] the incoming-mail search returned threads but the model listed none' "$ALERTS")" -eq 1 ]
+  [ "$(jq -sc 'map(select(.step == "inbound")) | .[-1] | [.count, .stats.threads, .stats.fresh, .stats.rows, .stats.rules]' system/logs/watch_fetch-*.jsonl)" = '[2,3,3,0,2]' ]
+}
+
+@test "--inbound-since takes only an epoch of the last 7 days, and a bad inbound rule stops the tick before any session runs" {
+  system/scripts/vault_index.py set system/config.md watch_inbound_mail true > /dev/null
+  rm -f "$STUB_ARGS_SLACK"
+  run "$WF" --inbound-since abc
+  [ "$status" -eq 2 ]
+  run "$WF" --inbound-since "$(( $(date +%s) + 3600 ))"
+  [ "$status" -eq 2 ]
+  run "$WF" --inbound-since "$(( $(date +%s) - 8 * 86400 ))"
+  [ "$status" -eq 2 ]
+  run "$WF" --inbound-since
+  [ "$status" -eq 2 ]
+  [ ! -e "$STUB_ARGS_SLACK" ]
+  run extensions/intraday/scripts/watch.py mail-query --inbound-since abc
+  [ "$status" -eq 2 ]
+  sed -i '$d' system/config.md
+  printf 'watch_inbound_rules: [{from: "@ci.example.com", subject: "(", kind: request}]\n---\n' >> system/config.md
+  run "$WF"
+  [ "$status" -eq 2 ]
+  [ ! -e "$STUB_ARGS_SLACK" ]
+  grep -qF '[intraday] The mail watch failed (exit 2):' "$ALERTS"
+}

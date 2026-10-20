@@ -3,7 +3,9 @@
 
 Usage: watch.py slack-input                       print this tick's Slack search inputs as {query name: input} JSON
        watch.py slack-tool                        print the Slack search tool's name
-       watch.py mail-query                        print the mail session's queries as {query name: query} JSON ({}: off)
+       watch.py mail-query [--inbound-since <epoch>]
+                                                  print the mail session's queries as {query name: query} JSON ({}: off);
+                                                  the epoch (last 7 days) replaces the incoming search's cursor
        watch.py hold                              print why this tick is skipped (usage ceiling), or nothing
        watch.py extract-slack <inputs JSON>       check a Slack session's stream on stdin; print the found JSON
        watch.py extract-mail <queries JSON>       check a Gmail session's stream on stdin; print the found JSON
@@ -93,8 +95,8 @@ def main(argv) -> int:
             print(json.dumps(query.slack(VAULT, now), sort_keys=True))
         elif args == ["slack-tool"]:
             print(query.slack_tool(VAULT))
-        elif args == ["mail-query"]:
-            print(json.dumps(query.mail(VAULT, now)))
+        elif args[:1] == ["mail-query"] and (len(args) == 1 or (len(args) == 3 and args[1] == "--inbound-since")):
+            print(json.dumps(query.mail(VAULT, now, args[2] if len(args) == 3 else None)))
         elif args == ["hold"]:
             reason = triage.hold(VAULT, intake.dt())
             if reason:
@@ -103,14 +105,14 @@ def main(argv) -> int:
             print(json.dumps(check.slack_extract(messages(sys.stdin.read()), query.slack_tool(VAULT), json.loads(args[1]),
                                                  str(triage.config(VAULT).get("slack_notify_channel") or ""))))
         elif len(args) == 2 and args[0] == "extract-mail":
-            print(json.dumps(check.mail_extract(messages(sys.stdin.read()), json.loads(args[1]))))
+            print(json.dumps(check.mail_extract(messages(sys.stdin.read()), json.loads(args[1]), query.inbound_rules(VAULT))))
         elif args[:1] == ["slot-days"] and len(args) > 1:
             items = [i for p in args[1:] for i in _found(p).get("items") or []]
             print("".join(f"{d}\n" for d in cal.slot_days(intake.today(), items)), end="")
         elif args[:1] == ["route"] and len(args) >= 2 and args[1].isdigit():
             print(do_route(intake, args[1:]))
         else:
-            raise Fail(2, "usage: watch.py slack-input | slack-tool | mail-query | hold | extract-slack <inputs> | "
+            raise Fail(2, "usage: watch.py slack-input | slack-tool | mail-query [--inbound-since <epoch>] | hold | extract-slack <inputs> | "
                           "extract-mail <queries> | slot-days <found>… | route <start epoch> [options]")
     except Fail as f:
         print(f"watch: {f.reason}", file=sys.stderr)

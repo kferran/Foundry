@@ -149,9 +149,9 @@ def slack_extract(stream, tool: str, queries: dict, notify: str = "") -> dict:
 
 
 def sent_threads(got: list, since: int = 0, sent: bool = True) -> dict:
-    """thread id -> {link, date (epoch ms of its latest sent message, or with sent=False its latest incoming one)},
-    from the search results only; a thread whose such messages are all older than `since` (epoch seconds) is left out
-    (spec §3.3)."""
+    """thread id -> {link, date (epoch ms of its latest sent message, or with sent=False its latest incoming one), and
+    that message's sender and subject}, from the search results only; a thread whose such messages are all older than
+    `since` (epoch seconds) is left out (spec §3.3)."""
     out = {}
     for sc in got:
         listed = sc.get("threads", [])
@@ -161,17 +161,42 @@ def sent_threads(got: list, since: int = 0, sent: bool = True) -> dict:
             msgs = [m for m in (t.get("messages") or []) if isinstance(m, dict)] if isinstance(t, dict) else []
             if not (isinstance(t, dict) and isinstance(t.get("id"), str) and str(t.get("viewUrl", "")).startswith("https://")):
                 raise Fail(1, "a thread lacks an id or a link")
-            dates = [str(m.get("internalDate", "")) for m in msgs if ("SENT" in (m.get("labelIds") or [])) == sent
-                     and "DRAFT" not in (m.get("labelIds") or [])
-                     and str(m.get("internalDate", "")).isdigit() and int(m["internalDate"]) >= since * 1000]
-            if dates:
-                out[t["id"]] = {"link": t["viewUrl"], "date": max(dates, key=int)}
+            msgs = [m for m in msgs if ("SENT" in (m.get("labelIds") or [])) == sent
+                    and "DRAFT" not in (m.get("labelIds") or [])
+                    and str(m.get("internalDate", "")).isdigit() and int(m["internalDate"]) >= since * 1000]
+            if msgs:
+                latest = max(msgs, key=lambda m: int(m["internalDate"]))
+                out[t["id"]] = {"link": t["viewUrl"], "date": str(latest["internalDate"]),
+                                "sender": str(latest.get("sender") or ""), "subject": str(latest.get("subject") or ""),
+                                "snippet": str(latest.get("snippet") or "")}
     return out
 
 
-def mail_extract(stream, queries: dict) -> dict:
-    """{"items": [...], "full": [query names]}: the sent-mail commitments and the incoming requests, incidents and
-    deadlines, each joined to the threads its own search returned."""
+def _sender(raw: str) -> tuple:
+    """(display name, lower-case address) of a message's sender, "Name <a@b>" or "a@b"."""
+    m = re.search(r"<([^<>\s]+@[^<>\s]+)>", raw)
+    addr = (m.group(1) if m else raw.strip()).lower()
+    return (raw[:m.start()].strip().strip('"') if m else ""), (addr if "@" in addr else "")
+
+
+def _rule_hit(pattern: str, addr: str) -> bool:
+    """An address pattern matches that address; a domain (@example.com or example.com) it and its subdomains."""
+    if "@" in pattern and not pattern.startswith("@"):
+        return addr == pattern
+    domain, host = pattern.lstrip("@"), addr.rpartition("@")[2]
+    return bool(addr) and (host == domain or host.endswith("." + domain))
+
+
+DROPS = ("unknown_thread", "wrong_kind", "empty_what", "duplicate")
+SUBJECT_SCAN = 1000   # ponytail: the owner's regex runs on at most this much of a subject; Python's re has no timeout
+
+
+def mail_extract(stream, queries: dict, rules=()) -> dict:
+    """{"items": [...], "full": [query names], "stats": {query name: counts}}: the sent-mail commitments and the
+    incoming requests, incidents and deadlines, each joined to the threads its own search returned, plus each incoming
+    thread whose latest incoming message matches one of `rules` (query.inbound_rules). stats counts, per search, the
+    threads returned, those with a message at or after the cursor (fresh), the reply's rows, the rows kept, the threads
+    a rule matched, the rows dropped by reason and the dropped rows' kinds (cut to 20 safe characters)."""
     from .query import GMAIL_TOOL
     names = {q: n for n, q in queries.items()}
     pages, result = query_pages(stream, GMAIL_TOOL, queries,
@@ -184,17 +209,46 @@ def mail_extract(stream, queries: dict) -> dict:
     for name, got in pages.items():
         since = re.search(r"after:(\d+)", queries[name])
         known[name] = sent_threads(got, int(since.group(1)) if since else 0, sent=name == "mail")
-    items, seen = [], set()
+    stats = {n: {"threads": sum(len(p.get("threads") or []) for p in got), "fresh": len(known[n]), "rows": 0,
+                 "kept": 0, "rules": 0, "dropped": dict.fromkeys(DROPS, 0), "dropped_kinds": set()}
+             for n, got in pages.items()}
+    items, seen = {}, set()
     for r in reply(result):
         tid, what, kind = r.get("thread_id"), one_line(r.get("what")), r.get("kind")
         q = "mail" if kind == "commitment" else "inbound" if kind in INBOUND_KINDS else ""
-        if tid not in known.get(q, {}) or (q, tid) in seen or not what:
-            continue   # a thread its search never returned, or a kind that search cannot give, is dropped
+        # A row counts under the search its kind belongs to, else the one that returned its thread, else the first.
+        s = stats[q if q in stats else next((n for n in stats if tid in known[n]), next(iter(stats)))]
+        s["rows"] += 1
+        why = ("wrong_kind" if q not in known else "unknown_thread" if tid not in known[q] else "empty_what" if not what
+               else "duplicate" if (q, tid) in seen else "")
+        if why:
+            s["dropped"][why] += 1
+            s["dropped_kinds"].add(re.sub(r"[^A-Za-z0-9_-]", "", str(kind))[:20])
+            continue
+        s["kept"] += 1
         seen.add((q, tid))
         t = known[q][tid]
-        items.append({"query": q, "key": f"{tid}/{t['date']}", "kind": kind, "what": what,
-                      "who": _who(r.get("who")), "by": _by(r.get("by")), "meeting": q == "mail" and r.get("meeting") is True,
-                      "change": "other", "link": t["link"], "ts": t["date"], "label": "mail", "text": ""})
+        items[q, tid] = {"query": q, "key": f"{tid}/{t['date']}", "kind": kind, "what": what,
+                         "who": _who(r.get("who")), "by": _by(r.get("by")), "meeting": q == "mail" and r.get("meeting") is True,
+                         "change": "other", "link": t["link"], "ts": t["date"], "label": "mail", "text": ""}
+    for tid, t in known.get("inbound", {}).items():
+        name, addr = _sender(t["sender"])
+        kind = next((k for p, subj, snip, k in rules if _rule_hit(p, addr)
+                     and all(rx is None or rx.search(t[f][:SUBJECT_SCAN]) for f, rx in (("subject", subj), ("snippet", snip)))),
+                    None)
+        if kind is None:
+            continue
+        stats["inbound"]["rules"] += 1
+        if ("inbound", tid) in items:   # the model's row stays, with the rule's kind
+            items["inbound", tid]["kind"] = kind
+            continue
+        what = one_line(t["subject"])
+        if what:
+            items["inbound", tid] = {"query": "inbound", "key": f"{tid}/{t['date']}", "kind": kind, "what": what,
+                                     "who": _who(name or addr), "by": "", "meeting": False, "change": "other",
+                                     "link": t["link"], "ts": t["date"], "label": "mail", "text": ""}
+    for s in stats.values():
+        s["dropped_kinds"] = sorted(s["dropped_kinds"])[:10]
     # No ascending sort: a search that fills its pages leaves its oldest threads unread (spec §3.3).
     full = [n for n, got in pages.items() if len(got) == MAIL_PAGES and got[-1].get("nextPageToken")]
-    return {"items": items, "captures": [], "full": full}
+    return {"items": list(items.values()), "captures": [], "full": full, "stats": stats}
