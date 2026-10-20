@@ -24,6 +24,7 @@ MAX_GROUPS = 500
 MAX_LOOKUPS = 20
 MAX_STATUS = 20
 REMIND = timedelta(hours=4)   # a source still failing posts again this often (#293)
+JITTER = timedelta(minutes=5)  # an hourly run a few seconds early still counts as four hours on
 
 
 def _parser():
@@ -69,14 +70,15 @@ def _failing(vault: Path, now: datetime, src, st: dict, error: str) -> None:
     keeps failing. The per-source stamps live in the state file beside the checkpoint the failure holds."""
     try:
         since, posted = (datetime.fromisoformat(st[k]) for k in ("failing_since", "failure_posted"))
-        now - since, now - posted   # a naive stamp raises here too
+        if since.tzinfo is None or posted.tzinfo is None:
+            raise ValueError("naive stamp")
     except (KeyError, TypeError, ValueError):   # no stamps yet, or a damaged one: the failure starts now
         st["failing_since"] = st["failure_posted"] = now.isoformat()
         _append(vault, now, f"{src.name}: failing since {_at(now)} ({error})", tag="telemetry_source")
         return
-    if now - posted >= REMIND:
+    if now - posted >= REMIND - JITTER:
         st["failure_posted"] = now.isoformat()
-        _append(vault, now, f"{src.name}: still failing for {int((now - since).total_seconds() // 3600)} h, "
+        _append(vault, now, f"{src.name}: still failing for {round((now - since).total_seconds() / 3600)} h, "
                 f"since {_at(since)} ({error})", tag="telemetry_source")
 
 
@@ -322,7 +324,7 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
                     st.pop("failure_posted", None)
                     if since and not dry:
                         try:
-                            hours = f" after {int((now - datetime.fromisoformat(since)).total_seconds() // 3600)} h"
+                            hours = f" after {round((now - datetime.fromisoformat(since)).total_seconds() / 3600)} h"
                         except (TypeError, ValueError):
                             hours = ""
                         _append(vault, now, f"{src.name}: recovered{hours}; backfilled {_at(start)} to {_at(end)}"
