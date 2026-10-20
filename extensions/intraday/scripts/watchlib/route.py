@@ -36,11 +36,30 @@ def _norm(text: str) -> str:
     return " ".join(str(text).casefold().split())
 
 
-def _known_link(vault, partition: str, link: str, day: str) -> bool:
+def _page_texts(vault, partition: str, day: str) -> list:
+    """The Now page and the archive notes of this month and the last."""
     first = date.fromisoformat(day).replace(day=1)
     prev = date.fromordinal(first.toordinal() - 1).isoformat()
-    texts = [nowmod.read(vault, partition), *nowmod.archived(vault, partition, prev, day)]
-    return any(link in t for t in texts)
+    return [nowmod.read(vault, partition), *nowmod.archived(vault, partition, prev, day)]
+
+
+def _known_link(vault, partition: str, link: str, day: str) -> bool:
+    return any(link in t for t in _page_texts(vault, partition, day))
+
+
+PR_NUMBER = re.compile(r"(?:\bPR|\bpull request)\s*#?\s*(\d+)\b", re.IGNORECASE)
+TICKET_KEY = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
+
+
+def _known_id(vault, partition: str, text: str, day: str) -> bool:
+    """A Now line (open or archived) already names a PR number or a ticket key `text` names: in its words ("PR #12",
+    "app PR #12", "PR app #12", "pull request #12") or in its evidence URL (/pull/12, /pull-requests/12,
+    /merge_requests/12, or the key anywhere, as in /browse/OPS-101).
+    ponytail: the same PR number in two repos counts as covered; match the repo too if that ever hides a real ask."""
+    finds = [re.compile(rf"(?:\bPR|\bpull request)\s*(?:[\w.-]+\s+)?#?\s*{n}\b|/(?:pull-requests|pull|merge_requests)/{n}\b",
+                        re.IGNORECASE) for n in set(PR_NUMBER.findall(text))]
+    finds += [re.compile(rf"(?<![\w-]){re.escape(k)}(?!\d)") for k in set(TICKET_KEY.findall(text))]
+    return bool(finds) and any(rx.search(t) for t in _page_texts(vault, partition, day) for rx in finds)
 
 
 def _said(vault, partition: str, what: str) -> bool:
@@ -75,6 +94,9 @@ def now_line(vault, partition: str, item: dict, day: str, events: list) -> tuple
     # A sent-mail link is the thread's: a later commitment in the same thread is new, so sent mail relies on the ledger
     # and _said. An incoming thread is one item, so its link counts, as triage's line for the same thread does.
     if item["query"] != "mail" and _known_link(vault, partition, item["link"], day):
+        return "covered", ""
+    # An incoming PR or ticket mail is covered by a line on the same PR or ticket from another source (#289).
+    if item["query"] == "inbound" and _known_id(vault, partition, f"{item['what']} {item.get('text', '')}", day):
         return "covered", ""
     if item["kind"] in ("commitment", "request") and (_said(vault, partition, item["what"])
                                                       or (item["meeting"] and _calendar_names(events, item["who"]))):

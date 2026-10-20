@@ -23,6 +23,9 @@ USER_ID = re.compile(r"[UW][A-Z0-9]{2,}")
 LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
 SKIP = re.compile(rf"(?:[A-Za-z0-9._%+-]*@)?{LABEL}(?:\.{LABEL})+")   # it enters the search: no space, colon or bracket
 INBOUND = "-in:sent -category:promotions -category:social -category:forums"
+RULE_KINDS = ("request", "incident", "deadline")
+RULE_MAX = 200
+REPLAY_MAX_SECONDS = 7 * 86400
 COMMON = {"sort": "timestamp", "sort_dir": "asc", "limit": 20, "include_bots": False, "include_context": False,
           "response_format": "detailed", "content_types": "messages"}
 
@@ -98,9 +101,43 @@ def first_capture(vault) -> bool:
     return bool(config(vault).get("capture_channel")) and "capture" not in cursors(vault)
 
 
-def mail(vault, now_epoch: int) -> dict:
+def inbound_rules(vault) -> list:
+    """watch_inbound_rules as (from, subject regex or None, snippet regex or None, kind): the incoming threads that
+    become items without the model. Each rule is checked before a session runs."""
+    value = config(vault).get("watch_inbound_rules") or []
+    if not isinstance(value, list):
+        raise Fail(2, "watch_inbound_rules must be a list of {from, subject, snippet, kind}")
+    out = []
+    for n, r in enumerate(value):
+        where = f"watch_inbound_rules[{n}]"
+        if not (isinstance(r, dict) and {"from", "kind"} <= set(r) <= {"from", "subject", "snippet", "kind"}
+                and ("subject" in r or "snippet" in r)):
+            raise Fail(2, f"{where}: a rule holds from, kind and a subject or a snippet regex (or both), nothing else")
+        sender, kind = r["from"], r["kind"]
+        if not (isinstance(sender, str) and len(sender) <= RULE_MAX and SKIP.fullmatch(sender)):
+            raise Fail(2, f"{where}: from {sender!r} is not an address or a domain (@example.com or example.com)")
+        rxs = {}
+        for field in ("subject", "snippet"):
+            if field not in r:
+                rxs[field] = None
+                continue
+            pattern = r[field]
+            if not (isinstance(pattern, str) and 0 < len(pattern) <= RULE_MAX):
+                raise Fail(2, f"{where}: {field} must be a regex of 1 to {RULE_MAX} characters")
+            try:
+                rxs[field] = re.compile(pattern, re.IGNORECASE)
+            except re.error as exc:
+                raise Fail(2, f"{where}: {field} {pattern!r} is not a valid regex ({exc})")
+        if kind not in RULE_KINDS:
+            raise Fail(2, f"{where}: kind must be {', '.join(RULE_KINDS)}, not {kind!r}")
+        out.append((sender.lower(), rxs["subject"], rxs["snippet"], kind))
+    return out
+
+
+def mail(vault, now_epoch: int, inbound_since=None) -> dict:
     """{query name: Gmail query} for the one mail session, each since its own cursor: `mail`, the owner's sent mail
     (watch_commitments_mail), and `inbound`, incoming mail less the senders in watch_inbound_skip (watch_inbound_mail).
+    inbound_since (--inbound-since, a replay) is an epoch of the last 7 days the incoming search reads from instead.
     An empty dict means no mail session runs."""
     cfg, cur, out = config(vault), cursors(vault), {}
     partition(vault)
@@ -108,6 +145,12 @@ def mail(vault, now_epoch: int) -> dict:
     def since(name):
         return cur[name] - OVERLAP_SECONDS if name in cur else now_epoch - FIRST_LOOKBACK_SECONDS
 
+    if inbound_since is not None:
+        s = str(inbound_since)
+        if not (s.isdigit() and now_epoch - REPLAY_MAX_SECONDS <= int(s) <= now_epoch):
+            raise Fail(2, f"--inbound-since {s!r} is not an epoch in seconds from the last 7 days")
+        if not truthy(cfg.get("watch_inbound_mail"), True):
+            raise Fail(2, "--inbound-since needs watch_inbound_mail on")
     if truthy(cfg.get("watch_commitments_mail"), True):
         out["mail"] = f"in:sent after:{since('mail')}"
     if truthy(cfg.get("watch_inbound_mail"), True):
@@ -116,5 +159,7 @@ def mail(vault, now_epoch: int) -> dict:
         for s in skip:
             if not (isinstance(s, str) and SKIP.fullmatch(s)):
                 raise Fail(2, f"watch_inbound_skip: {s!r} is not an address or a domain (@example.com or example.com)")
-        out["inbound"] = " ".join([INBOUND, f"after:{since('inbound')}", *(f"-from:{s}" for s in skip)])
+        inbound_rules(vault)
+        after = int(inbound_since) if inbound_since is not None else since("inbound")
+        out["inbound"] = " ".join([INBOUND, f"after:{after}", *(f"-from:{s}" for s in skip)])
     return out
