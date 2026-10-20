@@ -746,6 +746,14 @@ def test_add_and_set_refuse_a_line_over_300_characters(vault):
     assert now.add(vault, "work", "owed", "z" * 240, TODAY)[0] == "added"
 
 
+def test_fit_cuts_a_machine_writers_statement_to_the_cap(vault):
+    prepare(vault)
+    status, line = now.add(vault, "work", "owed", "x" * 400, TODAY, "Pat", "https://example.com/t/1", fit=True)
+    assert status == "added"
+    assert len(line) == now.MAX_LINE
+    assert "x…" in line
+
+
 def test_a_long_line_written_before_the_cap_keeps_working(vault):
     prepare(vault)
     long = f"- [ ] owed: {'w' * 400} (since 2026-10-01)"
