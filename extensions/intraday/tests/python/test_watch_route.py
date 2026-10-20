@@ -140,7 +140,7 @@ THREAD = "https://mail.google.com/mail/#all/thread-a:3"
 
 
 def inbound(kind="request", what="Review PR #12: Fix the export retries", key="th3/1792428500000", **kw):
-    return item(kind=kind, query="inbound", what=what, key=key, label="mail", text="", change="other", **{"link": THREAD, **kw})
+    return item(kind=kind, query="inbound", what=what, key=key, label="mail", change="other", **{"link": THREAD, "text": "", **kw})
 
 
 def test_an_incoming_request_is_an_owed_line_and_an_incoming_alert_only_alerts(vault):
@@ -155,6 +155,26 @@ def test_an_incoming_request_is_an_owed_line_and_an_incoming_alert_only_alerts(v
     run(vault, {"items": [inbound(what="Re-review PR #12 after the fix", key="th3/1792429000000")]})
     assert [r["now"] for r in ledger(vault)] == ["added", "", "covered"]
     assert len(nowmod.open_lines(nowmod.read(vault, "work"))) == 1
+
+
+def test_an_incoming_pr_or_ticket_a_line_already_names_is_covered_by_its_number_or_key(vault):
+    # #289 live tick: "Review PR #12: <title>" was added beside an open "Review app PR #12 <title>" with a code-host link.
+    nowmod.add(vault, "work", "owed", "Review app PR #12 Fix the export retries", DAY, "Pat Sample")       # a word between
+    nowmod.add(vault, "work", "owed", "Look at the retry fix", DAY, "Pat Sample", "https://code.example.com/app/pull/34")
+    nowmod.add(vault, "work", "owed", "Chase the checkout outage", DAY, "", "https://tracker.example.com/browse/OPS-101")
+    archive = vault / "wiki" / "work" / "now-archive" / "2026-10.md"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    archive.write_text(f"- [x] owed: Merge the cache fix (Pat Sample, since {DAY}, "
+                       f"https://code.example.com/app/merge_requests/56) _(closed: ticked {DAY})_\n")
+    items = [inbound(what="Review PR #12: Fix the export retries", key="a/1", link=THREAD + "a"),
+             inbound(what="Review pull request #34", key="b/1", link=THREAD + "b"),            # the evidence URL
+             inbound(what="Checkout is broken", text="(OPS-101) Checkout broken", key="c/1", link=THREAD + "c"),   # key in a URL
+             inbound(what="Re-review PR #56", key="d/1", link=THREAD + "d"),                   # an archived line
+             inbound(what="Review PR #123: Another fix", key="e/1", link=THREAD + "e"),         # another number
+             inbound(what="OPS-10 is assigned to you", key="f/1", link=THREAD + "f"),          # another key
+             inbound(what="Review the onboarding doc", key="g/1", link=THREAD + "g")]           # no identifier
+    run(vault, {"items": items})
+    assert [r["now"] for r in ledger(vault)] == ["covered", "covered", "covered", "covered", "added", "added", "added"]
 
 
 def test_an_incoming_thread_triage_already_put_on_the_now_page_is_covered(vault):
