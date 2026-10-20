@@ -10,7 +10,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-20
-- Fixed: the intraday watch reads incoming mail again each tick, as the in-session sweep did. Its Gmail session also searches mail since its own cursor, less promotions, social, forums and the senders in `watch_inbound_skip`. A review request or a task assigned to you becomes an `owed` Now line, a production alert a `[watch]` alert, and a deadline an `owed` line; triage and the watch never both add a line for the same thread. `watch_inbound_mail` (default on) turns it off, and `--check` counts incoming mail next to Slack and sent mail. `foundry-watch.service` now really allows 25 minutes (it still said 20). (#289)
+- Fixed: the intraday watch reads incoming mail again each tick, as the in-session sweep did. Its Gmail session also searches mail since its own cursor, less promotions, social, forums and the senders in `watch_inbound_skip`. A review request or a task assigned to you becomes an `owed` Now line, a production alert a `[watch]` alert, and a deadline an `owed` line; triage and the watch never both add a line for the same thread. `watch_inbound_mail` (default on) turns it off, and `--check` counts incoming mail next to Slack and sent mail. `foundry-watch.service` now really allows 25 minutes (it still said 20). (#290, #289)
   - Action: on a server with `intraday` on, run `system/scripts/install_units.sh --update` to install the 25-minute `foundry-watch.service`; optionally list bot and newsletter senders in `watch_inbound_skip`.
 
 ## 2026-10-19
