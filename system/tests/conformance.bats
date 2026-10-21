@@ -142,7 +142,6 @@ walker extensions/intraday/scripts/watchlib/check.py  # F1 library PR lifts it i
 walker system/scripts/vaultlib/notify.py  # F1 retrofit 4 (notify)
 walker system/scripts/calendar_tsv.py  # F1 retrofit 5 (calendar)
 walker extensions/handoffs/scripts/jira_handoffs.py  # F1 retrofit 6 (handoffs)
-walker extensions/telemetry/scripts/telemetrylib/rca.py  # F1 retrofit 7 (RCA filer)
 walker system/scripts/vaultlib/nightshift_session.py  # other shape: a Work Order session with many tools and no single connector (F1 spec)
 walker system/scripts/vaultlib/connector.py  # home: the shared walker (F1 spec §3.1)
 helper system/scripts/triage_fetch.sh:logline  # F1 retrofit 1 (triage): lib_fetch.sh
@@ -159,9 +158,6 @@ helper system/scripts/notify.sh:fail  # F1 retrofit 4 (notify)
 helper extensions/handoffs/scripts/jira_fetch.sh:logline  # F1 retrofit 6 (handoffs)
 helper extensions/handoffs/scripts/jira_fetch.sh:alert_once  # F1 retrofit 6 (handoffs)
 helper extensions/handoffs/scripts/jira_fetch.sh:fail  # F1 retrofit 6 (handoffs)
-helper extensions/telemetry/scripts/rca_file.sh:logline  # F1 retrofit 7 (RCA filer)
-helper extensions/telemetry/scripts/rca_file.sh:alert_once  # F1 retrofit 7 (RCA filer)
-helper extensions/telemetry/scripts/rca_file.sh:fail  # F1 retrofit 7 (RCA filer)
 helper system/scripts/smoke_check.sh:logline  # other shape: logline <source> <exit> <reason>, one line per smoke row
 helper system/scripts/lib_fetch.sh:logline  # home: the shared fetch helpers (F1 spec §3.2)
 helper system/scripts/lib_fetch.sh:alert_once  # home: the shared fetch helpers (F1 spec §3.2)
@@ -173,7 +169,6 @@ fail-class system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
 fail-class system/scripts/vaultlib/notify.py  # F1 retrofit 4 (notify)
 fail-class system/scripts/calendar_tsv.py  # F1 retrofit 5 (calendar)
 fail-class extensions/handoffs/scripts/jira_handoffs.py  # F1 retrofit 6 (handoffs)
-fail-class extensions/telemetry/scripts/telemetrylib/rca.py  # F1 retrofit 7 (RCA filer)
 fail-class system/scripts/vaultlib/connector.py  # home: the one Fail every retrofitted module imports (F1 spec §3.1)
 config system/scripts/alert.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
 config system/scripts/commit_runs.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
@@ -191,7 +186,6 @@ stream-builder system/tests/python/test_triage.py  # F1 retrofit 1 (triage): hel
 stream-builder extensions/intraday/tests/python/test_watch_check.py  # F1 retrofit 3 (watch): helpers.stream
 stream-builder system/tests/python/test_calendar_tsv.py  # F1 retrofit 5 (calendar): helpers.stream
 stream-builder extensions/handoffs/tests/python/test_handoffs_jira.py  # F1 retrofit 6 (handoffs): helpers.stream
-stream-builder extensions/telemetry/tests/python/test_rca.py  # F1 retrofit 7 (RCA filer): helpers.stream
 '
 
 # copies: every copy of a shared part in the tracked tree, one "<kind> <path>[:<name>]" line each, sorted.
