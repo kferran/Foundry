@@ -10,7 +10,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-21
-- The hooks install adds a usage log: in a session started at the vault root, each `/command` you type and each skill Claude runs appends one line (`{ts, command}` or `{ts, skill}`, never the prompt text or arguments) to `system/logs/usage-YYYY-MM.jsonl`, so the commands headless runs never see (`/query`, `/lint`, `/impact`, `/rca`) can be counted. Headless, unattended and codebase sessions log nothing. (#PR)
+- The hooks install adds a usage log: in a session started at the vault root, each `/command` you type and each skill Claude runs appends one line (`{ts, command}` or `{ts, skill}`, never the prompt text or arguments) to `system/logs/usage-YYYY-MM.jsonl`, so the commands headless runs never see (`/query`, `/lint`, `/impact`, `/rca`) can be counted. Headless, unattended and codebase sessions log nothing. (#312)
   - Action: run `system/scripts/install_hooks.sh --dry-run`, then `system/scripts/install_hooks.sh` (or re-run `/setup`'s memory step) to add the two new hook entries.
 
 ## 2026-10-20
