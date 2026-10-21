@@ -424,7 +424,7 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
         return {"outcome": "failed", "reason": "profile", "detail": problem}
     if s["limited"]:
         return {"outcome": "waiting_reset", "reset_at": ss.reset_epoch(s["limited"])}
-    return {"outcome": "finished", "usage": s["usage"]}
+    return {"outcome": "finished", "usage": s["usage"], "denied": s["denied"]}
 
 
 def _read_result(p: Path) -> dict | None:
@@ -522,15 +522,25 @@ def _deliver(ctx: Ctx, fm: dict, idir: Path) -> dict:
             "needs": [f"Deliver {d['branch']} by hand ({d['sha'][:8]}): see {idir}/push.log"]}
 
 
-def _deliver_research(ctx: Ctx, fm: dict, d: Path) -> dict:
+def _no_result(ctx: Ctx, fm: dict, d: Path, denied) -> dict:
+    """A missing result or note whose write under out/ the profile denied says so (#314)."""
+    out = (d / "out").resolve()
+    hit = next((p for p in denied if (d / p).resolve().is_relative_to(out)), None)
+    if hit is None:
+        return {"state": "failed", "reason": "no result"}
+    return {"state": "failed", "reason": "out write denied", "needs": [
+        f"The session's write to {hit} was denied: see {rep.item_dir(ctx.vault, fm['id'])}/stream.jsonl"]}
+
+
+def _deliver_research(ctx: Ctx, fm: dict, d: Path, denied=()) -> dict:
     res = _read_result(d / "out" / "result.json")
     if res is None:
-        return {"state": "failed", "reason": "no result"}
+        return _no_result(ctx, fm, d, denied)
     if res["status"] == "blocked":
         return {"state": "blocked", "reason": "session", "needs": [f"Answer: {q}" for q in _questions(res)]}
     findings = d / "out" / Path(fm["output"]).name
     if not findings.is_file():
-        return {"state": "failed", "reason": "no result"}
+        return _no_result(ctx, fm, d, denied)
     ok, detail = nd.publish_research(ctx.vault, fm, findings)
     if not ok:
         return {"state": "failed", "reason": "delivery", "needs": [f"Findings rejected by the publish gate: {detail}"]}
@@ -616,7 +626,7 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     elif fm["kind"] == "plan":
         out = _deliver_plan(ctx, fm, cwd, idir, before)
     else:
-        out = _deliver_research(ctx, fm, cwd)
+        out = _deliver_research(ctx, fm, cwd, run.get("denied", ()))
     return _finish(ctx, path, fm, idir, cwd, out)
 
 

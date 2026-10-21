@@ -926,3 +926,49 @@ def test_tick_refuses_a_note_with_an_unsafe_id(env):
     assert "2026-10-06-evil.md refused" in alerts
     assert nr.main(["tick"], vault, NOW) == 0  # refused once; later ticks skip both notes
     assert (tmp / "victim").is_dir()
+
+
+def run_research_with_denials(env, tmp_path, writes_text, denied):
+    """A research item whose stub writes writes_text and whose result event denies a Write at each path in denied
+    (relative to the item's workspace directory, which the stub fills in at run time). Returns (fm, outcome)."""
+    vault, tmp = env
+    writes = tmp_path / "rw.txt"
+    writes.write_text(writes_text)
+    head = (FX / "ok.jsonl").read_text().replace(
+        '"tools":["Read","Glob","Grep","Edit","Write","Bash","Skill","Agent","TodoWrite"]', '"tools":["Read","Write"]')
+    res = {"type": "result", "subtype": "success", "is_error": False, "permission_denials": [
+        {"tool_name": "Write", "tool_use_id": f"t{i}", "tool_input": {"file_path": f"@W@/{p}", "content": "x"}}
+        for i, p in enumerate(denied)]}
+    tpl, stream = tmp_path / "r.tpl", tmp_path / "r.jsonl"
+    tpl.write_text("".join(f"{l}\n" for l in head.splitlines()[:-1]) + json.dumps(res) + "\n")
+    stub(tmp, WRITE=str(writes), STREAM=str(stream), SHELL=f'sed "s#@W@#$PWD#g" "{tpl}" > "{stream}"')
+    brief = tmp_path / "brief.md"
+    brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
+    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+                    "--output", "wiki/work/concepts/Answer.md", "--now"], vault, NOW) == 0
+    nr.main(["tick"], vault, NOW)
+    fm = only_item(vault)[1]
+    return fm, json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
+
+
+def test_research_out_write_denied_is_its_own_reason(env, tmp_path):
+    # #314: the session's Write to out/ was denied, out/ stayed empty, and the item said only "no result"
+    fm, out = run_research_with_denials(env, tmp_path, "", ["out/Answer.md"])
+    assert (fm["state"], fm["reason"]) == ("failed", "out write denied")
+    assert "out/Answer.md" in out["needs"][0] and "stream.jsonl" in out["needs"][0]
+
+
+def test_research_no_write_and_no_denial_is_no_result(env, tmp_path):
+    fm, out = run_research_with_denials(env, tmp_path, "", [])
+    assert (fm["state"], fm["reason"]) == ("failed", "no result")
+
+
+def test_research_denial_outside_out_is_no_result(env, tmp_path):
+    fm, out = run_research_with_denials(env, tmp_path, "", ["code/out/Answer.md"])
+    assert fm["reason"] == "no result"
+
+
+def test_research_result_json_denied_names_it(env, tmp_path):
+    note = __import__("helpers").concept("work", "Answer", "Found it.", provenance='["headless"]').replace("\n", "\\n")
+    fm, out = run_research_with_denials(env, tmp_path, f"out/Answer.md={note}\n", ["out/result.json"])
+    assert fm["reason"] == "out write denied" and "out/result.json" in out["needs"][0]
