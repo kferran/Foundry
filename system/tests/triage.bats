@@ -25,14 +25,15 @@ claude.ai Atlassian: https://atlassian.example/mcp - ok Connected"
   ALERTS="system/logs/alerts_$(TZ=America/Denver date +%F).md"
 }
 
-# gmail_says <tool> <query> <reply json>: a session that loads the tool, searches once and replies.
+# gmail_says <tool> <query> <reply json> [<result text>]: a session that loads the tool, searches once and replies; the
+# result's text is what the model saw (claude's stand-in for a page too large to read, or by default a short preview).
 gmail_says() {
   {
     printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"ToolSearch","input":{}}]}}\n'
     printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"tool_reference","tool_name":"%s"}]}]}}\n' "$G"
     jq -cn --arg t "$1" --arg q "$2" '{type: "assistant", message: {content: [{type: "tool_use", id: "t2", name: $t,
-      input: {query: $q, pageSize: 50}}]}}'
-    jq -cn '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "t2", content: "…"}]},
+      input: {query: $q, pageSize: 10, view: "THREAD_VIEW_MINIMAL"}}]}}'
+    jq -cn --arg c "${4:-…}" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "t2", content: $c}]},
       tool_use_result: {structuredContent: {threads: [{id: "a1", viewUrl: "https://mail.google.com/mail/#all/a1",
         messages: [{id: "m1", date: "2026-10-09T20:24:00Z", sender: "Blake Sample <blake@example.com>"}]}]}}}'
     jq -cn --arg r "$3" '{type: "result", subtype: "success", is_error: false, result: $r}'
@@ -48,6 +49,8 @@ ITEM='{"items": [{"thread_id": "a1", "who": "Blake", "ask": "asks how to proceed
   grep -qF -- '- [ ] owed: Blake: asks how to proceed. Next: reply today [due:: ' wiki/work/Now.md  # since + 3 with a sender (Now clock spec §4)
   grep -qF -- '] (blake@example.com, since ' wiki/work/Now.md
   grep -qF '[triage] 1 new: Blake: asks how to proceed' "$ALERTS"
+  # The tick's log line counts what the search returned and what was kept (counts only, never mail text).
+  [ "$(jq -sc '.[-1] | [.items, .source, .stats.results, .stats.rows, .stats.kept, .stats.persisted]' "$LOG")" = '[1,"mail",1,1,1,0]' ]
   gmail_says "$G" "$(system/scripts/triage.py query)" "$ITEM"   # the next tick searches from this one
   run "$TF"
   [ "$status" -eq 0 ]
@@ -63,6 +66,21 @@ ITEM='{"items": [{"thread_id": "a1", "who": "Blake", "ask": "asks how to proceed
   grep -qxF -- mcp__claude_ai_Gmail__send_message "$BATS_TEST_TMPDIR/args"
   grep -qxF -- mcp__claude_ai_Gmail__create_draft "$BATS_TEST_TMPDIR/args"
   grep -qF -- "query \"$Q\"" "$BATS_TEST_TMPDIR/args"
+  grep -qF -- 'pageSize 10' "$BATS_TEST_TMPDIR/args"
+  grep -qF -- 'the search has had 6 calls' "$BATS_TEST_TMPDIR/args"
+  grep -qxF -- 16 "$BATS_TEST_TMPDIR/args"   # --max-turns
+}
+
+@test "a page too large for the model to read keeps the cursor, and alerts once a day" {
+  gmail_says "$G" "$Q" "$ITEM" "Error: result (123,456 characters) exceeds maximum allowed tokens. Output has been saved to /tmp/x.txt"
+  run "$TF"
+  [ "$status" -eq 0 ]
+  grep -qF -- '- [ ] owed: Blake: asks how to proceed.' wiki/work/Now.md   # the checker reads the whole page
+  [ "$(system/scripts/triage.py query)" = "$Q" ]
+  run "$TF"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '\[triage\] Inbox triage returned a page too large for the model to read: its cursor stays' "$ALERTS")" -eq 1 ]
+  [ "$(jq -s '.[-1].stats.persisted' "$LOG")" -eq 1 ]
 }
 
 @test "another tool or another query is refused, writes nothing and alerts once a day" {
@@ -74,6 +92,7 @@ ITEM='{"items": [{"thread_id": "a1", "who": "Blake", "ask": "asks how to proceed
   run "$TF"
   [ "$status" -eq 7 ]
   [ "$(grep -c '\[triage\] Inbox triage failed (exit 7):' "$ALERTS")" -eq 1 ]
+  [ "$(jq -sc '.[-1] | [.exit, .items, .source]' "$LOG")" = '[7,0,"mail"]' ]
 }
 
 @test "no connector exits 3 and alerts as an auth problem" {
@@ -103,7 +122,7 @@ ITEM='{"items": [{"thread_id": "a1", "who": "Blake", "ask": "asks how to proceed
   gmail_says "$G" "$Q" "$ITEM"
   run "$TF" --check
   [ "$status" -eq 0 ]
-  [ "$output" = "triage_fetch: 1 threads need the owner" ]
+  [ "$output" = "triage_fetch: 1 threads need the owner (1 returned)" ]
   [ ! -e wiki/work/Now.md ]
   run "$TF" --bogus
   [ "$status" -eq 2 ]
@@ -208,11 +227,11 @@ CHAT='{"items": [{"channel_id": "C0000000001", "ts": "1792170000.000100", "who":
   slack_says "$S" "$CHAT"
   run "$TF" --check
   [ "$status" -eq 0 ]
-  [ "$output" = "triage_fetch: 1 threads need the owner
-triage_fetch: 1 chat messages need the owner" ]
+  [ "$output" = "triage_fetch: 1 threads need the owner (1 returned)
+triage_fetch: 1 chat messages need the owner (1 returned)" ]
   run "$TF" --check --source chat
   [ "$status" -eq 0 ]
-  [ "$output" = "triage_fetch: 1 chat messages need the owner" ]
+  [ "$output" = "triage_fetch: 1 chat messages need the owner (1 returned)" ]
   [ ! -e wiki/work/Now.md ]
   sed -i '/^triage_chat_enabled/d' system/config.md
   run "$TF" --check --source chat

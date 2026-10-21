@@ -5,12 +5,14 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from helpers import REPO, write
+from helpers import REPO, call, stream, write
 from vaultlib import now, triage as tr
 
 TODAY = "2026-10-09"
 Q = "in:inbox after:1000 " + tr.EXCLUDE
 LINK = "https://mail.google.com/mail/#all/thread-f:1"
+BIG = ("Error: result (123,456 characters) exceeds maximum allowed tokens. Output has been saved to "
+       "/tmp/x/tool-results/mcp-gmail.txt.")
 
 
 def thread(tid="a1", sender="Blake Sample <blake@example.com>", date="2026-10-09T20:24:00Z", link=None):
@@ -19,20 +21,14 @@ def thread(tid="a1", sender="Blake Sample <blake@example.com>", date="2026-10-09
                          {"id": "m1", "date": date, "sender": sender, "subject": "Rejected case", "snippet": "How to proceed?"}]}
 
 
-def stream(*page_threads, items=(), q=Q, tool=tr.TOOL, error=False, token="", reply=None, result="success"):
-    s = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t0", "name": "ToolSearch", "input": {}}]}},
-         {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t0",
-                                                   "content": [{"type": "tool_reference", "tool_name": tr.TOOL}]}]}}]
-    for n, threads in enumerate(page_threads, 1):
-        s.append({"type": "assistant", "message": {"content": [
-            {"type": "tool_use", "id": f"t{n}", "name": tool, "input": {"query": q, "pageSize": 50}}]}})
-        sc = {"threads": threads, **({"nextPageToken": token} if token else {})}
-        s.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": f"t{n}", "is_error": error,
-                                                           "content": "…"}]},
-                  "tool_use_result": {"structuredContent": sc}})
-    text = reply if reply is not None else json.dumps({"items": list(items)})
-    s.append({"type": "result", "subtype": result, "is_error": result != "success", "result": text})
-    return s
+def page(threads, q=Q, error=False, token="", view="THREAD_VIEW_MINIMAL", text="…"):
+    return call({"query": q, "pageSize": 10, "view": view}, text,
+                {"threads": threads, **({"nextPageToken": token} if token else {})}, error)
+
+
+def mail_stream(*page_threads, items=(), tool=tr.TOOL, reply=None, result="success", **kw):
+    return stream(tool, [page(t, **kw) for t in page_threads],
+                  reply if reply is not None else json.dumps({"items": list(items)}), result)
 
 
 def item(tid="a1", who="Blake", ask="asks how to proceed with a rejected case", nxt="reply with the fix plan"):
@@ -53,20 +49,21 @@ def test_the_query_starts_after_the_last_tick_or_two_hours_back(vault):
 
 
 def test_links_dates_and_senders_come_from_the_search_results_only():
-    got = tr.extract(stream([thread()], items=[{**item(), "link": "https://evil.example", "date": "1999"}]), Q)
-    assert got == {"full": False, "items": [{
+    got = tr.extract(mail_stream([thread()], items=[{**item(), "link": "https://evil.example", "date": "1999"}]), Q)
+    assert (got["full"], got["hold"]) == (False, False)
+    assert got["items"] == [{
         "thread_id": "a1", "date": "2026-10-09T20:24:00Z", "link": "https://mail.google.com/mail/#all/a1",
         "sender": "blake@example.com", "who": "Blake", "ask": "asks how to proceed with a rejected case",
-        "next_step": "reply with the fix plan"}]}
+        "next_step": "reply with the fix plan"}]
 
 
 def test_a_thread_the_search_never_returned_is_dropped():
-    assert tr.extract(stream([thread()], items=[item("zz"), item("a1"), item("a1")]), Q)["items"][0]["thread_id"] == "a1"
-    assert len(tr.extract(stream([thread()], items=[item("zz")]), Q)["items"]) == 0
+    assert tr.extract(mail_stream([thread()], items=[item("zz"), item("a1"), item("a1")]), Q)["items"][0]["thread_id"] == "a1"
+    assert len(tr.extract(mail_stream([thread()], items=[item("zz")]), Q)["items"]) == 0
 
 
 def test_texts_are_one_short_line():
-    got = tr.extract(stream([thread()], items=[item(ask="line one\nline [two] " + "x" * 300)]), Q)["items"][0]
+    got = tr.extract(mail_stream([thread()], items=[item(ask="line one\nline [two] " + "x" * 300)]), Q)["items"][0]
     assert "\n" not in got["ask"] and "[" not in got["ask"] and len(got["ask"]) == tr.TEXT_MAX
 
 
@@ -78,7 +75,7 @@ def test_texts_are_one_short_line():
     ({"reply": "Here is what I found"}, 1),
 ])
 def test_a_session_outside_the_rules_fails_closed(kwargs, code):
-    fails(code, stream([thread()], items=[item()], **kwargs))
+    fails(code, mail_stream([thread()], items=[item()], **kwargs))
 
 
 def test_no_search_call_means_no_connector():
@@ -86,9 +83,39 @@ def test_no_search_call_means_no_connector():
     assert "no Gmail connector" in fails(3, s)
 
 
-def test_more_than_three_pages_is_refused_and_a_full_third_page_is_flagged():
-    fails(7, stream([thread("a")], [thread("b")], [thread("c")], [thread("d")]))
-    assert tr.extract(stream([thread("a")], [thread("b")], [thread("c")], token="next"), Q)["full"] is True
+def test_mail_reads_up_to_six_pages_and_a_last_page_with_a_token_is_full():
+    assert "limit is 6" in fails(7, mail_stream(*[[thread(c)] for c in "abcdefg"]))
+    assert tr.extract(mail_stream([thread("a")], [thread("b")], token="next"), Q)["full"] is True   # stopped early
+    assert tr.extract(mail_stream(*[[thread(c)] for c in "abcdef"]), Q)["full"] is False
+
+
+def test_the_mail_search_must_ask_the_minimal_view():
+    fails(7, mail_stream([thread()], items=[item()], view="THREAD_VIEW_FULL"))
+
+
+def test_a_mail_page_too_large_is_counted_and_holds_the_cursor(vault):
+    prepare(vault)
+    write(vault, "system/logs/triage-2026-10.jsonl", json.dumps({"kind": "tick", "epoch": 5_000}) + "\n")
+    s = stream(tr.TOOL, [page([thread("a1")]), page([thread("b2")], text=BIG)],
+               json.dumps({"items": [item("a1"), item("b2", ask="asks for the deck")]}))
+    found = tr.extract(s, Q)
+    assert (found["hold"], found["stats"]["persisted"]) == (True, 1)
+    assert [i["thread_id"] for i in found["items"]] == ["a1", "b2"]   # structuredContent holds the whole page
+    assert len(tr.record(vault, "work", found, TODAY, "t", 9_000)) == 2
+    assert tr.cursor(vault, 10_000, TODAY, "mail") == 4_700   # the held tick moves no cursor
+    assert tr.records(vault, TODAY)[-1]["hold"] is True
+
+
+def test_extract_counts_results_rows_kept_and_drops():
+    rows = [item("a1"), item("zz"), item("b2", ask=" "), item("a1")]
+    got = tr.extract(mail_stream([thread("a1"), thread("b2")], [thread("c3")], items=rows), Q)
+    assert got["stats"] == {"results": 3, "rows": 4, "kept": 1, "persisted": 0,
+                            "dropped": {"unknown": 1, "empty": 1, "duplicate": 1}}
+
+
+def test_a_chat_page_too_large_fails_6():
+    s = stream(CT, [call(CQ, BIG)])
+    assert "too large" in chat_fails(6, s)
 
 
 def prepare(vault):
@@ -98,13 +125,13 @@ def prepare(vault):
 
 def test_record_adds_one_owed_line_per_new_message_and_records_the_tick(vault):
     prepare(vault)
-    found = tr.extract(stream([thread()], items=[item()]), Q)
+    found = tr.extract(mail_stream([thread()], items=[item()]), Q)
     assert tr.record(vault, "work", found, TODAY, "t", 5_000) == ["Blake: asks how to proceed with a rejected case"]
     lines = now.open_lines(now.read(vault, "work"))
     assert lines == ["- [ ] owed: Blake: asks how to proceed with a rejected case. Next: reply with the fix plan "
                      "[due:: 2026-10-12] (blake@example.com, since 2026-10-09, https://mail.google.com/mail/#all/a1)"]
     assert tr.record(vault, "work", found, TODAY, "t", 6_000) == []  # a rerun adds nothing
-    newer = tr.extract(stream([thread(date="2026-10-09T22:00:00Z")], items=[item(ask="asks again")]), Q)
+    newer = tr.extract(mail_stream([thread(date="2026-10-09T22:00:00Z")], items=[item(ask="asks again")]), Q)
     assert tr.record(vault, "work", newer, TODAY, "t", 7_000) == ["Blake: asks again"]
     ticks = [r["epoch"] for r in tr.records(vault, TODAY) if r["kind"] == "tick"]
     assert ticks == [5_000, 6_000, 7_000]
@@ -112,7 +139,7 @@ def test_record_adds_one_owed_line_per_new_message_and_records_the_tick(vault):
 
 def test_a_long_ask_is_cut_to_fit_and_the_items_after_it_still_land(vault):
     prepare(vault)
-    found = tr.extract(stream([thread("a1"), thread("b2")], items=[item("a1", ask="a" * 300, nxt="n" * 300),
+    found = tr.extract(mail_stream([thread("a1"), thread("b2")], items=[item("a1", ask="a" * 300, nxt="n" * 300),
                                                                    item("b2", ask="asks for the deck")]), Q)
     assert len(tr.record(vault, "work", found, TODAY, "t", 5_000)) == 2
     lines = now.open_lines(now.read(vault, "work"))
@@ -125,14 +152,14 @@ def test_a_long_ask_is_cut_to_fit_and_the_items_after_it_still_land(vault):
 def test_a_thread_another_source_already_put_on_the_now_page_adds_no_second_line(vault):
     prepare(vault)
     now.add(vault, "work", "owed", "Review the rejected case", TODAY, "Blake", "https://mail.google.com/mail/#all/a1")
-    found = tr.extract(stream([thread()], items=[item()]), Q)
+    found = tr.extract(mail_stream([thread()], items=[item()]), Q)
     assert tr.record(vault, "work", found, TODAY, "t", 5_000) == []   # the intraday watch's line for the thread
     assert len(now.open_lines(now.read(vault, "work"))) == 1
 
 
 def test_a_link_the_now_line_cannot_hold_keeps_the_item(vault):
     prepare(vault)
-    found = tr.extract(stream([thread(link="https://mail.example/a,b")], items=[item()]), Q)
+    found = tr.extract(mail_stream([thread(link="https://mail.example/a,b")], items=[item()]), Q)
     assert len(tr.record(vault, "work", found, TODAY, "t", 5_000)) == 1
     assert "(https://mail.example/a,b)" in now.read(vault, "work")
 
@@ -150,7 +177,7 @@ def test_the_owners_own_replies_never_make_a_thread_new():
     t["messages"].append({"id": "m2", "date": "2026-10-09T22:00:00Z", "sender": "me@example.com", "labelIds": ["SENT"]})
     sent_only = {**thread("b2"), "messages": [
         {"id": "m3", "date": "2026-10-09T23:00:00Z", "sender": "me@example.com", "labelIds": ["SENT", "INBOX"]}]}
-    got = tr.extract(stream([t, sent_only], items=[item(), item("b2")]), Q)
+    got = tr.extract(mail_stream([t, sent_only], items=[item(), item("b2")]), Q)
     assert [(i["thread_id"], i["date"], i["sender"]) for i in got["items"]] == [("a1", "2026-10-09T20:24:00Z", "blake@example.com")]
 
 
@@ -200,19 +227,12 @@ def block(channel="C0000000001", ts=TS, link="own"):
 
 
 def chat_stream(*pages, items=(), q=CQ, tool=CT, error=False, more=False, head="## Messages (1 results)\n", raw=None):
-    s = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t0", "name": "ToolSearch", "input": {}}]}},
-         {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t0",
-                                                   "content": [{"type": "tool_reference", "tool_name": CT}]}]}}]
-    for n, md in enumerate(pages, 1):
-        i = q if n == 1 else {**q, "cursor": f"c{n}"}
-        s.append({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": f"t{n}", "name": tool, "input": i}]}})
-        pi = "For the next page of results use cursor `abc`\n" if more else ""
-        text = raw if raw is not None else json.dumps({"results": "# Search Results for: \n\n" + head + md,
-                                                       "pagination_info": pi})
-        s.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": f"t{n}", "is_error": error,
-                                                           "content": [{"type": "text", "text": text}]}]}})
-    s.append({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps({"items": list(items)})})
-    return s
+    pi = "For the next page of results use cursor `abc`\n" if more else ""
+    texts = [raw if raw is not None else json.dumps({"results": "# Search Results for: \n\n" + head + md, "pagination_info": pi})
+             for md in pages]
+    calls = [call(q if n == 1 else {**q, "cursor": f"c{n}"}, [{"type": "text", "text": t}], error=error)
+             for n, t in enumerate(texts, 1)]
+    return stream(tool, calls, json.dumps({"items": list(items)}))
 
 
 def chat_item(channel="C0000000001", ts=TS):
@@ -246,9 +266,12 @@ def test_each_source_keeps_its_own_cursor(vault):
 
 def test_chat_items_take_link_sender_and_channel_from_the_results():
     got = tr.chat_extract(chat_stream(block(), items=[chat_item(), chat_item(ts="1.2"), chat_item()]), CQ, CT, "")
-    assert got == {"full": False, "items": [{
+    assert (got["full"], got["hold"]) == (False, False)
+    assert got["items"] == [{
         "thread_id": f"C0000000001/{TS}", "date": TS, "link": PERMALINK, "sender": "blake@example.com",
-        "who": "Blake in #ops", "ask": "prod checkout is down", "next_step": "look now"}]}
+        "who": "Blake in #ops", "ask": "prod checkout is down", "next_step": "look now"}]
+    assert got["stats"] == {"results": 1, "rows": 3, "kept": 1, "persisted": 0,
+                            "dropped": {"unknown": 1, "empty": 0, "duplicate": 1}}
 
 
 @pytest.mark.parametrize("kwargs,code", [
@@ -285,7 +308,8 @@ def test_listed_results_that_do_not_parse_fail_but_an_empty_search_does_not():
     assert "shape" in chat_fails(1, chat_stream(block(link=None), items=[chat_item()]))
     assert "shape" in chat_fails(1, chat_stream("", raw="Error: something else"))
     empty = chat_stream("", head="No results found.\n")
-    assert tr.chat_extract(empty, CQ, CT, "") == {"items": [], "full": False}
+    got = tr.chat_extract(empty, CQ, CT, "")
+    assert (got["items"], got["full"], got["stats"]["results"]) == ([], False, 0)
 
 
 def test_message_text_cannot_forge_a_result():
