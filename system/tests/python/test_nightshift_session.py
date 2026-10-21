@@ -12,14 +12,14 @@ FX = REPO / "system" / "tests" / "fixtures" / "nightshift"
 
 def test_profiles_are_locked_down(vault: Path):
     for kind in ("plan", "research"):
-        p = ss.profile(REPO, kind, ["registry.npmjs.org"], ["www.dtcc.com"] if kind == "research" else [], cwd=REPO)
+        p = ss.profile(REPO, kind, ["registry.npmjs.org"], ["docs.example.com"] if kind == "research" else [], cwd=REPO)
         sb = p["sandbox"]
         assert sb["enabled"] is True and sb["allowUnsandboxedCommands"] is False
         assert sb["network"]["strictAllowlist"] is True and "registry.npmjs.org" in sb["network"]["allowedDomains"]
         assert all(not d.startswith("~") for d in sb["filesystem"]["denyRead"])
         assert any(d.endswith("/.ssh") for d in sb["filesystem"]["denyRead"])
         assert p["disableAllHooks"] is True
-    assert "WebFetch(domain:www.dtcc.com)" in ss.profile(REPO, "research", [], ["www.dtcc.com"], cwd=REPO)["permissions"]["allow"]
+    assert "WebFetch(domain:docs.example.com)" in ss.profile(REPO, "research", [], ["docs.example.com"], cwd=REPO)["permissions"]["allow"]
 
 
 def test_command_line():
