@@ -111,15 +111,105 @@ def test_cap_leftovers_are_retried_next_run(v, monkeypatch):
     assert len(covered) == 25
 
 
-def test_three_failures_alert_once_a_day(v, monkeypatch):
-    write(v, "system/telemetry/prod-adx.md", ADX.format(covers=""))
-    def boom(*a, **k):
-        raise http.TelemetryError("transient", "HTTP 503")
-    monkeypatch.setattr(kusto, "query", boom)
-    for h in range(5):
+LOGS = ADX.format(covers="").replace("prod-adx", "prod-logs")
+
+
+def _down(*a, **k):
+    raise http.TelemetryError("transient", "HTTP 503")
+
+
+def _source_alerts(v):
+    """The [telemetry_source] lines of every alerts file, without their time stamp (#293)."""
+    return [l.split(" ", 2)[2] for p in sorted((v / "system/logs").glob("alerts_*.md"))
+            for l in p.read_text().splitlines() if "[telemetry_source]" in l]
+
+
+def _at(h):
+    return (NOW + timedelta(hours=h)).astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+def test_a_failing_source_posts_once_when_it_starts_and_its_failure_line_reaches_slack(v, monkeypatch):
+    write(v, "system/telemetry/prod-logs.md", LOGS)
+    monkeypatch.setattr(kusto, "query", _down)
+    assert telemetry_run.main([], v, NOW) == 1
+    assert _source_alerts(v) == [f"[telemetry_source] prod-logs: failing since {_at(0)} (transient: HTTP 503)"]
+    for h in (1, 2, 3):   # still failing inside four hours: nothing more
+        assert telemetry_run.main([], v, NOW + timedelta(hours=h)) == 1
+    assert len(_source_alerts(v)) == 1
+    alerts = "".join(p.read_text() for p in (v / "system/logs").glob("alerts_*.md"))
+    assert "[telemetry] prod-logs" not in alerts   # the brief lists the failure once, under the new tag
+
+
+def test_a_source_still_failing_posts_again_every_four_hours(v, monkeypatch):
+    write(v, "system/telemetry/prod-logs.md", LOGS)
+    monkeypatch.setattr(kusto, "query", _down)
+    for h in range(10):
         telemetry_run.main([], v, NOW + timedelta(hours=h))
-    alerts = (v / f"system/logs/alerts_{DAY}.md").read_text().splitlines()
-    assert len([a for a in alerts if "[telemetry]" in a and "prod-adx" in a]) == 1
+    assert _source_alerts(v)[1:] == [f"[telemetry_source] prod-logs: still failing for 4 h, since {_at(0)} "
+                                     "(transient: HTTP 503)",
+                                     f"[telemetry_source] prod-logs: still failing for 8 h, since {_at(0)} "
+                                     "(transient: HTTP 503)"]
+
+
+def test_an_hourly_run_a_few_seconds_early_still_posts_at_four_hours(v, monkeypatch):
+    write(v, "system/telemetry/prod-logs.md", LOGS)
+    monkeypatch.setattr(kusto, "query", _down)
+    for h in range(5):   # the run at four hours, four seconds early, posts
+        telemetry_run.main([], v, NOW + timedelta(hours=h, seconds=-h))
+    assert [l.split(":", 1)[1] for l in _source_alerts(v)[1:]] == [
+        f" still failing for 4 h, since {_at(0)} (transient: HTTP 503)"]
+
+
+def test_the_failure_line_is_a_slack_event_and_routine_telemetry_is_not(v, monkeypatch):
+    from vaultlib import notify
+    write(v, "system/config.md", '---\ntype: config\nextensions: ["handoffs", "telemetry"]\n---\n')
+    write(v, "system/telemetry/prod-logs.md", LOGS)
+    notify.commit(v, notify.collect(v, NOW)[1])   # the first collect only sets the cursor
+    monkeypatch.setattr(kusto, "query", _down)
+    telemetry_run.main([], v, NOW)
+    with open(v / f"system/logs/alerts_{DAY}.md", "a", encoding="utf-8") as f:
+        f.write("- 12:00:01 [telemetry] prod-logs: 900 groups; only 500 kept\n")
+    events, _ = notify.collect(v, NOW)
+    assert events == [f"Alert {NOW.astimezone():%H:%M:%S} [telemetry_source] prod-logs: failing since {_at(0)} "
+                      "(transient: HTTP 503)"]
+
+
+def test_a_recovered_source_posts_once_with_the_backfilled_window_and_its_counts(v, monkeypatch):
+    write(v, "system/telemetry/prod-logs.md", LOGS)
+    monkeypatch.setattr(kusto, "query", lambda *a, **k: [LOG_ROW])
+    telemetry_run.main([], v, NOW)
+    monkeypatch.setattr(kusto, "query", _down)
+    for h in (1, 2):
+        telemetry_run.main([], v, NOW + timedelta(hours=h))
+    monkeypatch.setattr(kusto, "query", lambda *a, **k: [LOG_ROW, dict(LOG_ROW, event_id="5000")])
+    assert telemetry_run.main([], v, NOW + timedelta(hours=3)) == 0
+    lag = timedelta(minutes=10)
+    start, end = (NOW - lag).astimezone(), (NOW + timedelta(hours=3) - lag).astimezone()
+    assert _source_alerts(v)[1:] == [f"[telemetry_source] prod-logs: recovered after 2 h; backfilled "
+                                     f"{start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M}: 1 new, 0 resolved"]
+    assert telemetry_run.main([], v, NOW + timedelta(hours=4)) == 0
+    assert len(_source_alerts(v)) == 2
+    state = json.loads((v / "system/logs/telemetry_state.json").read_text())["sources"]["prod-logs"]
+    assert "failing_since" not in state and "failure_posted" not in state
+
+
+def test_a_corrupt_state_file_does_not_stop_the_fetch_or_its_failure_alert(v, monkeypatch):
+    write(v, "system/telemetry/prod-logs.md", LOGS)
+    write(v, "system/logs/telemetry_state.json", "{not json")
+    monkeypatch.setattr(kusto, "query", _down)
+    assert telemetry_run.main([], v, NOW) == 1
+    assert len(_source_alerts(v)) == 1
+    assert json.loads((v / "system/logs/telemetry_state.json").read_text())["sources"]["prod-logs"]["failing_since"]
+
+
+def test_the_source_tag_is_now_through_the_manifest_and_routine_telemetry_waits_for_the_brief(v):
+    from vaultlib import alerts
+    write(v, "system/config.md", '---\ntype: config\nextensions: ["handoffs", "telemetry"]\n---\n')
+    ext = alerts.extension_tags(v)
+    assert ext == {"telemetry_source": "now"}
+    assert alerts.severity("- 06:10:00 [telemetry_source] prod-logs: failing since 2026-10-05 06:00 (x)", ext) == "now"
+    assert alerts.severity("- 06:10:00 [telemetry] prod-logs: 900 groups; only 500 kept", ext) == "brief"
+    assert alerts.severity("- 06:10:00 [incident] prod-logs: new production error in api", ext) == "now"
 
 
 def test_auth_failure_alerts_immediately(v, monkeypatch):

@@ -75,14 +75,22 @@ def do_route(intake, args: list) -> str:
         if mail is not None:
             names += list(mail[1])
         resume = {n: e for n, e in (slack[0].get("resume") or {}).items() if n in names} if slack else {}
-        query.advance(VAULT, [n for n in names if n not in resume], start)
+        hold = mail[0].get("hold") or [] if mail else []   # a page the model never read: that search's cursor stays
+        query.advance(VAULT, [n for n in names if n not in resume and n not in hold], start)
         for n, epoch in resume.items():
             query.advance(VAULT, [n], epoch)
-        for name in [*(slack[0].get("full") or [] if slack else []), *(mail[0].get("full") or [] if mail else [])]:
+        for name in slack[0].get("full") or [] if slack else []:
             key = f"the {name} search read its full page limit:"
             rest = ("the next tick reads on from the last message read" if name in resume
                     else "the oldest messages since the last tick were not read")
             common.alert(VAULT, day, clock, "intraday", f"{key} {rest}", key=key)
+        for name in mail[0].get("full") or [] if mail else []:
+            key = f"the {name} search left result pages unread:"
+            common.alert(VAULT, day, clock, "intraday", f"{key} the oldest threads since the last tick were not read", key=key)
+        for name in hold:
+            key = f"the {name} search returned a page too large for the model to read:"
+            common.alert(VAULT, day, clock, "intraday", f"{key} its cursor stays, so the next tick reads it again (the "
+                         "persisted count in system/logs/watch_fetch-*.jsonl)", key=key)
     return " ".join(f"{k} {v}" for k, v in counts.items())
 
 
