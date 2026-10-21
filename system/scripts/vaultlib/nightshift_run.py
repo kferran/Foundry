@@ -540,15 +540,15 @@ def _no_result(ctx: Ctx, fm: dict, d: Path, denied) -> dict:
 
 
 def _deliver_research(ctx: Ctx, fm: dict, d: Path, denied=()) -> dict:
+    findings = d / "out" / Path(fm["output"]).name   # read outside the sandbox: a link could reach any file (#298)
+    if any(p.is_symlink() for p in (d / "out", d / "out" / "result.json", findings)):
+        ctx.alert(f"invalid/{fm['id']}", f"{fm['id']}: the research output is a link; refused")
+        return {"state": "failed", "reason": "invalid: output is a link"}
     res = _read_result(d / "out" / "result.json")
     if res is None:
         return _no_result(ctx, fm, d, denied)
     if res["status"] == "blocked":
         return {"state": "blocked", "reason": "session", "needs": [f"Answer: {q}" for q in _questions(res)]}
-    findings = d / "out" / Path(fm["output"]).name
-    if findings.is_symlink() or (d / "out").is_symlink():   # read outside the sandbox: a link could reach any note (#298)
-        ctx.alert(f"invalid/{fm['id']}", f"{fm['id']}: the research output is a link; refused")
-        return {"state": "failed", "reason": "invalid: output is a link"}
     if not findings.is_file():
         return _no_result(ctx, fm, d, denied)
     ok, detail = nd.publish_research(ctx.vault, fm, findings)
@@ -648,13 +648,15 @@ def _screen(ctx: Ctx, held=()) -> tuple:
     holds is left to it (ni.update has no lock) and screened again at its next attempt."""
     entries, refused = [], []
     for path, fm, body in ni.items(ctx.vault):
-        parked = fm.get("state") in ("failed", "done", "cancelled", "blocked")
+        parked = fm.get("state") in ("failed", "done", "cancelled", "blocked", "delivering")   # delivery.json holds repo
         errs = [] if fm.get("id") in held else nc.identifiers(fm) if parked else nc.screen(ctx.vault, fm, body, path)
         if not errs:
             entries.append((path, fm, body))
         elif fm.get("state") not in ("failed", "done", "cancelled"):
             why = "; ".join(errs)
-            ni.update(path, state="failed", reason=f"invalid: {why}")
+            if not nc.identifiers(fm):   # a safe id: stop a session a crashed runner left; finished_at starts the clean-up
+                _stop_stale(rep.item_dir(ctx.vault, fm["id"]))
+            ni.update(path, state="failed", reason=f"invalid: {why}", finished_at=ctx.clock_now().isoformat())
             ctx.alert(f"invalid/{path.name}", f"{path.name} refused: {why}")
             refused.append(path)
     return entries, refused

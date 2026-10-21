@@ -1,4 +1,5 @@
 import json
+import socket
 import subprocess
 from pathlib import Path
 
@@ -264,10 +265,13 @@ def test_research_output_must_be_a_background_note_of_its_partition(vault_repo, 
     assert nc.screen(vault_repo, {**fm, "output": "wiki/work/summaries/X.md"}, BRIEF) == []
 
 
-@pytest.mark.parametrize("host", ["127.0.0.1", "169.254.169.254", "*", "10.0.0.1."])
+@pytest.mark.parametrize("host", ["127.0.0.1", "169.254.169.254", "*", "10.0.0.1.", "0xa9.0xfe.0xa9.0xfe", "169.254.169.0xfe",
+                                  "0x7f.0x0.0x0.0x1", "docs.example.com\n", "a\x00b.com"])
 def test_ip_literal_hosts_are_refused(vault_repo, host):
     fm = plan_fm(kind="research", output="wiki/work/concepts/A.md", hosts=["docs.example.com", host])
     assert [e for e in nc.check(vault_repo, fm, BRIEF) if e.startswith("host")] == [f"host {host!r} is not a plain host name"]
+    if host.startswith("0x") or host.endswith("0xfe"):
+        assert socket.inet_aton(host)   # the forms the rule must cover: inet_aton reads them as addresses
 
 
 def test_the_partition_must_match_the_note_folder(vault_repo):
