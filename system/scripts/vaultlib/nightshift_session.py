@@ -36,7 +36,7 @@ def session_env() -> dict:
     return {k: os.environ[k] for k in ENV if k in os.environ}
 
 
-def profile(vault, kind: str, hosts, web_hosts=(), deny=()) -> dict:
+def profile(vault, kind: str, hosts, web_hosts=(), deny=(), *, cwd) -> dict:
     data = json.loads((Path(vault) / "system" / "nightshift" / f"{kind}.settings.json").read_text(encoding="utf-8"))
     sb = data["sandbox"]
     sb["network"]["allowedDomains"] = sorted(set(sb["network"]["allowedDomains"]) | set(hosts) | set(web_hosts))
@@ -49,6 +49,16 @@ def profile(vault, kind: str, hosts, web_hosts=(), deny=()) -> dict:
     data["permissions"]["deny"] += [f"Read(//{p.lstrip('/')})" for p in reads] + \
                                    [f"Read(//{p.lstrip('/')}/**)" for p in reads if "*" not in p]
     data["permissions"]["allow"] += [f"WebFetch(domain:{h})" for h in web_hosts]
+    # A ./ rule resolves against the shell's current directory, which a Bash cd moves (#314): anchor it at the
+    # session's directory, in both its given and its resolved form (a symlinked order_workspace).
+    roots = list(dict.fromkeys(p.lstrip("/") for p in (os.path.abspath(cwd), str(Path(cwd).resolve()))))
+    def anchored(r):
+        m = re.fullmatch(r"(\w+)\(\./(.*)\)", r)
+        if m and any(c in root for root in roots for c in "()*?[]{}"):   # a glob character would widen or break it
+            raise ValueError(f"order_workspace path {cwd} holds a character the permission rule syntax treats as special")
+        return [f"{m[1]}(//{root}/{m[2]})" for root in roots] if m else [r]
+    for k in ("allow", "deny"):
+        data["permissions"][k] = [x for r in data["permissions"][k] for x in anchored(r)]
     return data
 
 
@@ -117,6 +127,10 @@ def parse_stream(path) -> dict:
                 if isinstance(c, dict) and c.get("type") == "tool_result":
                     v = c.get("content")
                     out["tool_results"].append(v if isinstance(v, str) else json.dumps(v))
+    # The paths of the Write and Edit calls the profile denied (#314); a failed research item names them.
+    out["denied"] = [d["tool_input"]["file_path"] for d in (out["result"] or {}).get("permission_denials") or []
+                     if isinstance(d, dict) and d.get("tool_name") in ("Write", "Edit")
+                     and isinstance((d.get("tool_input") or {}).get("file_path"), str)]
     return out
 
 

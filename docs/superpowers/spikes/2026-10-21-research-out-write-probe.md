@@ -62,3 +62,35 @@ held in every run.
 
 Not checked: the failing live order's stream for a Bash `cd` before its denied Write (the probe shows the
 mechanism, not that this order used it), and a `/`-anchored rule inside a settings file after a `cd`.
+
+## Bash side (spec Design 4, build task 1)
+
+**Date:** 2026-10-21. **Binary:** Claude Code 2.1.305. Same setup as above (runner-built research profile, `command()`,
+`<S>` in `<L>`, `session_env()` only, haiku), with the research `--tools` list and no plugin. `<W>` held
+`wiki/a/private/x.txt`, `.env` and `wiki/a/public.txt`, each with its own marker. Each run's prompt named the commands
+in order; `cat` of the public file is the positive control (its marker came back in every run). `tac` is a reader the
+permission layer does not parse, so it isolates the sandbox; `cat` and `tac` gave the same result in every run. The
+probe used the research profile, not `run_headless.sh` with `headless.settings.json`; the live ingest acceptance run
+shows the headless file still loads with the extra rules.
+
+| Run | Bash `cat`/`tac` of `wiki/a/private/x.txt` | Read tool, same file | Bash `cat`/`tac` of `.env` |
+|---|---|---|---|
+| deny `Read(wiki/*/private/**)`, no `cd` | masked ("No such file or directory") | | readable |
+| same, `cd wiki` first | masked | (allowed, first probe above) | readable |
+| deny `Read(//**/wiki/*/private/**)` only, `denyRead` `/**/.env*`, `cd wiki` | **readable** | (denied, first probe above) | readable |
+| no rule; `denyRead` adds bare `wiki/*/private`, `cd wiki` | **readable** | | readable |
+| no rule; `denyRead` adds the literal absolute path of `<W>/.env` | | | denied ("Permission denied") |
+| both deny forms (relative and `//**/`), `cd wiki` | masked | denied | readable |
+| no settings rule; `--disallowedTools "Read(/wiki/*/private/**)"`, `cd wiki` | **readable** | denied | |
+
+Findings:
+- Only a relative `Read(...)` deny reaches the sandbox: Claude Code resolves it against the launch directory and
+  masks the folder, and a later `cd` does not move it. The `//**/` form and the CLI rule fence the Read tool after a
+  `cd` but not Bash. The headless profile therefore keeps the relative pair and adds the `//**/` pair; neither form
+  alone covers both layers. The spec's fallback (a launch-anchored CLI rule) does not fence Bash either.
+- The `**/.env*` and `/**/.env*` `denyRead` globs mask nothing, with or without a `cd`; only a literal path did. That
+  gap predates #314 and a `cd` does not change it, so this PR leaves the entry as it is and #326 tracks it.
+  The `Read(//**/.env*)` permission rule did not stop `cat` either.
+
+Not checked: whether the relative rule's mask covers a private folder created after launch (the folder existed at
+launch in every run).
