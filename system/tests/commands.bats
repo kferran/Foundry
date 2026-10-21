@@ -286,6 +286,10 @@ setup_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } o
   [ "$(git ls-files .claude/skills/humanizer | tr '\n' ' ')" = '.claude/skills/humanizer/LICENSE .claude/skills/humanizer/SKILL.md ' ]
 }
 
+@test "the grilling skill and its license ship with the template (factory F0 §3.8)" {
+  [ "$(git ls-files .claude/skills/grilling | tr '\n' ' ')" = '.claude/skills/grilling/LICENSE .claude/skills/grilling/SKILL.md ' ]
+}
+
 # writing_section: the body of CLAUDE.md's Writing section.
 writing_section() { awk '$0 == "## ✍️ Writing" { on = 1; next } /^## / { on = 0 } on' CLAUDE.md; }
 
@@ -1088,8 +1092,8 @@ self_edit_contract() {
   [[ "$sec" == *'Write no marker line'* ]]
   [[ "$sec" == *'Skip this step on a client'* ]]
   [[ "$sec" == *'when `remote_mode` is `keep`'* ]]
-  run grep -q 'merge=' .gitattributes
-  [ "$status" -eq 1 ]
+  # README.md's merge=ours lives only in the update's own attributes file; CHANGELOG.md's merge=union is tracked.
+  [ "$(git check-attr merge -- README.md)" = 'README.md: merge: unspecified' ]
   grep -qF 'the setup prompt in `FOUNDRY.md`, Getting started' .claude/commands/setup.md
   grep -qF '(FOUNDRY.md: Sync conflicts)' system/scripts/vault_sync.sh .claude/commands/backup.md
   run grep -rn 'README: Sync conflicts' system/scripts .claude
@@ -1148,6 +1152,45 @@ self_edit_contract() {
   grep -qF 'the default when in doubt is the feature lane' FOUNDRY.md
 }
 
+@test "FOUNDRY.md fast lane: a fix PR carries one defect: label, one per class C1 to C13 (factory F0 §3.4)" {
+  grep -qF 'carries one `defect:` label' FOUNDRY.md
+  for n in 1 2 3 4 5 6 7 8 9 10 11 12 13; do
+    grep -qF "\`defect:C$n-" FOUNDRY.md
+  done
+}
+
+# foundry_section <heading>: the body of FOUNDRY.md's `## <heading>` section.
+foundry_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } on' FOUNDRY.md; }
+
+@test "FOUNDRY.md Architecture: before Development, with the name, the four blueprints, P1 to P10 by name and D1 to D5 (factory F0 §3.1)" {
+  arch="$(grep -nx '## Architecture' FOUNDRY.md | cut -d: -f1)"
+  dev="$(grep -nx '## Development' FOUNDRY.md | cut -d: -f1)"
+  [ -n "$arch" ]
+  [ "$arch" -lt "$dev" ]
+  sec="$(foundry_section Architecture)"
+  for s in 'gated LLM-wiki compiler' '**Source**' '**Poller**' '**Compile run**' '**Work Order**' \
+      'P1 | **Scripts do the exact work**' 'P2 | **Every model write passes the gate**' \
+      'P3 | **Untrusted input gets one tool and a checker**' 'P4 | **Content is data**' \
+      'P5 | **Walls hold at every step**' 'P6 | **Raw is append-only, notes are never deleted**' \
+      'P7 | **One schema per note type**' 'P8 | **Atomic writes under one lock**' \
+      'P9 | **A small, budgeted core**' 'P10 | **Fail loud with a reason**' \
+      '| D1 |' '| D2 |' '| D3 |' '| D4 |' '| D5 |'; do
+    [[ "$sec" == *"$s"* ]]
+  done
+}
+
+@test "FOUNDRY.md Development: the stations and their skills, the Grill rule, the required header lines, the blueprint line (factory F0 §3.8)" {
+  sec="$(foundry_section Development)"
+  for s in '| Station | Skill | Record |' '`/grilling`' '`superpowers:brainstorming`' '`builder-check-prompt.md`' \
+      '`superpowers:writing-plans`' '`superpowers:test-driven-development`' '`superpowers:requesting-code-review`' \
+      '`superpowers:verification-before-completion`' '`superpowers:finishing-a-development-branch`' \
+      'not an owner idea: <source>' '`**Grill:**`' '`**Builder check:**`' '`**Blueprint:**`' '`REQUIRED SUB-SKILL`' \
+      '`## Global Constraints`' '`## Review Focus`' '`**Spec:**`' 'names its blueprint in its spec' \
+      'system/tests/conformance.bats'; do
+    [[ "$sec" == *"$s"* ]]
+  done
+}
+
 @test "alert tags: the manual carries the table, CLAUDE.md the Foreman push, the brief groups Pipeline by tag (#158)" {
   grep -qF 'every new alert line whose tag Slack carries' FOUNDRY.md
   grep -qF '| `foreman`, `incident`, `orders`, `sync`, `update`, `rca`, `intake` | Slack at the next tick |' FOUNDRY.md
@@ -1180,6 +1223,17 @@ self_edit_contract() {
   grep -qx '## Changes' CHANGELOG.md
   grep -qE '^## [0-9]{4}-[0-9]{2}-[0-9]{2}$' CHANGELOG.md
   grep -qE '^- .*\(#[0-9]+[^)]*\)$' CHANGELOG.md
+}
+
+# changelog_dup_dates <file>: each date heading that appears more than once (a union merge can keep two).
+changelog_dup_dates() { grep -E '^## [0-9]{4}-[0-9]{2}-[0-9]{2}$' "$1" | sort | uniq -d; }
+
+@test "CHANGELOG.md holds each date heading once; a seeded duplicate is found (factory F0 §3.3, C13)" {
+  run changelog_dup_dates CHANGELOG.md
+  [ -z "$output" ]
+  printf '## Changes\n\n## 2026-10-02\n- B (#2)\n\n## 2026-10-02\n- A (#1)\n\n## 2026-10-01\n- C (#3)\n' > "$BATS_TEST_TMPDIR/c.md"
+  run changelog_dup_dates "$BATS_TEST_TMPDIR/c.md"
+  [ "$output" = '## 2026-10-02' ]
 }
 
 @test "release notes: the brief prints What changed from updates.md; the manual has the changelog rule (release notes spec §2)" {

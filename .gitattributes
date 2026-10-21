@@ -1,1 +1,4 @@
 * text=auto eol=lf
+# Two pull requests that each add a line under the same date both keep it; a duplicated date heading is
+# caught by the CHANGELOG test (factory F0, defect class C13).
+CHANGELOG.md merge=union
