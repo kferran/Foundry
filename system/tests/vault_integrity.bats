@@ -83,7 +83,7 @@ setup() {
   [ "$(jq '[.permissions.allow[] | select(test("^Bash\\(git (show|log|diff|cat-file)"))] | length' .claude/settings.json)" = "0" ]
   # --settings anchors /path at system/, so the headless file needs both other forms (#314 probe, Bash side): the
   # relative rule is merged into the sandbox, resolved at launch, and fences Bash after a cd; the //**/ rule fences
-  # the Read and Edit tools after a cd, which the relative one does not, and never reaches the sandbox.
+  # the Read and Edit tools after a cd, which the relative one does not, but does not fence Bash.
   jq -e '.permissions.deny | index("Read(wiki/*/private/**)")' system/headless.settings.json >/dev/null
   jq -e '.permissions.deny | index("Edit(wiki/*/private/**)")' system/headless.settings.json >/dev/null
   jq -e '.permissions.deny | index("Read(//**/wiki/*/private/**)")' system/headless.settings.json >/dev/null

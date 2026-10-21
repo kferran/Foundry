@@ -61,7 +61,7 @@ Non-goals: stopping sessions from running `cd`; changing what any profile allows
    *Superseded 2026-10-21, was "The two private-folder denies become `Read(//**/wiki/*/private/**)` and
    `Edit(//**/wiki/*/private/**)`":* the Bash-side probe showed only the relative rule reaches the sandbox, so both
    forms ship, and the `vault_integrity.bats` test checks that each bare or `./` deny has its `//**/` twin. The `.env`
-   sandbox glob masks nothing with or without a `cd` and is tracked separately (probe, Bash side).
+   sandbox glob masks nothing with or without a `cd` and is tracked in #326 (probe, Bash side).
 3. **Failure reason.** `_run_session` returns the file paths from the result event's `permission_denials` for the
    Write and Edit tools. When `_deliver_research` finds no `result.json` or no findings note and a denied path lies
    under `out/`, it fails the item with reason `out write denied`, and its `needs` line names the denied path and

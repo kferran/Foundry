@@ -15,7 +15,7 @@
 - Lane: feature on a safety surface (the Work Order profile and headless confinement): the owner merges; never enable auto-merge.
 - Non-goals: stopping sessions from running `cd`; changing what any profile allows or denies.
 - Design 2 as built (probe, Bash side): keep `Read(wiki/*/private/**)` and `Edit(wiki/*/private/**)`, add `Read(//**/wiki/*/private/**)` and `Edit(//**/wiki/*/private/**)`. Neither form alone fences both Bash and the Read tool after a `cd`.
-- Design 4 as built: no `sandbox.filesystem.*` entry changes. `**/.env*` masks nothing with or without a `cd` (a glob gap, not a `cd` defect); a separate issue tracks it.
+- Design 4 as built: no `sandbox.filesystem.*` entry changes. `**/.env*` masks nothing with or without a `cd` (a glob gap, not a `cd` defect); #326 tracks it.
 - Keep edits to `nightshift_run.py` small and local: a sibling PR (#298) edits `_screen`, `_research_dir` and `_deliver_research`'s output checks.
 - `budget` and `cancelled` keep their precedence (they return before delivery); denials are read from the result event only.
 - Core budget: `git ls-files -z system/scripts | xargs -0 cat | wc -l` stays at or under 13,950 (13,916 at master `1d152aa`).

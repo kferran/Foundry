@@ -89,7 +89,7 @@ Findings:
   `cd` but not Bash. The headless profile therefore keeps the relative pair and adds the `//**/` pair; neither form
   alone covers both layers. The spec's fallback (a launch-anchored CLI rule) does not fence Bash either.
 - The `**/.env*` and `/**/.env*` `denyRead` globs mask nothing, with or without a `cd`; only a literal path did. That
-  gap predates #314 and a `cd` does not change it, so this PR leaves the entry as it is and a separate issue tracks it.
+  gap predates #314 and a `cd` does not change it, so this PR leaves the entry as it is and #326 tracks it.
   The `Read(//**/.env*)` permission rule did not stop `cat` either.
 
 Not checked: whether the relative rule's mask covers a private folder created after launch (the folder existed at
