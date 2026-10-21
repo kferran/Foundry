@@ -25,17 +25,17 @@ claude.ai Atlassian: https://atlassian.example/mcp - ok Connected"
   ALERTS="system/logs/alerts_$(TZ=America/Denver date +%F).md"
 }
 
-# gmail_says <tool> <query> <reply json> [<result text>]: a session that loads the tool, searches once and replies; the
-# result's text is what the model saw (claude's stand-in for a page too large to read, or by default a short preview).
+# gmail_says <tool> <query> <reply json> [<result text>] [<nextPageToken>]: a session that loads the tool, searches
+# once and replies; the result text is what the model saw (claude's stand-in for a page too large to read, or a preview).
 gmail_says() {
   {
     printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"ToolSearch","input":{}}]}}\n'
     printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"tool_reference","tool_name":"%s"}]}]}}\n' "$G"
     jq -cn --arg t "$1" --arg q "$2" '{type: "assistant", message: {content: [{type: "tool_use", id: "t2", name: $t,
       input: {query: $q, pageSize: 10, view: "THREAD_VIEW_MINIMAL"}}]}}'
-    jq -cn --arg c "${4:-…}" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "t2", content: $c}]},
-      tool_use_result: {structuredContent: {threads: [{id: "a1", viewUrl: "https://mail.google.com/mail/#all/a1",
-        messages: [{id: "m1", date: "2026-10-09T20:24:00Z", sender: "Blake Sample <blake@example.com>"}]}]}}}'
+    jq -cn --arg c "${4:-…}" --arg n "${5:-}" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "t2", content: $c}]},
+      tool_use_result: {structuredContent: ({threads: [{id: "a1", viewUrl: "https://mail.google.com/mail/#all/a1",
+        messages: [{id: "m1", date: "2026-10-09T20:24:00Z", sender: "Blake Sample <blake@example.com>"}]}]} + (if $n == "" then {} else {nextPageToken: $n} end))}}'
     jq -cn --arg r "$3" '{type: "result", subtype: "success", is_error: false, result: $r}'
   } > "$STUB_STREAM"
 }
@@ -72,7 +72,7 @@ ITEM='{"items": [{"thread_id": "a1", "who": "Blake", "ask": "asks how to proceed
 }
 
 @test "a page too large for the model to read keeps the cursor, and alerts once a day" {
-  gmail_says "$G" "$Q" "$ITEM" "Error: result (123,456 characters) exceeds maximum allowed tokens. Output has been saved to /tmp/x.txt"
+  gmail_says "$G" "$Q" "$ITEM" "Error: result (123,456 characters) exceeds maximum allowed tokens. Output has been saved to /tmp/x.txt" next
   run "$TF"
   [ "$status" -eq 0 ]
   grep -qF -- '- [ ] owed: Blake: asks how to proceed.' wiki/work/Now.md   # the checker reads the whole page
@@ -81,6 +81,11 @@ ITEM='{"items": [{"thread_id": "a1", "who": "Blake", "ask": "asks how to proceed
   [ "$status" -eq 0 ]
   [ "$(grep -c '\[triage\] Inbox triage returned a page too large for the model to read: its cursor stays' "$ALERTS")" -eq 1 ]
   [ "$(jq -s '.[-1].stats.persisted' "$LOG")" -eq 1 ]
+  run grep -c 'read 6 full pages' "$ALERTS"   # a held window is read again: no "not read" alert
+  [ "$output" = 0 ]
+  run "$TF" --check
+  [ "$status" -eq 0 ]
+  [ "$output" = "triage_fetch: 1 threads need the owner (1 returned, 1 page too large to read)" ]
 }
 
 @test "another tool or another query is refused, writes nothing and alerts once a day" {

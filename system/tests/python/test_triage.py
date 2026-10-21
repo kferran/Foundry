@@ -97,11 +97,11 @@ def test_a_mail_page_too_large_is_counted_and_holds_the_cursor(vault):
     prepare(vault)
     write(vault, "system/logs/triage-2026-10.jsonl", json.dumps({"kind": "tick", "epoch": 5_000}) + "\n")
     s = stream(tr.TOOL, [page([thread("a1")]), page([thread("b2")], text=BIG)],
-               json.dumps({"items": [item("a1"), item("b2", ask="asks for the deck")]}))
+               json.dumps({"items": [item("a1")]}))
     found = tr.extract(s, Q)
     assert (found["hold"], found["stats"]["persisted"]) == (True, 1)
-    assert [i["thread_id"] for i in found["items"]] == ["a1", "b2"]   # structuredContent holds the whole page
-    assert len(tr.record(vault, "work", found, TODAY, "t", 9_000)) == 2
+    assert ([i["thread_id"] for i in found["items"]], found["stats"]["results"]) == (["a1"], 2)   # b2 was never seen
+    assert len(tr.record(vault, "work", found, TODAY, "t", 9_000)) == 1
     assert tr.cursor(vault, 10_000, TODAY, "mail") == 4_700   # the held tick moves no cursor
     assert tr.records(vault, TODAY)[-1]["hold"] is True
 
