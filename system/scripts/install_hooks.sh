@@ -1,6 +1,6 @@
 #!/bin/bash
-# Merge the memory hooks into the user's Claude Code settings (spec §6.19).
-# Touches only owned entries: hook commands under <vault>/system/hooks/memory_*.sh, the three
+# Merge the memory hooks and the usage log into the user's Claude Code settings (spec §6.19).
+# Touches only owned entries: hook commands under <vault>/system/hooks/(memory_*|usage_log).sh, the three
 # absolute vault_index.py allow rules, and a commands/digest.md carrying the managed-by line.
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
@@ -27,7 +27,7 @@ if [[ "$mode" != uninstall ]]; then
   # Hook commands and Bash allow rules are matched as plain strings, so the vault path must not need quoting.
   [[ "$VAULT_ROOT" =~ ^/[A-Za-z0-9._/@+-]+$ ]] \
     || die 1 "the vault path must not contain spaces or shell metacharacters: $VAULT_ROOT"
-  for h in memory_recall.sh memory_capture.sh memory_activity.sh memory_keep.sh; do
+  for h in memory_recall.sh memory_capture.sh memory_activity.sh memory_keep.sh usage_log.sh; do
     [[ -x "system/hooks/$h" ]] || die 1 "missing or not executable: system/hooks/$h"
   done
 fi
@@ -45,7 +45,7 @@ fi
 SHAPE='
   [ ([["hooks"], "object"], [["hooks", "SessionStart"], "array"], [["hooks", "Stop"], "array"],
      [["hooks", "PostToolUse"], "array"], [["hooks", "PreCompact"], "array"], [["hooks", "SessionEnd"], "array"],
-     [["permissions"], "object"], [["permissions", "allow"], "array"]) as [$p, $t]
+     [["hooks", "UserPromptSubmit"], "array"], [["hooks", "PreToolUse"], "array"], [["permissions"], "object"], [["permissions", "allow"], "array"]) as [$p, $t]
     | (try getpath($p) catch null) as $x
     | select($x != null and ($x | type) != $t) | $p | join(".") ] | join(", ")'
 if [[ "$mode" != uninstall ]]; then
@@ -57,12 +57,12 @@ fi
 # $RECORD, so --uninstall removes exactly them and leaves a container the user already had, even an empty one.
 LIB='
   def containers: [["hooks"], ["hooks", "SessionStart"], ["hooks", "Stop"], ["hooks", "PostToolUse"],
-                   ["hooks", "PreCompact"], ["hooks", "SessionEnd"],
+                   ["hooks", "PreCompact"], ["hooks", "SessionEnd"], ["hooks", "UserPromptSubmit"], ["hooks", "PreToolUse"],
                    ["permissions"], ["permissions", "allow"]];
   def at($p): try getpath($p) catch null;'
 # Owned = ours from any vault location, so moving the vault re-points the entries instead of duplicating them.
 STRIP='
-  def owned_cmd: type == "string" and test("/system/hooks/memory_(recall|capture|activity|keep)\\.sh$");
+  def owned_cmd: type == "string" and test("/system/hooks/(memory_(recall|capture|activity|keep)|usage_log)\\.sh$");
   def owned_allow: type == "string" and test("^Bash\\(/.*/system/scripts/vault_index\\.py (related|show|backlinks):\\*\\)$");
   def has_owned: type == "object" and (.hooks | type) == "array" and any(.hooks[]; type == "object" and (.command | owned_cmd));
   def holds_owned: [.. | strings | select(owned_cmd or owned_allow)] | length > 0;
@@ -91,6 +91,8 @@ ADD='
   # timeout 30 also raises the SessionEnd budget (1.5 s by default) so a large transcript finishes copying.
   | .hooks.PreCompact = ((.hooks.PreCompact // []) + [{hooks: [{type: "command", command: ($v + "/system/hooks/memory_keep.sh"), timeout: 30}]}])
   | .hooks.SessionEnd = ((.hooks.SessionEnd // []) + [{hooks: [{type: "command", command: ($v + "/system/hooks/memory_keep.sh"), timeout: 30}]}])
+  | .hooks.UserPromptSubmit = ((.hooks.UserPromptSubmit // []) + [{hooks: [{type: "command", command: ($v + "/system/hooks/usage_log.sh"), timeout: 5}]}])
+  | .hooks.PreToolUse = ((.hooks.PreToolUse // []) + [{matcher: "Skill", hooks: [{type: "command", command: ($v + "/system/hooks/usage_log.sh"), timeout: 5}]}])
   | .permissions.allow = ((.permissions.allow // []) + [
       "Bash(" + $v + "/system/scripts/vault_index.py related:*)",
       "Bash(" + $v + "/system/scripts/vault_index.py show:*)",
