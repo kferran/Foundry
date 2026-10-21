@@ -262,9 +262,14 @@ def _clone(ctx: Ctx, fm: dict) -> Path:
 def _research_dir(ctx: Ctx, fm: dict) -> Path:
     d = ctx.workspace / f"nightshift-{fm['id']}"
     (d / "out").mkdir(parents=True, exist_ok=True)
-    wiki = ctx.vault / "wiki" / fm["partition"]
-    if not (d / "context").exists() and wiki.is_dir():
-        shutil.copytree(wiki, d / "context", ignore=shutil.ignore_patterns(".*"))
+    # Background notes only, rebuilt each attempt: no private/, Now.md, meetings/ or preferences/, and no file reached
+    # through a link, since the runner copies outside the sandbox (#298).
+    c = d / "context"
+    c.unlink() if c.is_symlink() else shutil.rmtree(c, ignore_errors=True)
+    for sub in ("concepts", "entities", "summaries"):
+        src = ctx.vault / "wiki" / fm["partition"] / sub
+        if src.is_dir() and not src.is_symlink():
+            shutil.copytree(src, c / sub, ignore=lambda at, names: [n for n in names if n.startswith(".") or os.path.islink(os.path.join(at, n))])
     if fm.get("repo"):
         _research_code(ctx, fm, d / "code")
     return d
@@ -529,6 +534,9 @@ def _deliver_research(ctx: Ctx, fm: dict, d: Path) -> dict:
     if res["status"] == "blocked":
         return {"state": "blocked", "reason": "session", "needs": [f"Answer: {q}" for q in _questions(res)]}
     findings = d / "out" / Path(fm["output"]).name
+    if findings.is_symlink() or (d / "out").is_symlink():   # read outside the sandbox: a link could reach any note (#298)
+        ctx.alert(f"invalid/{fm['id']}", f"{fm['id']}: the research output is a link; refused")
+        return {"state": "failed", "reason": "invalid: output is a link"}
     if not findings.is_file():
         return {"state": "failed", "reason": "no result"}
     ok, detail = nd.publish_research(ctx.vault, fm, findings)

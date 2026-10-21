@@ -995,3 +995,67 @@ def test_the_loop_screen_leaves_a_note_a_worker_holds(env):
     entries, refused = nr._screen(nr.Ctx(vault, NOW), {fm["id"]: None})
     assert [e[0] for e in entries] == [path] and refused == []
     assert ni.load(path)[0]["state"] == "running"
+
+
+RFM = {"id": "2026-10-08-q", "kind": "research", "partition": "work", "output": "wiki/work/concepts/Answer.md"}
+
+
+def test_research_context_holds_background_notes_only(env, tmp_path):
+    vault, tmp = env
+    from helpers import concept
+    outside = tmp_path / "outside.md"
+    outside.write_text("secret outside the vault\n")
+    write(vault, "wiki/work/concepts/Background.md", concept("work", "Background"))
+    write(vault, "wiki/work/private/Secret.md", "private\n")
+    write(vault, "wiki/work/Now.md", "- [ ] owed: x\n")
+    write(vault, "wiki/work/meetings/M.md", "transcript\n")
+    write(vault, "wiki/work/preferences/P.md", "pref\n")
+    (vault / "wiki/work/concepts/Link.md").symlink_to(outside)
+    ctx = nr.Ctx(vault, NOW)
+    c = nr._research_dir(ctx, RFM) / "context"
+    files = {str(p.relative_to(c)) for p in c.rglob("*") if p.is_file()}
+    assert "concepts/Background.md" in files and {f.split("/")[0] for f in files} <= {"concepts", "entities", "summaries"}
+    assert not (c / "concepts/Link.md").exists() and not (c / "concepts/Link.md").is_symlink()
+
+
+def test_a_resumed_order_loses_a_context_built_before_the_fix(env):
+    vault, tmp = env
+    write(vault, "wiki/work/concepts/Background.md", "x\n")
+    d = tmp / "ws" / f"nightshift-{RFM['id']}"
+    write(d, "context/private/Secret.md", "copied by the old runner\n")
+    nr._research_dir(nr.Ctx(vault, NOW), RFM)
+    assert not (d / "context/private").exists() and (d / "context/concepts/Background.md").is_file()
+
+
+def test_a_context_replaced_by_a_link_is_unlinked_and_its_target_kept(env, tmp_path):
+    vault, tmp = env
+    write(vault, "wiki/work/concepts/Background.md", "x\n")
+    target = tmp_path / "elsewhere"
+    write(target, "keep.md", "kept\n")
+    d = tmp / "ws" / f"nightshift-{RFM['id']}"
+    d.mkdir(parents=True)
+    (d / "context").symlink_to(target)
+    nr._research_dir(nr.Ctx(vault, NOW), RFM)
+    assert (target / "keep.md").is_file() and not (target / "concepts").exists()
+    assert not (d / "context").is_symlink() and (d / "context/concepts/Background.md").is_file()
+
+
+@pytest.mark.parametrize("linked", ["file", "folder"])
+def test_a_linked_research_output_is_refused(env, tmp_path, linked):
+    # A session can ln -s out/<name> (or out/) to a note it cannot read; the runner reads it outside the sandbox.
+    vault, tmp = env
+    write(vault, "wiki/work/private/Secret.md", __import__("helpers").concept("work", "Answer", "secret"))
+    d = tmp / "ws" / "nightshift-x"
+    if linked == "file":
+        write(d, "out/result.json", '{"status": "done", "summary": "ok"}')
+        (d / "out/Answer.md").symlink_to(vault / "wiki/work/private/Secret.md")
+    else:
+        write(vault, "wiki/work/private/result.json", '{"status": "done", "summary": "ok"}')
+        d.mkdir(parents=True)
+        (d / "out").symlink_to(vault / "wiki/work/private")
+        (vault / "wiki/work/private/Answer.md").write_text((vault / "wiki/work/private/Secret.md").read_text())
+    out = nr._deliver_research(nr.Ctx(vault, NOW), RFM, d)
+    assert out == {"state": "failed", "reason": "invalid: output is a link"}
+    assert not (vault / "wiki/work/concepts/Answer.md").exists()
+    alerts = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
+    assert alerts.count(f"{RFM['id']}: the research output is a link") == 1
