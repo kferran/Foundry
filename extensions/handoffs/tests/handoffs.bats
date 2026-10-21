@@ -187,6 +187,13 @@ prep_handoffs() {
   grep -qF -- '- brief_prep: handoffs: no Atlassian connector reachable' "$IN/unavailable.md"
 }
 
+@test "brief section: a page too large for the model says so instead of asking to reconnect (F1 spec §3.6)" {
+  printf '#!/bin/bash\necho "jira_fetch: a search result was too large for the model to read" >&2\nexit 6\n' > "$JF"
+  run prep_handoffs
+  [ "$status" -eq 0 ]
+  grep -qxF -- '- brief_prep: handoffs: a Jira search page was too large for the model to read; nothing was listed' "$IN/unavailable.md"
+}
+
 @test "brief_prep runs the section and copies its prompt beside it (extensions spec §3)" {
   fetch_stub 0 '- [ ] [EX-2](https://example.atlassian.net/browse/EX-2) Fix EX-2 (Blake Sample, In Review, unchanged since 2026-09-21)'
   export CLAUDE_BIN="$BATS_TEST_TMPDIR/no-claude"   # the calendar is unavailable; the prep still runs
