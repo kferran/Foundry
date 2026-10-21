@@ -522,3 +522,76 @@ def test_the_gate_passes_an_unchanged_long_line_and_one_at_300(vault):
     at_cap = "- [ ] owed: " + "y" * (300 - len("- [ ] owed:  (since 2026-10-01)")) + " (since 2026-10-01)"
     assert len(at_cap) == 300
     assert brief_run(vault, [OLD_LONG, at_cap]) == []
+
+
+# -- #298: the gate refuses every path with a symlink below the vault root --
+
+def commit_note(vault, target, run_id=RID):
+    stage_new(vault, target, concept("work", "X", "[[Index]]"), run_id=run_id)
+    decide(vault, rec(target), run_id=run_id)
+    return publish.commit_run(vault, run_id, now=LATER)
+
+
+def report_reasons(report):
+    return [p["reason"] for p in report["problems"]]
+
+
+@pytest.mark.parametrize("dest", ["wiki/work/private", "system/agents/workcells", None],
+                         ids=["private", "workcells", "outside"])
+def test_a_note_staged_through_a_linked_folder_is_refused(run, tmp_path, dest):
+    real = run / dest if dest else tmp_path / "outside"
+    real.mkdir(parents=True, exist_ok=True)
+    os.symlink(real, run / "wiki/work/concepts/linked")
+    report = commit_note(run, "wiki/work/concepts/linked/X.md")
+    assert report["status"] == "rejected"
+    assert "symlink on the target path" in report_reasons(report)
+    assert not (real / "X.md").exists()
+
+
+def test_an_in_tree_link_into_meetings_is_refused(run):
+    (run / "wiki/work/meetings").mkdir()
+    os.symlink(run / "wiki/work/meetings", run / "wiki/work/notes")
+    report = commit_note(run, "wiki/work/notes/X.md")
+    assert report["status"] == "rejected"
+    assert "symlink on the target path" in report_reasons(report)
+    assert not (run / "wiki/work/meetings/X.md").exists()
+
+
+@pytest.mark.parametrize("existing", [False, True], ids=["dangling", "existing"])
+def test_a_leaf_link_target_is_refused(run, tmp_path, existing):
+    kafka = run / "wiki/work/concepts/Kafka.md"
+    before = kafka.read_text()
+    os.symlink(kafka if existing else tmp_path / "gone.md", run / "wiki/work/concepts/Leaf.md")
+    report = commit_note(run, "wiki/work/concepts/Leaf.md")
+    assert "symlink on the target path" in report_reasons(report)
+    assert not (tmp_path / "gone.md").exists() and kafka.read_text() == before
+
+
+def test_a_linked_staging_folder_is_refused(run, tmp_path):
+    outside = tmp_path / "st"
+    write(outside, "wiki/work/concepts/S.md", concept("work", "S", "[[Index]]"))
+    write(outside, "_decisions.jsonl", json.dumps(rec("wiki/work/concepts/S.md")) + "\n")
+    (run / "wiki/.staging" / RID).rmdir()
+    os.symlink(outside, run / "wiki/.staging" / RID)
+    report = publish.commit_run(run, RID, now=LATER)
+    assert report["status"] == "rejected"
+    assert "staged path is a symlink" in report_reasons(report)
+    assert not (run / "wiki/work/concepts/S.md").exists()
+    assert not (run / "system/logs/runs" / RID / "_decisions.jsonl").exists()
+
+
+def test_record_stage_refuses_an_exact_target_under_a_linked_folder(vault, tmp_path):
+    write(tmp_path / "out", "X.md", concept("work", "X"))
+    os.symlink(tmp_path / "out", vault / "wiki/work/concepts/linked")
+    publish.snapshot(vault, RID, ["wiki/work/concepts/linked/X.md"])
+    with pytest.raises(publish.PublishError, match="symlink on the target path"):
+        publish.record_stage(vault, RID, "wiki/work/concepts/linked/X.md")
+    assert not (vault / "wiki/.staging" / RID / "wiki/work/concepts/linked/X.md").exists()
+
+
+def test_a_vault_reached_through_a_linked_parent_publishes(vault, tmp_path):
+    via = tmp_path / "vlink"
+    os.symlink(vault, via)
+    publish.snapshot(via, RID, ["wiki/work/**"])
+    report = commit_note(via, "wiki/work/concepts/X.md")
+    assert (report["status"], report["published"]) == ("published", ["wiki/work/concepts/X.md"])
