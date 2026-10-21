@@ -4,9 +4,10 @@
 Usage: triage.py query [--source chat]                 print this tick's Gmail query, or the Slack search input as JSON
        triage.py chat-tool                             print the Slack search tool's name
        triage.py hold                                  print why this tick is skipped (usage ceiling), or nothing
-       triage.py extract [--source chat] <query>       check a session's stream on stdin; print {"items": [...], "full": bool}
+       triage.py extract [--source chat] <query>       check a session's stream on stdin; print {"items": [...], "full": bool,
+                                                       "hold": bool, "stats": {counts for the log line}}
        triage.py record [--source chat] <start epoch>  read extract's JSON on stdin; add the new Now lines under run.lock
-                                                       and print them
+                                                       and print them (a held tick keeps the cursor)
 Exit: 0 ok, 1 claude error or a result in an unexpected shape, 2 usage, 3 no connector, 4 run.lock busy,
 6 connector error, 7 unexpected tool use or another query. A non-zero exit writes one reason line to stderr.
 """
