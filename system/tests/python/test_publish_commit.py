@@ -1,4 +1,5 @@
 import json
+import os
 import time
 
 import pytest
@@ -338,3 +339,87 @@ def test_recover_staging_loop_is_guarded_per_dir(run, monkeypatch):
     result = publish.recover(run)
     assert RID in result["failed"] and result["aborted"] == [other]
     assert (run / "system/quarantine" / other / "staged/wiki/work/concepts/B.md").is_file()
+
+
+# -- #298: journal entries and the journal itself never cross a symlink ---
+
+def journal(vault, staged, target, run_id=RID):
+    entry = {"staged": staged, "target": target, "expected": None}
+    return write(vault, f"system/logs/runs/{run_id}/publish.journal", json.dumps(entry) + "\n")
+
+
+def recovered(vault, run_id=RID):
+    report = json.loads((vault / "system/logs/runs" / run_id / "publish.json").read_text())
+    return report["status"], [p["reason"] for p in report["problems"]], report["published"]
+
+
+def test_recover_refuses_an_entry_target_through_a_linked_folder(run, tmp_path):
+    target = "wiki/work/concepts/linked/X.md"
+    write(run, f"wiki/.staging/{RID}/{target}", concept("work", "X"))
+    (tmp_path / "out").mkdir()
+    os.symlink(tmp_path / "out", run / "wiki/work/concepts/linked")
+    path = journal(run, f"wiki/.staging/{RID}/{target}", target)
+    assert RID in publish.recover(run)["failed"]
+    assert recovered(run)[:2] == ("recovery_failed", ["publish failed: unsafe journal entry"])
+    assert not (tmp_path / "out/X.md").exists()
+    assert (run / "system/quarantine" / RID / "staged" / target).is_file()
+    assert json.loads(path.read_text().splitlines()[-1]) == {"committed": True}
+
+
+def test_recover_never_moves_a_staged_symlink(run, tmp_path):
+    (tmp_path / "evil.md").write_text(concept("work", "L"))
+    link = run / f"wiki/.staging/{RID}/wiki/work/concepts/L.md"
+    link.parent.mkdir(parents=True)
+    os.symlink(tmp_path / "evil.md", link)
+    journal(run, f"wiki/.staging/{RID}/wiki/work/concepts/L.md", "wiki/work/concepts/L.md")
+    publish.recover(run)
+    assert "publish failed: unsafe journal entry" in recovered(run)[1]
+    assert not os.path.lexists(run / "wiki/work/concepts/L.md")
+    assert (tmp_path / "evil.md").is_file()
+
+
+@pytest.mark.parametrize("case", ["absolute", "dotdot", "unstaged"])
+def test_recover_refuses_an_entry_commit_run_did_not_write(run, tmp_path, case):
+    kafka = run / "wiki/work/concepts/Kafka.md"
+    staged = f"wiki/.staging/{RID}/wiki/work/concepts/A.md"
+    write(run, staged, concept("work", "A"))
+    target, dest = {"absolute": (str(tmp_path / "abs.md"), tmp_path / "abs.md"),
+                    "dotdot": ("wiki/../../dotdot.md", tmp_path / "dotdot.md"),
+                    "unstaged": ("wiki/work/concepts/Moved.md", run / "wiki/work/concepts/Moved.md")}[case]
+    journal(run, "wiki/work/concepts/Kafka.md" if case == "unstaged" else staged, target)
+    publish.recover(run)
+    status, rs, published = recovered(run)
+    assert status == "recovery_failed" and "publish failed: unsafe journal entry" in rs and published == []
+    assert not dest.exists() and kafka.is_file()
+
+
+def test_recover_refuses_a_linked_journal(run, tmp_path):
+    staged = f"wiki/.staging/{RID}/wiki/work/concepts/A.md"
+    write(run, staged, concept("work", "A"))
+    outside = journal(tmp_path, staged, "wiki/work/concepts/A.md")
+    os.symlink(outside, run / "system/logs/runs" / RID / "publish.journal")
+    assert publish.recover(run)["failed"] == [RID]
+    status, rs, _ = recovered(run)
+    assert status == "recovery_failed" and "unreadable journal" in rs[0]
+    assert not (run / "wiki/work/concepts/A.md").exists()
+
+
+def test_recover_lists_a_run_whose_entry_faulted_in_failed(run, monkeypatch):
+    write(run, f"wiki/.staging/{RID}/wiki/work/concepts/A.md", concept("work", "A"))
+    decide(run, rec("wiki/work/concepts/A.md"))
+
+    def crash(src, dst):
+        raise KeyboardInterrupt("simulated crash")
+
+    def eio(src, dst):
+        raise OSError("simulated EIO")
+
+    monkeypatch.setattr(publish, "_rename", crash)
+    with pytest.raises(KeyboardInterrupt):
+        publish.commit_run(run, RID, now=LATER)
+    monkeypatch.setattr(publish, "_rename", eio)
+    result = publish.recover(run)
+    # P10: a recovery that could not apply an entry alerts; both alert sites read only "failed" (#298).
+    assert RID in result["failed"] and RID in result["recovered"]
+    assert recovered(run)[0] == "recovery_failed"
+    assert not (run / "wiki/.staging" / RID).exists()
