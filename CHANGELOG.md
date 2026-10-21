@@ -11,6 +11,8 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## 2026-10-21
 - Added: `/grilling`, a vendored skill (mattpocock-skills 1.2.3, MIT) that grills a plan or idea one round of numbered questions at a time, each with a recommended answer. For a new idea, its first round asks whether it is worth building, for whom, what happens without it, its smallest version and what it displaces. FOUNDRY.md gains an Architecture section, and its Development section now names a skill for each step; specs and plans dated from today must carry the Grill, Builder check and Blueprint lines (specs) or the writing-plans header lines (plans), checked in CI. (#313)
+- The hooks install adds a usage log: in a session started at the vault root, each `/command` you type and each skill Claude runs appends one line (`{ts, command}` or `{ts, skill}`, never the prompt text or arguments) to `system/logs/usage-YYYY-MM.jsonl`, so the commands headless runs never see (`/query`, `/lint`, `/impact`, `/rca`) can be counted. Headless, unattended and codebase sessions log nothing. (#312)
+  - Action: run `system/scripts/install_hooks.sh --dry-run`, then `system/scripts/install_hooks.sh` (or re-run `/setup`'s memory step) to add the two new hook entries.
 
 ## 2026-10-20
 - Added: Slack notices in a daily thread. With `slack_notify_thread: daily`, the day's first notice posts one parent message, `Foundry updates <date>`, and every notice that day (brief, debrief, alerts, Work Orders) is a reply under it. The intraday capture can then read the same channel: your top-level posts and your replies in those threads become inbox drops, each reply with the notice above it; the Foundry's own posts are never captured. (#293)

@@ -32,9 +32,9 @@ relocate() {  # relocate <path>: move the vault there and re-derive its paths
   IH="$VP/system/scripts/install_hooks.sh"
 }
 
-ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .[]' "$SET"; }
+ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_|usage_log"))] | .[]' "$SET"; }
 
-@test "install merges the five hooks and three allows, leaving foreign entries alone" {
+@test "install merges the memory and usage hooks and three allows, leaving foreign entries alone" {
   run "$IH"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.hooks.SessionStart[0].hooks[0].command' "$SET")" = "$VP/system/hooks/memory_recall.sh" ]
@@ -44,6 +44,9 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
     [ "$(jq -c --arg e "$e" '.hooks[$e][0].hooks[0] | [.command, .timeout]' "$SET")" = "[\"$VP/system/hooks/memory_keep.sh\",30]" ]
   done
   [ "$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "$SET")" = /opt/guard.sh ]
+  # The usage log (factory F0 spec §3.7): every prompt, and only the Skill tool.
+  [ "$(jq -c '.hooks.UserPromptSubmit[0] | [.matcher, .hooks[0].command]' "$SET")" = "[null,\"$VP/system/hooks/usage_log.sh\"]" ]
+  [ "$(jq -c '.hooks.PreToolUse[1] | [.matcher, .hooks[0].command]' "$SET")" = "[\"Skill\",\"$VP/system/hooks/usage_log.sh\"]" ]
   [ "$(jq -r '.model + .env.FOO' "$SET")" = opus1 ]
   [ "$(jq -c '.permissions.allow' "$SET")" = "[\"Bash(npm test)\",\"Bash($VP/system/scripts/vault_index.py related:*)\",\"Bash($VP/system/scripts/vault_index.py show:*)\",\"Bash($VP/system/scripts/vault_index.py backlinks:*)\"]" ]
   run jq -r '.permissions.allow[] | select(test("query|^Read"))' "$SET"
@@ -87,6 +90,7 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
   run "$IH" --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"+"*"memory_recall.sh"* ]]
+  [ "$(grep -c '^+.*usage_log.sh' <<< "$output")" -eq 2 ]
   [ "$(sha256sum < "$SET")" = "$(sha256sum < "$BATS_TEST_TMPDIR/original.json")" ]
   [ ! -e "$CFG/commands/digest.md" ]
   run ls "$CFG"/settings.json.bak.*
@@ -112,8 +116,8 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
   relocate "$BATS_TEST_TMPDIR/moved"
   run "$IH"
   [ "$status" -eq 0 ]
-  [ "$(ours | wc -l)" -eq 5 ]
-  [ "$(ours | grep -c "^$VP/system/hooks/")" -eq 5 ]
+  [ "$(ours | wc -l)" -eq 7 ]
+  [ "$(ours | grep -c "^$VP/system/hooks/")" -eq 7 ]
   [ "$(jq '[.permissions.allow[] | select(test("vault_index"))] | length' "$SET")" -eq 3 ]
   grep -qF "<!-- managed by vault: $VP -->" "$CFG/commands/digest.md"
 }
@@ -122,7 +126,7 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
   rm "$SET"
   run "$IH"
   [ "$status" -eq 0 ]
-  [ "$(ours | wc -l)" -eq 5 ]
+  [ "$(ours | wc -l)" -eq 7 ]
 }
 
 @test "invalid settings JSON aborts and leaves the file untouched" {
@@ -138,7 +142,7 @@ ours() { jq -r '[.hooks[][] | .hooks[] | .command | select(test("memory_"))] | .
   run "$IH"
   [ "$status" -eq 0 ]
   [ -L "$SET" ]
-  [ "$(jq '[.hooks[][] | .hooks[] | select(.command | test("memory_"))] | length' "$BATS_TEST_TMPDIR/dotfiles.json")" -eq 5 ]
+  [ "$(jq '[.hooks[][] | .hooks[] | select(.command | test("memory_|usage_log"))] | length' "$BATS_TEST_TMPDIR/dotfiles.json")" -eq 7 ]
 }
 
 @test "a vault path that would need quoting is refused" {
@@ -270,11 +274,11 @@ record() { jq -c --arg k "$SET" '.[$k]' "$V/system/logs/memory/install_hooks.jso
 }
 
 @test "foreign empty containers of every kind the installer writes into survive install and uninstall" {
-  for doc in '{"hooks": {}}' '{"permissions": {}}' '{"hooks": {"Stop": []}}' '{"hooks": {"SessionStart": [], "PostToolUse": [], "PreCompact": [], "SessionEnd": []}, "permissions": {"allow": []}}'; do
+  for doc in '{"hooks": {}}' '{"permissions": {}}' '{"hooks": {"Stop": []}}' '{"hooks": {"SessionStart": [], "PostToolUse": [], "PreCompact": [], "SessionEnd": [], "UserPromptSubmit": [], "PreToolUse": []}, "permissions": {"allow": []}}'; do
     printf '%s\n' "$doc" > "$SET"
     run "$IH"
     [ "$status" -eq 0 ]
-    [ "$(ours | wc -l)" -eq 5 ]
+    [ "$(ours | wc -l)" -eq 7 ]
     run "$IH" --uninstall
     [ "$status" -eq 0 ]
     [ "$(jq -S . "$SET")" = "$(jq -S . <<< "$doc")" ]
@@ -285,10 +289,10 @@ record() { jq -c --arg k "$SET" '.[$k]' "$V/system/logs/memory/install_hooks.jso
   printf '%s\n' '{"hooks": {"Stop": []}, "permissions": {"deny": []}}' > "$SET"
   run "$IH"
   [ "$status" -eq 0 ]
-  [ "$(record)" = '[["hooks","SessionStart"],["hooks","PostToolUse"],["hooks","PreCompact"],["hooks","SessionEnd"],["permissions","allow"]]' ]
+  [ "$(record)" = '[["hooks","SessionStart"],["hooks","PostToolUse"],["hooks","PreCompact"],["hooks","SessionEnd"],["hooks","UserPromptSubmit"],["hooks","PreToolUse"],["permissions","allow"]]' ]
   run "$IH"
   [ "$status" -eq 0 ]
-  [ "$(record)" = '[["hooks","SessionStart"],["hooks","PostToolUse"],["hooks","PreCompact"],["hooks","SessionEnd"],["permissions","allow"]]' ]
+  [ "$(record)" = '[["hooks","SessionStart"],["hooks","PostToolUse"],["hooks","PreCompact"],["hooks","SessionEnd"],["hooks","UserPromptSubmit"],["hooks","PreToolUse"],["permissions","allow"]]' ]
   run "$IH" --uninstall
   [ "$status" -eq 0 ]
   [ "$(record)" = null ]
@@ -347,7 +351,7 @@ record() { jq -c --arg k "$SET" '.[$k]' "$V/system/logs/memory/install_hooks.jso
     [ -n "$junk" ] || : > "$V/system/logs/memory/install_hooks.json"
     run "$IH"
     [ "$status" -eq 0 ]
-    [ "$(ours | wc -l)" -eq 5 ]
+    [ "$(ours | wc -l)" -eq 7 ]
     run "$IH" --uninstall
     [ "$status" -eq 0 ]
     [ "$(jq -c . "$SET")" = '{}' ]
