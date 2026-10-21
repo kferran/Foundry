@@ -96,6 +96,7 @@ House style of `system/tests/python/test_publish.py` and `test_publish_commit.py
 - An owner who links `wiki/`, `briefings/` or a folder under `wiki/<p>/` (for example into a synced folder) gets every run that touches it refused, with "symlink on the target path" in `publish.json` and the existing alert. That is the intended fail-closed outcome. *Builder's call:* one line in FOUNDRY.md where the publish gate is described, saying the gate refuses symlinked paths.
 - Check-then-rename race: a link created between the `_apply` check and `os.replace` still lands. That needs a concurrent writer that makes links; the model cannot. Upgrade path if needed: `os.open` each folder with `O_NOFOLLOW` and rename with `dir_fd`.
 - Quarantine and hold-back destinations under `system/quarantine/<run_id>/` still follow links. Only the gate writes there; left as a known gap.
+- `recover()`'s `fail()` writes `publish.json` through a linked run folder (`system/logs/runs/<run_id>/`). Same class as the quarantine gap: only the gate writes there; left as a known gap.
 
 ## Left to the builder
 

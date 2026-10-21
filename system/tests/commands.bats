@@ -1154,9 +1154,9 @@ self_edit_contract() {
   grep -qF 'the default when in doubt is the feature lane' FOUNDRY.md
 }
 
-@test "FOUNDRY.md fast lane: a fix PR carries one defect: label, one per class C1 to C13 (factory F0 §3.4)" {
+@test "FOUNDRY.md fast lane: a fix PR carries one defect: label, one per class C1 to C14 (factory F0 §3.4)" {
   grep -qF 'carries one `defect:` label' FOUNDRY.md
-  for n in 1 2 3 4 5 6 7 8 9 10 11 12 13; do
+  for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
     grep -qF "\`defect:C$n-" FOUNDRY.md
   done
 }
