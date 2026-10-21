@@ -6,7 +6,7 @@ fields:
   type: {kind: const, value: codebase, required: true, readers: [system/scripts/vaultlib/schema.py]}
   name: {kind: string, required: true, readers: [system/scripts/vaultlib/scope.py, system/hooks/lib_memory.sh]}
   path: {kind: path, required: true, must_exist: warn, readers: [system/scripts/vaultlib/scope.py, system/scripts/vaultlib/index.py, .claude/commands/impact.md]}
-  partition: {kind: enum, values: [work, personal, shared], required: true, readers: [system/scripts/vaultlib/scope.py, system/hooks/lib_memory.sh]}
+  partition: {kind: enum, values: [work, personal, shared], required: true, readers: [system/scripts/vaultlib/scope.py, system/hooks/lib_memory.sh, system/scripts/vaultlib/nightshift_check.py]}
   default: {kind: bool, default: "false", unique_true: true, readers: [system/scripts/lib_config.sh]}
   stack: {kind: list, of: string, readers: []}
   search_globs: {kind: list, of: string, required: true, readers: [.claude/commands/impact.md]}

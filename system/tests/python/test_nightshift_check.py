@@ -251,3 +251,47 @@ def test_identifiers_are_refused_before_any_git_call(vault_repo, field, value, n
 def test_output_must_stay_inside_the_vault(vault_repo, output):
     fm = plan_fm(kind="research", output=output, hosts=[])
     assert any("no '..'" in e for e in nc.check(vault_repo, fm, BRIEF))
+
+
+# #298: the field half (nc.screen) is the add-time rule the tick runs again; it reads the note and system/codebases/ only.
+@pytest.mark.parametrize("output", ["docs/injected.md", "extensions/telemetry/skills/evil/SKILL.md",
+                                    "wiki/personal/concepts/X.md", "wiki/work/private/X.md", "wiki/work/meetings/X.md",
+                                    "wiki/work/Now.md", "wiki/work/preferences/X.md"])
+def test_research_output_must_be_a_background_note_of_its_partition(vault_repo, output):
+    fm = plan_fm(kind="research", output=output, hosts=[])
+    assert any(e.startswith("output") for e in nc.check(vault_repo, fm, BRIEF))
+    assert any(e.startswith("output") for e in nc.screen(vault_repo, fm, BRIEF))
+    assert nc.screen(vault_repo, {**fm, "output": "wiki/work/summaries/X.md"}, BRIEF) == []
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "169.254.169.254", "*", "10.0.0.1."])
+def test_ip_literal_hosts_are_refused(vault_repo, host):
+    fm = plan_fm(kind="research", output="wiki/work/concepts/A.md", hosts=["docs.example.com", host])
+    assert [e for e in nc.check(vault_repo, fm, BRIEF) if e.startswith("host")] == [f"host {host!r} is not a plain host name"]
+
+
+def test_the_partition_must_match_the_note_folder(vault_repo):
+    fm = plan_fm(kind="research", partition="personal", output="wiki/personal/concepts/X.md")
+    errs = nc.check(vault_repo, fm, BRIEF, vault_repo / "raw/work/nightshift/2026-10-06-dtcc-watcher.md")
+    assert any(e.startswith("partition personal") for e in errs), errs
+    assert nc.check(vault_repo, fm, BRIEF, vault_repo / "raw/personal/nightshift/2026-10-06-dtcc-watcher.md") == []
+
+
+def test_repo_must_be_a_codebase_in_the_order_partition_or_shared(vault_repo, tmp_path):
+    registered(vault_repo, tmp_path)   # a work codebase
+    fm = plan_fm(kind="research", partition="personal", output="wiki/personal/concepts/X.md", repo="shop")
+    fm.pop("base")
+    assert any("repo 'shop'" in e and "personal" in e for e in nc.check(vault_repo, fm, BRIEF))
+    assert nc.check(vault_repo, {**fm, "partition": "work", "output": "wiki/work/concepts/X.md"}, BRIEF) == []
+    set_codebase(vault_repo, "shop", partition="shared")
+    assert nc.check(vault_repo, fm, BRIEF) == []
+
+
+def test_screen_runs_no_git(vault_repo, tmp_path, monkeypatch):
+    registered(vault_repo, tmp_path)
+
+    def boom(*a, **kw):
+        raise AssertionError("screen ran a command")
+    monkeypatch.setattr(subprocess, "run", boom)
+    assert nc.screen(vault_repo, plan_fm(repo="shop", base="nope"), "") == []
+    assert nc.screen(vault_repo, plan_fm(budget="4 hours"), "") == ["budget must look like 4h or 90m: '4 hours'"]

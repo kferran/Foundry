@@ -883,7 +883,7 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
         return _add(ctx, a)
     if cmd == "check":
         fm, body = ni.load(a.note)
-        errs = nc.check(vault, fm, body)
+        errs = nc.check(vault, fm, body, Path(a.note).resolve())
         print("\n".join(f"not ready: {e}" for e in errs) or "ready")
         return 2 if errs else 0
     if cmd == "list":
