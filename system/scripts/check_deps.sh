@@ -2,7 +2,7 @@
 # The single dependency list (spec §6.2): one "ok|missing|optional|dev <item> [hint]" line per item.
 # Which items are required depends on the machine role (two-machine spec §3.4). Exit 0 always;
 # --strict exits 1 if a required item is missing. Optional items and the development tools (dev:
-# bats, pytest, shellcheck; express install spec §2) never fail --strict.
+# bats, pytest, shellcheck and the superpowers plugin; express install spec §2) never fail --strict.
 set -euo pipefail
 # No dirname: this script must run with a PATH that lacks coreutils.
 src="${BASH_SOURCE[0]}"
@@ -40,6 +40,7 @@ hint() {
     systemctl) echo "systemd is required (user services)"; return ;;
     systemd-analyze) echo "systemd is required (unit verification)"; return ;;
     herdr) echo "optional session backend for sub-project 2; see FOUNDRY.md"; return ;;
+    superpowers) echo "in Claude Code: /plugin install superpowers@claude-plugins-official"; return ;;
     fts5) pkg_pacman="sqlite python" pkg_apt="libsqlite3-0 python3"; printf "python's sqlite3 lacks FTS5: " ;;
     git|jq|tmux|socat) pkg_pacman="$1" pkg_apt="$1" ;;
     bats) pkg_pacman=bash-bats pkg_apt=bats ;;
@@ -82,6 +83,7 @@ present() {  # <item>: 1 when the item is available
     python3) py -c 'import sys; sys.exit(sys.version_info < (3, 11))' ;;   # tomllib, resource limits (audit C13)
     pyyaml) py -c 'import yaml' ;;
     pytest) py -m pytest --version ;;
+    superpowers) f="$HOME/.claude/plugins/installed_plugins.json"; [[ -f "$f" && "$(<"$f")" == *'"superpowers@'* ]] && echo 1 || echo 0 ;;
     fts5) py -c 'import sqlite3; sqlite3.connect(":memory:").execute("CREATE VIRTUAL TABLE t USING fts5(x)")' ;;
     *) has "$1" ;;
   esac
@@ -89,7 +91,7 @@ present() {  # <item>: 1 when the item is available
 
 for item in "${REQUIRED[@]}"; do report "$item" "$(present "$item")"; done
 if [[ "$role" != client ]]; then
-  for item in bats pytest shellcheck; do report "$item" "$(present "$item")" dev; done
+  for item in bats pytest shellcheck superpowers; do report "$item" "$(present "$item")" dev; done
 fi
 for c in herdr tmux; do report "$c" "$(has "$c")" optional; done
 if [[ "$role" != client ]]; then report gh "$(has gh)" optional; fi

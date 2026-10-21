@@ -38,6 +38,21 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "check_deps: the superpowers plugin is a development requirement, read from Claude Code's plugin list, never failing --strict (factory F0 §3.8)" {
+  H="$BATS_TEST_TMPDIR/home"
+  mkdir -p "$H/.claude/plugins"
+  run env PATH="$BIN" HOME="$H" "$CD" --strict
+  [ "$status" -eq 0 ]
+  grep -q '^dev superpowers ' <<< "$output"
+  printf '{"version": 2, "plugins": {"superpowers@claude-plugins-official": []}}\n' > "$H/.claude/plugins/installed_plugins.json"
+  run env PATH="$BIN" HOME="$H" "$CD" --strict
+  [ "$status" -eq 0 ]
+  grep -qx 'ok superpowers' <<< "$output"
+  run env PATH="$BIN" HOME="$H" "$CD" --role client
+  run grep -c superpowers <<< "$output"
+  [ "$output" = 0 ]
+}
+
 @test "check_deps: bwrap is required on standalone and server, not on a client" {
   rm "$BIN/bwrap"
   run env PATH="$BIN" "$CD" --strict --role server

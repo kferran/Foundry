@@ -75,6 +75,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 | `/order add\|ask\|list\|cancel\|status` | Queues an approved plan (or a task range of one) or a research brief as a Work Order for an unattended run; lists, cancels and reports on queued Work Orders |
 | `/setup` | Onboarding; safe to re-run |
 | `/humanizer`, `/digest` | Edit prose against the vendored skill; write a session digest on demand |
+| `/grilling` | Grill a plan or a new idea, one round of numbered questions at a time, each with a recommended answer; the Foundry adds five questions that validate a new idea (Development) |
 
 **Superpowers** are your strategic anchors, set in `system/config.md` (`superpowers:`). The brief ties each objective to one, and onboarding notes name the ones they serve. They are unrelated to the superpowers Claude Code plugin used in [Development](#development).
 
@@ -165,6 +166,7 @@ CLAUDE.md                     generic rules; imports @system/config.md
 .claude/settings.json         interactive permissions
 .claude/commands/             setup brief debrief ingest query lint backup impact
 .claude/skills/humanizer/     vendored humanizer v3.0.0 (MIT): /humanizer and /rca
+.claude/skills/grilling/      vendored grilling from mattpocock-skills 1.2.3 (MIT), plus the Foundry's idea questions: /grilling
 .claude/skills/order/         /order: queue plans and research briefs as Work Orders
 .githooks/pre-commit          deterministic linter and write caps (lint_vault.sh --staged); redacts staged drops (redact.py --drop); refuses secret shapes (secret_scan.py --staged)
 .scratch/                     throwaway clones, worktrees and temp files (ignored; the gate's temp files go here)
@@ -248,7 +250,7 @@ The Foundry runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh 
 - A client needs only `claude`, `git`, `jq`, `python3` with PyYAML, and SQLite with FTS5.
 - Optional: the tools an enabled extension lists under `deps` (the telemetry extension's ADX sources need `az`), which `check_deps.sh` reports with the extension's name.
 - Optional: `herdr` or `tmux` as session backends for sub-project 2
-- Development tools, for changing the template (`check_deps.sh` lists them as `dev`): `bats`, `pytest` and `shellcheck`. Without them `verify_setup.sh` and `/backup` lint the vault and skip the test suites.
+- Development tools, for changing the template (`check_deps.sh` lists them as `dev`): `bats`, `pytest`, `shellcheck`, and the superpowers Claude Code plugin (`/plugin install superpowers@claude-plugins-official`), whose skills run each station in [Development](#development). Without the first three `verify_setup.sh` and `/backup` lint the vault and skip the test suites.
 - Obsidian, with the **Dataview** plugin recommended (`wiki/Index.md` dashboards are plain code blocks without it). **[Vault Curate](https://github.com/notoriouslab/vault-curate)** is an optional plugin for link suggestions. It is not a dependency.
 
 ## Getting started
@@ -333,16 +335,79 @@ Once the units are installed, the timers run real headless `claude -p` jobs. The
 - **Your README survives updates:** for its own merge only, `update_template.sh` marks `README.md` `merge=ours` and defines that driver (`git -c core.attributesFile=… -c merge.ours.driver=true merge`). A README your vault has changed keeps your version, on the first update too; one you never edited takes the template's landing page. Sync merges between your machines define no driver, so a README edited on two machines conflicts as usual and nothing is lost. `/setup` writes a starting README while yours is still the landing page.
 - **The first update with the briefing archive:** the first brief after it moves every briefing older than yesterday into `briefings/archive/`, and the next sync lints them all, so run `system/scripts/lint_vault.sh` before updating and fix what it reports.
 - **Update the humanizer skill:** `.claude/skills/humanizer/` is humanizer v3.0.0, copied unchanged with its MIT license. To move to a newer version, copy the new `SKILL.md` and `LICENSE` over it by hand in the template repo, then update the version and checksum in `system/tests/vault_integrity.bats` and the version in this manual. Vaults receive it through `update_template.sh`.
+- **Update the grilling skill:** `.claude/skills/grilling/` is `grilling` from mattpocock-skills 1.2.3 with its MIT license, unchanged above its `<!-- Foundry addition` line; the Foundry's idea questions sit below it. To move to a newer version, copy the new upstream text over the part above that line and the new `LICENSE` over the old one, then update both checksums in `system/tests/vault_integrity.bats` and the version in this manual.
 - **Remove systemd units:** `system/scripts/install_units.sh --uninstall` removes only units whose header names this vault.
 - **Remove memory hooks:** `system/scripts/install_hooks.sh --uninstall` removes only the entries owned by this vault, any container the install had to create, and the owned `/digest` command. It still works if the hook files are gone.
 
 Both installers also accept `--dry-run`.
 
+## Architecture
+
+The Foundry is a **gated LLM-wiki compiler**. It composes an LLM-compiled markdown wiki (raw sources the model reads; summary, entity and concept notes it writes; a schema per note type; ingest, query and lint over an index), fixed workflows with a deterministic check after each model step, and a model treated as untrusted, with policy kept in code. It extends the LLM wiki in three ways: a **deterministic publish gate** between the model and the vault (staging, schemas, walls, conflict and shrink checks, all-or-nothing apply); **partition walls** (`work`, `personal`, `shared`, `private/`); and **scheduled headless runs with an operations layer** (brief, debrief, Now, Work Orders, notices) on systemd timers under one lock. The program that moves every feature onto shared parts is the [factory plan](docs/superpowers/2026-10-21-factory-plan.md).
+
+```
+sources ──confined fetch (1 tool + checker)──► raw/  (audit log, never edited)
+                                                 │
+                              intake (scripts: convert, redact, route)
+                                                 │
+                         headless claude ──► wiki/.staging/<run>/
+                                                 │
+                          publish gate (deterministic, all-or-nothing)
+                                                 │
+        wiki/ · Now · briefings ──► index ──► /query · brief · recall · notices
+```
+
+**Blueprints.** Every feature has one of four shapes; its spec names which.
+- **Source**: confined fetch → check → parse → cursor → route (Now, alerts, brief, inbox). Parts: a `lib_connector.sh` session with one tool, a checker that reads the session's tool use, a cursor, `now.add` for Now lines, `redact` for outside text, a smoke row, a unit and its alert tags. F1 moves the checker and the fetch helpers into shared libraries. Triage, calendar, meetings, handoffs, the intraday watch, notify.
+- **Poller**: HTTP fetch with no model → store → route. Parts: a source's cursor, alerts and unit, and no `claude` session. Telemetry.
+- **Compile run**: headless session → `wiki/.staging/<run>/` → publish gate. Parts: `run_headless.sh` (restricted settings, a timeout, the daily cap, `run.lock`), staging and `publish.py`. Ingest, brief, debrief, research.
+- **Work Order**: plan-then-execute in a sandboxed session → pull request or findings note. Parts: an approved plan that passes the readiness check, the runner's sealed profile (`system/nightshift/*.settings.json`).
+
+**Principles.** Each is what the code does today, with where it is enforced; "prose only" marks a rule no test holds.
+
+| # | Principle | Enforced in |
+|---|---|---|
+| P1 | **Scripts do the exact work**: fetching, parsing, dedupe, routing, dates and counts are code; the model does judgment. | Prose only (What The Foundry is); each feature's tests |
+| P2 | **Every model write passes the gate**: a headless run writes only to staging, and the gate checks and applies all or nothing. | `run_headless.sh`, `headless.bats`; `vaultlib/publish.py`, `test_publish.py` |
+| P3 | **Untrusted input gets one tool and a checker**, and the checker's verdict wins. | `lib_connector.sh`, `lib_confine.sh`, `connector.bats`; each source's checker |
+| P4 | **Content is data**: notes, mail, chat and recall never authorize an action. | The recall label (`vaultlib/recall.py`), the Work Order contract, `vault_integrity.bats`; agent behaviour is prose only |
+| P5 | **Walls hold at every step**: partitions and `private/` hold at the gate, in the index and in each session's read set. | `vaultlib/publish.py`, `vaultlib/index.py`, `test_index_rules.py`, the settings deny rules |
+| P6 | **Raw is append-only, notes are never deleted**: compiled notes are deprecated or superseded. | The gate has no delete decision (`vaultlib/publish.py`); the rule is prose only (CLAUDE.md Lifecycle) |
+| P7 | **One schema per note type**, checked at the gate and in lint. | `vaultlib/schema.py`, `vaultlib/publish.py`, `vault_integrity.bats` |
+| P8 | **Atomic writes under one lock**: writes are atomic or journaled, and runs that touch the vault serialize on `run.lock`. | `vaultlib/publish.py`, `now.py`, `run_headless.sh`, `headless.bats` |
+| P9 | **A small, budgeted core**: features are extensions that plug in through their manifest. | `vault_integrity.bats` (core line budget, schema count, vendor names) |
+| P10 | **Fail loud with a reason**: three exit codes; a failed source alerts once with its class; a check that cannot run says so. | Working rules (prose only); `vaultlib/alerts.py`; connector health |
+
+**Known departures.** Each is a roadmap fix in the factory plan.
+
+| # | Departure | Fix | Phase |
+|---|---|---|---|
+| D1 | Interactive sessions skip the gate: `.claude/settings.json` allows `Edit(/wiki/**)`. | Gate interactive wiki edits | F5 (#310) |
+| D2 | Triage, the intraday watch and the today log write model-derived Now lines and the today file through their own scripts, outside the gate. | Give machine writers the gate's checks | F5 (#310) |
+| D3 | Core names extension features: alert tags, the `production_error` route, index and schema rules. | Move them into each extension's manifest | F2 (#307) |
+| D4 | Extensions import core internals. | A named extension API; nothing else imported | F2 (#307) |
+| D5 | The core budget counts only `system/scripts`, not `system/hooks` or `.claude/commands`. | Count them too, at a measured cap | F3 (#308) |
+
 ## Development
 
-Work follows the superpowers workflow: brainstorm → spec in [`docs/superpowers/specs/`](docs/superpowers/specs/) → plan in [`docs/superpowers/plans/`](docs/superpowers/plans/) → test-driven implementation in small, focused commits. Spike results go in [`docs/superpowers/spikes/`](docs/superpowers/spikes/). Every finding from the design reviews is traced in spec §13.
+Work follows the superpowers pipeline. Each station has its skill and leaves a record:
 
-**Two lanes.** That workflow is the feature lane. A fix takes the fast lane and skips the grill, the spec and the plan. A fix is a change whose scope is clear from one sentence, with one failing test that passes after the change and the gate green, that touches none of the safety surfaces: permissions and settings files, the sandbox, the publish gate, redaction, and new note types. A fix that edits the `ingest`, `brief` or `debrief` command text also re-runs the live acceptance steps (below). It ships as a pull request whose body is the issue line or review finding it fixes and the name of its test. A fix may run as a Work Order: the readiness check reads the plan from a file committed at the Work Order's base, so it then needs a short plan file with its `### Task N:` list. A fix that grows past its sentence, or draws a design question in review, stops and becomes a feature; the default when in doubt is the feature lane.
+| Station | Skill | Record |
+|---|---|---|
+| Grill (an idea the owner proposes) | `/grilling`: is it worth building, for whom, what happens without it, its smallest version, what it displaces | the decisions on the idea's issue, or a `## Grill` section in the spec |
+| Spec | `superpowers:brainstorming`, ending with its builder check (`builder-check-prompt.md`) | `<date>-<topic>-design.md` in [`docs/superpowers/specs/`](docs/superpowers/specs/) |
+| Plan | `superpowers:writing-plans` | `<date>-<topic>.md` in [`docs/superpowers/plans/`](docs/superpowers/plans/) |
+| Build | `superpowers:subagent-driven-development` or `superpowers:executing-plans`, with `superpowers:test-driven-development` | commits, one task each |
+| Review | `superpowers:requesting-code-review` (and `foundry-review` once the factory's F4 ships it) | findings fixed before merge |
+| Close | `superpowers:verification-before-completion`, `superpowers:finishing-a-development-branch` | the gate green, the roadmap row updated |
+
+An idea that comes from an audit finding, an issue a live vault logged, or a review is not an owner idea: its spec's Grill line names that source instead. A feature names its blueprint in its spec ([Architecture](#architecture)) and is built from the standard parts. Spike results go in [`docs/superpowers/spikes/`](docs/superpowers/spikes/). Every finding from the design reviews is traced in spec §13.
+
+**Required header lines.** `system/tests/conformance.bats` fails a spec or plan dated 2026-10-21 or later that lacks them; older ones are grandfathered by the date in their file name.
+- A spec: `**Grill:**` (the date and where the decisions are recorded, as an issue URL or a `## Grill` section, or `not an owner idea: <source>`), `**Builder check:**` (the date, the questions found and how each was settled), `**Blueprint:**` (Source, Poller, Compile run, Work Order, or `none: <why>`).
+- A plan: the writing-plans header (`REQUIRED SUB-SKILL`), `## Global Constraints`, `## Review Focus`, and a `**Spec:**` line naming its spec.
+
+**Two lanes.** That pipeline is the feature lane. A fix takes the fast lane and skips the grill, the spec and the plan. A fix is a change whose scope is clear from one sentence, with one failing test that passes after the change and the gate green, that touches none of the safety surfaces: permissions and settings files, the sandbox, the publish gate, redaction, and new note types. A fix that edits the `ingest`, `brief` or `debrief` command text also re-runs the live acceptance steps (below). It ships as a pull request whose body is the issue line or review finding it fixes and the name of its test, and which carries one `defect:` label for the class it fixes: `defect:C1-too-large` (tool result too large, page caps), `defect:C2-now-line`, `defect:C3-timeout`, `defect:C4-confinement`, `defect:C5-alerts` (routing, alert-once), `defect:C6-race`, `defect:C7-redaction`, `defect:C8-names` (names leaking), `defect:C9-extension` (manifest and loader gaps), `defect:C10-flaky-test` (tests that skip or flake), `defect:C11-input-bounds` (encoding, input bounds), `defect:C12-stale-docs`, `defect:C13-changelog` (CHANGELOG conflicts). A class that recurs after its gate exists means the gate is wrong. A fix may run as a Work Order: the readiness check reads the plan from a file committed at the Work Order's base, so it then needs a short plan file with its `### Task N:` list. A fix that grows past its sentence, or draws a design question in review, stops and becomes a feature; the default when in doubt is the feature lane.
 
 **Keeping it quick.** These rules trim the feature lane; bring the stricter ones back if problems appear.
 - **Probe first:** a spec that relies on an outside tool or API calls it once (in a throwaway directory) and records what came back before the design settles.
@@ -402,6 +467,8 @@ A rule matches one plain command: a leading assignment other than a few known-sa
 - Yonatan Karp, [The self-compiling second brain](https://yonatankarp.com/blog/self-compiling-second-brain/): the capture → compile → recall model.
 - [firstmate](https://github.com/kunchenguid/firstmate): the model for the Foreman orchestrator (Sub-project 2).
 - [humanizer](https://github.com/blader/humanizer) by Siqi Chen (MIT): vendored in `.claude/skills/humanizer/`; its wording rules are condensed in `CLAUDE.md` and applied by the headless commands before they write.
+- [grilling](https://github.com/mattpocock/skills) by Matt Pocock (MIT): vendored in `.claude/skills/grilling/`, with the Foundry's idea questions added below a marker.
+- Andrej Karpathy, [LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): the pattern the [Architecture](#architecture) extends.
 - Projects from the ecosystem survey (spec §13.5). Each one contributed a design pattern; none is a dependency:
   - [open-second-brain](https://github.com/itechmeat/open-second-brain): corrections → preference notes with evidence
   - [DocMason](https://github.com/JetXu-LLM/DocMason), [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian): stage → validate → atomic publish

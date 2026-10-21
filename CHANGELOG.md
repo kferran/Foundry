@@ -9,6 +9,9 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## Changes
 
+## 2026-10-21
+- Added: `/grilling`, a vendored skill (mattpocock-skills 1.2.3, MIT) that grills a plan or idea one round of numbered questions at a time, each with a recommended answer. For a new idea, its first round asks whether it is worth building, for whom, what happens without it, its smallest version and what it displaces. FOUNDRY.md gains an Architecture section, and its Development section now names a skill for each step; specs and plans dated from today must carry the Grill, Builder check and Blueprint lines (specs) or the writing-plans header lines (plans), checked in CI. (#313)
+
 ## 2026-10-20
 - Added: Slack notices in a daily thread. With `slack_notify_thread: daily`, the day's first notice posts one parent message, `Foundry updates <date>`, and every notice that day (brief, debrief, alerts, Work Orders) is a reply under it. The intraday capture can then read the same channel: your top-level posts and your replies in those threads become inbox drops, each reply with the notice above it; the Foundry's own posts are never captured. (#293)
   - Action: optional. To use one channel both ways, set `slack_notify_thread: daily` and set `capture_channel` to the `slack_notify_channel` ID (`watch_user_id` must be set).
