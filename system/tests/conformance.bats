@@ -140,7 +140,6 @@ walker system/scripts/vaultlib/triage.py  # F1 retrofit 1 (triage): connector.ch
 walker system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
 walker extensions/intraday/scripts/watchlib/check.py  # F1 library PR lifts it into vaultlib/connector.py; retrofit 3 (watch)
 walker system/scripts/vaultlib/notify.py  # F1 retrofit 4 (notify)
-walker system/scripts/calendar_tsv.py  # F1 retrofit 5 (calendar)
 walker extensions/handoffs/scripts/jira_handoffs.py  # F1 retrofit 6 (handoffs)
 walker extensions/telemetry/scripts/telemetrylib/rca.py  # F1 retrofit 7 (RCA filer)
 walker system/scripts/vaultlib/nightshift_session.py  # other shape: a Work Order session with many tools and no single connector (F1 spec)
@@ -171,7 +170,6 @@ helper system/scripts/vault_sync.sh:fail  # other shape: fail <step> <reason> fo
 fail-class system/scripts/vaultlib/triage.py  # F1 retrofit 1 (triage): connector.Fail
 fail-class system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
 fail-class system/scripts/vaultlib/notify.py  # F1 retrofit 4 (notify)
-fail-class system/scripts/calendar_tsv.py  # F1 retrofit 5 (calendar)
 fail-class extensions/handoffs/scripts/jira_handoffs.py  # F1 retrofit 6 (handoffs)
 fail-class extensions/telemetry/scripts/telemetrylib/rca.py  # F1 retrofit 7 (RCA filer)
 fail-class system/scripts/vaultlib/connector.py  # home: the one Fail every retrofitted module imports (F1 spec §3.1)
@@ -189,7 +187,6 @@ stub system/tests/stub_claude_nightshift  # other shape: the Work Order stub, no
 stub system/tests/stub_claude_connector  # home: the one connector stub (F1 spec §3.4)
 stream-builder system/tests/python/test_triage.py  # F1 retrofit 1 (triage): helpers.stream
 stream-builder extensions/intraday/tests/python/test_watch_check.py  # F1 retrofit 3 (watch): helpers.stream
-stream-builder system/tests/python/test_calendar_tsv.py  # F1 retrofit 5 (calendar): helpers.stream
 stream-builder extensions/handoffs/tests/python/test_handoffs_jira.py  # F1 retrofit 6 (handoffs): helpers.stream
 stream-builder extensions/telemetry/tests/python/test_rca.py  # F1 retrofit 7 (RCA filer): helpers.stream
 '

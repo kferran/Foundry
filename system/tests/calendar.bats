@@ -21,14 +21,15 @@ stream_ok() {
   stream "{\"status\":\"ok\",\"reason\":\"\",\"events\":$1}" ToolSearch mcp__claude_ai_Google_Calendar__list_events StructuredOutput
 }
 
-# stream <structured output json> <tool name…>: a session using those tools and returning that output.
+# stream <structured output json> <tool name…>: a session using those tools (ids t0, t1, …) and returning that output.
 stream() {
-  local out="$1" t
+  local out="$1" t n=0
   shift
   {
     printf '{"type":"system","subtype":"init","tools":["ToolSearch","Bash"]}\n'
     for t in "$@"; do
-      printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"%s","input":{}}]}}\n' "$t"
+      printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t%d","name":"%s","input":{}}]}}\n' "$n" "$t"
+      n=$((n + 1))
     done
     printf '{"type":"result","subtype":"success","is_error":false,"num_turns":4,"total_cost_usd":0.2,"permission_denials":[],"structured_output":%s}\n' "$out"
   } > "$STUB_STREAM"
@@ -182,6 +183,15 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   run "$CF" "$DAY"
   [ "$status" -eq 1 ]
   [ "$(wc -l < system/logs/calendar_fetch-2026-10.jsonl)" -eq 5 ]
+}
+
+@test "an ok reply from a session that never called list_events exits 3 and writes nothing (F1 spec §3.6 item 5)" {
+  stream '{"status":"ok","reason":"","events":[{"start_date":"2026-10-05","start_time":"09:00","end_date":"2026-10-05","end_time":"09:30","title":"Invented"}]}' ToolSearch StructuredOutput
+  run "$CF" "$DAY"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"calendar_fetch: auth: no Google Calendar connector reachable"* ]]
+  [[ "$output" != *Invented* ]]
+  [ "$(jq -c '[.exit, .events]' system/logs/calendar_fetch-2026-10.jsonl)" = '[3,null]' ]
 }
 
 @test "a tool outside the three expected ones fails the fetch, writes nothing and alerts" {
