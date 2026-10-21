@@ -997,6 +997,41 @@ def test_the_loop_screen_leaves_a_note_a_worker_holds(env):
     assert ni.load(path)[0]["state"] == "running"
 
 
+def test_a_delivering_note_keeps_the_identifiers_screen_only(env):
+    # Delivery pushes the commit verified under the recorded repo; a full screen would strand it on a later note edit.
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    ni.update(path, state="delivering", hosts=["*"], output="docs/x.md")
+    entries, refused = nr._screen(nr.Ctx(vault, NOW))
+    assert [e[0] for e in entries] == [path] and refused == []
+    assert ni.load(path)[0]["state"] == "delivering"
+
+
+def test_a_refused_running_note_stops_its_session_and_gets_its_clean_up(env):
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    ni.update(path, state="running", hosts=["*"])
+    # A session group left by a crashed runner: its leader exits at once, and the orphan is not this test's child.
+    leader = subprocess.Popen(["sh", "-c", "sleep 60 >/dev/null 2>&1 &"], start_new_session=True)
+    leader.wait()   # reaped, so only the orphan holds the group
+    pgid = leader.pid
+    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir.mkdir(parents=True)
+    (idir / "session.pid").write_text(str(pgid))
+    work = tmp / "ws" / f"nightshift-{fm['id']}"
+    work.mkdir(parents=True)
+    try:
+        assert nr.main(["tick"], vault, NOW) == 2
+        assert not nr._alive(pgid) and not (idir / "session.pid").exists()
+    finally:
+        if nr._alive(pgid):
+            os.killpg(pgid, 9)
+    now = ni.load(path)[0]
+    assert now["state"] == "failed" and "finished_at" in now
+    assert nr.main(["tick"], vault, NOW + timedelta(days=8)) == 0
+    assert not work.exists()   # the 7-day clean-up reads finished_at
+
+
 RFM = {"id": "2026-10-08-q", "kind": "research", "partition": "work", "output": "wiki/work/concepts/Answer.md"}
 
 
@@ -1040,20 +1075,23 @@ def test_a_context_replaced_by_a_link_is_unlinked_and_its_target_kept(env, tmp_p
     assert not (d / "context").is_symlink() and (d / "context/concepts/Background.md").is_file()
 
 
-@pytest.mark.parametrize("linked", ["file", "folder"])
+@pytest.mark.parametrize("linked", ["file", "folder", "result"])
 def test_a_linked_research_output_is_refused(env, tmp_path, linked):
-    # A session can ln -s out/<name> (or out/) to a note it cannot read; the runner reads it outside the sandbox.
+    # A session can ln -s out/<name>, out/result.json or out/ to a file it cannot read; the runner reads them outside
+    # the sandbox. A linked out/ is refused even with no result.json in it (spec §6), not ended as "no result".
     vault, tmp = env
     write(vault, "wiki/work/private/Secret.md", __import__("helpers").concept("work", "Answer", "secret"))
+    write(vault, "wiki/work/private/leak.json", '{"status": "blocked", "questions": ["SECRET-Q"]}')
     d = tmp / "ws" / "nightshift-x"
     if linked == "file":
         write(d, "out/result.json", '{"status": "done", "summary": "ok"}')
         (d / "out/Answer.md").symlink_to(vault / "wiki/work/private/Secret.md")
+    elif linked == "result":
+        (d / "out").mkdir(parents=True)
+        (d / "out/result.json").symlink_to(vault / "wiki/work/private/leak.json")
     else:
-        write(vault, "wiki/work/private/result.json", '{"status": "done", "summary": "ok"}')
         d.mkdir(parents=True)
         (d / "out").symlink_to(vault / "wiki/work/private")
-        (vault / "wiki/work/private/Answer.md").write_text((vault / "wiki/work/private/Secret.md").read_text())
     out = nr._deliver_research(nr.Ctx(vault, NOW), RFM, d)
     assert out == {"state": "failed", "reason": "invalid: output is a link"}
     assert not (vault / "wiki/work/concepts/Answer.md").exists()
