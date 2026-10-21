@@ -15,7 +15,7 @@
 - Change `system/scripts/vaultlib/publish.py` and its tests only; callers (`run_headless.sh`, `intake.py`, `nightshift_deliver.py`) stay as they are. One FOUNDRY.md line and one CHANGELOG line.
 - Fail closed through today's statuses, exit codes and alert lines: no new alert text, exit code, config key or opt-out.
 - No realpath containment rule: a link anywhere below the resolved vault root is refused, in-tree ones included. The vault root itself is resolved, so a vault reached through a linked parent works.
-- Reason strings contain "symlink" or "unsafe journal entry": `symlink on the target path` (`_check`, and `record_stage` as `symlink on the target path: <target>`), `staged path is a symlink` (unchanged), `publish failed: unsafe journal entry` (`_apply`).
+- Reason strings contain "symlink" or "unsafe journal entry": `symlink on the target path` (`_check`, and `record_stage` as `symlink on the target path: <target>`), `staged path is a symlink` (unchanged), `publish failed: unsafe journal entry` (`_apply`). Code review of #323 added: `snapshot` refuses a linked run or staging folder, `record_stage` checks its staging destination (`symlink on the target or staging path`), the `_decisions.jsonl` copy checks its run-folder destination, and `staged_targets` refuses a staged hard link (`staged file is a hard link`).
 - Hold back an unsafe entry's staged file only when `staged == f"wiki/.staging/{run_id}/{target}"`, `safe_rel(target)` passes and the staged path has no symlink; otherwise move nothing.
 - Every existing test passes unchanged. Core budget: `system/scripts` stays at or under 13,950 lines (13,916 at base).
 
