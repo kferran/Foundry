@@ -584,7 +584,7 @@ def test_record_stage_refuses_an_exact_target_under_a_linked_folder(vault, tmp_p
     write(tmp_path / "out", "X.md", concept("work", "X"))
     os.symlink(tmp_path / "out", vault / "wiki/work/concepts/linked")
     publish.snapshot(vault, RID, ["wiki/work/concepts/linked/X.md"])
-    with pytest.raises(publish.PublishError, match="symlink on the target path"):
+    with pytest.raises(publish.PublishError, match="symlink on the target or staging path"):
         publish.record_stage(vault, RID, "wiki/work/concepts/linked/X.md")
     assert not (vault / "wiki/.staging" / RID / "wiki/work/concepts/linked/X.md").exists()
 
@@ -595,3 +595,44 @@ def test_a_vault_reached_through_a_linked_parent_publishes(vault, tmp_path):
     publish.snapshot(via, RID, ["wiki/work/**"])
     report = commit_note(via, "wiki/work/concepts/X.md")
     assert (report["status"], report["published"]) == ("published", ["wiki/work/concepts/X.md"])
+
+
+@pytest.mark.parametrize("linked", ["wiki/.staging", "system/logs/runs"])
+def test_snapshot_refuses_a_linked_staging_or_runs_folder(vault, tmp_path, linked):
+    out = tmp_path / "out"
+    out.mkdir()
+    (vault / linked).parent.mkdir(parents=True, exist_ok=True)
+    os.symlink(out, vault / linked)
+    with pytest.raises(publish.PublishError, match="symlink"):
+        publish.snapshot(vault, RID, ["wiki/work/**"])
+    assert list(out.iterdir()) == []
+
+
+def test_record_stage_refuses_a_linked_staging_subfolder(run, tmp_path):
+    (tmp_path / "out").mkdir()
+    (run / "wiki/.staging" / RID / "wiki").mkdir()
+    os.symlink(tmp_path / "out", run / "wiki/.staging" / RID / "wiki/work")
+    with pytest.raises(publish.PublishError, match="symlink"):
+        publish.record_stage(run, RID, "wiki/work/concepts/Kafka.md")
+    assert list((tmp_path / "out").iterdir()) == []
+
+
+def test_commit_never_copies_decisions_through_a_linked_run_file(run, tmp_path):
+    victim = tmp_path / "victim.txt"
+    victim.write_text("victim")
+    os.symlink(victim, run / "system/logs/runs" / RID / "_decisions.jsonl")
+    commit_note(run, "wiki/work/concepts/X.md")
+    assert victim.read_text() == "victim"
+
+
+def test_a_staged_hard_link_is_refused(vault):
+    private = write(vault, "wiki/work/private/Secret.md", concept("work", "Secret", "[[Index]]"))
+    before = private.read_text()
+    publish.snapshot(vault, RID, ["wiki/work/**"])
+    staged = vault / "wiki/.staging" / RID / "wiki/work/concepts/Secret.md"
+    staged.parent.mkdir(parents=True)
+    os.link(private, staged)
+    decide(vault, rec("wiki/work/concepts/Secret.md"))
+    report = publish.commit_run(vault, RID, now=LATER)
+    assert "staged file is a hard link" in report_reasons(report)
+    assert private.read_text() == before and not (vault / "wiki/work/concepts/Secret.md").exists()

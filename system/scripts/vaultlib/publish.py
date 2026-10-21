@@ -117,6 +117,8 @@ def snapshot(vault, run_id, targets) -> Path:
     for t in targets:
         safe_rel(t[:-3] if t.endswith("/**") else t)
     rd = run_dir(vault, run_id)
+    if not (_resolves(vault, f"system/logs/runs/{run_id}") and _resolves(vault, f"wiki/.staging/{run_id}")):
+        raise PublishError(f"symlink on the run or staging path: {run_id}")
     if rd.exists() or staging_dir(vault, run_id).exists():
         raise PublishError(f"run already exists: {run_id}")
     files = {}
@@ -165,8 +167,8 @@ def record_stage(vault, run_id, target) -> Path:
         if not target_matches(target, snap["targets"]):
             raise PublishError(f"not a publishable target for this run: {target}")
         src = vault / target
-        if not _resolves(vault, target):
-            raise PublishError(f"symlink on the target path: {target}")
+        if not (_resolves(vault, target) and _resolves(vault, f"wiki/.staging/{run_id}/{target}")):
+            raise PublishError(f"symlink on the target or staging path: {target}")
         if not src.is_file():
             raise PublishError(f"no such note to stage: {target}")
         if target not in snap["files"]:
@@ -188,6 +190,8 @@ def staged_targets(vault, run_id):
         rel = path.relative_to(sd).as_posix()
         if not _resolves(vault, path.relative_to(vault)):
             problems.append(Problem(rel, "staged path is a symlink"))
+        elif path.is_file() and path.stat().st_nlink > 1:  # a hard link shares a note's inode, private ones too
+            problems.append(Problem(rel, "staged file is a hard link"))
         elif path.is_file() and rel != DECISIONS:
             staged.append(rel)
     return staged, problems
@@ -545,7 +549,8 @@ def commit_run(vault, run_id, now=None) -> dict:
     rd, sd = run_dir(vault, run_id), staging_dir(vault, run_id)
     staged, decisions, problems = validate_run(vault, run_id, now)
     decisions_file = sd / DECISIONS
-    if decisions_file.is_file() and _resolves(vault, decisions_file.relative_to(vault)):
+    if decisions_file.is_file() and _resolves(vault, decisions_file.relative_to(vault)) \
+            and _resolves(vault, (rd / DECISIONS).relative_to(vault)):
         shutil.copyfile(decisions_file, rd / DECISIONS)
     if problems:
         _quarantine(vault, run_id)
