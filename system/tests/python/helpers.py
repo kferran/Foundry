@@ -39,3 +39,30 @@ def transcript(partition: str, name: str, body: str = "") -> str:
     """Return a valid meeting_transcript note beside meeting(<partition>, <name>)."""
     return (f'---\ntype: meeting_transcript\nmeeting: "[[{name}]]"\npartition: {partition}\n'
             f'source: "gdoc:FAKE-{name}"\ncomplete: true\n---\n# Transcript\n{body}\n')
+
+
+def call(input: dict = None, text="…", sc: dict = None, error: bool = False) -> dict:
+    """One call of the session's tool for stream(): its input, its result's content (text), the result's
+    tool_use_result.structuredContent (sc) and is_error."""
+    return {"input": input or {}, "text": text, "sc": sc, "error": error}
+
+
+def stream(tool: str, calls=(), reply: str = None, result: str = "success", named: bool = True, **result_fields) -> list:
+    """A connector session's stream-json (F1 spec §3.4): a ToolSearch call whose result names `tool` in a
+    tool_reference block (or, with named=False, only in free text, as a "not found" reply can, #38); then per call a
+    tool_use (ids t1, t2, …) and its tool_result; then the result message (reply, default {"items": []})."""
+    found = ([{"type": "tool_reference", "tool_name": tool}] if named
+             else [{"type": "text", "text": f"No matching deferred tools found for select:{tool}"}])
+    s = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t0", "name": "ToolSearch", "input": {}}]}},
+         {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t0", "content": found}]}}]
+    for n, c in enumerate(calls, 1):
+        s.append({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": f"t{n}", "name": tool, "input": c["input"]}]}})
+        m = {"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": f"t{n}", "is_error": c["error"], "content": c["text"]}]}}
+        if c["sc"] is not None:
+            m["tool_use_result"] = {"structuredContent": c["sc"]}
+        s.append(m)
+    s.append({"type": "result", "subtype": result, "is_error": result != "success",
+              "result": reply if reply is not None else json.dumps({"items": []}), **result_fields})
+    return s

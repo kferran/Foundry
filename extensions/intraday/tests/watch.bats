@@ -10,12 +10,14 @@ setup() {
   make_vault
   use_extension intraday
   cd "$V"
-  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/extensions/intraday/tests/stub_claude_watch"
+  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_connector"
   unset CLAUDE_CONFIG_DIR
   mkdir -p "$HOME/.claude" system/logs/watch
   export FOUNDRY_MANAGED_SETTINGS="$BATS_TEST_TMPDIR/managed.json" FOUNDRY_MANAGED_SETTINGS_DIR="$BATS_TEST_TMPDIR/managed.d"
   export STUB_SLACK_STREAM="$BATS_TEST_TMPDIR/slack.jsonl" STUB_CAL_STREAM="$BATS_TEST_TMPDIR/cal.jsonl"
-  export STUB_ARGS_SLACK="$BATS_TEST_TMPDIR/slack.args" STUB_MCP_LIST="claude.ai Slack: https://slack.example/mcp - ok Connected"
+  export STUB_SLACK_ARGS="$BATS_TEST_TMPDIR/slack.args" STUB_MCP_LIST="claude.ai Slack: https://slack.example/mcp - ok Connected"
+  export STUB_STREAM="$BATS_TEST_TMPDIR/empty.jsonl"   # a session with no stream of its kind: an empty success result
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"{}"}\n' > "$STUB_STREAM"
   export WATCH_CLOCK="3 10"   # a Wednesday, 10:00
   sed -i '$d' system/config.md
   cat >> system/config.md <<'EOF'
@@ -112,8 +114,8 @@ inbound_says() {
   [ "$status" -eq 0 ]
   grep -qF -- '- [ ] owed: Add Sam to the partner meeting (in group DM) [due:: ' wiki/work/Now.md
   grep -qF '(Sam Sample, since '"$TODAY"', https://example.slack.com/archives/C0GDM/p1792434633451019)' wiki/work/Now.md
-  grep -qxF -- --allowedTools "$STUB_ARGS_SLACK"
-  grep -qxF -- mcp__claude_ai_Slack__slack_send_message "$STUB_ARGS_SLACK"
+  grep -qxF -- --allowedTools "$STUB_SLACK_ARGS"
+  grep -qxF -- mcp__claude_ai_Slack__slack_send_message "$STUB_SLACK_ARGS"
 }
 
 @test "the capture channel's first tick only sets its cursor; the next one's messages become an inbox drop the intake compiles" {
@@ -197,7 +199,7 @@ inbound_says() {
   [[ "$output" == "watch_fetch: 0 from Slack, - from sent mail, - from incoming mail, 0 events today" ]]
   [ ! -e "system/logs/watch/calendar-$TODAY.json" ]
   [ "$(jq -r .watch system/logs/watch/cursors.json)" = 1800000000 ]
-  rm -f "$STUB_ARGS_SLACK"
+  rm -f "$STUB_SLACK_ARGS"
   WATCH_CLOCK="6 10" run "$WF"
   [ "$status" -eq 0 ]
   WATCH_CLOCK="3 18" run "$WF"
@@ -205,7 +207,7 @@ inbound_says() {
   system/scripts/vault_index.py set system/config.md machine_role client > /dev/null
   run "$WF"
   [ "$status" -eq 0 ]
-  [ ! -e "$STUB_ARGS_SLACK" ]
+  [ ! -e "$STUB_SLACK_ARGS" ]
 }
 
 @test "sent mail is searched with the built query and its commitments become owed lines" {
@@ -233,15 +235,15 @@ inbound_says() {
   printf '{"watch": 1800000000, "own": 1800000000, "inbound": 1800000000}\n' > system/logs/watch/cursors.json
   [ "$(extensions/intraday/scripts/watch.py mail-query)" = '{"inbound": "-in:sent -category:promotions -category:social -category:forums after:1799999700"}' ]
   inbound_says
-  export STUB_ARGS_MAIL="$BATS_TEST_TMPDIR/mail.args"
+  export STUB_MAIL_ARGS="$BATS_TEST_TMPDIR/mail.args"
   run "$WF" --check
   [ "$status" -eq 0 ]
   # The prompt keeps merge and approve events and other people's tickets out of request (#289 live tick).
-  grep -qF 'Give request only when the newest incoming message asks the owner to review (such as "added you as a reviewer" or "requested your review") or assigns work to the owner; an approved, merged, declined, updated or commented event is not a request: skip it.' "$STUB_ARGS_MAIL"
-  grep -qF 'A ticket created or updated mail is a request only when its newest message shows the owner as the assignee; otherwise skip it, or list it as incident when it is a blocker or a production problem.' "$STUB_ARGS_MAIL"
+  grep -qF 'Give request only when the newest incoming message asks the owner to review (such as "added you as a reviewer" or "requested your review") or assigns work to the owner; an approved, merged, declined, updated or commented event is not a request: skip it.' "$STUB_MAIL_ARGS"
+  grep -qF 'A ticket created or updated mail is a request only when its newest message shows the owner as the assignee; otherwise skip it, or list it as incident when it is a blocker or a production problem.' "$STUB_MAIL_ARGS"
   # Small pages fit under claude's MCP output limit, and the model follows nextPageToken (#289 live replay).
-  grep -qF 'with exactly its query, pageSize 10 and view "THREAD_VIEW_MINIMAL"' "$STUB_ARGS_MAIL"
-  grep -qF 'Follow nextPageToken: while a result has one, call it again with the same query, pageSize and view and with pageToken set to it, until a result has none or the search has had 6 calls.' "$STUB_ARGS_MAIL"
+  grep -qF 'with exactly its query, pageSize 10 and view "THREAD_VIEW_MINIMAL"' "$STUB_MAIL_ARGS"
+  grep -qF 'Follow nextPageToken: while a result has one, call it again with the same query, pageSize and view and with pageToken set to it, until a result has none or the search has had 6 calls.' "$STUB_MAIL_ARGS"
   [[ "$output" == "watch_fetch: 0 from Slack, - from sent mail, 2 from incoming mail, 0 events today" ]]
   run "$WF"
   [ "$status" -eq 0 ]
@@ -330,7 +332,7 @@ EOF
 
 @test "--inbound-since takes only an epoch of the last 7 days, and a bad inbound rule stops the tick before any session runs" {
   system/scripts/vault_index.py set system/config.md watch_inbound_mail true > /dev/null
-  rm -f "$STUB_ARGS_SLACK"
+  rm -f "$STUB_SLACK_ARGS"
   run "$WF" --inbound-since abc
   [ "$status" -eq 2 ]
   run "$WF" --inbound-since "$(( $(date +%s) + 3600 ))"
@@ -339,13 +341,13 @@ EOF
   [ "$status" -eq 2 ]
   run "$WF" --inbound-since
   [ "$status" -eq 2 ]
-  [ ! -e "$STUB_ARGS_SLACK" ]
+  [ ! -e "$STUB_SLACK_ARGS" ]
   run extensions/intraday/scripts/watch.py mail-query --inbound-since abc
   [ "$status" -eq 2 ]
   sed -i '$d' system/config.md
   printf 'watch_inbound_rules: [{from: "@ci.example.com", subject: "(", kind: request}]\n---\n' >> system/config.md
   run "$WF"
   [ "$status" -eq 2 ]
-  [ ! -e "$STUB_ARGS_SLACK" ]
+  [ ! -e "$STUB_SLACK_ARGS" ]
   grep -qF '[intraday] The mail watch failed (exit 2):' "$ALERTS"
 }
