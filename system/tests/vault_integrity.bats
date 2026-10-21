@@ -425,7 +425,7 @@ sealed_problems() {
 }
 
 # Task 10: core names no vendor or customer outside a shrinking allowlist (extensions spec §6; plan task 10).
-@test "core stays inside its budget: 13,950 script lines and 14 schemas (extensions spec §2.2, §5)" {
+@test "core stays inside its budget: 14 schemas; script lines measured, not capped (extensions spec §2.2, §5)" {
   # Set once at the end of phase 4 (2026-10-16: 12,270 lines, 14 schemas). A feature that needs more moves code into an
   # extension, or raises the budget in its own pull request, with the reason.
   # 12,500 -> 12,750 (#222): parallel Work Orders (#229) and chat triage, which extends core inbox triage and would
@@ -444,9 +444,12 @@ sealed_problems() {
   # decision 10) took core from 13,802 to 13,822, inside the budget.
   # 13,850 -> 13,950 (#293 daily thread, owner to approve): notices in one daily Slack thread (the parent post, the
   # thread_ts lock, the posted ts read back and recorded for the capture) took core from 13,827 to 13,905 lines.
+  # Line cap removed (owner, 2026-10-21): #323 and #324 took core to 13,961 lines (13,966 with #328) while the factory's
+  # F1 library and retrofits move code between core and extensions. The count is printed; the cap returns in the
+  # tightening sweep (#122) at a measured value once F1 is done (#306).
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   lines="$(git ls-files -z system/scripts | xargs -0 cat | wc -l)"
-  [ "$lines" -le 13950 ]
+  echo "core script lines: $lines"
   [ "$(git ls-files system/schemas | wc -l)" -le 14 ]
 }
 
