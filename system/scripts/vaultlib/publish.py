@@ -1,4 +1,5 @@
 """Publish gate: staged, validated, journaled publish of headless output (spec §6.20)."""
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -63,6 +64,13 @@ def safe_rel(rel) -> str:
     if ".." in parts or any(p.startswith(".") for p in parts):
         raise PublishError(f"unsafe path: {rel!r}")
     return Path(rel).as_posix()
+
+
+def _resolves(vault, rel) -> bool:
+    """No prefix of rel below the resolved vault root is a symlink (dangling and looped ones too) (#298)."""
+    root, parts = Path(os.path.realpath(vault)), Path(rel).parts
+    prefixes = (root.joinpath(*parts[:n]) for n in range(1, len(parts) + 1))
+    return not Path(rel).is_absolute() and not any(p.is_symlink() for p in prefixes)
 
 
 def target_matches(target: str, targets) -> bool:
@@ -157,7 +165,9 @@ def record_stage(vault, run_id, target) -> Path:
         if not target_matches(target, snap["targets"]):
             raise PublishError(f"not a publishable target for this run: {target}")
         src = vault / target
-        if src.is_symlink() or not src.is_file():
+        if not _resolves(vault, target):
+            raise PublishError(f"symlink on the target path: {target}")
+        if not src.is_file():
             raise PublishError(f"no such note to stage: {target}")
         if target not in snap["files"]:
             raise PublishError(f"target was created during the run: {target}")
@@ -176,7 +186,7 @@ def staged_targets(vault, run_id):
         return staged, problems
     for path in sorted(sd.rglob("*")):
         rel = path.relative_to(sd).as_posix()
-        if path.is_symlink():
+        if not _resolves(vault, path.relative_to(vault)):
             problems.append(Problem(rel, "staged path is a symlink"))
         elif path.is_file() and rel != DECISIONS:
             staged.append(rel)
@@ -185,7 +195,7 @@ def staged_targets(vault, run_id):
 
 def read_decisions(vault, run_id):
     path = staging_dir(vault, run_id) / DECISIONS
-    if not path.is_file() or path.is_symlink():
+    if not path.is_file() or not _resolves(vault, path.relative_to(vault)):
         return None, []
     decisions, problems = [], []
     for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
@@ -328,6 +338,8 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
         return [Problem(target, "the Now page is written only by now.py and the brief")]  # audit S5
     if Path(target).suffix != ".md":
         return [Problem(target, "not a markdown note")]
+    if not _resolves(vault, target):
+        return [Problem(target, "symlink on the target path")]  # before any read or hash through it (#298)
     if not _is_file_path(vault, target):
         return [Problem(target, "not a file path: an ancestor is a file, or the target is a directory")]
     try:
@@ -477,7 +489,18 @@ def _apply(vault: Path, journal: Path):
     for entry in entries:
         if "target" not in entry:
             continue
-        staged, target = vault / entry["staged"], vault / entry["target"]
+        try:  # only the file commit_run staged for a safe target, with no symlink on either path, moves (#298)
+            exact = entry["staged"] == f"wiki/.staging/{run_id}/{safe_rel(entry['target'])}"
+        except PublishError:
+            exact = False
+        staged, exact = vault / entry["staged"], exact and _resolves(vault, entry["staged"])
+        if not (exact and _resolves(vault, entry["target"])):
+            failed.append(Problem(entry["target"], "publish failed: unsafe journal entry"))
+            with contextlib.suppress(OSError):
+                if exact and staged.exists():
+                    _hold_back(vault, run_id, staged, entry["target"])
+            continue
+        target = vault / entry["target"]
         if not staged.exists():
             held = vault / "system" / "quarantine" / run_id / "staged" / entry["target"]
             if held.exists():
@@ -522,7 +545,7 @@ def commit_run(vault, run_id, now=None) -> dict:
     rd, sd = run_dir(vault, run_id), staging_dir(vault, run_id)
     staged, decisions, problems = validate_run(vault, run_id, now)
     decisions_file = sd / DECISIONS
-    if decisions_file.is_file() and not decisions_file.is_symlink():
+    if decisions_file.is_file() and _resolves(vault, decisions_file.relative_to(vault)):
         shutil.copyfile(decisions_file, rd / DECISIONS)
     if problems:
         _quarantine(vault, run_id)
@@ -601,11 +624,14 @@ def recover(vault) -> dict:
                     continue
                 if _committed(journal):
                     continue
+                if not _resolves(vault, journal.relative_to(vault)):
+                    raise ValueError("symlink on the journal path")
                 published, conflicts, faults = _apply(vault, journal)
                 shutil.rmtree(staging_dir(vault, rd.name), ignore_errors=True)
                 _report(vault, rd.name, "recovery_failed" if faults else "conflict" if conflicts else "recovered",
                         problems=faults, published=published, conflicts=conflicts)
                 recovered.append(rd.name)
+                failed += [rd.name] if faults else []  # alert (P10); not fail(), which would overwrite the report
             except ValueError as exc:
                 fail(rd.name, f"unreadable journal: {exc}")
             except Exception as exc:  # noqa: BLE001 - one bad run must not block the others
