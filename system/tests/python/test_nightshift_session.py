@@ -174,9 +174,22 @@ def test_a_symlinked_workspace_gets_both_roots(tmp_path):
         assert f"Write(//{str(root).lstrip('/')}/out/**)" in allow
 
 
-def test_a_workspace_the_rule_syntax_cannot_hold_is_refused(tmp_path):
+@pytest.mark.parametrize("c", list("()*?[]{}"))
+def test_a_workspace_the_rule_syntax_cannot_hold_is_refused(tmp_path, c):
+    # ? and {} would widen the out/ allow to sibling folders; [ ] would never match (review of #327)
     with pytest.raises(ValueError, match="order_workspace"):
-        ss.profile(REPO, "research", [], cwd=tmp_path / "a(b)")
+        ss.profile(REPO, "research", [], cwd=tmp_path / f"a{c}b")
+
+
+def test_a_plan_order_never_refuses_its_workspace(tmp_path):
+    # the plan profile has no ./ rule to anchor, so no workspace path stops it
+    assert ss.profile(REPO, "plan", [], cwd=tmp_path / "a(b)*")["permissions"]["allow"]
+
+
+def test_a_space_in_the_workspace_is_kept_raw(tmp_path):
+    # a live session wrote out/ through such a rule after a cd (#327 review)
+    root = str(tmp_path / "my ws").lstrip("/")
+    assert f"Write(//{root}/out/**)" in ss.profile(REPO, "research", [], cwd=tmp_path / "my ws")["permissions"]["allow"]
 
 
 def test_parse_collects_denied_writes(tmp_path):

@@ -52,10 +52,10 @@ def profile(vault, kind: str, hosts, web_hosts=(), deny=(), *, cwd) -> dict:
     # A ./ rule resolves against the shell's current directory, which a Bash cd moves (#314): anchor it at the
     # session's directory, in both its given and its resolved form (a symlinked order_workspace).
     roots = list(dict.fromkeys(p.lstrip("/") for p in (os.path.abspath(cwd), str(Path(cwd).resolve()))))
-    if any(c in r for r in roots for c in "()*"):
-        raise ValueError(f"order_workspace path {cwd} holds a character the permission rule syntax treats as special")
     def anchored(r):
         m = re.fullmatch(r"(\w+)\(\./(.*)\)", r)
+        if m and any(c in root for root in roots for c in "()*?[]{}"):   # a glob character would widen or break it
+            raise ValueError(f"order_workspace path {cwd} holds a character the permission rule syntax treats as special")
         return [f"{m[1]}(//{root}/{m[2]})" for root in roots] if m else [r]
     for k in ("allow", "deny"):
         data["permissions"][k] = [x for r in data["permissions"][k] for x in anchored(r)]
