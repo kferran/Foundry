@@ -24,6 +24,7 @@ triage_chat_enabled: "false"    # with triage on: also the Slack channels you ar
 slack_notify_channel: ""        # server and standalone: a Slack channel ID, or your user ID for a DM; empty is off
 slack_connector: "claude.ai Slack"  # the Slack connector a headless session loads (notify.sh --check names it)
 notify_links: "github"          # notice links: github (a GitHub file link) or obsidian (an obsidian:// link)
+slack_notify_thread: "off"      # daily: every notice is a reply in one thread a day, and the channel can be the capture channel
 orders_enabled: "false"         # server and standalone: the Work Orders tick every 15 minutes (/setup asks)
 update_enabled: "false"         # server and standalone: merge template updates every morning (/setup asks)
 extensions: []                 # extensions turned on, by folder name under extensions/ (/setup phase 6e asks)

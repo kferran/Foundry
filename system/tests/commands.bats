@@ -1169,6 +1169,10 @@ self_edit_contract() {
   grep -qF 'No note text from `wiki/` is sent.' FOUNDRY.md
   grep -qF 'slack_notify_channel: {kind: string' system/schemas/config.md
   grep -qF 'slack_notify_channel: ""' system/config.example.md
+  # #293: notices in a daily thread, off by default.
+  grep -qF 'slack_notify_thread: {kind: enum, values: ["off", daily], default: "off"' system/schemas/config.md
+  grep -qF 'slack_notify_thread: "off"' system/config.example.md
+  grep -qF 'With `slack_notify_thread: daily`' FOUNDRY.md
 }
 
 @test "CHANGELOG.md has What's next and dated changes with PR numbers (release notes spec §2.1)" {

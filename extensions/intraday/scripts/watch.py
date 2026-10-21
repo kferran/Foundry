@@ -63,7 +63,7 @@ def do_route(intake, args: list) -> str:
         flags = cal.snapshot(VAULT, day, events) if today_tsv is not None else []
         crossed = cal.cross(found["items"], events, day)
         counts = route.route(VAULT, partition, found, flags, crossed, events, fetched, day, clock)
-        caps = route.new_captures(VAULT, day, slack[0].get("captures") or []) if slack else []
+        caps = capture.keep(VAULT, route.new_captures(VAULT, day, slack[0].get("captures") or [])) if slack else []
         if caps:
             cap_partition = common.capture_partition(VAULT)
             path = capture.write(VAULT, caps, cap_partition, str(triage.config(VAULT).get("capture_channel") or ""), now)

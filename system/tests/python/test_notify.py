@@ -307,11 +307,11 @@ SENT = ["Alert one", "Alert two"]
 
 
 def test_a_post_on_the_channel_counts_as_sent_and_drift_is_reported():
-    assert notify.check(session(), TOOL, "C0EXAMPLE", MSG, SENT) == ""
+    assert notify.check(session(), TOOL, "C0EXAMPLE", MSG, SENT) == ("", [])
     assert notify.check(session(message="- Alert  one\n\n-   Alert two  ", extra={"unfurl_app_links": True}),
-                        TOOL, "C0EXAMPLE", MSG, SENT) == ""
-    assert notify.check(session(message="• Alert one"), TOOL, "C0EXAMPLE", MSG, SENT) == "1 of 2 event lines missing from the post"
-    assert notify.check(session(calls=2), TOOL, "C0EXAMPLE", MSG, SENT) == "posted 2 times"
+                        TOOL, "C0EXAMPLE", MSG, SENT) == ("", [])
+    assert notify.check(session(message="• Alert one"), TOOL, "C0EXAMPLE", MSG, SENT) == ("1 of 2 event lines missing from the post", [])
+    assert notify.check(session(calls=2), TOOL, "C0EXAMPLE", MSG, SENT) == ("posted 2 times", [])
 
 
 def test_a_broken_rule_is_exit_7_and_no_post_is_1_3_4_or_6():
@@ -362,3 +362,45 @@ def test_a_half_written_alert_line_waits_for_its_end(vault):
     with path.open("a") as f:
         f.write(" done\n")
     assert lines(vault)[0] == ["Alert 06:10:00 [intake] half done"]
+
+
+# #293: notices in a daily thread.
+P, R = "1792430610.351069", "1792430700.000200"
+
+
+def linked(s, ts, thread=""):
+    """The session with the send call's result naming the posted message's link."""
+    url = f"https://example.slack.com/archives/C0EXAMPLE/p{ts.replace('.', '')}" + (f"?thread_ts={thread}&cid=C0EXAMPLE" if thread else "")
+    s[3]["message"]["content"][0]["content"] = [{"type": "text", "text": f"Message sent: {url}"}]
+    return s
+
+
+def test_the_parent_is_made_with_the_days_first_notice_and_reused_until_the_next_day(vault):
+    assert notify.parent(vault, "2026-10-20") == ""
+    notify.record(vault, "2026-10-20", P, "Foundry updates 2026-10-20", "")
+    notify.record(vault, "2026-10-20", R, "• Alert one", P)
+    assert notify.parent(vault, "2026-10-20") == P
+    assert notify.parent(vault, "2026-10-21") == ""
+    state = notify.thread_state(vault)
+    assert state["posts"][R] == {"day": "2026-10-20", "thread": P, "text": "• Alert one"}
+    notify.record(vault, "2026-10-28", "1793000000.000100", "Foundry updates 2026-10-28", "")
+    assert notify.thread_state(vault)["parents"] == {"2026-10-28": "1793000000.000100"}   # kept 7 days
+    assert list(notify.thread_state(vault)["posts"]) == ["1793000000.000100"]
+
+
+def test_a_reply_must_carry_the_exact_thread_ts_and_its_posted_ts_is_read_back():
+    ok = linked(session(extra={"thread_ts": P}), R, P)
+    assert notify.check(ok, TOOL, "C0EXAMPLE", MSG, SENT, P) == ("", [R])
+    assert notify.check(linked(session(), P), TOOL, "C0EXAMPLE", MSG, SENT, "") == ("", [P])   # the parent post
+    for s, thread in ((linked(session(extra={"thread_ts": R}), R, R), P),          # another thread
+                      (linked(session(), R), P),                                   # no thread
+                      (linked(session(extra={"thread_ts": P}), R, P), ""),         # the parent post in a thread
+                      (linked(session(extra={"thread_ts": P}), R, P), None),       # threading off
+                      (linked(session(extra={"thread_ts": P, "reply_broadcast": True}), R, P), P),
+                      (linked(session(channel="C0OTHER", extra={"thread_ts": P}), R, P), P),
+                      (linked(session(extra={"thread_ts": P}), R, R), P),          # the link names another thread
+                      (session(extra={"thread_ts": P}), P)):                       # no link: the ts cannot be recorded
+        with pytest.raises(notify.Fail) as e:
+            notify.check(s, TOOL, "C0EXAMPLE", MSG, SENT, thread)
+        assert e.value.code == 7
+    assert notify.check(session(), TOOL, "C0EXAMPLE", MSG, SENT) == ("", [])   # threading off needs no link

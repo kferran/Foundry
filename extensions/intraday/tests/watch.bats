@@ -140,6 +140,29 @@ inbound_says() {
   [ -z "$(ls raw/inbox 2>/dev/null)" ]
 }
 
+@test "notices in a daily thread of the capture channel: an owner reply under a notice is one drop with that notice, and no notice is captured (#293)" {
+  sed -i '$d' system/config.md
+  printf '%s\n' 'slack_notify_channel: "C0CAP"' 'slack_notify_thread: "daily"' '---' >> system/config.md
+  mkdir -p system/logs/notify
+  jq -n --arg d "$TODAY" '{parents: {($d): "1792429200.000100"}, posts: {
+    "1792429200.000100": {day: $d, thread: "", text: "Foundry updates"},
+    "1792429260.000100": {day: $d, thread: "1792429200.000100", text: "• Brief: 2 need you"}}}' > system/logs/notify/thread.json
+  run "$WF"
+  [ "$status" -eq 0 ]
+  reply() {  # <ts> <text>: the owner's message in the parent's thread
+    printf '### Result 1 of 1\nChannel: #foundry (ID: C0CAP)\nFrom: Alex Owner <a@example.com> (ID: U0OWNER) \nTime: x\nMessage_ts: %s\nPermalink: [link](https://example.slack.com/archives/C0CAP/p%s?thread_ts=1792429200.000100&cid=C0CAP)\nText: \n%s\n\n---\n\n' \
+      "$1" "${1/./}" "$2"
+  }
+  { reply 1792429260.000100 "• Brief: 2 need you"; reply 1792429500.000100 "ack, on it"; } > "$BATS_TEST_TMPDIR/page-capture.md"
+  slack_says '{"items": []}'
+  run "$WF"
+  [ "$status" -eq 0 ]
+  f="$(ls raw/inbox/slack-*.md)"
+  [ "$(grep -c '^## ' "$f")" -eq 1 ]
+  grep -qxF 'ack, on it' "$f"
+  grep -qxF '> • Brief: 2 need you' "$f"
+}
+
 @test "a search that reads its full page limit resumes next tick from the last message it read" {
   result "#ops (ID: C0OPS)" C0OPS 1792430610.351069 "Status as usual." > "$BATS_TEST_TMPDIR/page-watch.md"
   SLACK_PAGINATION='For the next page of results use cursor `Q1`' slack_says '{"items": []}'
