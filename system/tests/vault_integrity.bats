@@ -81,9 +81,13 @@ setup() {
   jq -e '.permissions.deny | index("Edit(/.scratch/**/wiki/*/private/**)")' .claude/settings.json >/dev/null
   # git show <rev>:<path> or a whole commit's patch prints a private note, and no deny pattern can cover every form.
   [ "$(jq '[.permissions.allow[] | select(test("^Bash\\(git (show|log|diff|cat-file)"))] | length' .claude/settings.json)" = "0" ]
-  # --settings anchors /path at system/, so the headless file uses the path relative to the run's cwd (the vault root).
+  # --settings anchors /path at system/, so the headless file needs both other forms (#314 probe, Bash side): the
+  # relative rule is merged into the sandbox, resolved at launch, and fences Bash after a cd; the //**/ rule fences
+  # the Read and Edit tools after a cd, which the relative one does not, and never reaches the sandbox.
   jq -e '.permissions.deny | index("Read(wiki/*/private/**)")' system/headless.settings.json >/dev/null
   jq -e '.permissions.deny | index("Edit(wiki/*/private/**)")' system/headless.settings.json >/dev/null
+  jq -e '.permissions.deny | index("Read(//**/wiki/*/private/**)")' system/headless.settings.json >/dev/null
+  jq -e '.permissions.deny | index("Edit(//**/wiki/*/private/**)")' system/headless.settings.json >/dev/null
   grep -qF 'wiki/<partition>/private/' FOUNDRY.md
 }
 
@@ -91,6 +95,8 @@ setup() {
   f=system/headless.settings.json
   [ "$(jq '.permissions.allow // [] | length' "$f")" = "0" ]
   [ "$(jq '[.permissions.deny[] | select(test("^[A-Za-z]+\\(/[^/]"))] | length' "$f")" = "0" ]
+  # A bare or ./ rule moves with a Bash cd (#314), so each one has its //**/ twin.
+  [ "$(jq '[.permissions.deny[] | select(test("^[A-Za-z]+\\((?![/~])")) | capture("^(?<t>[A-Za-z]+)\\((\\./)?(?<p>.*)\\)$") | "\(.t)(//**/\(.p))"] - .permissions.deny | length' "$f")" = "0" ]
   [ "$(jq '.sandbox.enabled' "$f")" = "true" ]
   [ "$(jq '.sandbox.autoAllowBashIfSandboxed' "$f")" = "false" ]
 }
