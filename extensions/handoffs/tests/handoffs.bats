@@ -40,7 +40,7 @@ jira_says() {
     printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"tool_reference","tool_name":"%s"}]}]}}\n' "$J"
     jq -cn --arg t "$tool" --arg q "$jql" '{type: "assistant", message: {content: [{type: "tool_use", id: "t2", name: $t,
       input: {cloudId: "example.atlassian.net", jql: $q, maxResults: 100}}]}}'
-    jq -cn --argjson n "$nodes" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "t2", content: "<persisted-output>…"}]},
+    jq -cn --argjson n "$nodes" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "t2", content: "…"}]},
       tool_use_result: {structuredContent: {issues: {nodes: $n, pageInfo: {hasNextPage: false}}}}}'
     printf '{"type":"result","subtype":"success","is_error":false,"num_turns":3}\n'
   } > "$STUB_STREAMS/search.jsonl"
@@ -65,6 +65,7 @@ session_deny() { awk '$0 == "--end--" { exit } p { print } $0 == "--disallowedTo
   session_deny | grep -qx 'mcp__claude_ai_Atlassian__createJiraIssue'
   session_deny | grep -qx 'mcp__claude_ai_Atlassian__getAccessibleAtlassianResources'
   session_deny | grep -qx Bash
+  [ "$(session_deny | grep -cx "$J")" -eq 0 ]   # the full Atlassian table, less the one tool the session may call
   [ "$(session_arg --settings | jq -c '.deniedMcpServers')" = '[{"serverName":"claude.ai Gmail"}]' ]
   [ "$(jq -c '[.exit, .lines]' "$LOG")" = '[0,2]' ]
 }
