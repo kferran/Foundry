@@ -622,12 +622,14 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
 
 # --- tick and CLI --------------------------------------------------------------------------------------
 
-def _screen(ctx: Ctx) -> tuple:
-    """(entries, refused). Only notes whose identifiers pass nc.identifiers are returned: their id, refs and output
-    become paths and git arguments. A live note that fails is marked failed and alerted once."""
+def _screen(ctx: Ctx, held=()) -> tuple:
+    """(entries, refused). A note that can run passes nc.screen, the add-time field rules, at every pass (#298); one
+    that never runs passes nc.identifiers. A live note that fails is marked failed and alerted once. A note a worker
+    holds is left to it (ni.update has no lock) and screened again at its next attempt."""
     entries, refused = [], []
     for path, fm, body in ni.items(ctx.vault):
-        errs = nc.identifiers(fm)
+        parked = fm.get("state") in ("failed", "done", "cancelled", "blocked")
+        errs = [] if fm.get("id") in held else nc.identifiers(fm) if parked else nc.screen(ctx.vault, fm, body, path)
         if not errs:
             entries.append((path, fm, body))
         elif fm.get("state") not in ("failed", "done", "cancelled"):
@@ -784,7 +786,7 @@ def tick(ctx: Ctx) -> int:
         while True:
             now = ctx.clock_now()
             local = now.astimezone(ctx.tz)
-            entries, _ = _screen(ctx)
+            entries, _ = _screen(ctx, pool.threads)
             idle = [e for e in entries if e[1]["id"] not in pool.started and e[1]["id"] not in skip]
             for e in [e for e in idle if e[1].get("state") == "delivering"][:pool.free()]:
                 pool.start(e)

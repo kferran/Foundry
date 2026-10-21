@@ -926,3 +926,72 @@ def test_tick_refuses_a_note_with_an_unsafe_id(env):
     assert "2026-10-06-evil.md refused" in alerts
     assert nr.main(["tick"], vault, NOW) == 0  # refused once; later ticks skip both notes
     assert (tmp / "victim").is_dir()
+
+
+# --- #298: the tick screens what it runs, when it runs it ------------------------------------------------
+
+def add_research(vault, tmp, *extra):
+    brief = tmp / "brief.md"
+    brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
+    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+                    "--output", "wiki/work/concepts/Answer.md", "--host", "docs.example.com", "--now", *extra],
+                   vault, NOW) == 0
+    return only_item(vault)
+
+
+def refused_at_tick(vault, path, fm, prefix):
+    assert nr.main(["tick"], vault, NOW) == 2
+    now, _ = ni.load(path)
+    assert now["state"] == "failed" and now["reason"].startswith(prefix), now
+    assert not (vault / "system/logs/nightshift/items" / fm["id"] / "settings.json").exists()   # no session ran
+    alerts = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
+    assert f"[orders] {path.name} refused: " in alerts
+    assert nr.main(["tick"], vault, NOW) == 0   # refused once; the next tick skips it
+
+
+@pytest.mark.parametrize("host", ["*", "169.254.169.254"])
+def test_a_hosts_edit_after_add_is_refused_at_the_tick(env, host):
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    ni.update(path, hosts=["docs.example.com", host])
+    refused_at_tick(vault, path, fm, "invalid: host")
+
+
+def test_an_output_edit_after_add_is_refused_and_never_written(env):
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    ni.update(path, output="docs/injected.md")
+    refused_at_tick(vault, path, fm, "invalid: output")
+    assert not (vault / "docs/injected.md").exists()
+
+
+@pytest.mark.parametrize("edit,prefix", [
+    ({"output": "extensions/telemetry/skills/evil/SKILL.md"}, "invalid: output"),
+    ({"output": "wiki/personal/concepts/X.md"}, "invalid: output"),
+    ({"output": "wiki/work/private/X.md"}, "invalid: output"),
+    ({"output": "wiki/work/meetings/X.md"}, "invalid: output"),
+    ({"partition": "personal", "output": "wiki/personal/concepts/X.md"}, "invalid: partition personal")])
+def test_outputs_outside_the_three_folders_and_a_moved_partition_are_refused_at_the_tick(env, edit, prefix):
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    ni.update(path, **edit)
+    refused_at_tick(vault, path, fm, prefix)
+
+
+def test_a_blocked_note_keeps_the_identifiers_screen_only(env):
+    # A parked order never runs, and flipping it back to queued screens it in full (spec §6).
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    ni.update(path, state="blocked", output="docs/x.md")
+    assert nr.main(["tick"], vault, NOW) == 0
+    assert ni.load(path)[0]["state"] == "blocked"
+
+
+def test_the_loop_screen_leaves_a_note_a_worker_holds(env):
+    # ni.update is read-modify-write with no lock: marking a running note would race the worker's _finish.
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    ni.update(path, state="running", hosts=["*"])
+    entries, refused = nr._screen(nr.Ctx(vault, NOW), {fm["id"]: None})
+    assert [e[0] for e in entries] == [path] and refused == []
+    assert ni.load(path)[0]["state"] == "running"
