@@ -22,7 +22,7 @@ _COMMAND = r"(?:^[ \t]*(?:(?:\$|[-*+]|\d+\.)[ \t]+)?|(?<=`))"
 CREDENTIAL = re.compile("|".join((_COMMAND if p.endswith(" ") else r"\b") + r"\s+".join(map(re.escape, p.split()))
                                  + (r"[ \t]+(?=\S)" if p.endswith(" ") else r"\b") for p in CREDENTIALED), re.I | re.M)
 SECTIONS = ("## Question", "## Scope", "## Done when", "## Output")
-HOST = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$")
+HOST = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z0-9-]*[a-z][a-z0-9-]*$")   # a letter last: no IP literal (#298)
 ID = re.compile(r"\d{4}-\d{2}-\d{2}-[a-z0-9-]+")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
@@ -157,13 +157,17 @@ def identifiers(fm: dict) -> list:
     return errs
 
 
-def check(vault, fm: dict, body: str) -> list:
+def screen(vault, fm: dict, body: str, path=None) -> list:
+    """The fields that become capabilities, from the note and system/codebases/ alone (no git, no network): add and
+    check run it first, and the tick runs it on every live note at every pass (#298). path is the queue note's."""
     errs = identifiers(fm)
     if errs:
-        return errs  # nothing below may pass a bad ref or path to git
-    if workspace_inside_vault(vault, workspace(config(vault))):
-        errs.append("order_workspace is inside the vault")
-    kind = fm.get("kind")
+        return errs  # nothing below may pass a bad ref or path on
+    kind, part, repo = fm.get("kind"), fm.get("partition"), fm.get("repo")
+    if path is not None and Path(path).parent.parent.name != part:
+        errs.append(f"partition {part} does not match the note's folder raw/{Path(path).parent.parent.name}/")
+    if repo and repo != "template" and (codebase(vault, repo) or {}).get("partition") not in (part, "shared"):
+        errs.append(f"repo {repo!r} is not a registered codebase in partition {part} or shared")
     try:
         ni.budget_seconds(fm.get("budget") or ("4h" if kind == "plan" else "1h"))
     except ValueError as exc:
@@ -174,17 +178,29 @@ def check(vault, fm: dict, body: str) -> list:
         except ValueError:
             errs.append("start at needs start_at as an ISO date-time")
     if kind == "plan":
-        errs += _plan(vault, fm)
+        errs += [] if fm.get("verify") else ["verify needs at least one command"]
     elif kind == "research":
-        errs += _research(vault, fm, body)
+        errs += [f"the brief needs a '{h}' section" for h in SECTIONS if h not in body]
+        if not re.fullmatch(rf"wiki/{part}/(concepts|entities|summaries)/[^/]+\.md", str(fm.get("output") or "")):
+            errs.append(f"output must be a note path under wiki/{part}/concepts/, entities/ or summaries/")
+        errs += [f"host {h!r} is not a plain host name" for h in fm.get("hosts") or [] if not HOST.match(str(h))]
     else:
         errs.append("kind must be plan or research")
     return errs
 
 
+def check(vault, fm: dict, body: str, path=None) -> list:
+    errs = screen(vault, fm, body, path)
+    if errs:
+        return errs  # nothing below may pass a bad ref or path to git
+    if workspace_inside_vault(vault, workspace(config(vault))):
+        errs.append("order_workspace is inside the vault")
+    return errs + (_plan(vault, fm) if fm["kind"] == "plan" else _research_repo(vault, fm))
+
+
 def _plan(vault, fm: dict) -> list:
     repo, base = fm.get("repo", ""), fm.get("base", "")
-    errs = [] if fm.get("verify") else ["verify needs at least one command"]
+    errs = []
     if repo == "template":
         url = str(config(vault).get("template_remote") or "")
         if not url:
@@ -242,15 +258,6 @@ def _plan_at(src, fm: dict) -> list:
         elif PROTECTED.search(blocks[n]):
             errs.append(f"task {n} works on a protected branch or deploys; leave it out with --tasks")
     return errs
-
-
-def _research(vault, fm: dict, body: str) -> list:
-    errs = [f"the brief needs a '{h}' section" for h in SECTIONS if h not in body]
-    out, part = str(fm.get("output") or ""), fm.get("partition")
-    if not (out.startswith(f"wiki/{part}/") and out.endswith(".md")):
-        errs.append(f"output must be a note path under wiki/{part}/")
-    errs += [f"host {h!r} is not a plain host name" for h in fm.get("hosts") or [] if not HOST.match(str(h))]
-    return errs + _research_repo(vault, fm)
 
 
 def research_base(src, base: str | None) -> str:
