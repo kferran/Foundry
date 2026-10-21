@@ -8,8 +8,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from helpers import REPO, write
-from vaultlib import notify
+from helpers import REPO, call, stream, write
+from vaultlib import connector, notify
 
 NOW = datetime(2026, 10, 12, 6, 30)
 TOOL = "mcp__plugin_slack_slack__slack_send_message"
@@ -291,14 +291,10 @@ def test_the_tool_prefix_comes_from_the_connector_name():
 
 
 def session(name=TOOL, channel="C0EXAMPLE", message="• Alert one\n• Alert two", calls=1, error=False, extra=None):
-    s = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t0", "name": "ToolSearch", "input": {}}]}},
-         {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t0",
-                                                   "content": [{"type": "tool_reference", "tool_name": TOOL}]}]}}]
-    for n in range(1, calls + 1):
-        args = {"channel_id": channel, "message": message, **(extra or {})}
-        s.append({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": f"t{n}", "name": name, "input": args}]}})
-        s.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": f"t{n}", "is_error": error,
-                                                           "content": "ok"}]}})
+    """A posting session with no result message (the session may be killed after a post)."""
+    s = stream(TOOL, [call({"channel_id": channel, "message": message, **(extra or {})}, "ok", error=error)] * calls)[:-1]
+    for m in s[2::2]:
+        m["message"]["content"][0]["name"] = name
     return s
 
 
@@ -404,3 +400,24 @@ def test_a_reply_must_carry_the_exact_thread_ts_and_its_posted_ts_is_read_back()
             notify.check(s, TOOL, "C0EXAMPLE", MSG, SENT, thread)
         assert e.value.code == 7
     assert notify.check(session(), TOOL, "C0EXAMPLE", MSG, SENT) == ("", [])   # threading off needs no link
+
+
+def test_notify_raises_the_shared_connector_fail():
+    assert notify.Fail is connector.Fail
+
+
+def test_a_landed_post_beside_an_errored_call_counts_as_sent():
+    # F1 spec §3.5: a post that reached the channel is never repeated, even when another call errored.
+    url = f"https://example.slack.com/archives/C0EXAMPLE/p{R.replace('.', '')}?thread_ts={P}&cid=C0EXAMPLE"
+    args = {"channel_id": "C0EXAMPLE", "message": MSG, "thread_ts": P}
+    s = stream(TOOL, [call(args, "rate limited", error=True), call(args, f"Message sent: {url}")])
+    assert notify.check(s, TOOL, "C0EXAMPLE", MSG, SENT, P) == ("", [R])
+    s = stream(TOOL, [call(args, f"Message sent: {url}"), call(args, "rate limited", error=True)])[:-1]
+    assert notify.check(s, TOOL, "C0EXAMPLE", MSG, SENT, P) == ("", [R])   # and with no result message
+
+
+def test_a_post_is_paired_with_its_own_result():
+    # The first call has no result (the session stopped it); the second landed: its text is the one checked.
+    s = stream(TOOL, [call({"channel_id": "C0EXAMPLE", "message": "• Alert one"}), call({"channel_id": "C0EXAMPLE", "message": MSG})])
+    del s[3]
+    assert notify.check(s, TOOL, "C0EXAMPLE", MSG, SENT) == ("", [])
