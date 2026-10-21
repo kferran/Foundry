@@ -21,8 +21,8 @@ def thread(tid="a1", sender="Blake Sample <blake@example.com>", date="2026-10-09
                          {"id": "m1", "date": date, "sender": sender, "subject": "Rejected case", "snippet": "How to proceed?"}]}
 
 
-def page(threads, q=Q, error=False, token="", view="THREAD_VIEW_MINIMAL", text="…"):
-    return call({"query": q, "pageSize": 10, "view": view}, text,
+def page(threads, q=Q, error=False, token="", view="THREAD_VIEW_MINIMAL", text="…", size=10):
+    return call({"query": q, "pageSize": size, "view": view}, text,
                 {"threads": threads, **({"nextPageToken": token} if token else {})}, error)
 
 
@@ -91,6 +91,10 @@ def test_mail_reads_up_to_six_pages_and_a_last_page_with_a_token_is_full():
 
 def test_the_mail_search_must_ask_the_minimal_view():
     fails(7, mail_stream([thread()], items=[item()], view="THREAD_VIEW_FULL"))
+
+
+def test_a_mail_page_of_more_than_ten_threads_is_refused():   # the 60-thread cap is code, not only the prompt
+    assert "pageSize 50" in fails(7, mail_stream([thread()], items=[item()], size=50))
 
 
 def test_a_mail_page_too_large_is_counted_and_holds_the_cursor(vault):

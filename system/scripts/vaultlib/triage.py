@@ -26,7 +26,8 @@ CHAT_FIELDS = {"channel": re.compile(r"^Channel: #(\S*) \(ID: ([CG][A-Z0-9]+)\)"
                "ts": re.compile(r"^Message_ts: (\d+\.\d+)", re.M),
                "link": re.compile(r"^Permalink: \[[^\]]*\]\((https://[^)\s]+)\)", re.M)}
 EXCLUDE = "-category:promotions -category:social -category:forums -from:me"
-MAX_PAGES = 6   # of 10 threads (triage_fetch.sh), as the watch's MAIL_PAGES: a page of 50 can pass the model's limit (#289)
+MAX_PAGES = 6   # of PAGE_SIZE threads, as the watch's MAIL_PAGES: a page of 50 can pass the model's limit (#289)
+PAGE_SIZE = 10  # triage_fetch.sh asks for it
 OVERLAP_SECONDS = 300
 FIRST_LOOKBACK_SECONDS = 2 * 3600
 TEXT_MAX = 160
@@ -179,10 +180,14 @@ def extract(stream, q: str) -> dict:
     """{"items": [...], "full": bool, "hold": bool, "stats": {...}}: the threads the session marked, joined to the
     search results. full: the last page read still had a nextPageToken. hold: the model saw a page only as too large
     (its threads still come from the stream's structuredContent), so the tick keeps the cursor."""
+    def accept(i):
+        if i.get("query") != q or i.get("view") != "THREAD_VIEW_MINIMAL":
+            return None
+        if i.get("pageSize") != PAGE_SIZE:   # with MAX_PAGES, the cap on threads a tick (60), held in code
+            raise Fail(7, f"the session searched with pageSize {i.get('pageSize')}; the page size is {PAGE_SIZE}")
+        return "search"
     persisted = {}
-    pages, result = check_stream(stream, TOOL, lambda i: "search" if i.get("query") == q
-                                 and i.get("view") == "THREAD_VIEW_MINIMAL" else None,
-                                 MAX_PAGES, "Gmail", persisted)
+    pages, result = check_stream(stream, TOOL, accept, MAX_PAGES, "Gmail", persisted)
     got = pages.get("search", [])
     known = threads(got)
     s = stats(sum(len(p.get("threads") or []) for p in got), persisted.get("search", 0))
