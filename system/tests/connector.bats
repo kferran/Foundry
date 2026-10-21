@@ -5,7 +5,7 @@ load helpers
 setup() {
   make_vault
   cd "$V"
-  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_calendar"
+  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_connector"
   unset CLAUDE_CONFIG_DIR
   mkdir -p "$HOME/.claude"
   export FOUNDRY_MANAGED_SETTINGS="$BATS_TEST_TMPDIR/managed.json" FOUNDRY_MANAGED_SETTINGS_DIR="$BATS_TEST_TMPDIR/managed.d"
@@ -173,4 +173,145 @@ outcome() {
   cls 1 "claude returned an error result" 1 other
   printf 'Invalid API key · Please run /login\n' > "$work/claude.err"
   cls 1 "claude returned an error result" 1 claude
+}
+
+# --- lib_fetch.sh (F1 spec §3.2) and the connector stub (§3.4) ---
+
+# fetch_lib: lib_fetch.sh after lib_connector.sh, with a triage-shaped script's settings.
+# shellcheck disable=SC2034  # the FETCH_* variables are the library's inputs
+fetch_lib() {
+  source system/scripts/lib_confine.sh
+  source system/scripts/lib_connector.sh
+  source system/scripts/lib_fetch.sh
+  mkdir -p system/logs
+  FETCH_NAME=triage_fetch FETCH_TAG=triage FETCH_LOG=system/logs/f.jsonl FETCH_LABEL="Inbox triage" FETCH_ALERTS="1 3"
+  FETCH_FIELDS='{"items": 0, "source": "mail"}'
+  ALERTS="system/logs/alerts_$(date +%F).md"
+}
+
+@test "logline writes {time, exit, reason} with FETCH_FIELDS and the object merged in, the object last" {
+  fetch_lib
+  logline 0 "" '{"items": 3}'
+  [ "$(jq -c 'keys_unsorted' system/logs/f.jsonl)" = '["time","exit","reason","items","source"]' ]
+  [ "$(jq -c '[.exit, .reason, .items, .source]' system/logs/f.jsonl)" = '[0,"",3,"mail"]' ]
+}
+
+@test "alert_once writes its [FETCH_TAG] key once a day" {
+  fetch_lib
+  alert_once "Inbox triage failed (exit 3):" first
+  alert_once "Inbox triage failed (exit 3):" second
+  [ "$(wc -l < "$ALERTS")" -eq 1 ]
+  grep -qE '^- [0-9]{2}:[0-9]{2}:[0-9]{2} \[triage\] Inbox triage failed \(exit 3\): first$' "$ALERTS"
+}
+
+@test "fail leads the reason with its class, logs it, alerts an exit in FETCH_ALERTS, prints it and exits" {
+  fetch_lib
+  run fail 3 "no Gmail connector reachable"
+  [ "$status" -eq 3 ]
+  [ "$output" = "triage_fetch: auth: no Gmail connector reachable" ]
+  [ "$(jq -c '[.exit, .reason, .items]' system/logs/f.jsonl)" = '[3,"auth: no Gmail connector reachable",0]' ]
+  grep -qF '[triage] Inbox triage failed (exit 3): auth: no Gmail connector reachable' "$ALERTS"
+  run fail 2 x
+  [ "$status" -eq 2 ]
+  [ "$output" = "triage_fetch: x" ]
+  [ "$(tail -n 1 system/logs/f.jsonl | jq -r .reason)" = x ]
+  [ "$(wc -l < "$ALERTS")" -eq 1 ]
+}
+
+@test "skip logs the skipped reason with exit 0 and exits 0" {
+  fetch_lib
+  run skip "outside hours"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.exit, .reason, .items]' system/logs/f.jsonl)" = '[0,"skipped: outside hours",0]' ]
+  [ ! -e "$ALERTS" ]
+}
+
+@test "fetch_check_arg sets check, or exits 2 with the usage line" {
+  fetch_lib
+  fetch_check_arg
+  [ "$check" = 0 ]
+  fetch_check_arg --check
+  [ "$check" = 1 ]
+  run fetch_check_arg --bogus
+  [ "$status" -eq 2 ]
+  [ "$output" = "usage: triage_fetch.sh [--check]" ]
+  run fetch_check_arg --check --check
+  [ "$status" -eq 2 ]
+}
+
+@test "fetch_workdir leaves no directory once its shell exits" {
+  run bash -c 'source system/scripts/lib_fetch.sh; fetch_workdir; [[ -d "$work" ]] || exit 1; echo "$work"'
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [ ! -e "$output" ]
+}
+
+@test "fetch_others lists a server's tools less the allowed one; each table holds its tool" {
+  fetch_lib
+  CONNECTOR_PREFIX=mcp__claude_ai_Slack CONNECTOR_TOOL=mcp__claude_ai_Slack__slack_send_message
+  fetch_others "${SLACK_TOOLS[@]}"
+  [ "${#CONNECTOR_OTHERS[@]}" -eq $(( ${#SLACK_TOOLS[@]} - 1 )) ]
+  [[ " ${CONNECTOR_OTHERS[*]} " != *" slack_send_message "* ]]
+  [[ " ${CONNECTOR_OTHERS[*]} " == *" slack_search_public_and_private "* ]]
+  [[ " ${GMAIL_TOOLS[*]} " == *" search_threads "* ]]
+  [[ " ${DRIVE_TOOLS[*]} " == *" search_files read_file_content "* ]]
+  [[ " ${CALENDAR_TOOLS[*]} " == *" list_events "* ]]
+}
+
+@test "the connector stub prints a Slack, a Gmail or a Calendar session's own stream, else STUB_STREAM" {
+  S="$REPO/system/tests/stub_claude_connector"
+  for k in SLACK MAIL CAL; do printf '{"kind":"%s"}\n' "$k" > "$BATS_TEST_TMPDIR/$k.jsonl"; done
+  export STUB_SLACK_STREAM="$BATS_TEST_TMPDIR/SLACK.jsonl" STUB_MAIL_STREAM="$BATS_TEST_TMPDIR/MAIL.jsonl"
+  export STUB_CAL_STREAM="$BATS_TEST_TMPDIR/CAL.jsonl" STUB_SLACK_ARGS="$BATS_TEST_TMPDIR/slack.args"
+  run "$S" -p hi --allowedTools mcp__claude_ai_Slack__slack_search_public_and_private
+  [ "$output" = '{"kind":"SLACK"}' ]
+  [ "$(sed -n 2p "$STUB_SLACK_ARGS")" = hi ]
+  run "$S" -p hi --allowedTools mcp__claude_ai_Gmail__search_threads
+  [ "$output" = '{"kind":"MAIL"}' ]
+  run "$S" -p hi --allowedTools mcp__claude_ai_Google_Calendar__list_events
+  [ "$output" = '{"kind":"CAL"}' ]
+  [ ! -e "$STUB_ARGS" ]
+  printf '{"calendar":1}\n' > "$BATS_TEST_TMPDIR/s.jsonl"
+  STUB_MAIL_STREAM="" STUB_STREAM="$BATS_TEST_TMPDIR/s.jsonl" STUB_RC=5 run "$S" -p hi --allowedTools mcp__claude_ai_Gmail__search_threads
+  [ "$status" -eq 5 ]
+  [ "$output" = '{"calendar":1}' ]
+  [ "$(sed -n 2p "$STUB_ARGS")" = hi ]
+}
+
+@test "the connector stub's meetings mode prints read-<id>.jsonl for the prompt's fileId, else search.jsonl" {
+  S="$REPO/system/tests/stub_claude_connector"
+  export STUB_STREAMS="$BATS_TEST_TMPDIR/streams"
+  mkdir -p "$STUB_STREAMS"
+  echo search > "$STUB_STREAMS/search.jsonl"
+  echo read > "$STUB_STREAMS/read-FAKE-1.jsonl"
+  run "$S" -p 'Then call the read tool with fileId "FAKE-1".'
+  [ "$output" = read ]
+  run "$S" -p 'Then search.'
+  [ "$output" = search ]
+  [ "$(grep -c -- '^--end--$' "$STUB_ARGS")" -eq 2 ]
+  [ "$(wc -l < "$STUB_CWD")" -eq 2 ]
+}
+
+@test "the connector stub moves STUB_STREAM.next over STUB_STREAM after one session" {
+  S="$REPO/system/tests/stub_claude_connector"
+  export STUB_STREAM="$BATS_TEST_TMPDIR/s.jsonl"
+  echo first > "$STUB_STREAM"
+  echo second > "$STUB_STREAM.next"
+  run "$S" -p one
+  [ "$output" = first ]
+  run "$S" -p two
+  [ "$output" = second ]
+  [ ! -e "$STUB_STREAM.next" ]
+}
+
+@test "the connector stub's mcp list prints the Calendar line by default, STUB_MCP_LIST when set, and fails on STUB_MCP_FAIL" {
+  S="$REPO/system/tests/stub_claude_connector"
+  run "$S" mcp list
+  [ "$status" -eq 0 ]
+  [ "${lines[1]}" = "claude.ai Google Calendar: https://calendar.example/mcp - ok Connected" ]
+  STUB_MCP_LIST="claude.ai Google Drive: https://drive.example/mcp - ok Connected" run "$S" mcp list
+  [ "${lines[1]}" = "claude.ai Google Drive: https://drive.example/mcp - ok Connected" ]
+  STUB_MCP_PROBE="$BATS_TEST_TMPDIR/probe" STUB_MCP_FAIL=1 run "$S" mcp list
+  [ "$status" -eq 1 ]
+  [ -e "$BATS_TEST_TMPDIR/probe" ]
 }

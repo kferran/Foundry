@@ -9,7 +9,7 @@ setup() {
   make_vault
   use_extension handoffs
   cd "$V"
-  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_meetings"
+  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_connector"
   unset CLAUDE_CONFIG_DIR
   mkdir -p "$HOME/.claude"
   export FOUNDRY_MANAGED_SETTINGS="$BATS_TEST_TMPDIR/managed.json" FOUNDRY_MANAGED_SETTINGS_DIR="$BATS_TEST_TMPDIR/managed.d"

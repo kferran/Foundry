@@ -9,7 +9,7 @@ setup() {
   make_vault
   use_extension handoffs telemetry
   cd "$V"
-  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_calendar"
+  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_connector"
   unset CLAUDE_CONFIG_DIR
   mkdir -p "$HOME/.claude" system/logs wiki/work/rca
   export FOUNDRY_MANAGED_SETTINGS="$BATS_TEST_TMPDIR/managed.json" FOUNDRY_MANAGED_SETTINGS_DIR="$BATS_TEST_TMPDIR/managed.d"
@@ -103,7 +103,7 @@ jira_errs() {
 
 @test "the session is checked against the arguments sent, so a note edited during it still files (#106)" {
   printf '#!/bin/bash\n[[ "$1" == mcp ]] || sed -i "s/^\\*\\*Summary:\\*\\* Orders fail$/**Summary:** Orders fail, edited/" "%s"\nexec "%s" "$@"\n' \
-    "$V/wiki/work/rca/$STEM.md" "$REPO/system/tests/stub_claude_calendar" > "$BATS_TEST_TMPDIR/claude"
+    "$V/wiki/work/rca/$STEM.md" "$REPO/system/tests/stub_claude_connector" > "$BATS_TEST_TMPDIR/claude"
   chmod +x "$BATS_TEST_TMPDIR/claude"
   jira_says "$C" "$ARGS"
   CLAUDE_BIN="$BATS_TEST_TMPDIR/claude" run "$RF" work "$STEM"
@@ -175,7 +175,7 @@ jira_errs() {
 
 @test "the marker is set after the server listing, just before the session (#122)" {
   printf '#!/bin/bash\nif [[ "$1" == mcp ]]; then\n  if [[ -e "%s" ]]; then echo present; else echo absent; fi > "%s"\nfi\nexec "%s" "$@"\n' \
-    "$V/system/logs/rca/work-$STEM.attempt" "$BATS_TEST_TMPDIR/listing" "$REPO/system/tests/stub_claude_calendar" > "$BATS_TEST_TMPDIR/claude"
+    "$V/system/logs/rca/work-$STEM.attempt" "$BATS_TEST_TMPDIR/listing" "$REPO/system/tests/stub_claude_connector" > "$BATS_TEST_TMPDIR/claude"
   chmod +x "$BATS_TEST_TMPDIR/claude"
   jira_says "$C" "$ARGS"
   CLAUDE_BIN="$BATS_TEST_TMPDIR/claude" run "$RF" work "$STEM"

@@ -11,6 +11,9 @@ VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$VAULT_ROOT"
 # shellcheck source=lib_config.sh
 source system/scripts/lib_config.sh
+# shellcheck source=lib_fetch.sh
+source system/scripts/lib_fetch.sh   # alert_once; smoke keeps its own logline below
+FETCH_TAG=smoke
 
 (( $# == 0 )) || { echo "usage: smoke_check.sh" >&2; exit 2; }
 case "$(config_get machine_role standalone)" in
@@ -28,10 +31,6 @@ trap 'rm -f -- "$out"' EXIT
 logline() {  # <source> <exit> <reason>
   jq -cn --arg time "$(date -Iseconds)" --arg source "$1" --argjson exit "$2" --arg reason "$3" \
     '{time: $time, source: $source, exit: $exit, reason: $reason}' >> "$log"
-}
-alert_once() {  # <key> <text>: at most one alert a day per key
-  local f="system/logs/alerts_$(date +%F).md"
-  grep -qF -- "[smoke] $1" "$f" 2>/dev/null || printf -- '- %s [smoke] %s %s\n' "$(date +%H:%M:%S)" "$1" "$2" >> "$f"
 }
 report() {  # <source> <exit> <reason>: print the line, log it, alert a failure
   local cred host since n

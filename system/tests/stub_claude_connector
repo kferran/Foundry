@@ -1,0 +1,50 @@
+#!/bin/bash
+# Test double for every connector fetch's claude calls (F1 spec §3.4).
+# `mcp list` touches STUB_MCP_PROBE when set, exits 1 when STUB_MCP_FAIL=1, and prints STUB_MCP_LIST (default: a
+# Google Calendar line). A session is told apart by its allowed tool: the Slack search, the Gmail thread search and the
+# Calendar list_events are kinds SLACK, MAIL and CAL; with STUB_<KIND>_STREAM set, it writes its argv to
+# STUB_<KIND>_ARGS, prints that stream and exits STUB_RC. Else, with STUB_STREAMS set (meetings), it appends its argv
+# and "--end--" to STUB_ARGS and its directory to STUB_CWD, and prints STUB_STREAMS/read-<id>.jsonl when the prompt
+# names fileId "<id>", else STUB_STREAMS/search.jsonl. Else it writes its argv to STUB_ARGS, its directory to
+# STUB_CWD, FOUNDRY_HEADLESS to STUB_ENV and, when set, stdin's target to STUB_STDIN, and prints STUB_STREAM; a second
+# session in the same run gets STUB_STREAM.next when it exists. These two sleep STUB_SLEEP before printing; every
+# session exits STUB_RC.
+if [[ "${1:-}" == mcp && "${2:-}" == list ]]; then
+  [[ -z "${STUB_MCP_PROBE:-}" ]] || touch "$STUB_MCP_PROBE"
+  [[ "${STUB_MCP_FAIL:-0}" == 1 ]] && exit 1
+  printf '%s\n' "Checking MCP server health…" "" "${STUB_MCP_LIST:-claude.ai Google Calendar: https://calendar.example/mcp - ok Connected}"
+  exit 0
+fi
+prev="" kind=""
+for a in "$@"; do
+  if [[ "$prev" == --allowedTools ]]; then
+    case "$a" in
+      *__slack_search_public_and_private) kind=SLACK ;;
+      *Gmail__search_threads) kind=MAIL ;;
+      *Calendar__list_events) kind=CAL ;;
+    esac
+  fi
+  prev="$a"
+done
+stream="STUB_${kind}_STREAM" args="STUB_${kind}_ARGS"
+if [[ -n "$kind" && -n "${!stream:-}" ]]; then
+  printf '%s\n' "$@" > "${!args:-/dev/null}"
+  cat "${!stream}"
+  exit "${STUB_RC:-0}"
+fi
+if [[ -n "${STUB_STREAMS:-}" ]]; then
+  printf '%s\n' "$@" --end-- >> "${STUB_ARGS:-/dev/null}"
+  pwd >> "${STUB_CWD:-/dev/null}"
+  id="$(grep -o 'fileId "[^"]*"' <<< "${2:-}" | head -n 1 | cut -d'"' -f2)"
+  [[ -n "${STUB_SLEEP:-}" ]] && sleep "$STUB_SLEEP"
+  if [[ -n "$id" ]]; then cat "$STUB_STREAMS/read-$id.jsonl" 2>/dev/null; else cat "$STUB_STREAMS/search.jsonl" 2>/dev/null; fi
+  exit "${STUB_RC:-0}"
+fi
+printf '%s\n' "$@" > "${STUB_ARGS:-/dev/null}"
+pwd > "${STUB_CWD:-/dev/null}"
+[[ -z "${STUB_STDIN:-}" ]] || readlink -f /dev/stdin > "$STUB_STDIN"
+printf '%s\n' "${FOUNDRY_HEADLESS:-}" > "${STUB_ENV:-/dev/null}"
+[[ -n "${STUB_SLEEP:-}" ]] && sleep "$STUB_SLEEP"
+[[ -n "${STUB_STREAM:-}" ]] && cat "$STUB_STREAM"
+[[ -n "${STUB_STREAM:-}" && -e "$STUB_STREAM.next" ]] && mv "$STUB_STREAM.next" "$STUB_STREAM"
+exit "${STUB_RC:-0}"

@@ -8,7 +8,7 @@ setup() {
   STUBS="$BATS_TEST_TMPDIR/stubs"
   mkdir -p "$STUBS"
   # The calendar comes from calendar_fetch.sh, whose claude is the calendar stub (never the real one).
-  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_calendar"
+  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_connector"
   # A temporary HOME hides ~/.gitconfig, so the test commits need an identity of their own.
   export GIT_AUTHOR_NAME=test GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
   export FOUNDRY_MANAGED_SETTINGS="$BATS_TEST_TMPDIR/managed.json" FOUNDRY_MANAGED_SETTINGS_DIR="$BATS_TEST_TMPDIR/managed.d"

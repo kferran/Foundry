@@ -8,11 +8,12 @@ OLD=2026-10-01T09:00:00Z
 setup() {
   make_vault
   cd "$V"
-  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_meetings"
+  export HOME="$BATS_TEST_TMPDIR/home" CLAUDE_BIN="$REPO/system/tests/stub_claude_connector"
   unset CLAUDE_CONFIG_DIR
   mkdir -p "$HOME/.claude"
   export FOUNDRY_MANAGED_SETTINGS="$BATS_TEST_TMPDIR/managed.json" FOUNDRY_MANAGED_SETTINGS_DIR="$BATS_TEST_TMPDIR/managed.d"
   export STUB_ARGS="$BATS_TEST_TMPDIR/args" STUB_CWD="$BATS_TEST_TMPDIR/cwd" STUB_STREAMS="$BATS_TEST_TMPDIR/streams"
+  export STUB_MCP_LIST="claude.ai Google Drive: https://drive.example/mcp - ok Connected"
   mkdir -p "$STUB_STREAMS" system/logs
   system/scripts/vault_index.py set system/config.md machine_role server > /dev/null
   system/scripts/vault_index.py set system/config.md meetings_enabled true > /dev/null
