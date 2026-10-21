@@ -272,9 +272,9 @@ def test_ip_literal_hosts_are_refused(vault_repo, host):
 
 def test_the_partition_must_match_the_note_folder(vault_repo):
     fm = plan_fm(kind="research", partition="personal", output="wiki/personal/concepts/X.md")
-    errs = nc.check(vault_repo, fm, BRIEF, vault_repo / "raw/work/nightshift/2026-10-06-dtcc-watcher.md")
+    errs = nc.check(vault_repo, fm, BRIEF, vault_repo / f"raw/work/nightshift/{fm['id']}.md")
     assert any(e.startswith("partition personal") for e in errs), errs
-    assert nc.check(vault_repo, fm, BRIEF, vault_repo / "raw/personal/nightshift/2026-10-06-dtcc-watcher.md") == []
+    assert nc.check(vault_repo, fm, BRIEF, vault_repo / f"raw/personal/nightshift/{fm['id']}.md") == []
 
 
 def test_repo_must_be_a_codebase_in_the_order_partition_or_shared(vault_repo, tmp_path):
