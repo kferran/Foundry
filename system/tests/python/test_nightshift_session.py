@@ -1,5 +1,8 @@
 import json
+import re
 from pathlib import Path
+
+import pytest
 
 from helpers import REPO
 from vaultlib import nightshift_session as ss
@@ -9,14 +12,14 @@ FX = REPO / "system" / "tests" / "fixtures" / "nightshift"
 
 def test_profiles_are_locked_down(vault: Path):
     for kind in ("plan", "research"):
-        p = ss.profile(REPO, kind, ["registry.npmjs.org"], ["www.dtcc.com"] if kind == "research" else [])
+        p = ss.profile(REPO, kind, ["registry.npmjs.org"], ["www.dtcc.com"] if kind == "research" else [], cwd=REPO)
         sb = p["sandbox"]
         assert sb["enabled"] is True and sb["allowUnsandboxedCommands"] is False
         assert sb["network"]["strictAllowlist"] is True and "registry.npmjs.org" in sb["network"]["allowedDomains"]
         assert all(not d.startswith("~") for d in sb["filesystem"]["denyRead"])
         assert any(d.endswith("/.ssh") for d in sb["filesystem"]["denyRead"])
         assert p["disableAllHooks"] is True
-    assert "WebFetch(domain:www.dtcc.com)" in ss.profile(REPO, "research", [], ["www.dtcc.com"])["permissions"]["allow"]
+    assert "WebFetch(domain:www.dtcc.com)" in ss.profile(REPO, "research", [], ["www.dtcc.com"], cwd=REPO)["permissions"]["allow"]
 
 
 def test_command_line():
@@ -62,7 +65,7 @@ def test_task_is_the_agent_alias():
 
 
 def test_profile_denies_common_credentials_and_extra_paths():
-    deny = ss.profile(REPO, "plan", [], [], deny=["/srv/other-repo"])["sandbox"]["filesystem"]["denyRead"]
+    deny = ss.profile(REPO, "plan", [], [], deny=["/srv/other-repo"], cwd=REPO)["sandbox"]["filesystem"]["denyRead"]
     home = str(Path.home())
     for p in (".npmrc", ".netrc", ".pypirc", ".aws", ".docker", ".config/git", ".gnupg", ".kube", ".azure"):
         assert f"{home}/{p}" in deny
@@ -87,7 +90,7 @@ def test_session_env_passes_only_the_named_variables(monkeypatch):
 
 def test_profile_denies_the_claude_transcripts_and_mirrors_every_deny_into_read():
     # audit S3/S7 spec §2: the Read tool is bound whether or not the sandbox list reaches it
-    p = ss.profile(REPO, "plan", [], [], deny=["/srv/other-repo"])
+    p = ss.profile(REPO, "plan", [], [], deny=["/srv/other-repo"], cwd=REPO)
     deny = p["sandbox"]["filesystem"]["denyRead"]
     home = str(Path.home())
     for rel in (".claude/projects", ".claude/settings.json", ".claude/settings.local.json", ".gitconfig"):
@@ -105,14 +108,14 @@ def test_profile_denies_the_claude_transcripts_and_mirrors_every_deny_into_read(
 def test_profile_denies_a_custom_claude_config_dir(monkeypatch, tmp_path):
     # review of audit S3/S7: CLAUDE_CONFIG_DIR reaches the session, so its files are denied beside the ~/.claude set
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cc"))
-    p = ss.profile(REPO, "plan", [])
+    p = ss.profile(REPO, "plan", [], cwd=REPO)
     deny = p["sandbox"]["filesystem"]["denyRead"]
     for rel in (".credentials.json", "projects", "settings.json", "settings.local.json"):
         assert str(tmp_path / "cc" / rel) in deny
         assert f"Read(//{str(tmp_path / 'cc' / rel).lstrip('/')})" in p["permissions"]["deny"]
     assert f"{Path.home()}/.claude/projects" in deny and f"{Path.home()}/.claude.json" in deny
     monkeypatch.delenv("CLAUDE_CONFIG_DIR")
-    assert str(tmp_path / "cc" / "projects") not in ss.profile(REPO, "plan", [])["sandbox"]["filesystem"]["denyRead"]
+    assert str(tmp_path / "cc" / "projects") not in ss.profile(REPO, "plan", [], cwd=REPO)["sandbox"]["filesystem"]["denyRead"]
 
 
 def test_research_prompt_points_at_context():
@@ -148,3 +151,39 @@ def test_research_prompt_asks_for_stale_claims():
     r = ss.research_prompt({"output": "wiki/work/concepts/A.md"}, "## Question\nQ")
     assert "## Stale claims" in r
     assert "- [[Note]]: <the old claim> → <the current fact> (<evidence>)" in r
+
+
+# A bare, ./, ../ or /-anchored file rule moves with the shell's directory or the settings file's folder (#314).
+PATH_RULE = re.compile(r"^(Read|Write|Edit|Glob|Grep|NotebookEdit)\((?!//|~/)")
+
+
+def test_profiles_carry_no_rule_a_cd_can_move(tmp_path):
+    for kind in ("plan", "research"):
+        p = ss.profile(REPO, kind, [], ["example.com"], cwd=tmp_path)
+        assert [r for r in p["permissions"]["allow"] + p["permissions"]["deny"] if PATH_RULE.match(r)] == []
+    allow = ss.profile(REPO, "research", [], cwd=tmp_path)["permissions"]["allow"]
+    root = str(tmp_path).lstrip("/")
+    assert f"Write(//{root}/out/**)" in allow and f"Edit(//{root}/out/**)" in allow
+
+
+def test_a_symlinked_workspace_gets_both_roots(tmp_path):
+    (tmp_path / "real").mkdir()
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    allow = ss.profile(REPO, "research", [], cwd=tmp_path / "link")["permissions"]["allow"]
+    for root in (tmp_path / "link", tmp_path / "real"):
+        assert f"Write(//{str(root).lstrip('/')}/out/**)" in allow
+
+
+def test_a_workspace_the_rule_syntax_cannot_hold_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="order_workspace"):
+        ss.profile(REPO, "research", [], cwd=tmp_path / "a(b)")
+
+
+def test_parse_collects_denied_writes(tmp_path):
+    f = tmp_path / "s.jsonl"
+    denials = [{"tool_name": "Write", "tool_use_id": "t1", "tool_input": {"file_path": "/w/out/A.md", "content": "x"}},
+               {"tool_name": "Edit", "tool_use_id": "t2", "tool_input": {"file_path": "/w/out/B.md"}},
+               {"tool_name": "Bash", "tool_use_id": "t3", "tool_input": {"command": "cat /w/out/C.md"}}, "junk"]
+    f.write_text(json.dumps({"type": "result", "subtype": "success", "permission_denials": denials}) + "\n")
+    assert ss.parse_stream(f)["denied"] == ["/w/out/A.md", "/w/out/B.md"]
+    assert ss.parse_stream(FX / "ok.jsonl")["denied"] == []

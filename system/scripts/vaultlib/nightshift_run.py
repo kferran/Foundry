@@ -146,7 +146,7 @@ def _selftest_once(vault) -> tuple:
             settings = Path(tmp) / "settings.json"
             # The production deny list (the vault root; _deny adds only the other codebases), so a pass speaks for the
             # profile items run under.
-            settings.write_text(json.dumps(ss.profile(vault, "plan", [], deny=[str(vault)])))
+            settings.write_text(json.dumps(ss.profile(vault, "plan", [], deny=[str(vault)], cwd=tmp)))
             stream, errlog = Path(tmp) / "stream.jsonl", Path(tmp) / "stderr.log"
             cmd = ss.command("plan", SELFTEST_PROMPT, settings, "haiku", str(uuid.uuid4()), [])
             with open(stream, "w") as out, open(errlog, "w") as err:
@@ -366,7 +366,7 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
     hosts = list(nc.setting(cb, "order_hosts", "nightshift_hosts") or [])
     web = list(fm.get("hosts") or []) if kind == "research" else []
     settings = idir / "settings.json"
-    settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm))))
+    settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm), cwd=cwd)))
     plugins = [p for p in [ss.superpowers_dir()] if p] + [Path(str(p)).expanduser() for p in nc.setting(cb, "order_plugins", "nightshift_plugins") or []]
     code = nc.git(cwd / "code", "log", "-1", "--format=%h (%cs)").stdout.strip() if kind == "research" and fm.get("repo") else ""
     prompt = (ss.plan_prompt(fm) if kind == "plan" else
