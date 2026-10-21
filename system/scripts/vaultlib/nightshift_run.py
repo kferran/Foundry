@@ -262,9 +262,14 @@ def _clone(ctx: Ctx, fm: dict) -> Path:
 def _research_dir(ctx: Ctx, fm: dict) -> Path:
     d = ctx.workspace / f"nightshift-{fm['id']}"
     (d / "out").mkdir(parents=True, exist_ok=True)
-    wiki = ctx.vault / "wiki" / fm["partition"]
-    if not (d / "context").exists() and wiki.is_dir():
-        shutil.copytree(wiki, d / "context", ignore=shutil.ignore_patterns(".*"))
+    # Background notes only, rebuilt each attempt: no private/, Now.md, meetings/ or preferences/, and no file reached
+    # through a link, since the runner copies outside the sandbox (#298).
+    c = d / "context"
+    c.unlink() if c.is_symlink() else shutil.rmtree(c, ignore_errors=True)
+    for sub in ("concepts", "entities", "summaries"):
+        src = ctx.vault / "wiki" / fm["partition"] / sub
+        if src.is_dir() and not src.is_symlink():
+            shutil.copytree(src, c / sub, ignore=lambda at, names: [n for n in names if n.startswith(".") or os.path.islink(os.path.join(at, n))])
     if fm.get("repo"):
         _research_code(ctx, fm, d / "code")
     return d
@@ -494,7 +499,8 @@ def _deliver_plan(ctx: Ctx, fm: dict, clone: Path, idir: Path, before: dict) -> 
         return {"state": "blocked", "reason": "verify", "needs": [f"Fix the failing check: {out.splitlines()[0]}"]}
     (idir / "delivery.json").write_text(json.dumps({"sha": sha, "branch": branch, "title": _text(res.get("pr_title")) or fm["id"],
                                                     "body": _text(res.get("pr_body")) or _text(res.get("summary")),
-                                                    "summary": _text(res.get("summary")), "tries": 0}))
+                                                    "summary": _text(res.get("summary")), "tries": 0,
+                                                    "repo": fm["repo"], "pr_base": fm.get("pr_base") or "master"}))
     shutil.rmtree(clone, ignore_errors=True)
     return _deliver(ctx, fm, idir)
 
@@ -502,6 +508,7 @@ def _deliver_plan(ctx: Ctx, fm: dict, clone: Path, idir: Path, before: dict) -> 
 def _deliver(ctx: Ctx, fm: dict, idir: Path) -> dict:
     """Push the verified commit and open the pull request; on failure later ticks retry this step only."""
     d = json.loads((idir / "delivery.json").read_text())
+    fm = {**fm, **{k: d[k] for k in ("repo", "pr_base") if k in d}}   # as verified: the note may change (#298)
     d["tries"] += 1
     (idir / "delivery.json").write_text(json.dumps(d))
     url, pr = nd.push_target(ctx.vault, fm)
@@ -539,6 +546,9 @@ def _deliver_research(ctx: Ctx, fm: dict, d: Path, denied=()) -> dict:
     if res["status"] == "blocked":
         return {"state": "blocked", "reason": "session", "needs": [f"Answer: {q}" for q in _questions(res)]}
     findings = d / "out" / Path(fm["output"]).name
+    if findings.is_symlink() or (d / "out").is_symlink():   # read outside the sandbox: a link could reach any note (#298)
+        ctx.alert(f"invalid/{fm['id']}", f"{fm['id']}: the research output is a link; refused")
+        return {"state": "failed", "reason": "invalid: output is a link"}
     if not findings.is_file():
         return _no_result(ctx, fm, d, denied)
     ok, detail = nd.publish_research(ctx.vault, fm, findings)
@@ -632,12 +642,14 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
 
 # --- tick and CLI --------------------------------------------------------------------------------------
 
-def _screen(ctx: Ctx) -> tuple:
-    """(entries, refused). Only notes whose identifiers pass nc.identifiers are returned: their id, refs and output
-    become paths and git arguments. A live note that fails is marked failed and alerted once."""
+def _screen(ctx: Ctx, held=()) -> tuple:
+    """(entries, refused). A note that can run passes nc.screen, the add-time field rules, at every pass (#298); one
+    that never runs passes nc.identifiers. A live note that fails is marked failed and alerted once. A note a worker
+    holds is left to it (ni.update has no lock) and screened again at its next attempt."""
     entries, refused = [], []
     for path, fm, body in ni.items(ctx.vault):
-        errs = nc.identifiers(fm)
+        parked = fm.get("state") in ("failed", "done", "cancelled", "blocked")
+        errs = [] if fm.get("id") in held else nc.identifiers(fm) if parked else nc.screen(ctx.vault, fm, body, path)
         if not errs:
             entries.append((path, fm, body))
         elif fm.get("state") not in ("failed", "done", "cancelled"):
@@ -794,7 +806,7 @@ def tick(ctx: Ctx) -> int:
         while True:
             now = ctx.clock_now()
             local = now.astimezone(ctx.tz)
-            entries, _ = _screen(ctx)
+            entries, _ = _screen(ctx, pool.threads)
             idle = [e for e in entries if e[1]["id"] not in pool.started and e[1]["id"] not in skip]
             for e in [e for e in idle if e[1].get("state") == "delivering"][:pool.free()]:
                 pool.start(e)
@@ -893,7 +905,7 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
         return _add(ctx, a)
     if cmd == "check":
         fm, body = ni.load(a.note)
-        errs = nc.check(vault, fm, body)
+        errs = nc.check(vault, fm, body, Path(a.note).resolve())
         print("\n".join(f"not ready: {e}" for e in errs) or "ready")
         return 2 if errs else 0
     if cmd == "list":

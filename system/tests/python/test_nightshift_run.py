@@ -972,3 +972,163 @@ def test_research_result_json_denied_names_it(env, tmp_path):
     note = __import__("helpers").concept("work", "Answer", "Found it.", provenance='["headless"]').replace("\n", "\\n")
     fm, out = run_research_with_denials(env, tmp_path, f"out/Answer.md={note}\n", ["out/result.json"])
     assert fm["reason"] == "out write denied" and "out/result.json" in out["needs"][0]
+
+
+# --- #298: the tick screens what it runs, when it runs it ------------------------------------------------
+
+def add_research(vault, tmp, *extra):
+    brief = tmp / "brief.md"
+    brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
+    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+                    "--output", "wiki/work/concepts/Answer.md", "--host", "docs.example.com", "--now", *extra],
+                   vault, NOW) == 0
+    return only_item(vault)
+
+
+def refused_at_tick(vault, path, fm, prefix):
+    assert nr.main(["tick"], vault, NOW) == 2
+    now, _ = ni.load(path)
+    assert now["state"] == "failed" and now["reason"].startswith(prefix), now
+    assert not (vault / "system/logs/nightshift/items" / fm["id"] / "settings.json").exists()   # no session ran
+    alerts = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
+    assert f"[orders] {path.name} refused: " in alerts
+    assert nr.main(["tick"], vault, NOW) == 0   # refused once; the next tick skips it
+
+
+@pytest.mark.parametrize("host", ["*", "169.254.169.254"])
+def test_a_hosts_edit_after_add_is_refused_at_the_tick(env, host):
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    ni.update(path, hosts=["docs.example.com", host])
+    refused_at_tick(vault, path, fm, "invalid: host")
+
+
+def test_an_output_edit_after_add_is_refused_and_never_written(env):
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    ni.update(path, output="docs/injected.md")
+    refused_at_tick(vault, path, fm, "invalid: output")
+    assert not (vault / "docs/injected.md").exists()
+
+
+@pytest.mark.parametrize("edit,prefix", [
+    ({"output": "extensions/telemetry/skills/evil/SKILL.md"}, "invalid: output"),
+    ({"output": "wiki/personal/concepts/X.md"}, "invalid: output"),
+    ({"output": "wiki/work/private/X.md"}, "invalid: output"),
+    ({"output": "wiki/work/meetings/X.md"}, "invalid: output"),
+    ({"partition": "personal", "output": "wiki/personal/concepts/X.md"}, "invalid: partition personal")])
+def test_outputs_outside_the_three_folders_and_a_moved_partition_are_refused_at_the_tick(env, edit, prefix):
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    ni.update(path, **edit)
+    refused_at_tick(vault, path, fm, prefix)
+
+
+def test_a_blocked_note_keeps_the_identifiers_screen_only(env):
+    # A parked order never runs, and flipping it back to queued screens it in full (spec §6).
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    ni.update(path, state="blocked", output="docs/x.md")
+    assert nr.main(["tick"], vault, NOW) == 0
+    assert ni.load(path)[0]["state"] == "blocked"
+
+
+def test_the_loop_screen_leaves_a_note_a_worker_holds(env):
+    # ni.update is read-modify-write with no lock: marking a running note would race the worker's _finish.
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    ni.update(path, state="running", hosts=["*"])
+    entries, refused = nr._screen(nr.Ctx(vault, NOW), {fm["id"]: None})
+    assert [e[0] for e in entries] == [path] and refused == []
+    assert ni.load(path)[0]["state"] == "running"
+
+
+RFM = {"id": "2026-10-08-q", "kind": "research", "partition": "work", "output": "wiki/work/concepts/Answer.md"}
+
+
+def test_research_context_holds_background_notes_only(env, tmp_path):
+    vault, tmp = env
+    from helpers import concept
+    outside = tmp_path / "outside.md"
+    outside.write_text("secret outside the vault\n")
+    write(vault, "wiki/work/concepts/Background.md", concept("work", "Background"))
+    write(vault, "wiki/work/private/Secret.md", "private\n")
+    write(vault, "wiki/work/Now.md", "- [ ] owed: x\n")
+    write(vault, "wiki/work/meetings/M.md", "transcript\n")
+    write(vault, "wiki/work/preferences/P.md", "pref\n")
+    (vault / "wiki/work/concepts/Link.md").symlink_to(outside)
+    ctx = nr.Ctx(vault, NOW)
+    c = nr._research_dir(ctx, RFM) / "context"
+    files = {str(p.relative_to(c)) for p in c.rglob("*") if p.is_file()}
+    assert "concepts/Background.md" in files and {f.split("/")[0] for f in files} <= {"concepts", "entities", "summaries"}
+    assert not (c / "concepts/Link.md").exists() and not (c / "concepts/Link.md").is_symlink()
+
+
+def test_a_resumed_order_loses_a_context_built_before_the_fix(env):
+    vault, tmp = env
+    write(vault, "wiki/work/concepts/Background.md", "x\n")
+    d = tmp / "ws" / f"nightshift-{RFM['id']}"
+    write(d, "context/private/Secret.md", "copied by the old runner\n")
+    nr._research_dir(nr.Ctx(vault, NOW), RFM)
+    assert not (d / "context/private").exists() and (d / "context/concepts/Background.md").is_file()
+
+
+def test_a_context_replaced_by_a_link_is_unlinked_and_its_target_kept(env, tmp_path):
+    vault, tmp = env
+    write(vault, "wiki/work/concepts/Background.md", "x\n")
+    target = tmp_path / "elsewhere"
+    write(target, "keep.md", "kept\n")
+    d = tmp / "ws" / f"nightshift-{RFM['id']}"
+    d.mkdir(parents=True)
+    (d / "context").symlink_to(target)
+    nr._research_dir(nr.Ctx(vault, NOW), RFM)
+    assert (target / "keep.md").is_file() and not (target / "concepts").exists()
+    assert not (d / "context").is_symlink() and (d / "context/concepts/Background.md").is_file()
+
+
+@pytest.mark.parametrize("linked", ["file", "folder"])
+def test_a_linked_research_output_is_refused(env, tmp_path, linked):
+    # A session can ln -s out/<name> (or out/) to a note it cannot read; the runner reads it outside the sandbox.
+    vault, tmp = env
+    write(vault, "wiki/work/private/Secret.md", __import__("helpers").concept("work", "Answer", "secret"))
+    d = tmp / "ws" / "nightshift-x"
+    if linked == "file":
+        write(d, "out/result.json", '{"status": "done", "summary": "ok"}')
+        (d / "out/Answer.md").symlink_to(vault / "wiki/work/private/Secret.md")
+    else:
+        write(vault, "wiki/work/private/result.json", '{"status": "done", "summary": "ok"}')
+        d.mkdir(parents=True)
+        (d / "out").symlink_to(vault / "wiki/work/private")
+        (vault / "wiki/work/private/Answer.md").write_text((vault / "wiki/work/private/Secret.md").read_text())
+    out = nr._deliver_research(nr.Ctx(vault, NOW), RFM, d)
+    assert out == {"state": "failed", "reason": "invalid: output is a link"}
+    assert not (vault / "wiki/work/concepts/Answer.md").exists()
+    alerts = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
+    assert alerts.count(f"{RFM['id']}: the research output is a link") == 1
+
+
+def test_delivery_after_a_repo_edit_pushes_to_the_recorded_repo(env, monkeypatch, tmp_path):
+    # A retry reads the note again; a repo swapped while the order sits in delivering must not redirect the push.
+    vault, tmp = env
+    from test_nightshift_check import registered
+    registered(vault, tmp_path / "cb")   # shop, a work codebase with its own origin
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ctx = nr.Ctx(vault, NOW)
+    clone = nr._clone(ctx, fm)
+    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir.mkdir(parents=True)
+    before = nr._before(ctx, fm, idir)
+    (clone / "done.txt").write_text("yes")
+    git(clone, "add", "done.txt")
+    git(clone, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "work")
+    (clone / ".nightshift").mkdir()
+    (clone / ".nightshift" / "result.json").write_text(RESULT)
+    monkeypatch.setattr(nr.nd, "verify_sha", lambda *a: (True, ""))
+    urls, bases = [], []
+    monkeypatch.setattr(nr.nd, "push", lambda runner, sha, branch, url: (urls.append(url), (len(urls) > 1, "log"))[1])
+    monkeypatch.setattr(nr.nd, "open_pr", lambda pr, branch, base, *a: (bases.append(base), (True, "https://x/pull/1"))[1])
+    assert nr._deliver_plan(ctx, fm, clone, idir, before)["state"] == "delivering"
+    edited = ni.update(path, repo="shop", pr_base="main")
+    assert nr._deliver(ctx, edited, idir)["state"] == "done"
+    assert urls == [str(tmp / "remote.git")] * 2 and bases == ["master"]
