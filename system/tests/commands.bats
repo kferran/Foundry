@@ -1093,8 +1093,7 @@ self_edit_contract() {
   [[ "$sec" == *'Skip this step on a client'* ]]
   [[ "$sec" == *'when `remote_mode` is `keep`'* ]]
   # README.md's merge=ours lives only in the update's own attributes file; CHANGELOG.md's merge=union is tracked.
-  run grep -q 'README.md.*merge=' .gitattributes
-  [ "$status" -eq 1 ]
+  [ "$(git check-attr merge -- README.md)" = 'README.md: merge: unspecified' ]
   grep -qF 'the setup prompt in `FOUNDRY.md`, Getting started' .claude/commands/setup.md
   grep -qF '(FOUNDRY.md: Sync conflicts)' system/scripts/vault_sync.sh .claude/commands/backup.md
   run grep -rn 'README: Sync conflicts' system/scripts .claude

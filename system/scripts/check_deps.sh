@@ -83,7 +83,7 @@ present() {  # <item>: 1 when the item is available
     python3) py -c 'import sys; sys.exit(sys.version_info < (3, 11))' ;;   # tomllib, resource limits (audit C13)
     pyyaml) py -c 'import yaml' ;;
     pytest) py -m pytest --version ;;
-    superpowers) f="$HOME/.claude/plugins/installed_plugins.json"; [[ -f "$f" && "$(<"$f")" == *'"superpowers@'* ]] && echo 1 || echo 0 ;;
+    superpowers) f="${HOME:-}/.claude/plugins/installed_plugins.json"; [[ -f "$f" && "$(<"$f")" == *'"superpowers@'* ]] && echo 1 || echo 0 ;;
     fts5) py -c 'import sqlite3; sqlite3.connect(":memory:").execute("CREATE VIRTUAL TABLE t USING fts5(x)")' ;;
     *) has "$1" ;;
   esac
