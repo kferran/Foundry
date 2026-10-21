@@ -196,19 +196,19 @@ copies() {
   local -a src=(-- 'system/scripts/*' 'extensions/*/scripts/*') py=(-- 'system/scripts/*.py' 'extensions/*/scripts/*.py')
   {
     # Stream walkers: a file that reads tool results itself (file level: a docstring naming tool_use_id counts too).
-    git grep -lE '"tool_result"|tool_use_id' "${py[@]}" | sed 's/^/walker /'
+    git grep -lE "[\"']tool_result[\"']|tool_use_id" "${py[@]}" | sed 's/^/walker /'
     # Shell helpers defined at top level.
     git grep -nE '^(function +)?(logline|alert_once|fail|skip)( *\(\)| *\{)' "${src[@]}" \
       | sed -E 's/^([^:]+):[0-9]+:(function +)?([a-z_]+).*/helper \1:\3/'
     git grep -lE '^class Fail\b' "${py[@]}" | sed 's/^/fail-class /'
     git grep -lE '^def config\(' "${py[@]}" | sed 's/^/config /'
-    # An extension importing a private vaultlib name (first line of the import only; F2's extension API test replaces this).
+    # An extension importing a private vaultlib name: single-line `from … import` only (F2's extension API test replaces this).
     git grep -nE '^ *from vaultlib(\.[a-z_]+)* import ' -- 'extensions/*/scripts/*.py' \
       | awk -F: '{ path = $1; sub(/^[^:]*:[^:]*:/, ""); sub(/#.*/, ""); sub(/.* import /, ""); n = split($0, a, ",")
                    for (i = 1; i <= n; i++) { t = a[i]; sub(/^[ (]+/, "", t); sub(/[ )].*$/, "", t); if (t ~ /^_/) print "private-import " path ":" t } }'
-    # Test doubles: claude stubs and pytest modules with their own stream() builder.
+    # Test doubles: claude stubs and pytest modules with their own stream() builder (helpers.py is F1's shared home).
     git ls-files | grep -E '(^|/)stub_claude[^/]*$' | sed 's/^/stub /'
-    git grep -lE '^def stream\(' -- 'system/tests/python/*.py' 'extensions/*/tests/python/*.py' | sed 's/^/stream-builder /'
+    git grep -lE '^def stream\(' -- 'system/tests/python/*.py' 'extensions/*/tests/python/*.py' ':!system/tests/python/helpers.py' | sed 's/^/stream-builder /'
   } | sort -u
 }
 
@@ -271,6 +271,7 @@ row.triage_chat system/scripts/smoke_check.sh \{SMOKE_TRIAGE_TIMEOUT:-([0-9]+)\}
 row.handoffs extensions/handoffs/extension.md \{source: handoffs, timeout: ([0-9]+),
 row.watch extensions/intraday/extension.md \{source: watch, timeout: ([0-9]+),
 row.telemetry extensions/telemetry/extension.md \{source: telemetry, timeout: ([0-9]+),
+rca extensions/telemetry/scripts/rca_file.sh \{RCA_TIMEOUT:-([0-9]+)\}
 '
 
 # STEPS: "<unit> <count> <grace> <value>": one run of <unit> can wait <count> x (<value> + <grace>). A unit is a template
@@ -280,7 +281,7 @@ row.telemetry extensions/telemetry/extension.md \{source: telemetry, timeout: ([
 # `unset CONFINE_SETTINGS`) included, and so do sessions a script runs through another script.
 # Out of the table: the Work Order unit (foundry-nightshift: per-order sessions under its 14 h limit, budgeted in Python
 # by the runner) and telemetry's HTTP poller (foundry-telemetry, and its run in the brief's prep: no session, each call
-# has its own 60 s limit). Unbounded waits no sum can hold: ingest's run.lock (`flock 9` with no -w in
+# has its own 60 s limit). VALUES' rca (rca_file.sh) runs inside rca.py tick, which tick.telemetry bounds. Unbounded waits no sum can hold: ingest's run.lock (`flock 9` with no -w in
 # run_headless.sh), tracked with intake's overrun in #299. The server drop-ins (install_units.sh DROPIN_TIMEOUT) add
 # 15 min to intake, brief, debrief and update for vault_sync.sh's two sync deadlines; the table holds the templates.
 TIMING_STEPS='
@@ -401,11 +402,24 @@ unit_file() {  # <unit>: its template, core or extension
     if [[ "$n$g$v" == *x* ]]; then errors+="$unit: a step names an unknown key ($count $grace $key)"$'\n'; continue; fi
     total[$unit]=$(( ${total[$unit]:-0} + n * (v + g) ))
   done <<< "$TIMING_STEPS"
-  # Every template unit is in the table or out of it with its reason above.
+  # Every template unit is in the table or out of it with its reason above, and every known overrun names a unit
+  # the table sums.
   for file in system/systemd/*.service.in extensions/*/units/*.service.in; do
     unit="${file##*/foundry-}" unit="${unit%.service.in}"
     [[ -n "${total[$unit]:-}" || " $TIMING_OUT " == *" foundry-$unit "* ]] || errors+="$unit: no steps in the table"$'\n'
   done
+  while read -r unit _; do
+    [[ -z "$unit" || -n "${total[$unit]:-}" ]] || errors+="$unit: a known overrun with no steps in the table"$'\n'
+  done <<< "$TIMING_OVERRUNS"
+  # Every session default, smoke row and manifest smoke entry has its VALUES line, so a new one cannot go unsummed.
+  while IFS=: read -r file var; do
+    grep -qE "^[a-z_.]+ $file .*\{$var:-" <<< "$TIMING_VALUES" || errors+="$file: $var has no VALUES line"$'\n'
+  done < <(git grep -oE 'CONNECTOR_TIMEOUT="\$\{[A-Z_]+|\{HEADLESS_TIMEOUT' -- 'system/scripts/*' 'extensions/*/scripts/*' \
+             | sed -E 's/:.*[{]/:/')
+  while read -r key; do
+    [[ -n "${val[row.$key]:-}" ]] || errors+="smoke row $key: no row.$key VALUES line"$'\n'
+  done < <(sed -nE 's/^ *connector ([a-z_]+) .*/\1/p' system/scripts/smoke_check.sh
+           sed -nE 's/^ *- \{source: ([a-z_]+), timeout:.*/\1/p' extensions/*/extension.md)
   for unit in "${!total[@]}"; do
     if [[ "$unit" == smoke/* ]]; then
       limit="${val[row.${unit#smoke/}]:-}"
