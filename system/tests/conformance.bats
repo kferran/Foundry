@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
-# The factory line's conformance checks (factory F0 spec §3.8). The pipeline test: a spec or plan dated on or
+# The factory line's conformance checks (factory F0 spec §3.5, §3.6, §3.8). The copy and timing ratchets list
+# today's known exceptions; a new one fails, and each list may only shrink. The pipeline test: a spec or plan dated on or
 # after PIPELINE_SINCE carries the header lines FOUNDRY.md Development requires; older documents are
 # grandfathered by the date their file name starts with, so the test needs no allowlist.
 
@@ -128,4 +129,298 @@ doc() { local f="$1"; shift; mkdir -p "${f%/*}"; printf '%s\n' '# T' '' "$@" > "
     "$S/2026-10-23-empty.md: no **Grill:** line" \
     "$S/2026-10-23-empty.md: no **Builder check:** line with its outcome" \
     "$S/2026-10-23-empty.md: no **Blueprint:** line naming Source, Poller, Compile run, Work Order or none: <why>")" ]
+}
+
+# --- The copy ratchet (factory F0 spec §3.5) ---
+
+# One line per known copy: "<kind> <path>[:<name>]  # <reason, or the F1 retrofit that removes it>". A PR that removes a
+# copy deletes its line, so the diff shows exactly which copies went.
+COPIES_ALLOWED='
+walker system/scripts/vaultlib/triage.py  # F1 retrofit 1 (triage): connector.check_stream
+walker system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
+walker extensions/intraday/scripts/watchlib/check.py  # F1 library PR lifts it into vaultlib/connector.py; retrofit 3 (watch)
+walker system/scripts/vaultlib/notify.py  # F1 retrofit 4 (notify)
+walker system/scripts/calendar_tsv.py  # F1 retrofit 5 (calendar)
+walker extensions/handoffs/scripts/jira_handoffs.py  # F1 retrofit 6 (handoffs)
+walker extensions/telemetry/scripts/telemetrylib/rca.py  # F1 retrofit 7 (RCA filer)
+walker system/scripts/vaultlib/nightshift_session.py  # other shape: a Work Order session with many tools and no single connector (F1 spec)
+helper system/scripts/triage_fetch.sh:logline  # F1 retrofit 1 (triage): lib_fetch.sh
+helper system/scripts/triage_fetch.sh:alert_once  # F1 retrofit 1 (triage): lib_fetch.sh
+helper system/scripts/triage_fetch.sh:fail  # F1 retrofit 1 (triage): lib_fetch.sh
+helper system/scripts/triage_fetch.sh:skip  # F1 retrofit 1 (triage): lib_fetch.sh
+helper system/scripts/meetings_fetch.sh:logline  # F1 retrofit 2 (meetings)
+helper system/scripts/meetings_fetch.sh:alert_once  # F1 retrofit 2 (meetings)
+helper extensions/intraday/scripts/watch_fetch.sh:logline  # F1 retrofit 3 (watch)
+helper extensions/intraday/scripts/watch_fetch.sh:alert_once  # F1 retrofit 3 (watch)
+helper system/scripts/notify.sh:logline  # F1 retrofit 4 (notify)
+helper system/scripts/notify.sh:alert_once  # F1 retrofit 4 (notify)
+helper system/scripts/notify.sh:fail  # F1 retrofit 4 (notify)
+helper extensions/handoffs/scripts/jira_fetch.sh:logline  # F1 retrofit 6 (handoffs)
+helper extensions/handoffs/scripts/jira_fetch.sh:alert_once  # F1 retrofit 6 (handoffs)
+helper extensions/handoffs/scripts/jira_fetch.sh:fail  # F1 retrofit 6 (handoffs)
+helper extensions/telemetry/scripts/rca_file.sh:logline  # F1 retrofit 7 (RCA filer)
+helper extensions/telemetry/scripts/rca_file.sh:alert_once  # F1 retrofit 7 (RCA filer)
+helper extensions/telemetry/scripts/rca_file.sh:fail  # F1 retrofit 7 (RCA filer)
+helper system/scripts/smoke_check.sh:logline  # F1 library PR: smoke_check.sh on lib_fetch.sh
+helper system/scripts/smoke_check.sh:alert_once  # F1 library PR: smoke_check.sh on lib_fetch.sh
+helper system/scripts/vault_sync.sh:fail  # other shape: fail <step> <reason> for a sync step, no fetch exit
+fail-class system/scripts/vaultlib/triage.py  # F1 retrofit 1 (triage): connector.Fail
+fail-class system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
+fail-class system/scripts/vaultlib/notify.py  # F1 retrofit 4 (notify)
+fail-class system/scripts/calendar_tsv.py  # F1 retrofit 5 (calendar)
+fail-class extensions/handoffs/scripts/jira_handoffs.py  # F1 retrofit 6 (handoffs)
+fail-class extensions/telemetry/scripts/telemetrylib/rca.py  # F1 retrofit 7 (RCA filer)
+config system/scripts/alert.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
+config system/scripts/commit_runs.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
+config system/scripts/vaultlib/nightshift_check.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
+config system/scripts/vaultlib/notify.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
+config system/scripts/vaultlib/triage.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
+config extensions/handoffs/scripts/jira_handoffs.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
+config extensions/telemetry/scripts/telemetrylib/rca.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
+private-import extensions/intraday/scripts/watchlib/check.py:_structured  # F1 retrofit 3 (watch): from vaultlib.connector
+private-import extensions/intraday/scripts/watchlib/check.py:_text_json  # F1 retrofit 3 (watch): from vaultlib.connector
+stub system/tests/stub_claude  # other shape: the headless stub (STUB_MODE), not a connector stub
+stub system/tests/stub_claude_nightshift  # other shape: the Work Order stub, not a connector stub
+stub system/tests/stub_claude_calendar  # F1 library PR: stub_claude_connector
+stub system/tests/stub_claude_meetings  # F1 library PR: stub_claude_connector
+stub extensions/intraday/tests/stub_claude_watch  # F1 library PR: stub_claude_connector
+stream-builder system/tests/python/test_triage.py  # F1 retrofit 1 (triage): helpers.stream
+stream-builder extensions/intraday/tests/python/test_watch_check.py  # F1 retrofit 3 (watch): helpers.stream
+stream-builder system/tests/python/test_calendar_tsv.py  # F1 retrofit 5 (calendar): helpers.stream
+stream-builder extensions/handoffs/tests/python/test_handoffs_jira.py  # F1 retrofit 6 (handoffs): helpers.stream
+stream-builder extensions/telemetry/tests/python/test_rca.py  # F1 retrofit 7 (RCA filer): helpers.stream
+'
+
+# copies: every copy of a shared part in the tracked tree, one "<kind> <path>[:<name>]" line each, sorted.
+copies() {
+  local -a src=(-- 'system/scripts/*' 'extensions/*/scripts/*') py=(-- 'system/scripts/*.py' 'extensions/*/scripts/*.py')
+  {
+    # Stream walkers: a file that reads tool results itself (file level: a docstring naming tool_use_id counts too).
+    git grep -lE '"tool_result"|tool_use_id' "${py[@]}" | sed 's/^/walker /'
+    # Shell helpers defined at top level.
+    git grep -nE '^(function +)?(logline|alert_once|fail|skip)( *\(\)| *\{)' "${src[@]}" \
+      | sed -E 's/^([^:]+):[0-9]+:(function +)?([a-z_]+).*/helper \1:\3/'
+    git grep -lE '^class Fail\b' "${py[@]}" | sed 's/^/fail-class /'
+    git grep -lE '^def config\(' "${py[@]}" | sed 's/^/config /'
+    # An extension importing a private vaultlib name (first line of the import only; F2's extension API test replaces this).
+    git grep -nE '^ *from vaultlib(\.[a-z_]+)* import ' -- 'extensions/*/scripts/*.py' \
+      | awk -F: '{ path = $1; sub(/^[^:]*:[^:]*:/, ""); sub(/#.*/, ""); sub(/.* import /, ""); n = split($0, a, ",")
+                   for (i = 1; i <= n; i++) { t = a[i]; sub(/^[ (]+/, "", t); sub(/[ )].*$/, "", t); if (t ~ /^_/) print "private-import " path ":" t } }'
+    # Test doubles: claude stubs and pytest modules with their own stream() builder.
+    git ls-files | grep -E '(^|/)stub_claude[^/]*$' | sed 's/^/stub /'
+    git grep -lE '^def stream\(' -- 'system/tests/python/*.py' 'extensions/*/tests/python/*.py' | sed 's/^/stream-builder /'
+  } | sort -u
+}
+
+@test "no new copy of a shared part (factory F0 spec §3.5)" {
+  allowed="$(sed -E 's/ +#.*$//; /^$/d' <<< "$COPIES_ALLOWED" | sort -u)"
+  found="$(copies)"
+  # A copy not on the list: use the shared part, or add the line with its reason in a PR the owner reviews.
+  run comm -13 <(printf '%s\n' "$allowed") <(printf '%s\n' "$found")
+  [ "$status" -eq 0 ]
+  echo "new copies: $output"
+  [ -z "$output" ]
+  # A listed copy that is gone: delete its line in the same PR, so the list only shrinks.
+  run comm -23 <(printf '%s\n' "$allowed") <(printf '%s\n' "$found")
+  echo "listed copies no longer found: $output"
+  [ -z "$output" ]
+}
+
+# --- The timing ratchet (factory F0 spec §3.6, defect class C3) ---
+# VALUES: "<key> <file> <ERE>". The ERE must match exactly one line of the file; its first group is the value, in seconds
+# or with a unit (s, m, min, h). Changing a default the table names, or the line around it, fails here until the table
+# follows; the sums below then decide whether it still fits.
+TIMING_VALUES='
+grace.connector system/scripts/lib_connector.sh timeout -k ([0-9]+) "\$CONNECTOR_TIMEOUT"
+grace.headless system/scripts/run_headless.sh timeout -k ([0-9]+s) "\$TIMEOUT"
+grace.listing system/scripts/lib_confine.sh timeout -k ([0-9]+) [0-9]+ "\$\{CLAUDE_BIN
+listing system/scripts/lib_confine.sh timeout -k [0-9]+ ([0-9]+) "\$\{CLAUDE_BIN
+headless system/scripts/run_headless.sh \{HEADLESS_TIMEOUT:-([0-9]+m)\}
+headless.lock system/scripts/run_headless.sh \{HEADLESS_LOCK_WAIT:-([0-9]+)\}
+calendar system/scripts/calendar_fetch.sh \{CALENDAR_TIMEOUT:-([0-9]+)\}
+now.seed system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}" system/scripts/now\.py seed
+now.archive.work system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}" system/scripts/now\.py archive --partition work
+now.archive.personal system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}" system/scripts/now\.py archive --partition personal
+archive.lock system/scripts/brief_prep.sh flock -w "\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}"
+jira extensions/handoffs/scripts/jira_fetch.sh \{JIRA_TIMEOUT:-([0-9]+)\}
+gh system/scripts/debrief_prep.sh \{GH_TIMEOUT:-([0-9]+)\}
+intake.lock system/scripts/vaultlib/intake.py self\.lock\("run\.lock", timeout=([1-9][0-9]*)\)
+intake.runs system/scripts/vaultlib/intake.py "INTAKE_MAX_RUNS", "([0-9]+)"
+tick.intraday extensions/intraday/extension.md ^tick: \{run: "scripts/today_log\.py tick", timeout: ([0-9]+)\}
+tick.telemetry extensions/telemetry/extension.md ^tick: \{run: "scripts/rca\.py tick", timeout: ([0-9]+)\}
+meetings system/scripts/meetings_fetch.sh \{MEETINGS_TIMEOUT:-([0-9]+)\}
+meetings.reads system/scripts/meetings_fetch.sh ^MAX_READS=([0-9]+)$
+notify system/scripts/notify.sh \{NOTIFY_TIMEOUT:-([0-9]+)\}
+sync system/scripts/vault_sync.sh \{SYNC_DEADLINE:-([0-9]+)\}
+triage.mail system/scripts/triage_fetch.sh \{TRIAGE_TIMEOUT:-([0-9]+)\}
+triage.chat system/scripts/triage_fetch.sh \{TRIAGE_CHAT_TIMEOUT:-([0-9]+)\}
+triage.lock system/scripts/triage.py intake\.lock\("run\.lock", timeout=([0-9]+)\)
+update.lock system/scripts/update_template.sh \{UPDATE_LOCK_WAIT:-([0-9]+)\}
+update.fetch system/scripts/update_template.sh \{UPDATE_FETCH_TIMEOUT:-([0-9]+)\}
+watch.slack extensions/intraday/scripts/watch_fetch.sh \{WATCH_SLACK_TIMEOUT:-([0-9]+)\}
+watch.mail extensions/intraday/scripts/watch_fetch.sh \{WATCH_MAIL_TIMEOUT:-([0-9]+)\}
+watch.days extensions/intraday/scripts/watchlib/calendar.py ^MAX_FETCH_DAYS = ([0-9]+)
+watch.lock extensions/intraday/scripts/watch.py intake\.lock\("run\.lock", timeout=([0-9]+)\)
+smoke.version system/scripts/smoke_check.sh \{SMOKE_VERSION_TIMEOUT:-([0-9]+)\}
+smoke.extensions system/scripts/smoke_check.sh timeout ([0-9]+) system/scripts/extensions\.py smoke
+smoke.units system/scripts/smoke_check.sh \{SMOKE_UNITS_TIMEOUT:-([0-9]+)\}
+row.calendar system/scripts/smoke_check.sh \{SMOKE_CALENDAR_TIMEOUT:-([0-9]+)\}
+row.meetings system/scripts/smoke_check.sh \{SMOKE_MEETINGS_TIMEOUT:-([0-9]+)\}
+row.triage system/scripts/smoke_check.sh \{SMOKE_TRIAGE_TIMEOUT:-([0-9]+)\}" system/scripts/triage_fetch\.sh --check --source mail
+row.triage_chat system/scripts/smoke_check.sh \{SMOKE_TRIAGE_TIMEOUT:-([0-9]+)\}" system/scripts/triage_fetch\.sh --check --source chat
+row.handoffs extensions/handoffs/extension.md \{source: handoffs, timeout: ([0-9]+),
+row.watch extensions/intraday/extension.md \{source: watch, timeout: ([0-9]+),
+row.telemetry extensions/telemetry/extension.md \{source: telemetry, timeout: ([0-9]+),
+'
+
+# STEPS: "<unit> <count> <grace> <value>": one run of <unit> can wait <count> x (<value> + <grace>). A unit is a template
+# unit (its limit is TimeoutStartSec in its .service.in) or "smoke/<row>" (its limit is row.<row>: the row's --check).
+# <count> is a number or a VALUES key (the script's own cap); <grace> is a grace.* key, or - when the step has no kill
+# grace. Every claude process counts, the server listing (`claude mcp list`, once per process and again after each
+# `unset CONFINE_SETTINGS`) included, and so do sessions a script runs through another script.
+# Out of the table: the Work Order unit (foundry-nightshift: per-order sessions under its 14 h limit, budgeted in Python
+# by the runner) and telemetry's HTTP poller (foundry-telemetry, and its run in the brief's prep: no session, each call
+# has its own 60 s limit). Unbounded waits no sum can hold: ingest's run.lock (`flock 9` with no -w in
+# run_headless.sh), tracked with intake's overrun in #299. The server drop-ins (install_units.sh DROPIN_TIMEOUT) add
+# 15 min to intake, brief, debrief and update for vault_sync.sh's two sync deadlines; the table holds the templates.
+TIMING_STEPS='
+brief 1 grace.listing listing  # brief_prep.sh: calendar_fetch.sh, its own process
+brief 1 grace.connector calendar
+brief 1 - now.seed
+brief 1 - now.archive.work
+brief 1 - now.archive.personal
+brief 1 - archive.lock
+brief 1 grace.listing listing  # handoffs brief prep: jira_fetch.sh, its own process
+brief 1 grace.connector jira
+brief 1 - headless.lock  # run_headless.sh brief
+brief 1 grace.headless headless
+debrief 3 - gh  # debrief_prep.sh: three gh searches
+debrief 1 - headless.lock
+debrief 1 grace.headless headless
+intake 1 - intake.lock  # the briefing Notes extract waits for run.lock
+intake 1 - tick.intraday  # extension ticks, killed at their timeout (rca.py tick holds its rca_file.sh sessions)
+intake 1 - tick.telemetry
+intake intake.runs grace.headless headless  # inbox files and digest batches, at most INTAKE_MAX_RUNS a tick
+meetings 1 grace.listing listing
+meetings 1 grace.connector meetings  # the search
+meetings meetings.reads grace.connector meetings  # one read session per Doc, at most MAX_READS
+notify 1 grace.listing listing
+notify 2 grace.connector notify  # the day thread parent post (slack_notify_thread daily), then the notice
+smoke 1 - smoke.version
+smoke 1 - row.calendar
+smoke 1 - row.meetings
+smoke 1 - row.triage
+smoke 1 - row.triage_chat
+smoke 1 - smoke.extensions
+smoke 1 - row.handoffs
+smoke 1 - row.watch
+smoke 2 - row.telemetry  # the source list, then one source; each further source adds one more
+smoke 1 - smoke.units
+sync 1 - sync  # one deadline across every git call of the sync
+triage 2 grace.listing listing  # each source (mail, chat) runs in its own process
+triage 1 grace.connector triage.mail
+triage 1 grace.connector triage.chat
+triage 2 - triage.lock  # triage.py record, once per source
+update 1 - update.lock
+update 1 - update.fetch
+watch 2 grace.listing listing  # the Slack and Gmail sessions each rebuild their settings
+watch 1 grace.connector watch.slack
+watch 1 grace.connector watch.mail
+watch 1 grace.listing listing  # calendar_fetch.sh for today, its own process
+watch 1 grace.connector calendar
+watch watch.days grace.listing listing  # calendar_fetch.sh for each slot day, at most MAX_FETCH_DAYS
+watch watch.days grace.connector calendar
+watch 1 - watch.lock  # watch.py route
+smoke/calendar 1 grace.listing listing
+smoke/calendar 1 grace.connector calendar
+smoke/meetings 1 grace.listing listing  # --check runs the search only
+smoke/meetings 1 grace.connector meetings
+smoke/triage 1 grace.listing listing
+smoke/triage 1 grace.connector triage.mail
+smoke/triage_chat 1 grace.listing listing
+smoke/triage_chat 1 grace.connector triage.chat
+smoke/handoffs 1 grace.listing listing
+smoke/handoffs 1 grace.connector jira
+smoke/watch 2 grace.listing listing  # --check: the Slack and Gmail sessions and today calendar, no slot days, no route
+smoke/watch 1 grace.connector watch.slack
+smoke/watch 1 grace.connector watch.mail
+smoke/watch 1 grace.listing listing
+smoke/watch 1 grace.connector calendar
+'
+
+# Units over their limit today: "<unit> <issue>  # by how much". The list may only shrink: a unit that fits fails until
+# its line goes.
+TIMING_OVERRUNS='
+intake #299  # 7,270 s against 90 min, and ingest run.lock wait is unbounded
+smoke #299  # 3,000 s against 35 min with one telemetry source, 120 s more per further source
+watch #299  # 1,815 s against 29 min: the five server listings are not in watch_fetch.sh budget comment
+smoke/calendar #299  # 235 s against 210: the server listing
+smoke/watch #299  # 1,225 s against 1,140: three server listings
+'
+TIMING_OUT='foundry-nightshift foundry-telemetry'
+
+secs() {  # <n>[s|m|min|h] -> seconds
+  case "$1" in
+    *min) echo $(( ${1%min} * 60 )) ;;
+    *h) echo $(( ${1%h} * 3600 )) ;;
+    *m) echo $(( ${1%m} * 60 )) ;;
+    *s) echo "${1%s}" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+# read_value <file> <ERE>: the first group of the one line of <file> that matches, in seconds; fails otherwise.
+read_value() {
+  local line
+  line="$(grep -E -- "$2" "$1")" || { echo "no line of $1 matches: $2" >&2; return 1; }
+  [[ "$line" != *$'\n'* ]] || { echo "more than one line of $1 matches: $2" >&2; return 1; }
+  [[ "$line" =~ $2 ]] || { echo "bash cannot read: $2" >&2; return 1; }
+  secs "${BASH_REMATCH[1]}"
+}
+
+unit_file() {  # <unit>: its template, core or extension
+  local f
+  for f in "system/systemd/foundry-$1.service.in" extensions/*/units/"foundry-$1.service.in"; do
+    [[ ! -f "$f" ]] || { echo "$f"; return 0; }
+  done
+  return 1
+}
+
+@test "every unit's sessions fit its time limit (factory F0 spec §3.6)" {
+  declare -A val total
+  local key file re unit count grace v n g limit errors=""
+  while read -r key file re; do
+    [[ -n "$key" ]] || continue
+    if v="$(read_value "$file" "$re" 2>&1)"; then val[$key]="$v"; else errors+="$key: $v"$'\n'; fi
+  done <<< "$TIMING_VALUES"
+  while read -r unit count grace key _; do
+    [[ -n "$unit" ]] || continue
+    n="$count"; [[ "$n" =~ ^[0-9]+$ ]] || n="${val[$count]:-x}"
+    g=0; [[ "$grace" == - ]] || g="${val[$grace]:-x}"
+    v="${val[$key]:-x}"
+    if [[ "$n$g$v" == *x* ]]; then errors+="$unit: a step names an unknown key ($count $grace $key)"$'\n'; continue; fi
+    total[$unit]=$(( ${total[$unit]:-0} + n * (v + g) ))
+  done <<< "$TIMING_STEPS"
+  # Every template unit is in the table or out of it with its reason above.
+  for file in system/systemd/*.service.in extensions/*/units/*.service.in; do
+    unit="${file##*/foundry-}" unit="${unit%.service.in}"
+    [[ -n "${total[$unit]:-}" || " $TIMING_OUT " == *" foundry-$unit "* ]] || errors+="$unit: no steps in the table"$'\n'
+  done
+  for unit in "${!total[@]}"; do
+    if [[ "$unit" == smoke/* ]]; then
+      limit="${val[row.${unit#smoke/}]:-}"
+    else
+      file="$(unit_file "$unit")" || { errors+="$unit: no unit template"$'\n'; continue; }
+      limit="$(read_value "$file" '^TimeoutStartSec=([0-9]+(s|min|h)?)$')" || { errors+="$unit: no TimeoutStartSec"$'\n'; continue; }
+    fi
+    [[ -n "$limit" ]] || { errors+="$unit: no limit"$'\n'; continue; }
+    echo "$unit: ${total[$unit]} s of $limit s"
+    if grep -qE "^$unit " <<< "$TIMING_OVERRUNS"; then
+      (( total[$unit] > limit )) || errors+="$unit: fits now (${total[$unit]} s of $limit s); delete its known-overrun line"$'\n'
+    elif (( total[$unit] > limit )); then
+      errors+="$unit: ${total[$unit]} s of waits against a $limit s limit"$'\n'
+    fi
+  done
+  echo "$errors"
+  [ -z "$errors" ]
 }

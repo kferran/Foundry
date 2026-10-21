@@ -11,7 +11,7 @@ Make the brief and Now page readable, give model output a quality baseline, fini
 The order follows three rules:
 1. **Fix the interface first.** The brief (34.7 KB, target 8 KB) and the Now page (101 KB, 88 open lines, target 25 KB) are what the owner reads daily, and both are growing.
 2. **Measure before adding inputs.** Ingest evals land before office-file drops (#257), Slack captures, or any new Workcell.
-3. **Shrink before building.** Step 3 is done (all three extensions moved, core budget pinned at 13,200 lines and 14 schemas). The step 4 budgets finish before new features add code to core.
+3. **Shrink before building.** Step 3 is done (all three extensions moved, core budget pinned at 14 schemas and, since #296 (#293), 13,950 lines: `system/tests/vault_integrity.bats`). The step 4 budgets finish before new features add code to core.
 
 | Phase | What | Lane | Size | Depends on |
 |---|---|---|---|---|
@@ -106,7 +106,7 @@ Step 3 is complete on master: DTCC moved to a vault-only `extensions/dtcc/` (`9e
 
 **Done when:** schemas at 12 or fewer, `CLAUDE.md` at or under 50 lines, and both budget tests lowered and green.
 
-**Revised (owner, 2026-10-19; `specs/2026-10-19-phase-c-budgets-design.md` §2):** core holds at 14 schemas, and new note types ship as extension schemas; meetings stay in core. The line budget holds at 13,800, since phases A and B added more than they removed. `CLAUDE.md` goes to 50 lines or fewer, with the Agents block and routing in `system/agents/foreman.md` and the approved-plans rule in the `order` skill. Done when `CLAUDE.md` is at or under 50 lines, both budget tests are green at 14 schemas and 13,800 lines, and the live check passes.
+**Revised (owner, 2026-10-19; `specs/2026-10-19-phase-c-budgets-design.md` §2):** core holds at 14 schemas, and new note types ship as extension schemas; meetings stay in core. The line budget holds at 13,800, since phases A and B added more than they removed (since raised to 13,850 by #282 and to 13,950 by #296 for #293: `system/tests/vault_integrity.bats`). `CLAUDE.md` goes to 50 lines or fewer, with the Agents block and routing in `system/agents/foreman.md` and the approved-plans rule in the `order` skill. Done when `CLAUDE.md` is at or under 50 lines, both budget tests are green at 14 schemas and 13,950 lines, and the live check passes.
 
 ### Phase D: capture and the intraday picture
 
