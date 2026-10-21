@@ -1059,3 +1059,30 @@ def test_a_linked_research_output_is_refused(env, tmp_path, linked):
     assert not (vault / "wiki/work/concepts/Answer.md").exists()
     alerts = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
     assert alerts.count(f"{RFM['id']}: the research output is a link") == 1
+
+
+def test_delivery_after_a_repo_edit_pushes_to_the_recorded_repo(env, monkeypatch, tmp_path):
+    # A retry reads the note again; a repo swapped while the order sits in delivering must not redirect the push.
+    vault, tmp = env
+    from test_nightshift_check import registered
+    registered(vault, tmp_path / "cb")   # shop, a work codebase with its own origin
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ctx = nr.Ctx(vault, NOW)
+    clone = nr._clone(ctx, fm)
+    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir.mkdir(parents=True)
+    before = nr._before(ctx, fm, idir)
+    (clone / "done.txt").write_text("yes")
+    git(clone, "add", "done.txt")
+    git(clone, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "work")
+    (clone / ".nightshift").mkdir()
+    (clone / ".nightshift" / "result.json").write_text(RESULT)
+    monkeypatch.setattr(nr.nd, "verify_sha", lambda *a: (True, ""))
+    urls, bases = [], []
+    monkeypatch.setattr(nr.nd, "push", lambda runner, sha, branch, url: (urls.append(url), (len(urls) > 1, "log"))[1])
+    monkeypatch.setattr(nr.nd, "open_pr", lambda pr, branch, base, *a: (bases.append(base), (True, "https://x/pull/1"))[1])
+    assert nr._deliver_plan(ctx, fm, clone, idir, before)["state"] == "delivering"
+    edited = ni.update(path, repo="shop", pr_base="main")
+    assert nr._deliver(ctx, edited, idir)["state"] == "done"
+    assert urls == [str(tmp / "remote.git")] * 2 and bases == ["master"]

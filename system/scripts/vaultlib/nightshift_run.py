@@ -499,7 +499,8 @@ def _deliver_plan(ctx: Ctx, fm: dict, clone: Path, idir: Path, before: dict) -> 
         return {"state": "blocked", "reason": "verify", "needs": [f"Fix the failing check: {out.splitlines()[0]}"]}
     (idir / "delivery.json").write_text(json.dumps({"sha": sha, "branch": branch, "title": _text(res.get("pr_title")) or fm["id"],
                                                     "body": _text(res.get("pr_body")) or _text(res.get("summary")),
-                                                    "summary": _text(res.get("summary")), "tries": 0}))
+                                                    "summary": _text(res.get("summary")), "tries": 0,
+                                                    "repo": fm["repo"], "pr_base": fm.get("pr_base") or "master"}))
     shutil.rmtree(clone, ignore_errors=True)
     return _deliver(ctx, fm, idir)
 
@@ -507,6 +508,7 @@ def _deliver_plan(ctx: Ctx, fm: dict, clone: Path, idir: Path, before: dict) -> 
 def _deliver(ctx: Ctx, fm: dict, idir: Path) -> dict:
     """Push the verified commit and open the pull request; on failure later ticks retry this step only."""
     d = json.loads((idir / "delivery.json").read_text())
+    fm = {**fm, **{k: d[k] for k in ("repo", "pr_base") if k in d}}   # as verified: the note may change (#298)
     d["tries"] += 1
     (idir / "delivery.json").write_text(json.dumps(d))
     url, pr = nd.push_target(ctx.vault, fm)
