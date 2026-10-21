@@ -12,7 +12,7 @@ Read the current role with `system/scripts/vault_index.py field system/config.md
 
 If the vault path (`pwd -P`) contains a space, stop: the memory hooks cannot run from such a path. Ask the user to move the vault to a path without spaces and run `/setup` again there.
 
-Then run `system/scripts/check_deps.sh --role <role>`. List every `missing` line with its install hint, and every `optional` line as optional. `dev` lines (`bats`, `pytest`, `shellcheck`) are only for template development: list them apart, never as missing. If `pyyaml` is missing, stop: setup cannot continue without it. Otherwise continue, noting which features are off.
+Then run `system/scripts/check_deps.sh --role <role>`. List every `missing` line with its install hint, and every `optional` line as optional. `dev` lines (`bats`, `pytest`, `shellcheck`, the `superpowers` plugin) are only for template development: list them apart, never as missing. If `pyyaml` is missing, stop: setup cannot continue without it. Otherwise continue, noting which features are off.
 
 On a client, skip phases 3, 6, 6b, 6d, 9, 9a and 11, and report each as "not used on a client"; phase 6e only links extension skills there. Phases 5 and 5a run on a client only to remove automation and memory hooks left from an earlier role.
 
@@ -79,6 +79,7 @@ On a client, never install the hooks. Run `system/scripts/install_hooks.sh --dry
    - `memory_capture.sh` (Stop): after at least `digest_min_events` tool events and `digest_min_minutes` minutes since the last digest, it asks Claude for a short digest of the session, then redacts it and writes it to `raw/<partition>/notes/` for intake to compile. It asks at most once in a row, and not when Claude's last reply ended with a question to you.
    - `memory_activity.sh` (PostToolUse on edits and Bash): counts work events for that threshold. It only updates a counter.
    - `memory_keep.sh` (PreCompact and SessionEnd): copies the session's transcript to `transcript_keep_dir` (default `~/.local/state/foundry/transcripts`), outside the vault and readable only by you (`/` and your home directory are refused), so a digest the Stop hook missed can be recovered from it later. A copy is never replaced by a shorter one, and copies not refreshed for `transcript_keep_days` days (default 90; 0 keeps them) are deleted, only in a directory the hook created.
+   - `usage_log.sh` (UserPromptSubmit, and PreToolUse on the Skill tool): in a session started at the vault root, it appends the time and the command or skill name to `system/logs/usage-YYYY-MM.jsonl` when you type a `/command` or Claude runs a skill. It never logs what you typed after the name.
    - Three `permissions.allow` rules for `vault_index.py related`, `show` and `backlinks`: the only way a codebase session reads the vault, and it sees only that codebase's partition plus `shared`.
    - `digest.md` in your user commands directory: the `/digest` command, which writes a digest on demand. If the dry run says `left alone`, a `digest.md` that is not managed by a vault already exists; it is kept, and `/digest` stays yours.
 4. Say that the hooks run in every Claude Code session on this machine but act only inside the vault and the registered codebases. Everywhere else, and in headless runs, subagents and `claude -p` scripts, they exit at once and do nothing.

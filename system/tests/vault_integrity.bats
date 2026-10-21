@@ -52,6 +52,10 @@ setup() {
   grep -qxF '* text=auto eol=lf' .gitattributes
 }
 
+@test "CHANGELOG.md merges with the union driver, so two pull requests' lines both land (factory F0 §3.3, C13)" {
+  [ "$(git check-attr merge -- CHANGELOG.md)" = 'CHANGELOG.md: merge: union' ]
+}
+
 @test "the scratch folder ships, ignores everything else in it, and CLAUDE.md names it" {
   [ "$(git ls-files .scratch)" = ".scratch/.gitignore" ]
   git check-ignore -q .scratch/clone/README.md
@@ -176,7 +180,7 @@ boundary_rules() {
 }
 
 @test "memory hooks are executable, the library is sourced-only, and the digest text exists" {
-  for h in memory_recall.sh memory_capture.sh memory_activity.sh memory_keep.sh; do
+  for h in memory_recall.sh memory_capture.sh memory_activity.sh memory_keep.sh usage_log.sh; do
     [ -x "system/hooks/$h" ]
   done
   [ ! -x system/hooks/lib_memory.sh ]
@@ -193,6 +197,21 @@ boundary_rules() {
   [ "$(head -n 1 "$d/LICENSE")" = 'MIT License' ]
   grep -qx 'Copyright (c) 2025 Siqi Chen' "$d/LICENSE"
   grep -qF 'humanizer v3.0.0' FOUNDRY.md
+}
+
+# The upstream text is everything above the marker line; the Foundry's addition sits below it (factory F0 §3.8).
+@test "the vendored grilling is mattpocock-skills 1.2.3, upstream text unchanged, with its MIT license and the Foundry's questions below a marker" {
+  d=.claude/skills/grilling
+  grep -qx 'name: grilling' "$d/SKILL.md"
+  [ "$(grep -c '^<!-- Foundry addition' "$d/SKILL.md")" = 1 ]
+  [ "$(sed '/^<!-- Foundry addition/,$d' "$d/SKILL.md" | sha256sum)" = '10ff989e7498b23b5acb49d5048f11dcd906757d2f79c5cdf8a00001381296f2  -' ]
+  added="$(sed -n '/^<!-- Foundry addition/,$p' "$d/SKILL.md")"
+  for q in 'worth building' 'For whom' 'without it' 'smallest version' 'displace'; do
+    [[ "$added" == *"$q"* ]]
+  done
+  [ "$(sha256sum < "$d/LICENSE")" = '0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5  -' ]
+  grep -qx 'Copyright (c) 2026 Matt Pocock' "$d/LICENSE"
+  grep -qF 'mattpocock-skills 1.2.3' FOUNDRY.md
 }
 
 @test "Workcells pass their schema and declare valid capabilities once each; the concept schema lists their union" {
