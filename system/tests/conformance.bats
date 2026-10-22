@@ -423,12 +423,14 @@ timing_problems() (
   sed -i 's/timeout: 1900/timeout: 1000/' "$r/extensions/telemetry/extension.md"
   mkdir -p "$r/extensions/demo"
   printf '%s\n' '---' 'name: demo' 'contract: 1' 'bogus: 1' '---' > "$r/extensions/demo/extension.md"
+  printf '%s\n' 'CONNECTOR_TIMEOUT="${EXTRA_TIMEOUT:-60}"' > "$r/extensions/handoffs/scripts/extra.sh"
   git -C "$r" add -A
   run timing_problems "$r"
   printf '%s\n' "$output"
   [ "$status" -eq 0 ]
   [ "$(grep -v '^# ' <<< "$output" | LC_ALL=C sort)" = "$(printf '%s\n' \
     'demo: unknown manifest field(s) bogus' \
+    'extensions/handoffs/scripts/extra.sh: EXTRA_TIMEOUT has no budget value in its manifest' \
     'extensions/handoffs/scripts/jira_fetch.sh: JIRA_TIMEOUT has no step' \
     'intraday: budget value WATCH_SLACK_TIMEOUT is 421; extensions/intraday/scripts/watch_fetch.sh says 420' \
     'tick/telemetry: 1395 s of waits against a 1000 s limit')" ]

@@ -12,6 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "system" / "scripts"))
 from vaultlib import extensions  # noqa: E402
 
+NAME = re.compile(r"[A-Z][A-Z0-9_]*")
+
 
 def defaults(root: Path, ext: str, name: str) -> list:
     """[(file, value)] for each `${NAME:-N}` or `NAME = N` line start in the extension's scripts tree."""
@@ -27,9 +29,19 @@ def lines(root: Path, ext: str) -> list:
     data, why = extensions.manifest(root, ext)
     if why:
         return [f"P {why}"]
+    out = []
+
+    def value(key, v, what):  # a V line, or a P line when v is not a whole number (bash arithmetic reads only those)
+        out.append(f"V {key} {v}" if str(v).isdigit() else f"P {ext}: {what} is {v!r}, not a whole number of seconds")
+        return str(v).isdigit()
+
     budget = data.get("budget") or {}
-    values = budget.get("values") or {}
-    out = [f"V {ext}.{k} {v}" for k, v in values.items()]
+    values = {}
+    for k, v in (budget.get("values") or {}).items():
+        if not NAME.fullmatch(str(k)):   # core keys are lower-case, so an extension value never shadows one
+            out.append(f"P {ext}: budget value name {k!r} is not [A-Z][A-Z0-9_]*")
+        elif value(f"{ext}.{k}", v, f"budget value {k}"):
+            values[k] = v
     for k, v in values.items():
         found = defaults(root, ext, k)
         if len(found) != 1:
@@ -43,10 +55,12 @@ def lines(root: Path, ext: str) -> list:
             continue
         unit = f"tick/{ext}" if t[0] == "tick" else t[0]
         out.append(" ".join(["S", unit, *(f"{ext}.{x}" if x in values else x for x in t[1:])]))
-    if data.get("tick"):
-        out += [f"V tick.{ext} {data['tick'].get('timeout')}", f"S intake 1 - tick.{ext}"]
+    if data.get("tick"):   # core runs a tick with no timeout at 600 s (vaultlib/intake.py)
+        value(f"tick.{ext}", data["tick"].get("timeout", "600"), "tick timeout")
+        out.append(f"S intake 1 - tick.{ext}")
     for row in data.get("smoke") or []:
-        out += [f"V row.{row['source']} {row['timeout']}", f"S smoke {2 if row.get('each') else 1} - row.{row['source']}"]
+        value(f"row.{row['source']}", row.get("timeout"), f"smoke row {row['source']} timeout")
+        out.append(f"S smoke {2 if row.get('each') else 1} - row.{row['source']}")
     if budget.get("out"):
         out += [f"O {u['name'].removeprefix('foundry-')}" for u in data.get("units") or []]
     return out
