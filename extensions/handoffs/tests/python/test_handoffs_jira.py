@@ -5,9 +5,12 @@ import json
 import pytest
 
 import jira_handoffs as jh
+from helpers import call, stream as session
 
 CFG = {"handoffs_site": "example.atlassian.net", "handoffs_projects": ["EX", "OPS"]}
 SITE, JQL = jh.query(CFG)
+BIG = ("Error: result (123,456 characters) exceeds maximum allowed tokens. Output has been saved to "
+       "/tmp/x/tool-results/mcp-atlassian.txt.")
 
 
 def node(key="EX-1", assignee="Blake Sample", **fields):
@@ -18,20 +21,12 @@ def node(key="EX-1", assignee="Blake Sample", **fields):
     return {"key": key, "fields": f, "webUrl": f"https://elsewhere.example/{key}"}
 
 
-def stream(*page_nodes, jql=JQL, site=SITE, tool=jh.TOOL, error=False, more=False, result="success"):
+def jira_stream(*page_nodes, jql=JQL, site=SITE, tool=jh.TOOL, error=False, more=False, result="success", text="…"):
     """A session that loads the tool and searches once per page."""
-    s = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t0", "name": "ToolSearch", "input": {}}]}},
-         {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t0",
-                                                   "content": [{"type": "tool_reference", "tool_name": jh.TOOL}]}]}}]
-    for n, nodes in enumerate(page_nodes, 1):
-        s.append({"type": "assistant", "message": {"content": [
-            {"type": "tool_use", "id": f"t{n}", "name": tool, "input": {"cloudId": site, "jql": jql, "maxResults": 100}}]}})
-        info = {"hasNextPage": more and n == len(page_nodes), "endCursor": "c"}
-        s.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": f"t{n}", "is_error": error,
-                                                           "content": "<persisted-output>…"}]},
-                  "tool_use_result": {"structuredContent": {"issues": {"nodes": nodes, "pageInfo": info}}}})
-    s.append({"type": "result", "subtype": result, "is_error": result != "success"})
-    return s
+    return session(tool, [call({"cloudId": site, "jql": jql, "maxResults": 100}, text,
+                               {"issues": {"nodes": nodes, "pageInfo": {"hasNextPage": more and n == len(page_nodes),
+                                                                        "endCursor": "c"}}}, error)
+                          for n, nodes in enumerate(page_nodes, 1)], result=result)
 
 
 def fails(code, s, cfg=CFG):
@@ -61,7 +56,7 @@ def test_incomplete_settings_are_a_usage_error(cfg, reason):
 
 
 def test_lines_merge_pages_once_each_with_a_link_on_the_site_and_no_email():
-    lines = jh.extract(stream([node("EX-1")], [node("EX-1"), node("OPS-2", assignee=None)]), CFG)
+    lines = jh.extract(jira_stream([node("EX-1")], [node("EX-1"), node("OPS-2", assignee=None)]), CFG)
     assert lines == [
         "- [ ] [EX-1](https://example.atlassian.net/browse/EX-1) Fix (EX-1) with a tab (Blake Sample, In Review, unchanged since 2026-09-28)",
         "- [ ] [OPS-2](https://example.atlassian.net/browse/OPS-2) Fix (OPS-2) with a tab (unassigned, In Review, unchanged since 2026-09-28)"]
@@ -69,7 +64,7 @@ def test_lines_merge_pages_once_each_with_a_link_on_the_site_and_no_email():
 
 
 def test_a_session_that_stopped_before_the_last_page_fails_closed():
-    assert "last page" in fails(1, stream([node()], more=True))
+    assert "last page" in fails(1, jira_stream([node()], more=True))
 
 
 @pytest.mark.parametrize("kw,code", [
@@ -80,13 +75,19 @@ def test_a_session_that_stopped_before_the_last_page_fails_closed():
     ({"result": "error_max_turns"}, 1),
 ])
 def test_unexpected_tools_arguments_and_errors(kw, code):
-    fails(code, stream([node()], **kw))
+    fails(code, jira_stream([node()], **kw))
 
 
 def test_no_connector_and_no_call():
-    s = stream([node()])
+    s = jira_stream([node()])
     assert fails(3, [s[0], s[-1]]) == "no Atlassian connector reachable"
     assert "never called" in fails(1, s[:2] + [s[-1]])
+
+
+@pytest.mark.parametrize("text", [BIG, "<persisted-output>\nPreview…"])
+def test_a_page_too_large_for_the_model_fails_6(text):
+    # The model saw a stand-in, not pageInfo: it cannot know whether to page on (F1 spec §3.6 item 6).
+    assert fails(6, jira_stream([node()], text=text)) == "a search result was too large for the model to read"
 
 
 @pytest.mark.parametrize("bad", [
@@ -96,18 +97,18 @@ def test_no_connector_and_no_call():
     "a string",
 ])
 def test_malformed_tickets_fail_closed(bad):
-    fails(1, stream([node("EX-9"), bad]))
+    fails(1, jira_stream([node("EX-9"), bad]))
 
 
 def test_a_result_without_an_issues_list_fails_closed():
-    s = stream([node()])
+    s = jira_stream([node()])
     s[3]["tool_use_result"] = {"structuredContent": {"text": "no issues here"}}
     assert "no issues list" in fails(1, s)
 
 
 def test_main_prints_the_lines_and_one_reason_line(monkeypatch, capsys):
     monkeypatch.setattr(jh, "config", lambda: CFG)
-    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(json.dumps(m) for m in stream([node()]))))
+    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(json.dumps(m) for m in jira_stream([node()]))))
     assert jh.main(["x", "extract"]) == 0
     assert capsys.readouterr().out.startswith("- [ ] [EX-1]")
     monkeypatch.setattr(jh, "config", lambda: {})
@@ -119,20 +120,20 @@ def test_the_brief_lists_ten_recent_then_counts_the_rest_and_the_old():
     old = [node(f"EX-{i}", statuscategorychangedate=f"2025-03-{i:02d}T09:00:00.000-0600") for i in range(1, 9)]
     recent = [node(f"OPS-{i}", statuscategorychangedate=f"2026-09-{i:02d}T09:00:00.000-0600") for i in range(1, 18)]
     edge = node("OPS-99", statuscategorychangedate="2026-07-19T09:00:00.000-0600")  # exactly 90 days: recent
-    out = jh.chase(jh.extract(stream(recent[::-1] + old + [edge]), CFG), "2026-10-17")
+    out = jh.chase(jh.extract(jira_stream(recent[::-1] + old + [edge]), CFG), "2026-10-17")
     assert out[0].startswith("- [ ] [OPS-99]") and out[1].startswith("- [ ] [OPS-1]")
     assert len(out) == 12 and out[10] == "- and 8 more"
     assert out[11] == "- 8 handoffs unchanged for more than 90 days (oldest: EX-1, since 2025-03-01)"
 
 
 def test_a_long_summary_is_cut():
-    (line,) = jh.extract(stream([node(summary="word " * 60)]), CFG)
+    (line,) = jh.extract(jira_stream([node(summary="word " * 60)]), CFG)
     assert "…" in line and line.endswith("unchanged since 2026-09-28)")
 
 
 def test_main_takes_a_date(monkeypatch, capsys):
     monkeypatch.setattr(jh, "config", lambda: CFG)
-    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(json.dumps(m) for m in stream([node()]))))
+    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(json.dumps(m) for m in jira_stream([node()]))))
     assert jh.main(["x", "extract", "--date", "2027-06-01"]) == 0
     assert capsys.readouterr().out.startswith("- 1 handoffs unchanged for more than 90 days (oldest: EX-1")
     assert jh.main(["x", "extract", "--date"]) == 2
