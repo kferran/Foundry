@@ -22,10 +22,6 @@ system/scripts/vaultlib/triage.py:intraday
 # the smoke unit's timeout comment
 system/systemd/foundry-smoke.service.in:telemetry
 # Leave with factory F2 PR 1:
-system/scripts/vaultlib/alerts.py:handoffs
-system/scripts/vaultlib/alerts.py:incident
-system/scripts/vaultlib/alerts.py:rca
-system/scripts/vaultlib/alerts.py:telemetry
 system/scripts/vaultlib/index.py:rca
 system/scripts/vaultlib/index.py:telemetry
 system/scripts/vaultlib/intake.py:production_error

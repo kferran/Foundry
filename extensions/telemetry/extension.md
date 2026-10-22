@@ -17,7 +17,12 @@ units:
   - {name: foundry-telemetry, roles: [standalone, server]}
 tick: {run: "scripts/rca.py tick", timeout: 1900}
 lint: scripts/telemetrylib/lint.py
-alert_tags: [telemetry, incident, rca, {tag: telemetry_source, severity: now}]
+alert_tags:
+  - {tag: incident, severity: now}
+  - {tag: rca, severity: now}
+  - {tag: telemetry_source, severity: now}
+  # a secrets-scan line (#166, owner's decision 2026-10-17): a credential in a production log needs rotating before the brief
+  - {tag: telemetry, severity: brief, now_when: '\S+: (?:a log line in \S+ holds|and \d+ more new groups hold) a credential shape'}
 allow: ["Bash(extensions/telemetry/scripts/telemetry_fetch.py --list)", "Bash(extensions/telemetry/scripts/telemetry_fetch.py --check *)"]
 deps: [az]
 index_ignore: []

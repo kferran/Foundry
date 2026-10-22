@@ -66,6 +66,14 @@ def test_missing_requires_wrong_contract_unknown_field_each_refused_with_one_rea
     assert extensions.enabled(ext) == []
 
 
+def test_a_now_when_that_is_not_a_regex_is_a_reason_and_the_extension_still_loads(vault):
+    manifest(vault, "w", alert_tags="[{tag: w, severity: now, now_when: '('}, {tag: ok, now_when: 'x'}]")
+    config(vault, "w")
+    reasons = extensions.check(vault)
+    assert len(reasons) == 1 and reasons[0].startswith("w: alert tag w: now_when is not a valid regex")
+    assert [n for n, _ in extensions.enabled(vault)] == ["w"]
+
+
 def test_field_reads_one_manifest_field(ext):
     config(ext, "demo")
     assert run(ext, "field", "demo", "description").stdout == "A fixture extension for the loader tests\n"

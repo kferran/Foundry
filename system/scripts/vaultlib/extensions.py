@@ -91,9 +91,24 @@ def _resolve(vault: Path):
     return {n: loadable[n] for n in order if n in loadable}, reasons
 
 
+def _field_reasons(name: str, data: dict) -> list:
+    """Reasons for a field the loader ignores while the extension still loads (factory F2 §3.1)."""
+    out = []
+    for t in data.get("alert_tags") or []:
+        if isinstance(t, dict) and t.get("now_when"):
+            try:
+                re.compile(str(t["now_when"]))
+            except re.error as exc:
+                out.append(f"{name}: alert tag {t.get('tag')}: now_when is not a valid regex ({exc}); "
+                           f"the tag keeps its severity")
+    return out
+
+
 def check(vault: Path) -> list:
-    """One reason per listed extension that cannot load (missing folder, bad manifest, missing requires)."""
-    return _resolve(vault)[1]
+    """One reason per listed extension that cannot load (missing folder, bad manifest, missing requires), then one per
+    field of a loaded extension that is ignored."""
+    loaded, reasons = _resolve(vault)
+    return reasons + [r for name, data in loaded.items() for r in _field_reasons(name, data)]
 
 
 def enabled(vault: Path) -> list:
