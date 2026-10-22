@@ -30,6 +30,7 @@ def use(name):
 @pytest.mark.parametrize("text", [BIG, "<persisted-output>\nPreview…", '{"a": 1}\n\n[OUTPUT TRUNCATED - exceeded 25000 tokens]',
                                   "Output too large (78 KB). Full output saved to: /x/1.txt",
                                   "MCP tool response (31,000 tokens) exceeds maximum allowed tokens (25000).",
+                                  'MCP tool "mcp__x__list_events" response (31,000 tokens) exceeds maximum allowed tokens (25000).',
                                   [{"type": "text", "text": BIG}]])
 def test_too_large_knows_each_stand_in(text):
     assert connector.too_large(text)

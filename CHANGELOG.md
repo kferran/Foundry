@@ -10,7 +10,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-22
-- Fixed: a connector fetch counts a result as too large for the model only when claude's stand-in opens the result text (or claude's cut ends it). A plain-text result (a document's text, say) that quotes "exceeds maximum allowed tokens" in its first 200 characters, after its start, no longer fails the fetch with exit 6 or holds its place. (#PR)
+- Fixed: a connector fetch counts a result as too large for the model only when claude's stand-in opens the result text (or the text holds claude's truncation mark). A plain-text result (a document's text, say) that quotes "exceeds maximum allowed tokens" in its first 200 characters, after its start, no longer fails the fetch with exit 6 or holds its place. (#PR)
 
 ## 2026-10-21
 - Changed: the intraday watch checks its sessions with the shared connector parts. A Gmail search with a pageSize other than 10 now fails the mail session (exit 7), and a search past its page limit fails at that call, even when an earlier page errored. Some failure reasons in `watch_fetch` log lines read differently ("the session called <tool> with other arguments than the ones built for this run", "a <search> result was too large for the model to read", "the session made <n> <search> calls; the limit is <n>"); exit codes and alert keys are unchanged. (#339)
