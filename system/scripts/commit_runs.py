@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 VAULT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
 from vaultlib import frontmatter  # noqa: E402
-from vaultlib.config import text  # noqa: E402
+from vaultlib.config import text as config_text  # noqa: E402
 
 LOGS = VAULT / "system" / "logs"
 RUNS = LOGS / "runs"
@@ -29,7 +29,7 @@ SUBJECT_MAX = 72
 
 def now():
     try:
-        return datetime.now(ZoneInfo(text(VAULT, "timezone", "UTC")))
+        return datetime.now(ZoneInfo(config_text(VAULT, "timezone", "UTC")))
     except (ZoneInfoNotFoundError, ValueError):
         return datetime.now(ZoneInfo("UTC"))
 
@@ -139,7 +139,7 @@ def message(run_id, command, published, conflicts, role, carried=()):
         rows += [("update", p, "") for p in published if p not in covered]
         partition = ledger_partition(run_id) \
             or folder_partition([r["target"] for r in decisions]) or folder_partition(published) \
-            or text(VAULT, "default_partition", "personal")
+            or config_text(VAULT, "default_partition", "personal")
         head = subject(f"ingest({partition}): ", [f"{CONTROL.sub(' ', d)} {Path(t).stem}" for d, t, _ in rows])
         body = [f"{d} {t} <- {s}" if s else f"{d} {t}" for d, t, s in rows]
         body += [f"held back {p} (conflict)" for p in conflicts]
@@ -184,7 +184,7 @@ def main(argv):
         print("usage: commit_runs.py [--init-cutover]", file=sys.stderr)
         return 2
     since = init_cutover()
-    role = text(VAULT, "machine_role", "standalone")
+    role = config_text(VAULT, "machine_role", "standalone")
     runs = pending(since)
     # A note two pending runs published holds the later run's content: it is committed with that run.
     owner = {p: run_id for run_id, _, published, _ in runs for p in published}
