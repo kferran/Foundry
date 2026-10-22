@@ -9,9 +9,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
-from . import alerts as alertsmod, frontmatter, now as nowmod
+from . import alerts as alertsmod, frontmatter, now as nowmod, state as statemod
+from .connector import Fail, walk
 from .redact import redact
-from .stream import blocks
 
 STATE = Path("system/logs/notify/state.json")
 THREAD = Path("system/logs/notify/thread.json")   # #293: each day's parent and every post's ts, kept THREAD_DAYS
@@ -39,12 +39,6 @@ LIMIT = re.compile(r"usage limit|rate limit|limit reached|hit your limit", re.I)
 OPEN_NEEDS = ("owed", "draft")
 
 
-class Fail(Exception):
-    def __init__(self, code, reason):
-        super().__init__(reason)
-        self.code, self.reason = code, reason
-
-
 def config(vault) -> dict:
     path = Path(vault) / "system" / "config.md"
     return (frontmatter.parse(path.read_text(encoding="utf-8")).data or {}) if path.is_file() else {}
@@ -70,27 +64,13 @@ def link(vault, rel: str) -> str:
     return f"https://github.com/{m.group(1)}/blob/{branch}/{quote(rel)}" if m and branch else ""
 
 
-def _load(vault) -> dict:
-    try:
-        return json.loads((Path(vault) / STATE).read_text())
-    except (OSError, ValueError):
-        return {}
-
-
 def commit(vault, cursor: dict, rel: Path = STATE) -> None:
-    path = Path(vault) / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(cursor, indent=1, sort_keys=True))
-    tmp.replace(path)
+    statemod.save(Path(vault) / rel, cursor)
 
 
 def thread_state(vault) -> dict:
     """{"parents": {date: ts}, "posts": {ts: {day, thread, text}}}: every post notify made with threading on (#293)."""
-    try:
-        data = json.loads((Path(vault) / THREAD).read_text())
-    except (OSError, ValueError):
-        data = {}
+    data = statemod.load(Path(vault) / THREAD, {})
     data = data if isinstance(data, dict) else {}
     return {k: dict(data.get(k) or {}) if isinstance(data.get(k), dict) else {} for k in ("parents", "posts")}
 
@@ -229,7 +209,7 @@ def collect(vault, now: datetime) -> tuple:
     source, so turning notices on sends no backlog."""
     vault = Path(vault)
     logs = vault / "system" / "logs"
-    state = _load(vault)
+    state = statemod.load(vault / STATE, {})
     first = not state
     cursor = {"ledger": dict(state.get("ledger", {})), "alerts": dict(state.get("alerts", {})),
               "outcomes": list(state.get("outcomes", [])), "sent": dict(state.get("sent", {}))}
@@ -328,39 +308,27 @@ def check(stream, tool: str, channel: str, message_text: str, lines: list, threa
     when nothing was posted. thread (#293): None with threading off; "" for the day's parent, posted with no
     thread_ts; else the parent ts the post must carry as thread_ts. With threading on, a post whose ts cannot be
     read is Fail 7: the watch could not tell it from the owner's own post."""
-    calls, named, errors, ok, result, texts = {}, False, set(), set(), None, {}
     allowed = POST_ARGS | ({"thread_ts"} if thread else set())
-    for m in stream:
-        if m.get("type") == "assistant":
-            for b in blocks(m, "tool_use"):
-                if b.get("name") not in ("ToolSearch", tool):
-                    raise Fail(7, f"the session used an unexpected tool: {b.get('name')}")
-                args = b.get("input") or {}
-                if b.get("name") == tool and (args.get("channel_id") != channel or set(args) - allowed
-                                              or (thread and args.get("thread_ts") != thread)):
-                    raise Fail(7, "the session posted to another channel or thread, or with other arguments")
-                if b.get("name") == tool and len(str(args.get("message") or "")) > len(message_text) + EXTRA_TEXT:
-                    raise Fail(7, "the session posted text nobody collected")
-                calls[b.get("id")] = b
-        if m.get("type") == "user":
-            for b in blocks(m, "tool_result"):
-                call = calls.get(b.get("tool_use_id")) or {}
-                content = b.get("content")
-                if call.get("name") == "ToolSearch" and isinstance(content, list) and any(
-                        isinstance(c, dict) and c.get("tool_name") == tool for c in content):
-                    named = True
-                if call.get("name") == tool:
-                    (errors if b.get("is_error") else ok).add(b.get("tool_use_id"))
-                    texts[b.get("tool_use_id")] = content
-        if m.get("type") == "result":
-            result = m
-    posted = [c for i, c in calls.items() if c.get("name") == tool and i in ok]
+    n = 0
+
+    def accept(args):   # each call its own name, so walk pairs every result with its call
+        nonlocal n
+        if args.get("channel_id") != channel or set(args) - allowed or (thread and args.get("thread_ts") != thread):
+            raise Fail(7, "the session posted to another channel or thread, or with other arguments")
+        if len(str(args.get("message") or "")) > len(message_text) + EXTRA_TEXT:
+            raise Fail(7, "the session posted text nobody collected")
+        n += 1
+        return str(n)
+
+    w = walk(stream, tool, accept)
+    landed = {name: b.get("content") for name, b, _ in w.results if not b.get("is_error")}
+    posted = [(c, landed[name]) for name, c in w.calls if name in landed]
     if not posted:
-        if errors:
+        if any(b.get("is_error") for _, b, _ in w.results):
             raise Fail(6, "the connector returned an error")
-        if result and result.get("is_error") and LIMIT.search(str(result.get("result") or "")):
+        if w.result and w.result.get("is_error") and LIMIT.search(str(w.result.get("result") or "")):
             raise Fail(4, "the account usage limit stopped the session")
-        if result is None or named:
+        if w.result is None or w.named:
             raise Fail(1, f"the session never called {tool}")
         # A plugin connector and the claude.ai one name their tools differently, and a headless session may load
         # only one of them (#133): name the Slack server it did load, so the fix is one config line.
@@ -369,11 +337,11 @@ def check(stream, tool: str, channel: str, message_text: str, lines: list, threa
                   and prefix(str(s.get("name"))) != tool.rsplit("__", 1)[0]]
         hint = f'; this session loaded "{loaded[0]}": set slack_connector to "{loaded[0]}"' if loaded else ""
         raise Fail(3, f"no Slack connector reachable as {tool}{hint}")
-    ts = [_posted(texts.get(c.get("id")), channel, thread) for c in posted]
+    ts = [_posted(content, channel, thread) for _, content in posted]
     if thread is not None and not all(ts):
         raise Fail(7, "the post's result names no message link, so its ts cannot be recorded")
     drift = [f"posted {len(posted)} times"] if len(posted) > 1 else []
-    text = _norm(str(posted[0].get("input", {}).get("message") or ""))
+    text = _norm(str(posted[0][0].get("input", {}).get("message") or ""))
     missing = [x for x in lines if _norm(x) not in text]
     if missing:
         drift.append(f"{len(missing)} of {len(lines)} event lines missing from the post")
