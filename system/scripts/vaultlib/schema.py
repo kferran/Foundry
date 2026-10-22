@@ -16,7 +16,7 @@ TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 INT = re.compile(r"^-?\d+$")
 TZ = re.compile(r"^[A-Za-z0-9_+\-]+(/[A-Za-z0-9_+\-]+)*$")
 WIKILINK = re.compile(r"\s*\[\[([^\[\]]+)\]\]\s*")
-RESERVED_TAGS = {"now": "the Now page", "rca": "RCA notes"}   # tags a script writes (note tags spec §2)
+NOW_TAG = "now"   # a tag the Now page script writes (note tags spec §2); a schema reserves its own with reserved_tag
 TAG_FORM = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*")
 
 
@@ -51,6 +51,7 @@ class Schema:
     folders: list
     fields: dict
     source: str
+    reserved_tag: bool = False   # its type's name is a tag written only on its notes (factory F2 §3.1)
 
 
 class SchemaError(Exception):
@@ -118,7 +119,7 @@ def parse_fieldspec(raw, where: str) -> FieldSpec:
 
 
 def _read_schema(path: Path, vault: Path):
-    """(rel, schema_for, folders, fields) of one schema note. Raises SchemaError."""
+    """(rel, schema_for, folders, fields, reserved_tag) of one schema note. Raises SchemaError."""
     rel = path.relative_to(vault).as_posix()
     try:
         text = path.read_text(encoding="utf-8")
@@ -145,7 +146,7 @@ def _read_schema(path: Path, vault: Path):
         if not IDENT.match(str(key)):
             raise SchemaError(f"{rel}: field name {key!r} is not an identifier")
         fields[key] = parse_fieldspec(raw, f"{rel}:{key}")
-    return rel, name, folders, fields
+    return rel, name, folders, fields, _flag(data, "reserved_tag")
 
 
 def extension_schema_paths(vault: Path) -> list:
@@ -159,12 +160,12 @@ def load_schemas(vault: Path) -> dict:
     vault = Path(vault)
     schemas = {}
     for path in sorted((vault / "system" / "schemas").glob("*.md")):
-        rel, name, folders, fields = _read_schema(path, vault)
+        rel, name, folders, fields, reserved = _read_schema(path, vault)
         if name in schemas:
             raise SchemaError(f"{rel}: duplicate schema {name!r}")
-        schemas[name] = Schema(name, folders, fields, rel)
+        schemas[name] = Schema(name, folders, fields, rel, reserved)
     for path in extension_schema_paths(vault):
-        rel, name, folders, fields = _read_schema(path, vault)
+        rel, name, folders, fields, reserved = _read_schema(path, vault)
         if name == "config" and "config" in schemas:
             for key, spec in fields.items():
                 if key in schemas["config"].fields:
@@ -173,7 +174,7 @@ def load_schemas(vault: Path) -> dict:
             continue
         if name in schemas:
             raise SchemaError(f"{rel}: duplicate schema {name!r}")
-        schemas[name] = Schema(name, folders, fields, rel)
+        schemas[name] = Schema(name, folders, fields, rel, reserved)
     return schemas
 
 
@@ -291,19 +292,24 @@ def check_value(spec: FieldSpec, value, ctx: Context, where: str) -> list:
     return err(f"unsupported kind {kind}")
 
 
-def tag_issues(rel: str, ntype, note, values) -> list:
+def reserved_tags(schemas: dict) -> dict:
+    """{tag: the notes it is written on}: the Now page's tag, and each schema's type name that sets reserved_tag."""
+    return {NOW_TAG: "the Now page", **{n: f"{n} notes" for n, s in schemas.items() if s.reserved_tag}}
+
+
+def tag_issues(rel: str, ntype, note, values, schemas: dict) -> list:
     """Warnings on frontmatter tags: one form (lowercase kebab-case, / between nested parts, not digits only) and the
     system tags kept to the notes their scripts write (note tags spec §2)."""
-    line, out = frontmatter.key_line(note, "tags"), []
+    line, out, reserved = frontmatter.key_line(note, "tags"), [], reserved_tags(schemas)
     for tag in map(str, values):
         if not TAG_FORM.fullmatch(tag):
             out.append(Issue(rel, line, "warning", "tag-form",
                              f'tag "{tag}" is not lowercase kebab-case (a-z, 0-9 and -, / between nested parts)'))
         elif tag.replace("/", "").isdigit():
             out.append(Issue(rel, line, "warning", "tag-form", f'tag "{tag}" is only digits, which Obsidian ignores'))
-        elif (tag == "now" and not re.fullmatch(r"wiki/[^/]+/Now\.md", rel)) or (tag == "rca" and ntype != "rca"):
+        elif tag in reserved and (not re.fullmatch(r"wiki/[^/]+/Now\.md", rel) if tag == NOW_TAG else ntype != tag):
             out.append(Issue(rel, line, "warning", "tag-reserved",
-                             f'tag "{tag}" is a system tag, written only on {RESERVED_TAGS[tag]}'))
+                             f'tag "{tag}" is a system tag, written only on {reserved[tag]}'))
     return out
 
 

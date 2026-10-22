@@ -1,8 +1,9 @@
 import json
 import os
+import shutil
 import subprocess
 
-from helpers import concept, meeting, transcript, write
+from helpers import REPO, concept, meeting, transcript, write
 
 
 def test_issues_clean_fixture(cli):
@@ -174,12 +175,18 @@ def test_tags_in_another_form_warn(cli, vault):
 
 
 def test_system_tags_warn_off_their_notes(cli, vault):
-    write(vault, "wiki/work/concepts/Topic.md", concept("work", "Topic", tags="[now, rca]"))
+    """`now` is core's (a path rule); an extension reserves its type's tag with `reserved_tag` (factory F2 §3.1)."""
+    shutil.copytree(REPO / "system/tests/fixtures/extensions", vault / "extensions")
+    write(vault, "wiki/work/concepts/Topic.md", concept("work", "Topic", tags="[now, memo]"))
     write(vault, "wiki/work/Now.md", concept("work", "Now", tags="[now]"))
-    write(vault, "wiki/work/rca/2026-10-11-orders.md",
-          '---\ntype: rca\ntitle: "Orders fail"\npartition: work\ncreated_at: "2026-10-11"\nsource: "raw/telemetry/a.md"\n'
-          'rc_confidence: 4\nfix_confidence: 4\nstatus: draft\ntags: [rca]\n---\n# Orders fail\n')
+    write(vault, "wiki/work/memos/m.md", "---\ntype: memo\ntags: [memo]\n---\n# M\n")
     assert _tag_issues(cli) == [("wiki/work/concepts/Topic.md", "warning", "tag-reserved")] * 2
+    assert 'tag "memo" is a system tag, written only on memo notes' in cli("issues").stdout
+    write(vault, "wiki/work/concepts/Other.md", concept("work", "Other", tags="[memo, kept]"))
+    listed = cli("tags", "--partition", "work").stdout.split()
+    assert "kept" in listed and "memo" not in listed
+    shutil.rmtree(vault / "extensions")   # no extension reserves it now
+    assert _tag_issues(cli) == [("wiki/work/concepts/Topic.md", "warning", "tag-reserved")]
 
 
 def test_staged_tag_issues_never_block_a_commit(cli, vault):

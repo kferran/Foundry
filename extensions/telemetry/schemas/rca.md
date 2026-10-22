@@ -2,6 +2,7 @@
 type: schema
 schema_for: rca
 folders: ["wiki/work/rca/", "wiki/personal/rca/"]
+reserved_tag: "true"
 fields:
   type: {kind: const, value: rca, required: true}
   title: {kind: string, required: true}

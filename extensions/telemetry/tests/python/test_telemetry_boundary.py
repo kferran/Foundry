@@ -88,3 +88,14 @@ def test_only_open_active_rca_notes_are_cited(cli, vault, tmp_path):
         ("wiki/work/rca/open.md", "citation src/gone.py:1: no such file in codebase app"),
         ("wiki/work/rca/unset.md", "citation src/gone.py:1: no such file in codebase app"),   # status defaults to draft
     ]
+
+
+def test_tag_rca_is_reserved_to_rca_notes(cli, vault):
+    import json
+    from helpers import concept
+    write(vault, "wiki/work/concepts/Topic.md", concept("work", "Topic", tags="[rca]"))
+    write(vault, "wiki/work/rca/2026-10-11-orders.md", _rca("2026-10-11-orders", "app", "draft", "Body."))
+    rows = [(i["path"], i["code"]) for i in json.loads(cli("issues", "--json").stdout)["issues"]
+            if i["code"] == "tag-reserved"]
+    assert rows == [("wiki/work/concepts/Topic.md", "tag-reserved")]
+    assert "rca" not in cli("tags", "--partition", "work").stdout.split()

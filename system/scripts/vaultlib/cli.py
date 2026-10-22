@@ -384,7 +384,8 @@ def cmd_tags(args, vault, sc):
         " GROUP BY j.value ORDER BY c DESC, j.value", (args.partition,)).fetchall()
     conn.close()
     # Only tags worth reusing: system tags and tags lint would flag are left out.
-    rows = [(str(t), c) for t, c in rows if str(t) not in schemamod.RESERVED_TAGS
+    reserved = schemamod.reserved_tags(schemamod.load_schemas(vault))
+    rows = [(str(t), c) for t, c in rows if str(t) not in reserved
             and schemamod.TAG_FORM.fullmatch(str(t)) and not str(t).replace("/", "").isdigit()]
     print(json.dumps([{"tag": t, "count": c} for t, c in rows]) if args.json
           else "\n".join(f"{c}\t{t}" for t, c in rows))
