@@ -189,6 +189,9 @@ inbound_says() {
   [ "$status" -eq 7 ]
   [ "$(jq -r .watch system/logs/watch/cursors.json)" = 1800000000 ]
   [ -f "system/logs/watch/calendar-$TODAY.json" ]
+  # The failure line keeps its keys on lib_fetch.sh's logline (F1 retrofit 3).
+  [ "$(jq -sc 'map(select(.step == "slack")) | .[-1] | [keys, .exit, .count]' system/logs/watch_fetch-*.jsonl)" = '[["count","exit","reason","step","time"],7,0]' ]
+  [[ "$(jq -rs 'map(select(.step == "slack")) | .[-1].reason' system/logs/watch_fetch-*.jsonl)" == *"unexpected tool: mcp__claude_ai_Slack__slack_read_channel" ]]
   run "$WF"
   [ "$(grep -c '\[intraday\] The slack watch failed (exit 7):' "$ALERTS")" -eq 1 ]
 }
@@ -202,6 +205,8 @@ inbound_says() {
   rm -f "$STUB_SLACK_ARGS"
   WATCH_CLOCK="6 10" run "$WF"
   [ "$status" -eq 0 ]
+  # The brief's prep reads the skip line by its step (brief/prep.sh).
+  [ "$(jq -sc '.[-1] | [.step, .exit, .reason, .count]' system/logs/watch_fetch-*.jsonl)" = '["tick",0,"skipped: outside Mon-Fri 08:00-18:00",0]' ]
   WATCH_CLOCK="3 18" run "$WF"
   [ "$status" -eq 0 ]
   system/scripts/vault_index.py set system/config.md machine_role client > /dev/null
