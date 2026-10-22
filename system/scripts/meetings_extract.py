@@ -35,7 +35,7 @@ def search(stream):
     shows as an unavailable source instead of an empty listing that moves .since on."""
     keys, files, seen = ("id", "title", "createdTime", "modifiedTime"), [], set()
     # persisted={}: a page the model saw only as too large is still read from structuredContent, as before F1.
-    # ponytail: spec §3.6 item 2 would fail it (6); held until a live --check shows which stand-in a Drive page gets.
+    # ponytail: spec §3.6 item 2 fails it (6); held until a live stream capture shows what a Drive page sends.
     got = check_stream(stream, TOOLS["search"], lambda i: "search", server="Google Drive", persisted={})[0]["search"]
     if not got:
         raise Fail(1, "the search call has no result")

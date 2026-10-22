@@ -150,7 +150,7 @@ session_deny() { awk -v n="$1" '$0 == "--end--" { s++; p = 0; next } s == n - 1 
   run "$MF"
   [ "$status" -eq 0 ]
   read_says FAKE-doc-0001 'text' FAKE-other
-  sed -i 's/"tool_use_id":"t2",/"tool_use_id":"t2","is_error":true,/' "$STUB_STREAMS/read-FAKE-doc-0001.jsonl"
+  sed -i 's/"tool_use_id":"t2","content":"<persisted-output>…"/"tool_use_id":"t2","is_error":true,"content":"boom"/' "$STUB_STREAMS/read-FAKE-doc-0001.jsonl"
   run "$MF"
   [ "$status" -eq 0 ]
   [ "$(jq -c 'select(.step == "read") | .exit' "$LOG" | tr '\n' ' ')" = '7 7 ' ]
