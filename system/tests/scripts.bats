@@ -378,7 +378,9 @@ TOKEN="AKIA""IOSFODNN7EXAMPLE"
   run grep -rhoE -e "printf -- '- %s \[[a-z_]+\]" -e 'f"- \{[^"]*\} \[[a-z_]+\]' -e 'tag(: str)? ?= ?"[a-z_]+"' \
     --exclude-dir=tests "$REPO/system/scripts" "$REPO/system/hooks" "$REPO/extensions"
   [ "$status" -eq 0 ]
-  used="$(sed -E 's/.*[["]([a-z_]+)[]"]$/\1/' <<< "$output" | sort -u)"
+  # A fetch script on lib_fetch.sh names its tag once, as FETCH_TAG=<tag> (factory F1).
+  fetch_tags="$(grep -rhoE 'FETCH_TAG=[a-z_]+' --exclude-dir=tests "$REPO/system/scripts" "$REPO/extensions" | sed 's/^FETCH_TAG=//')"
+  used="$( { sed -E 's/.*[["]([a-z_]+)[]"]$/\1/' <<< "$output"; printf '%s\n' "$fetch_tags"; } | sort -u)"
   # An extension's own tags are in its manifest's alert_tags (a name, or {tag, severity}; phase D spec §2 decision 10).
   known="$(PYTHONPATH="$REPO/system/scripts" python3 -c 'import glob, sys
 from vaultlib import frontmatter

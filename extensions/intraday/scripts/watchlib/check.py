@@ -5,89 +5,23 @@ later page adds only `cursor`). Links, times, senders and captured text come fro
 model's reply only the message key, the kind and four short texts are used, and an item whose message its query
 never returned is dropped.
 """
-import json
 import re
 
 from vaultlib import now as nowmod
-from vaultlib.stream import blocks
-from vaultlib.triage import _structured, _text_json, one_line, reply
+from vaultlib.connector import check_stream, strip_cursor, text_json
+from vaultlib.triage import one_line, reply
 
 from .common import CHANGES, INBOUND_KINDS, WATCH_KINDS, Fail
 
 MAX_PAGES = 5
 MAIL_PAGES = 6   # of 10 threads (watch_fetch.sh): a busy 30-minute window of about 50 incoming threads
+MAIL_PAGE_SIZE = 10   # the prompt's pageSize; a larger page can pass the model's token limit (#289)
 FIELDS = {"channel": re.compile(r"^Channel: (?:#([\w-]+)|(Group DM|DM)) \(ID: ([CGD][A-Z0-9]+)\)", re.M),
           "sender": re.compile(r"^From: (.*?) \(ID: ([A-Z0-9]+)\)", re.M),
           "ts": re.compile(r"^Message_ts: (\d+\.\d+)", re.M),
           "link": re.compile(r"^Permalink: \[[^\]]*\]\((https://[^)\s]+)\)", re.M),
           "text": re.compile(r"^Text:[ \t]*\n?(.*?)(?:\n---[ \t]*(?:\n|$)|\Z)", re.M | re.S)}
 TEXT_MAX = 4000
-
-
-def _strip_cursor(i: dict) -> dict:
-    return {k: v for k, v in i.items() if k != "cursor"}
-
-
-def too_large(content) -> bool:
-    """True when the model saw claude's stand-in for a result over its token limit instead of the result: the MCP note
-    ("Error: result (… characters) exceeds maximum allowed tokens. Output has been saved to …"), a <persisted-output>
-    preview, or a cut that ends "[OUTPUT TRUNCATED - exceeded …". Each is matched where claude puts it, before or after
-    the result's JSON text (which cannot start with it or hold a raw newline), so mail or chat text cannot fake one."""
-    text = ("".join(c.get("text", "") for c in content if isinstance(c, dict)) if isinstance(content, list)
-            else str(content or "")).strip()
-    return (text.startswith("<persisted-output>") or "\n\n[OUTPUT TRUNCATED - exceeded " in text
-            or (text.startswith("Error: result (") and "exceeds maximum allowed tokens" in text[:200]))
-
-
-def query_pages(stream, tool: str, queries: dict, name_of=None, take=_text_json, limit=MAX_PAGES,
-                server="Slack", persisted=None) -> tuple:
-    """({query name: [page payloads]}, the result message) after the tool-use and error checks. name_of(input) names
-    the built query a search input runs (by default: the Slack input itself, less a later page's cursor). A page the
-    model saw only as too_large fails the session, or with a `persisted` dict is counted there by query name (its
-    payload is still taken: the stream's structuredContent holds the whole result)."""
-    name_of = name_of or (lambda i: next((n for n, q in queries.items() if _strip_cursor(i) == q), None))
-    calls, pages, errors, named = {}, {n: [] for n in queries}, [], False
-    for m in stream:
-        if m.get("type") == "assistant":
-            for b in blocks(m, "tool_use"):
-                if b.get("name") not in ("ToolSearch", tool):
-                    raise Fail(7, f"the session used an unexpected tool: {b.get('name')}")
-                if b.get("name") == tool:
-                    name = name_of(b.get("input") if isinstance(b.get("input"), dict) else {})
-                    if name is None:
-                        raise Fail(7, "the session searched with another query than the ones built for this tick")
-                    b = {**b, "query": name}
-                calls[b.get("id")] = b
-        if m.get("type") == "user":
-            for b in blocks(m, "tool_result"):
-                call = calls.get(b.get("tool_use_id")) or {}
-                content = b.get("content")
-                if call.get("name") == "ToolSearch" and isinstance(content, list) and any(
-                        isinstance(c, dict) and c.get("tool_name") == tool for c in content):
-                    named = True
-                if call.get("name") != tool:
-                    continue
-                if too_large(content):
-                    if persisted is None:
-                        raise Fail(6, "a search result was too large for the model to read; lower limit in watchlib/query.py")
-                    persisted[call["query"]] = persisted.get(call["query"], 0) + 1
-                elif b.get("is_error"):
-                    errors.append(json.dumps(content)[:200])
-                    continue
-                pages[call["query"]].append(take(b, m))
-    result = next((m for m in reversed(stream) if m.get("type") == "result"), None)
-    if result is None:
-        raise Fail(1, "claude produced no result")
-    if errors:
-        raise Fail(6, f"the connector returned an error: {errors[0]}")
-    if not any(c.get("name") == tool for c in calls.values()):
-        raise Fail(1 if named else 3, f"the session never called {tool}" if named else f"no {server} connector reachable")
-    if result.get("is_error") or result.get("subtype") != "success":
-        raise Fail(1, f"claude returned an error result ({result.get('subtype')})")
-    for name, got in pages.items():
-        if len(got) > limit:
-            raise Fail(7, f"the session read {len(got)} pages of the {name} search; the limit is {limit}")
-    return pages, result
 
 
 def label(kind: str, name: str) -> str:
@@ -138,7 +72,9 @@ def _by(value) -> str:
 def slack_extract(stream, tool: str, queries: dict, notify: str = "") -> dict:
     """{"items": [...], "captures": [...], "full": [query names]}: the classified watch and own messages joined to
     the results, and every message of the capture search (never classified)."""
-    pages, result = query_pages(stream, tool, queries)
+    pages, result = check_stream(stream, tool, lambda i: next((n for n, q in queries.items() if strip_cursor(i) == q), None),
+                                 MAX_PAGES, "Slack", take=text_json)
+    pages = {n: pages.get(n, []) for n in queries}
     known = {n: messages(got, "" if n == "capture" else notify) for n, got in pages.items()}   # #293: query.slack
     # builds a capture in the notify channel only with notices in a daily thread
     items, seen = [], set()
@@ -245,9 +181,14 @@ def mail_extract(stream, queries: dict, rules=()) -> dict:
     hold names the searches with a persisted page: the model never read it, so their cursors stay."""
     from .query import GMAIL_TOOL
     names, persisted = {q: n for n, q in queries.items()}, {}
-    pages, result = query_pages(stream, GMAIL_TOOL, queries,
-                                lambda i: names.get(i.get("query")) if i.get("view") == "THREAD_VIEW_MINIMAL" else None,
-                                _structured, MAIL_PAGES, "Gmail", persisted)
+
+    def accept(i):
+        if i.get("pageSize") != MAIL_PAGE_SIZE:   # with MAIL_PAGES, the cap on threads a search reads, held in code
+            raise Fail(7, f"the session searched with pageSize {i.get('pageSize')}; the page size is {MAIL_PAGE_SIZE}")
+        return names.get(i.get("query")) if i.get("view") == "THREAD_VIEW_MINIMAL" else None
+
+    pages, result = check_stream(stream, GMAIL_TOOL, accept, MAIL_PAGES, "Gmail", persisted)
+    pages = {n: pages.get(n, []) for n in queries}
     for name, got in pages.items():
         if not got:   # its cursor would move past mail no one read
             raise Fail(1, f"the session never ran the {name} search")

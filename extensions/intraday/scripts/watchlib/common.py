@@ -2,12 +2,12 @@
 
 State lives in system/logs/watch/: cursors.json, the calendar snapshot, the item ledger and the today-file ledger.
 """
-import json
-import os
 from pathlib import Path
 
 from vaultlib import now as nowmod
-from vaultlib.triage import Fail, config  # noqa: F401  (re-exported for the watch's modules)
+from vaultlib.connector import Fail
+from vaultlib.state import append, load, records, save  # noqa: F401  (re-exported for the watch's modules)
+from vaultlib.triage import config
 
 STATE = Path("system") / "logs" / "watch"
 QUERIES = ("watch", "mpim", "own", "capture")
@@ -26,38 +26,6 @@ def state(vault) -> Path:
     p = Path(vault) / STATE
     p.mkdir(parents=True, exist_ok=True)
     return p
-
-
-def load(path: Path, default):
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return default
-
-
-def save(path: Path, data) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
-
-
-def append(path: Path, record: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record, sort_keys=True) + "\n")
-
-
-def records(path: Path) -> list:
-    out = []
-    for raw in path.read_text(encoding="utf-8").splitlines() if path.is_file() else []:
-        try:
-            r = json.loads(raw)
-        except ValueError:
-            continue
-        if isinstance(r, dict):
-            out.append(r)
-    return out
 
 
 def partition(vault) -> str:
