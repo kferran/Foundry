@@ -143,6 +143,32 @@ session_deny() { awk -v n="$1" '$0 == "--end--" { s++; p = 0; next } s == n - 1 
   [ "$(jq -c 'select(.step == "read") | .exit' "$LOG")" = 7 ]
 }
 
+@test "fetch: a read of another Doc fails 7 at the call, before a missing result or an error result is read (F1)" {
+  search_says "$(doc FAKE-doc-0001)"
+  read_says FAKE-doc-0001 'text' FAKE-other
+  sed -i '$d' "$STUB_STREAMS/read-FAKE-doc-0001.jsonl"
+  run "$MF"
+  [ "$status" -eq 0 ]
+  read_says FAKE-doc-0001 'text' FAKE-other
+  sed -i 's/"tool_use_id":"t2","content":"<persisted-output>…"/"tool_use_id":"t2","is_error":true,"content":"boom"/' "$STUB_STREAMS/read-FAKE-doc-0001.jsonl"
+  run "$MF"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c 'select(.step == "read") | .exit' "$LOG" | tr '\n' ' ')" = '7 7 ' ]
+  [ ! -e raw/meetings/FAKE-doc-0001.gdoc.md ]
+}
+
+@test "fetch: a search or read result the model saw only as claude's too-large note is still taken from structuredContent" {
+  note='Error: result (91,234 characters) exceeds maximum allowed tokens. Output has been saved to /x/1.txt'
+  search_says "$(doc FAKE-doc-0001)"
+  read_says FAKE-doc-0001 '## Notes'
+  sed -i "s|\"content\":\"<persisted-output>…\"|\"content\":[{\"type\":\"text\",\"text\":\"$note\"}]|" \
+    "$STUB_STREAMS/search.jsonl" "$STUB_STREAMS/read-FAKE-doc-0001.jsonl"
+  run "$MF"
+  [ "$status" -eq 0 ]
+  [ "$(tail -n 1 raw/meetings/FAKE-doc-0001.gdoc.md)" = '## Notes' ]
+  [ "$(jq -c '[.step, .exit]' "$LOG" | tr '\n' ' ')" = '["search",0] ["read",0] ' ]
+}
+
 @test "fetch: an allow rule for every Drive tool stops the fetch before claude runs" {
   for r in mcp__claude_ai_Google_Drive 'mcp__claude_ai_Google_Drive__*'; do
     jq -cn --arg r "$r" '{permissions: {allow: [$r]}}' > "$HOME/.claude/settings.json"
