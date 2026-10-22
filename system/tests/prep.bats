@@ -21,13 +21,15 @@ setup() {
   mkdir -p system/logs
 }
 
-# calendar_says <structured output json> [tool…]: what the stubbed calendar session returns.
+# calendar_says <structured output json> [tool…]: what the stubbed calendar session returns (default tools: ToolSearch
+# and list_events).
 calendar_says() {
   local out="$1" t
   shift
   {
     printf '{"type":"system","subtype":"init","tools":[]}\n'
-    for t in "${@:-ToolSearch}"; do
+    (( $# )) || set -- ToolSearch mcp__claude_ai_Google_Calendar__list_events
+    for t in "$@"; do
       printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"%s","input":{}}]}}\n' "$t"
     done
     printf '{"type":"result","subtype":"success","is_error":false,"num_turns":4,"total_cost_usd":0.2,"permission_denials":[],"structured_output":%s}\n' "$out"
