@@ -9,14 +9,15 @@ import pytest
 from helpers import REPO
 
 API = "vaultlib.api"
-KEEP = {"schema", "yamlload"}   # for a vault's own extension, which this repository cannot see
-VAULTLIB = re.compile(r"\bvaultlib\.(?!api\b)[A-Za-z_]\w*")
+KEEP = {"frontmatter", "schema", "yamlload"}   # for a vault's own extension, which this repository cannot see (§3.4)
+VAULTLIB = re.compile(r"\bvaultlib\b(?!\.api\b)(?:\.\w+)?")   # any vaultlib mention but vaultlib.api
 
 
 def files(root):
     """Every tracked file under extensions/ outside a tests/ folder."""
-    out = subprocess.run(["git", "-C", str(root), "ls-files", "extensions"], capture_output=True, text=True, check=True)
-    return [root / p for p in out.stdout.split() if "/tests/" not in f"/{p}"]
+    out = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "extensions"], capture_output=True, text=True,
+                         check=True)
+    return [root / p for p in out.stdout.split("\0") if p and "/tests/" not in f"/{p}"]
 
 
 def exports(root):
@@ -59,6 +60,10 @@ def problems(root, paths):
     return out, used
 
 
+def unused(root, used):
+    return exports(root) - used - KEEP
+
+
 def is_vault():
     return (REPO / "system/config.md").exists()
 
@@ -67,8 +72,7 @@ def is_vault():
 def test_extension_scripts_import_vaultlib_only_through_the_api():
     found, used = problems(REPO, files(REPO))
     assert found == []
-    unused = exports(REPO) - used - KEEP
-    assert unused == set(), "an export no extension script uses: drop it from vaultlib/api.py"
+    assert unused(REPO, used) == set(), "an export no extension script uses: drop it from vaultlib/api.py"
 
 
 @pytest.mark.parametrize("code,want", [
@@ -78,6 +82,7 @@ def test_extension_scripts_import_vaultlib_only_through_the_api():
     ("from vaultlib.api import nosuch\n", "nosuch is not in vaultlib.api.__all__"),
     ("from vaultlib.api import now\nnow._private()\n", "now._private is private"),
     ("import importlib\nimportlib.import_module('vaultlib.notify')\n", "names vaultlib.notify"),
+    ("import subprocess\nsubprocess.run(['python3', '-c', 'from vaultlib import now'])\n", "names vaultlib"),
 ])
 def test_each_banned_form_is_caught(tmp_path, code, want):
     (tmp_path / "system/scripts/vaultlib").mkdir(parents=True)
@@ -94,6 +99,16 @@ def test_a_shell_line_naming_a_vaultlib_module_is_caught(tmp_path):
     (tmp_path / "system/scripts/vaultlib/api.py").write_text((REPO / "system/scripts/vaultlib/api.py").read_text())
     script = tmp_path / "extensions/x/brief/prep.sh"
     script.parent.mkdir(parents=True)
-    script.write_text('python3 -c "from vaultlib.now import read"\nprint vaultlib.api ok\n')
+    script.write_text('python3 -c "from vaultlib.now import read"\nprint vaultlib.api ok\npython3 -c "from vaultlib import now"\n')
     found, _ = problems(tmp_path, [script])
-    assert found == ["extensions/x/brief/prep.sh: names vaultlib.now"]
+    assert found == ["extensions/x/brief/prep.sh: names vaultlib.now", "extensions/x/brief/prep.sh: names vaultlib"]
+
+
+def test_an_export_no_script_uses_is_reported(tmp_path):
+    (tmp_path / "system/scripts/vaultlib").mkdir(parents=True)
+    (tmp_path / "system/scripts/vaultlib/api.py").write_text('__all__ = ["now", "frontmatter", "schema", "spare"]\n')
+    script = tmp_path / "extensions/x/scripts/x.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("from vaultlib.api import now\n")
+    found, used = problems(tmp_path, [script])
+    assert found == [] and unused(tmp_path, used) == {"spare"}
