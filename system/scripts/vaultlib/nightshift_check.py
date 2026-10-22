@@ -22,7 +22,7 @@ _COMMAND = r"(?:^[ \t]*(?:(?:\$|[-*+]|\d+\.)[ \t]+)?|(?<=`))"
 CREDENTIAL = re.compile("|".join((_COMMAND if p.endswith(" ") else r"\b") + r"\s+".join(map(re.escape, p.split()))
                                  + (r"[ \t]+(?=\S)" if p.endswith(" ") else r"\b") for p in CREDENTIALED), re.I | re.M)
 SECTIONS = ("## Question", "## Scope", "## Done when", "## Output")
-HOST = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z0-9-]*[a-z][a-z0-9-]*$")   # a letter last: no IP literal (#298)
+HOST = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)*\.(?!0x[0-9a-f]*$)[a-z0-9-]*[a-z][a-z0-9-]*")   # no IP, hex too (#298)
 ID = re.compile(r"\d{4}-\d{2}-\d{2}-[a-z0-9-]+")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
@@ -183,7 +183,7 @@ def screen(vault, fm: dict, body: str, path=None) -> list:
         errs += [f"the brief needs a '{h}' section" for h in SECTIONS if h not in body]
         if not re.fullmatch(rf"wiki/{part}/(concepts|entities|summaries)/[^/]+\.md", str(fm.get("output") or "")):
             errs.append(f"output must be a note path under wiki/{part}/concepts/, entities/ or summaries/")
-        errs += [f"host {h!r} is not a plain host name" for h in fm.get("hosts") or [] if not HOST.match(str(h))]
+        errs += [f"host {h!r} is not a plain host name" for h in fm.get("hosts") or [] if not HOST.fullmatch(str(h))]
     else:
         errs.append("kind must be plan or research")
     return errs

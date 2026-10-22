@@ -67,7 +67,10 @@ slack_says() {
 
 # cal_says <events json>: the calendar session's structured output for today.
 cal_says() {
-  jq -cn --argjson e "$1" '{type: "result", subtype: "success", is_error: false, structured_output: {status: "ok", reason: "", events: $e}}' > "$STUB_CAL_STREAM"
+  {
+    jq -cn '{type: "assistant", message: {content: [{type: "tool_use", id: "c1", name: "mcp__claude_ai_Google_Calendar__list_events", input: {}}]}}'
+    jq -cn --argjson e "$1" '{type: "result", subtype: "success", is_error: false, structured_output: {status: "ok", reason: "", events: $e}}'
+  } > "$STUB_CAL_STREAM"
 }
 
 # inbound_says: the Gmail session runs this tick's incoming-mail search and finds a review request and a monitoring alert.

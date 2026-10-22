@@ -146,7 +146,7 @@ Suite changes: `watch.bats` renames `STUB_ARGS_<KIND>` to `STUB_<KIND>_ARGS` and
 def call(input: dict = None, text: str = "…", sc: dict = None, error: bool = False) -> dict
 def stream(tool: str, calls=(), reply: str = None, result: str = "success", named: bool = True, **result_fields) -> list
 ```
-A ToolSearch call whose result names `tool` in a `tool_reference` block (when `named`); then per call a `tool_use` (`id` `t1`, `t2`, …) and its `tool_result` (`text` as content, `sc` as `tool_use_result.structuredContent`, `is_error`); then the result message (`result` text `reply`, default `{"items": []}`, `is_error` when the subtype is not `success`, plus `result_fields`). Each retrofit turns its suite's builder into a wrapper over it. The calendar suite keeps its own builder (an init message, calls with no results, `structured_output`), with `tool_use` ids added so results pair with calls.
+A ToolSearch call whose result names `tool` in a `tool_reference` block (when `named`); then per call a `tool_use` (`id` `t1`, `t2`, …) and its `tool_result` (`text` as content, `sc` as `tool_use_result.structuredContent`, `is_error`); then the result message (`result` text `reply`, default `{"items": []}`, `is_error` when the subtype is not `success`, plus `result_fields`). Each retrofit turns its suite's builder into a wrapper over it. The calendar suite wraps it as `session()`, which adds the init message, the other tool calls and `StructuredOutput`, and passes `structured_output` as a result field.
 
 ### 3.5 What each walker needs, and what absorbs it
 

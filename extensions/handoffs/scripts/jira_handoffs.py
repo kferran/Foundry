@@ -5,13 +5,12 @@ Usage: jira_handoffs.py query             print the site, then the JQL, built fr
        jira_handoffs.py extract [--date D] < stream  check a jira_fetch.sh session; print the brief's lines: up to
                                           10 tickets, then counts (phase A spec §3.3)
 A handoff is a ticket in handoffs_projects that the owner reported and someone else holds, open and with no
-status-category change for 7 days. The lines come from each user event's tool_use_result.structuredContent, paired
-with its call by tool_use_id; the model's own words are never used.
+status-category change for 7 days. The lines come from each search result's structuredContent (vaultlib.connector);
+the model's own words are never used.
 Exit: 0 ok, 1 claude error or a result in an unexpected shape, 2 usage or incomplete settings, 3 no connector,
-6 connector error, 7 unexpected tool use or a call with other arguments. A non-zero exit writes one reason line
-to stderr.
+6 connector error or a page too large for the model to read, 7 unexpected tool use or a call with other arguments.
+A non-zero exit writes one reason line to stderr.
 """
-import json
 import re
 import sys
 from datetime import date, timedelta
@@ -21,7 +20,8 @@ VAULT = Path(__file__).resolve().parents[3]   # extensions/handoffs/scripts/
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
 from vaultlib import frontmatter  # noqa: E402
 from vaultlib.briefings import cut  # noqa: E402
-from vaultlib.stream import blocks, messages  # noqa: E402
+from vaultlib.connector import Fail, check_stream  # noqa: E402
+from vaultlib.stream import messages  # noqa: E402
 
 TOOL = "mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql"
 PROJECT = re.compile(r"^[A-Z][A-Z0-9_]{0,30}$")
@@ -29,12 +29,6 @@ KEY = re.compile(r"^[A-Z][A-Z0-9_]{0,30}-[0-9]{1,9}$")
 SITE = re.compile(r"^[a-z0-9][a-z0-9.-]{0,200}$")
 CHANGED = re.compile(r"unchanged since (\d{4}-\d{2}-\d{2})\)$")
 MAX_LISTED, OLD_DAYS = 10, 90
-
-
-class Fail(Exception):
-    def __init__(self, code, reason):
-        super().__init__(reason)
-        self.code, self.reason = code, reason
 
 
 def config() -> dict:
@@ -58,42 +52,13 @@ def query(cfg: dict) -> tuple:
 
 
 def pages(stream, site, jql):
-    """The structuredContent of each search result, after the tool-use, argument and error checks."""
-    calls, out, errors, named = {}, [], [], False
-    for m in stream:
-        if m.get("type") == "assistant":
-            for b in blocks(m, "tool_use"):
-                if b.get("name") not in ("ToolSearch", TOOL):
-                    raise Fail(7, f"the session used an unexpected tool: {b.get('name')}")
-                i = b.get("input") if isinstance(b.get("input"), dict) else {}
-                if b.get("name") == TOOL and (i.get("jql") != jql or i.get("cloudId") != site):
-                    raise Fail(7, "the session searched with other arguments than the ones built from the settings")
-                calls[b.get("id")] = b
-        if m.get("type") == "user":
-            for b in blocks(m, "tool_result"):
-                call = calls.get(b.get("tool_use_id")) or {}
-                content = b.get("content")
-                if call.get("name") == "ToolSearch" and isinstance(content, list) and any(
-                        isinstance(c, dict) and c.get("tool_name") == TOOL for c in content):
-                    named = True   # a tool_reference block; free text never counts
-                if call.get("name") != TOOL:
-                    continue
-                if b.get("is_error"):
-                    errors.append(json.dumps(content)[:200])
-                    continue
-                tur = m.get("tool_use_result")
-                sc = tur.get("structuredContent") if isinstance(tur, dict) else None
-                out.append(sc if isinstance(sc, dict) else {})
-    result = next((m for m in reversed(stream) if m.get("type") == "result"), None)
-    if result is None:
-        raise Fail(1, "claude produced no result")
-    if errors:
-        raise Fail(6, f"the connector returned an error: {errors[0]}")
-    if not any(c.get("name") == TOOL for c in calls.values()):
-        raise Fail(1 if named else 3, f"the session never called {TOOL}" if named else "no Atlassian connector reachable")
-    if result.get("is_error") or result.get("subtype") != "success":
-        raise Fail(1, f"claude returned an error result ({result.get('subtype')})")
-    return out
+    """The structuredContent of each search result, after vaultlib.connector's tool-use, argument and error checks.
+    A page the model saw only as too large fails 6: it could not read pageInfo to page on."""
+    def accept(i):
+        if i.get("jql") != jql or i.get("cloudId") != site:
+            raise Fail(7, "the session searched with other arguments than the ones built from the settings")
+        return "search"
+    return check_stream(stream, TOOL, accept, server="Atlassian")[0].get("search", [])
 
 
 def cell(value) -> str:
