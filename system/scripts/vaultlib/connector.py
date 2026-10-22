@@ -19,8 +19,10 @@ class Fail(Exception):
 def too_large(content) -> bool:
     """True when the model saw claude's stand-in for a result over its token limit instead of the result: a
     <persisted-output> preview, a cut ending "[OUTPUT TRUNCATED - exceeded …", the MCP note ("Error: result (…)
-    exceeds maximum allowed tokens", "MCP tool response (N tokens) exceeds …") or "Output too large". A JSON result
-    starts with { or [ and holds no raw newline, so its text cannot be read as any of them."""
+    exceeds maximum allowed tokens", 'MCP tool "<name>" response (N tokens) exceeds …') or "Output too large". The
+    MCP note counts anywhere in a non-JSON text's first 200 characters (#164, kept by the owner on #348): a false hold
+    is loud, a miss is silent. A real result is JSON, starts with { or [ and holds no raw newline, so its text cannot
+    be read as any of them."""
     text = ("".join(c.get("text", "") for c in content if isinstance(c, dict)) if isinstance(content, list)
             else str(content or "")).strip()
     return (text.startswith("<persisted-output>") or "\n\n[OUTPUT TRUNCATED - exceeded " in text

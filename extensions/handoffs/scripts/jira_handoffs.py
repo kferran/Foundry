@@ -8,8 +8,8 @@ A handoff is a ticket in handoffs_projects that the owner reported and someone e
 status-category change for 7 days. The lines come from each search result's structuredContent (the shared connector checks);
 the model's own words are never used.
 Exit: 0 ok, 1 claude error or a result in an unexpected shape, 2 usage or incomplete settings, 3 no connector,
-6 connector error or a page too large for the model to read, 7 unexpected tool use or a call with other arguments.
-A non-zero exit writes one reason line to stderr.
+6 connector error, 7 unexpected tool use or a call with other arguments. A non-zero exit writes one reason line
+to stderr.
 """
 import re
 import sys
@@ -43,14 +43,15 @@ def query(cfg: dict) -> tuple:
                   "AND statusCategory != Done AND statusCategoryChangedDate <= -7d ORDER BY statusCategoryChangedDate ASC")
 
 
-def pages(stream, site, jql):
+def pages(stream, site, jql, persisted):
     """The structuredContent of each search result, after the shared connector's tool-use, argument and error checks.
-    A page the model saw only as too large fails 6: it could not read pageInfo to page on."""
+    A page the model saw only as too large is counted in `persisted` and still read: structuredContent holds the
+    whole page, and extract's last-page check catches a model that could not see hasNextPage."""
     def accept(i):
         if i.get("jql") != jql or i.get("cloudId") != site:
             raise Fail(7, "the session searched with other arguments than the ones built from the settings")
         return "search"
-    return check_stream(stream, TOOL, accept, server="Atlassian")[0].get("search", [])
+    return check_stream(stream, TOOL, accept, server="Atlassian", persisted=persisted)[0].get("search", [])
 
 
 def cell(value) -> str:
@@ -68,10 +69,11 @@ def line(node, site) -> str:
             f"({cell(assignee.get('displayName')) or 'unassigned'}, {cell(status['name'])}, unchanged since {changed[:10]})")
 
 
-def extract(stream, cfg) -> list:
-    """The brief's lines: every page merged, each ticket once. A result in any other shape fails closed (exit 1)."""
+def extract(stream, cfg, persisted=None) -> list:
+    """The brief's lines: every page merged, each ticket once. A result in any other shape fails closed (exit 1).
+    `persisted` (a dict) counts the pages the model saw only as too large."""
     site, jql = query(cfg)
-    got = pages(stream, site, jql)
+    got = pages(stream, site, jql, {} if persisted is None else persisted)
     if not got:
         raise Fail(1, "the search call has no result")
     out, seen = [], set()
