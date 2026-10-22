@@ -138,16 +138,12 @@ doc() { local f="$1"; shift; mkdir -p "${f%/*}"; printf '%s\n' '# T' '' "$@" > "
 COPIES_ALLOWED='
 walker system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
 walker extensions/intraday/scripts/watchlib/check.py  # F1 library PR lifts it into vaultlib/connector.py; retrofit 3 (watch)
-walker system/scripts/vaultlib/notify.py  # F1 retrofit 4 (notify)
 walker system/scripts/vaultlib/nightshift_session.py  # other shape: a Work Order session with many tools and no single connector (F1 spec)
 walker system/scripts/vaultlib/connector.py  # home: the shared walker (F1 spec §3.1)
 helper system/scripts/meetings_fetch.sh:logline  # F1 retrofit 2 (meetings)
 helper system/scripts/meetings_fetch.sh:alert_once  # F1 retrofit 2 (meetings)
 helper extensions/intraday/scripts/watch_fetch.sh:logline  # F1 retrofit 3 (watch)
 helper extensions/intraday/scripts/watch_fetch.sh:alert_once  # F1 retrofit 3 (watch)
-helper system/scripts/notify.sh:logline  # F1 retrofit 4 (notify)
-helper system/scripts/notify.sh:alert_once  # F1 retrofit 4 (notify)
-helper system/scripts/notify.sh:fail  # F1 retrofit 4 (notify)
 helper system/scripts/smoke_check.sh:logline  # other shape: logline <source> <exit> <reason>, one line per smoke row
 helper system/scripts/lib_fetch.sh:logline  # home: the shared fetch helpers (F1 spec §3.2)
 helper system/scripts/lib_fetch.sh:alert_once  # home: the shared fetch helpers (F1 spec §3.2)
@@ -155,7 +151,6 @@ helper system/scripts/lib_fetch.sh:fail  # home: the shared fetch helpers (F1 sp
 helper system/scripts/lib_fetch.sh:skip  # home: the shared fetch helpers (F1 spec §3.2)
 helper system/scripts/vault_sync.sh:fail  # other shape: fail <step> <reason> for a sync step, no fetch exit
 fail-class system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
-fail-class system/scripts/vaultlib/notify.py  # F1 retrofit 4 (notify)
 fail-class system/scripts/vaultlib/connector.py  # home: the one Fail every retrofitted module imports (F1 spec §3.1)
 config system/scripts/alert.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
 config system/scripts/commit_runs.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
