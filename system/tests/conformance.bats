@@ -137,14 +137,10 @@ doc() { local f="$1"; shift; mkdir -p "${f%/*}"; printf '%s\n' '# T' '' "$@" > "
 # copy deletes its line, so the diff shows exactly which copies went.
 COPIES_ALLOWED='
 walker system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
-walker extensions/telemetry/scripts/telemetrylib/rca.py  # F1 retrofit 7 (RCA filer)
 walker system/scripts/vaultlib/nightshift_session.py  # other shape: a Work Order session with many tools and no single connector (F1 spec)
 walker system/scripts/vaultlib/connector.py  # home: the shared walker (F1 spec §3.1)
 helper system/scripts/meetings_fetch.sh:logline  # F1 retrofit 2 (meetings)
 helper system/scripts/meetings_fetch.sh:alert_once  # F1 retrofit 2 (meetings)
-helper extensions/telemetry/scripts/rca_file.sh:logline  # F1 retrofit 7 (RCA filer)
-helper extensions/telemetry/scripts/rca_file.sh:alert_once  # F1 retrofit 7 (RCA filer)
-helper extensions/telemetry/scripts/rca_file.sh:fail  # F1 retrofit 7 (RCA filer)
 helper system/scripts/smoke_check.sh:logline  # other shape: logline <source> <exit> <reason>, one line per smoke row
 helper system/scripts/lib_fetch.sh:logline  # home: the shared fetch helpers (F1 spec §3.2)
 helper system/scripts/lib_fetch.sh:alert_once  # home: the shared fetch helpers (F1 spec §3.2)
@@ -152,7 +148,6 @@ helper system/scripts/lib_fetch.sh:fail  # home: the shared fetch helpers (F1 sp
 helper system/scripts/lib_fetch.sh:skip  # home: the shared fetch helpers (F1 spec §3.2)
 helper system/scripts/vault_sync.sh:fail  # other shape: fail <step> <reason> for a sync step, no fetch exit
 fail-class system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
-fail-class extensions/telemetry/scripts/telemetrylib/rca.py  # F1 retrofit 7 (RCA filer)
 fail-class system/scripts/vaultlib/connector.py  # home: the one Fail every retrofitted module imports (F1 spec §3.1)
 config system/scripts/alert.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
 config system/scripts/commit_runs.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
@@ -164,7 +159,6 @@ config extensions/telemetry/scripts/telemetrylib/rca.py  # stays through F1 (F1 
 stub system/tests/stub_claude  # other shape: the headless stub (STUB_MODE), not a connector stub
 stub system/tests/stub_claude_nightshift  # other shape: the Work Order stub, not a connector stub
 stub system/tests/stub_claude_connector  # home: the one connector stub (F1 spec §3.4)
-stream-builder extensions/telemetry/tests/python/test_rca.py  # F1 retrofit 7 (RCA filer): helpers.stream
 '
 
 # copies: every copy of a shared part in the tracked tree, one "<kind> <path>[:<name>]" line each, sorted.

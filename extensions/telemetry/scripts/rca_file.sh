@@ -15,12 +15,15 @@ source system/scripts/lib_config.sh
 source system/scripts/lib_confine.sh
 # shellcheck source=lib_connector.sh
 source system/scripts/lib_connector.sh
+# shellcheck source=lib_fetch.sh
+source system/scripts/lib_fetch.sh
 
 PREFIX=mcp__claude_ai_Atlassian
 TOOL="${PREFIX}__createJiraIssue"
-OTHER_TOOLS=(addCommentToJiraIssue addTeamworkGraphContext addWorklogToJiraIssue atlassianUserInfo
+# The Atlassian connector's full tool list, the create tool included: fetch_others denies every other one.
+ATLASSIAN_TOOLS=(addCommentToJiraIssue addTeamworkGraphContext addWorklogToJiraIssue atlassianUserInfo
   createCompassComponent createCompassComponentRelationship createCompassCustomFieldDefinition
-  createConfluenceFooterComment createConfluenceInlineComment createConfluencePage createIssueLink
+  createConfluenceFooterComment createConfluenceInlineComment createConfluencePage createIssueLink createJiraIssue
   editJiraIssue fetch getAccessibleAtlassianResources getCompassComponent getCompassComponents
   getCompassCustomFieldDefinitions getConfluenceCommentChildren getConfluencePage getConfluencePageDescendants
   getConfluencePageFooterComments getConfluencePageInlineComments getConfluenceSpaces getContentFormatGuide
@@ -36,24 +39,9 @@ partition="$1" stem="$2"
 TZ="$(config_get timezone UTC)"
 export TZ
 mkdir -p system/logs
-log="system/logs/rca_file-$(date +%Y-%m).jsonl"
-
-logline() {  # <exit> <reason> [key]
-  jq -cn --arg time "$(date -Iseconds)" --arg note "$partition/$stem" --argjson exit "$1" --arg reason "$2" \
-    --arg key "${3:-}" '{time: $time, note: $note, exit: $exit, reason: $reason, key: $key}' >> "$log"
-}
-alert_once() {  # <key> <text>: at most one alert a day per key
-  local f="system/logs/alerts_$(date +%F).md"
-  grep -qF -- "[rca] $1" "$f" 2>/dev/null || printf -- '- %s [rca] %s %s\n' "$(date +%H:%M:%S)" "$1" "$2" >> "$f"
-}
-fail() {  # <exit> <reason>
-  connector_classify "$1" "$2" "${work:-}"   # connector health spec §2: the class leads the reason
-  set -- "$1" "${CONNECTOR_CLASS:+$CONNECTOR_CLASS: }$2"
-  logline "$1" "$2"
-  case "$1" in 1|2|3|4|5|6|7) alert_once "Filing $stem failed (exit $1):" "$2" ;; esac
-  echo "rca_file: $2" >&2
-  exit "$1"
-}
+FETCH_NAME=rca_file FETCH_TAG=rca FETCH_LABEL="Filing $stem" FETCH_ALERTS="1 2 3 4 5 6 7"
+FETCH_LOG="system/logs/rca_file-$(date +%Y-%m).jsonl"
+FETCH_FIELDS="$(jq -cn --arg note "$partition/$stem" '{note: $note, key: ""}')"
 
 # The key of a ticket already created for this note, saved the moment the session returned it: a retry after a failed
 # write-back only writes back, so a draft is never filed twice.
@@ -65,13 +53,12 @@ writeback() {  # <key>
   local wrc=0
   extensions/telemetry/scripts/rca.py filed "$partition" "$stem" "$1" 2> "$work/filed.err" || wrc=$?
   (( wrc == 0 )) || fail "$wrc" "filed $1, but the note was not updated: $(sed 's/^rca: //' "$work/filed.err" | head -n 1)"
-  logline 0 "" "$1"
+  logline 0 "" "$(jq -cn --arg key "$1" '{key: $key}')"
   printf -- '- %s [rca] filed %s for %s\n' "$(date +%H:%M:%S)" "$1" "$stem" >> "system/logs/alerts_$(date +%F).md"
   echo "$1"
   exit 0
 }
-work="$(mktemp -d -p /tmp)"
-trap 'rm -rf -- "$work"' EXIT  # the session's directory is under it: a stopped unit leaves nothing behind
+fetch_workdir  # the session's directory is under it: a stopped unit leaves nothing behind
 if [[ -s "$created" ]]; then
   writeback "$(head -n 1 "$created")"
 fi
@@ -80,7 +67,8 @@ fi
 arc=0
 args="$(extensions/telemetry/scripts/rca.py args "$partition" "$stem" 2>&1)" || arc=$?
 (( arc == 0 )) || fail "$arc" "${args#rca: }"
-CONNECTOR_SERVER="claude.ai Atlassian" CONNECTOR_PREFIX="$PREFIX" CONNECTOR_TOOL="$TOOL" CONNECTOR_OTHERS=("${OTHER_TOOLS[@]}")
+CONNECTOR_SERVER="claude.ai Atlassian" CONNECTOR_PREFIX="$PREFIX" CONNECTOR_TOOL="$TOOL"
+fetch_others "${ATLASSIAN_TOOLS[@]}"
 CONNECTOR_TIMEOUT="${RCA_TIMEOUT:-300}" CONNECTOR_TURNS=8
 
 prompt="First load the Jira tool by calling ToolSearch with query \"select:$TOOL\". If it is not found, wait for it by calling ToolSearch the same way again, up to 3 times in all.
