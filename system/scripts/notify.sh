@@ -19,43 +19,15 @@ source system/scripts/lib_confine.sh
 # shellcheck source=lib_connector.sh
 source system/scripts/lib_connector.sh
 
-# The Slack connector's other tools, the draft tool first: its description steers a model to drafts. The plugin and
-# the claude.ai connector share these names under their own prefix.
-OTHER_TOOLS=(slack_send_message_draft slack_schedule_message slack_add_reaction slack_add_list_record
-  slack_complete_file_upload slack_create_canvas slack_create_conversation slack_create_list slack_get_file_upload_url
-  slack_get_reactions slack_list_channel_members slack_list_user_channels slack_read_canvas slack_read_channel
-  slack_read_file slack_read_list slack_read_thread slack_read_user_profile slack_search_channels slack_search_emojis
-  slack_search_public slack_search_public_and_private slack_search_users slack_update_canvas slack_update_list
-  slack_update_list_record)
+# shellcheck source=lib_fetch.sh
+source system/scripts/lib_fetch.sh
 
-check=0
-case "${1:-}" in
-  "") ;;
-  --check) check=1 ;;
-  *) echo "usage: notify.sh [--check]" >&2; exit 2 ;;
-esac
-(( $# <= 1 )) || { echo "usage: notify.sh [--check]" >&2; exit 2; }
+FETCH_NAME=notify FETCH_TAG=notify FETCH_LABEL=Notices FETCH_ALERTS="1 2 3 4 5 6 7 127" FETCH_FIELDS='{"events": 0}'
+fetch_check_arg "$@"
 TZ="$(config_get timezone UTC)"
 export TZ
 mkdir -p system/logs
-log="system/logs/notify-$(date +%Y-%m).jsonl"
-
-logline() {  # <exit> <reason> [events]
-  jq -cn --arg time "$(date -Iseconds)" --argjson exit "$1" --arg reason "$2" --argjson events "${3:-0}" \
-    '{time: $time, exit: $exit, reason: $reason, events: $events}' >> "$log"
-}
-alert_once() {  # <key> <text>: at most one alert a day per key; [notify] lines are never pushed
-  local f="system/logs/alerts_$(date +%F).md"
-  grep -qF -- "[notify] $1" "$f" 2>/dev/null || printf -- '- %s [notify] %s %s\n' "$(date +%H:%M:%S)" "$1" "$2" >> "$f"
-}
-fail() {  # <exit> <reason>
-  connector_classify "$1" "$2" "${work:-}"   # connector health spec §2: the class leads the reason
-  set -- "$1" "${CONNECTOR_CLASS:+$CONNECTOR_CLASS: }$2"
-  logline "$1" "$2"
-  case "$1" in 1|2|3|4|5|6|7|127) alert_once "Notices failed (exit $1):" "$2" ;; esac
-  echo "notify: $2" >&2
-  exit "$1"
-}
+FETCH_LOG="system/logs/notify-$(date +%Y-%m).jsonl"
 
 channel="$(config_get slack_notify_channel "")"
 if [[ -z "$channel" ]]; then
@@ -65,10 +37,9 @@ fi
 exec 9> system/logs/notify.lock
 flock -n 9 || { logline 4 "a tick is already running"; exit 4; }
 hold="system/logs/notify/hold"
-[[ ! -e "$hold" ]] || fail 5 "held since a session broke its rules ($(head -n 1 "$hold")): read $log, then delete $hold"
+[[ ! -e "$hold" ]] || fail 5 "held since a session broke its rules ($(head -n 1 "$hold")): read $FETCH_LOG, then delete $hold"
 
-work="$(mktemp -d -p /tmp)"
-trap 'rm -rf -- "$work"' EXIT  # the session's directory is under it: a stopped unit leaves nothing behind
+fetch_workdir
 if (( check )); then
   text="Foundry notices are on for ${VAULT_ROOT##*/}."
   jq -cn --arg m "$text" '{message: $m, lines: [$m], cursor: null}' > "$work/collected.json"
@@ -82,7 +53,10 @@ n="$(jq '.lines | length' "$work/collected.json")"
 TOOL="$(system/scripts/notify.py tool)"
 PREFIX="${TOOL%__slack_send_message}"
 CONNECTOR_SERVER="$(config_get slack_connector "claude.ai Slack")" CONNECTOR_PREFIX="$PREFIX" CONNECTOR_TOOL="$TOOL"
-CONNECTOR_OTHERS=("${OTHER_TOOLS[@]}") CONNECTOR_TIMEOUT="${NOTIFY_TIMEOUT:-120}" CONNECTOR_TURNS=6
+CONNECTOR_TIMEOUT="${NOTIFY_TIMEOUT:-120}" CONNECTOR_TURNS=6
+# The Slack connector's other tools, the draft tool first: its description steers a model to drafts. The plugin and
+# the claude.ai connector share these names under their own prefix.
+fetch_others "${SLACK_TOOLS[@]}"
 
 post() {  # <collected file> [new|<parent ts>]: one session posts the message (a reply under the parent ts); the checker
   # reads it back and, given a thread argument, records the posted ts (#293). Sets prc, CONNECTOR_EXIT and the reason.
@@ -117,5 +91,5 @@ post "$work/collected.json" "$parent"
 (( check )) || system/scripts/notify.py commit "$work/collected.json"
 drift="$(head -n 1 "$work/drift.txt")"
 [[ -z "$drift" ]] || alert_once "Notice posted with drift:" "$drift"
-logline 0 "${drift:-$( (( check )) && echo check || true)}" "$n"
+logline 0 "${drift:-$( (( check )) && echo check || true)}" "{\"events\": $n}"
 exit 0

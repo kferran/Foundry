@@ -110,6 +110,25 @@ slack_posts() {
   run "$N" --check
   [ "$status" -eq 0 ]
   grep -qF '"message":"Foundry notices are on for' "$STUB_ARGS"
+  [ "$(tail -n 1 system/logs/notify-*.jsonl | jq -c 'del(.time)')" = '{"exit":0,"reason":"check","events":1}' ]
+}
+
+@test "an argument other than --check is a usage error, an empty one too (F1: fetch_check_arg)" {
+  run "$N" ""
+  [ "$status" -eq 2 ]
+  [ "$output" = "usage: notify.sh [--check]" ]
+  run "$N" --check extra
+  [ "$status" -eq 2 ]
+}
+
+@test "a failure logs and alerts as before (F1: lib_fetch.sh)" {
+  printf -- '- 06:10:00 [intake] one\n' >> "$ALERTS"
+  slack_posts "$(system/scripts/notify.py collect | jq -r .message)" mcp__claude_ai_Slack__slack_send_message_draft
+  run "$N"
+  [ "$status" -eq 7 ]
+  [ "$(tail -n 1 system/logs/notify-*.jsonl | jq -c 'del(.time)')" = '{"exit":7,"reason":"other: the session used an unexpected tool: mcp__claude_ai_Slack__slack_send_message_draft","events":0}' ]
+  grep -qF '[notify] Notices failed (exit 7): other: the session used an unexpected tool' "$ALERTS"
+  [ "${lines[-1]}" = "notify: other: the session used an unexpected tool: mcp__claude_ai_Slack__slack_send_message_draft" ]
 }
 
 # thread_posts <file> <message> <posted ts> [thread_ts]: a session that posts <message>, in a thread when given, and
