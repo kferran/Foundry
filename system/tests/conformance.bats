@@ -204,7 +204,10 @@ new_copies() {
   [ "$output" = "$(printf '%s\n' 'config extensions/handoffs/scripts/cfg.py' 'walker system/scripts/vaultlib/walker2.py')" ]
 }
 
-# --- The timing ratchet (factory F0 spec §3.6, defect class C3) ---
+# --- The timing rule (factory F0 spec §3.6, defect class C3; F3 spec §3.4) ---
+# The tables hold core only. An extension states its budget in its manifest (`budget:` values, steps and out), which
+# timing_manifests.py turns into the same keys and steps: a value becomes <ext>.<NAME>, the extension's tick unit
+# tick/<ext>, and each tick and smoke row adds its own value and step.
 # VALUES: "<key> <file> <ERE>". The ERE must match exactly one line of the file; its first group is the value, in seconds
 # or with a unit (s, m, min, h). Changing a default the table names, or the line around it, fails here until the table
 # follows; the sums below then decide whether it still fits.
@@ -220,12 +223,9 @@ now.seed system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WAIT:-([0-
 now.archive.work system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}" system/scripts/now\.py archive --partition work
 now.archive.personal system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}" system/scripts/now\.py archive --partition personal
 archive.lock system/scripts/brief_prep.sh flock -w "\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}"
-jira extensions/handoffs/scripts/jira_fetch.sh \{JIRA_TIMEOUT:-([0-9]+)\}
 gh system/scripts/debrief_prep.sh \{GH_TIMEOUT:-([0-9]+)\}
 intake.lock system/scripts/vaultlib/intake.py self\.lock\("run\.lock", timeout=([1-9][0-9]*)\)
 intake.runs system/scripts/vaultlib/intake.py "INTAKE_MAX_RUNS", "([0-9]+)"
-tick.intraday extensions/intraday/extension.md ^tick: \{run: "scripts/today_log\.py tick", timeout: ([0-9]+)\}
-tick.telemetry extensions/telemetry/extension.md ^tick: \{run: "scripts/rca\.py tick", timeout: ([0-9]+)\}
 meetings system/scripts/meetings_fetch.sh \{MEETINGS_TIMEOUT:-([0-9]+)\}
 meetings.reads system/scripts/meetings_fetch.sh ^MAX_READS=([0-9]+)$
 notify system/scripts/notify.sh \{NOTIFY_TIMEOUT:-([0-9]+)\}
@@ -235,10 +235,6 @@ triage.chat system/scripts/triage_fetch.sh \{TRIAGE_CHAT_TIMEOUT:-([0-9]+)\}
 triage.lock system/scripts/triage.py intake\.lock\("run\.lock", timeout=([0-9]+)\)
 update.lock system/scripts/update_template.sh \{UPDATE_LOCK_WAIT:-([0-9]+)\}
 update.fetch system/scripts/update_template.sh \{UPDATE_FETCH_TIMEOUT:-([0-9]+)\}
-watch.slack extensions/intraday/scripts/watch_fetch.sh \{WATCH_SLACK_TIMEOUT:-([0-9]+)\}
-watch.mail extensions/intraday/scripts/watch_fetch.sh \{WATCH_MAIL_TIMEOUT:-([0-9]+)\}
-watch.days extensions/intraday/scripts/watchlib/calendar.py ^MAX_FETCH_DAYS = ([0-9]+)
-watch.lock extensions/intraday/scripts/watch.py intake\.lock\("run\.lock", timeout=([0-9]+)\)
 smoke.version system/scripts/smoke_check.sh \{SMOKE_VERSION_TIMEOUT:-([0-9]+)\}
 smoke.extensions system/scripts/smoke_check.sh timeout ([0-9]+) system/scripts/extensions\.py smoke
 smoke.units system/scripts/smoke_check.sh \{SMOKE_UNITS_TIMEOUT:-([0-9]+)\}
@@ -246,20 +242,16 @@ row.calendar system/scripts/smoke_check.sh \{SMOKE_CALENDAR_TIMEOUT:-([0-9]+)\}
 row.meetings system/scripts/smoke_check.sh \{SMOKE_MEETINGS_TIMEOUT:-([0-9]+)\}
 row.triage system/scripts/smoke_check.sh \{SMOKE_TRIAGE_TIMEOUT:-([0-9]+)\}" system/scripts/triage_fetch\.sh --check --source mail
 row.triage_chat system/scripts/smoke_check.sh \{SMOKE_TRIAGE_TIMEOUT:-([0-9]+)\}" system/scripts/triage_fetch\.sh --check --source chat
-row.handoffs extensions/handoffs/extension.md \{source: handoffs, timeout: ([0-9]+),
-row.watch extensions/intraday/extension.md \{source: watch, timeout: ([0-9]+),
-row.telemetry extensions/telemetry/extension.md \{source: telemetry, timeout: ([0-9]+),
-rca extensions/telemetry/scripts/rca_file.sh \{RCA_TIMEOUT:-([0-9]+)\}
 '
 
 # STEPS: "<unit> <count> <grace> <value>": one run of <unit> can wait <count> x (<value> + <grace>). A unit is a template
-# unit (its limit is TimeoutStartSec in its .service.in) or "smoke/<row>" (its limit is row.<row>: the row's --check).
+# unit (its limit is TimeoutStartSec in its .service.in), "smoke/<row>" (its limit is row.<row>: the row's --check) or
+# "tick/<ext>" (its limit is tick.<ext>: the extension's tick timeout).
 # <count> is a number or a VALUES key (the script's own cap); <grace> is a grace.* key, or - when the step has no kill
 # grace. Every claude process counts, the server listing (`claude mcp list`, once per process and again after each
 # `unset CONFINE_SETTINGS`) included, and so do sessions a script runs through another script.
 # Out of the table: the Work Order unit (foundry-nightshift: per-order sessions under its 14 h limit, budgeted in Python
-# by the runner) and telemetry's HTTP poller (foundry-telemetry, and its run in the brief's prep: no session, each call
-# has its own 60 s limit). VALUES' rca (rca_file.sh) runs inside rca.py tick, which tick.telemetry bounds. Unbounded waits no sum can hold: ingest's run.lock (`flock 9` with no -w in
+# by the runner). Unbounded waits no sum can hold: ingest's run.lock (`flock 9` with no -w in
 # run_headless.sh), tracked with intake's overrun in #299. The server drop-ins (install_units.sh DROPIN_TIMEOUT) add
 # 15 min to intake, brief, debrief and update for vault_sync.sh's two sync deadlines; the table holds the templates.
 TIMING_STEPS='
@@ -269,16 +261,12 @@ brief 1 - now.seed
 brief 1 - now.archive.work
 brief 1 - now.archive.personal
 brief 1 - archive.lock
-brief 1 grace.listing listing  # handoffs brief prep: jira_fetch.sh, its own process
-brief 1 grace.connector jira
 brief 1 - headless.lock  # run_headless.sh brief
 brief 1 grace.headless headless
 debrief 3 - gh  # debrief_prep.sh: three gh searches
 debrief 1 - headless.lock
 debrief 1 grace.headless headless
 intake 1 - intake.lock  # the briefing Notes extract waits for run.lock
-intake 1 - tick.intraday  # extension ticks, killed at their timeout (rca.py tick holds its rca_file.sh sessions)
-intake 1 - tick.telemetry
 intake intake.runs grace.headless headless  # inbox files and digest batches, at most INTAKE_MAX_RUNS a tick
 meetings 1 grace.listing listing
 meetings 1 grace.connector meetings  # the search
@@ -291,9 +279,6 @@ smoke 1 - row.meetings
 smoke 1 - row.triage
 smoke 1 - row.triage_chat
 smoke 1 - smoke.extensions
-smoke 1 - row.handoffs
-smoke 1 - row.watch
-smoke 2 - row.telemetry  # the source list, then one source; each further source adds one more
 smoke 1 - smoke.units
 sync 1 - sync  # one deadline across every git call of the sync
 triage 2 grace.listing listing  # each source (mail, chat) runs in its own process
@@ -302,14 +287,6 @@ triage 1 grace.connector triage.chat
 triage 2 - triage.lock  # triage.py record, once per source
 update 1 - update.lock
 update 1 - update.fetch
-watch 2 grace.listing listing  # the Slack and Gmail sessions each rebuild their settings
-watch 1 grace.connector watch.slack
-watch 1 grace.connector watch.mail
-watch 1 grace.listing listing  # calendar_fetch.sh for today, its own process
-watch 1 grace.connector calendar
-watch watch.days grace.listing listing  # calendar_fetch.sh for each slot day, at most MAX_FETCH_DAYS
-watch watch.days grace.connector calendar
-watch 1 - watch.lock  # watch.py route
 smoke/calendar 1 grace.listing listing
 smoke/calendar 1 grace.connector calendar
 smoke/meetings 1 grace.listing listing  # --check runs the search only
@@ -318,13 +295,6 @@ smoke/triage 1 grace.listing listing
 smoke/triage 1 grace.connector triage.mail
 smoke/triage_chat 1 grace.listing listing
 smoke/triage_chat 1 grace.connector triage.chat
-smoke/handoffs 1 grace.listing listing
-smoke/handoffs 1 grace.connector jira
-smoke/watch 2 grace.listing listing  # --check: the Slack and Gmail sessions and today calendar, no slot days, no route
-smoke/watch 1 grace.connector watch.slack
-smoke/watch 1 grace.connector watch.mail
-smoke/watch 1 grace.listing listing
-smoke/watch 1 grace.connector calendar
 '
 
 # Units over their limit today: "<unit> <issue>  # by how much". The list may only shrink: a unit that fits fails until
@@ -336,7 +306,7 @@ watch #299  # 1,815 s against 29 min: the five server listings are not in watch_
 smoke/calendar #299  # 235 s against 210: the server listing
 smoke/watch #299  # 1,225 s against 1,140: three server listings
 '
-TIMING_OUT='foundry-nightshift foundry-telemetry'
+TIMING_OUT='foundry-nightshift'  # an extension's unit with no session says so in its manifest's budget.out
 
 secs() {  # <n>[s|m|min|h] -> seconds
   case "$1" in
@@ -365,54 +335,103 @@ unit_file() {  # <unit>: its template, core or extension
   return 1
 }
 
-@test "every unit's sessions fit its time limit (factory F0 spec §3.6)" {
+# timing_problems <root>: the timing rule on <root>'s tree, the core tables plus its manifests' budgets. Prints one
+# "# <unit>: <total> s of <limit> s" line per summed unit and one line per problem.
+timing_problems() (
+  cd "$1" || exit 1
   declare -A val total
-  local key file re unit count grace v n g limit errors=""
+  local key file re unit count grace v n g limit kind rest man steps="$TIMING_STEPS" out=" $TIMING_OUT " used=" "
+  man="$(python3 "$VAULT_ROOT/system/tests/timing_manifests.py" . 2>&1)" || echo "timing_manifests.py failed: $man"
+  while read -r kind rest; do
+    case "$kind" in
+      V) val[${rest%% *}]="${rest#* }" ;;
+      S) steps+="$rest"$'\n' ;;
+      O) out+="foundry-$rest " ;;
+      P) echo "$rest" ;;
+    esac
+  done <<< "$man"
   while read -r key file re; do
     [[ -n "$key" ]] || continue
-    if v="$(read_value "$file" "$re" 2>&1)"; then val[$key]="$v"; else errors+="$key: $v"$'\n'; fi
+    [[ "$file" != extensions/* ]] || echo "$key: names $file; an extension's budget belongs in its manifest"
+    if v="$(read_value "$file" "$re" 2>&1)"; then val[$key]="$v"; else echo "$key: $v"; fi
   done <<< "$TIMING_VALUES"
   while read -r unit count grace key _; do
     [[ -n "$unit" ]] || continue
+    used+="$count $grace $key "
     n="$count"; [[ "$n" =~ ^[0-9]+$ ]] || n="${val[$count]:-x}"
     g=0; [[ "$grace" == - ]] || g="${val[$grace]:-x}"
     v="${val[$key]:-x}"
-    if [[ "$n$g$v" == *x* ]]; then errors+="$unit: a step names an unknown key ($count $grace $key)"$'\n'; continue; fi
+    if [[ "$n$g$v" == *x* ]]; then echo "$unit: a step names an unknown key ($count $grace $key)"; continue; fi
     total[$unit]=$(( ${total[$unit]:-0} + n * (v + g) ))
-  done <<< "$TIMING_STEPS"
-  # Every template unit is in the table or out of it with its reason above, and every known overrun names a unit
-  # the table sums.
+  done <<< "$steps"
+  # Every template unit is summed or out with its reason (above, or its manifest's budget.out), and every known
+  # overrun names a unit the table sums.
   for file in system/systemd/*.service.in extensions/*/units/*.service.in; do
     unit="${file##*/foundry-}" unit="${unit%.service.in}"
-    [[ -n "${total[$unit]:-}" || " $TIMING_OUT " == *" foundry-$unit "* ]] || errors+="$unit: no steps in the table"$'\n'
+    [[ -n "${total[$unit]:-}" || "$out" == *" foundry-$unit "* ]] || echo "$unit: no steps in the table"
   done
   while read -r unit _; do
-    [[ -z "$unit" || -n "${total[$unit]:-}" ]] || errors+="$unit: a known overrun with no steps in the table"$'\n'
+    [[ -z "$unit" || -n "${total[$unit]:-}" ]] || echo "$unit: a known overrun with no steps in the table"
   done <<< "$TIMING_OVERRUNS"
-  # Every session default, smoke row and manifest smoke entry has its VALUES line, so a new one cannot go unsummed.
+  # Every session default has its value (a VALUES line, or its manifest's budget.values) and a step that sums it, and
+  # every core smoke row its row.<row> line, so a new session cannot go unsummed (F3 §3.1 rule 5).
   while IFS=: read -r file var; do
-    grep -qE "^[a-z_.]+ $file .*\{$var:-" <<< "$TIMING_VALUES" || errors+="$file: $var has no VALUES line"$'\n'
+    if [[ "$file" == extensions/* ]]; then
+      key="${file#extensions/}" key="${key%%/*}.$var"
+      [[ -n "${val[$key]:-}" ]] || { echo "$file: $var has no budget value in its manifest"; continue; }
+    else
+      key="$(awk -v f="$file" -v v="{$var:-" '$2 == f && index($0, v) { print $1; exit }' <<< "$TIMING_VALUES")"
+      [[ -n "$key" ]] || { echo "$file: $var has no VALUES line"; continue; }
+    fi
+    [[ "$used" == *" $key "* ]] || echo "$file: $var has no step"
   done < <(git grep -oE 'CONNECTOR_TIMEOUT="\$\{[A-Z_]+|\{HEADLESS_TIMEOUT' -- 'system/scripts/*' 'extensions/*/scripts/*' \
              | sed -E 's/:.*[{]/:/')
   while read -r key; do
-    [[ -n "${val[row.$key]:-}" ]] || errors+="smoke row $key: no row.$key VALUES line"$'\n'
-  done < <(sed -nE 's/^ *connector ([a-z_]+) .*/\1/p' system/scripts/smoke_check.sh
-           sed -nE 's/^ *- \{source: ([a-z_]+), timeout:.*/\1/p' extensions/*/extension.md)
+    [[ -n "${val[row.$key]:-}" ]] || echo "smoke row $key: no row.$key VALUES line"
+  done < <(sed -nE 's/^ *connector ([a-z_]+) .*/\1/p' system/scripts/smoke_check.sh)
   for unit in "${!total[@]}"; do
-    if [[ "$unit" == smoke/* ]]; then
-      limit="${val[row.${unit#smoke/}]:-}"
-    else
-      file="$(unit_file "$unit")" || { errors+="$unit: no unit template"$'\n'; continue; }
-      limit="$(read_value "$file" '^TimeoutStartSec=([0-9]+(s|min|h)?)$')" || { errors+="$unit: no TimeoutStartSec"$'\n'; continue; }
-    fi
-    [[ -n "$limit" ]] || { errors+="$unit: no limit"$'\n'; continue; }
-    echo "$unit: ${total[$unit]} s of $limit s"
+    case "$unit" in
+      smoke/*) limit="${val[row.${unit#smoke/}]:-}" ;;
+      tick/*) limit="${val[tick.${unit#tick/}]:-}" ;;
+      *) file="$(unit_file "$unit")" || { echo "$unit: no unit template"; continue; }
+         limit="$(read_value "$file" '^TimeoutStartSec=([0-9]+(s|min|h)?)$')" || { echo "$unit: no TimeoutStartSec"; continue; } ;;
+    esac
+    [[ -n "$limit" ]] || { echo "$unit: no limit"; continue; }
+    echo "# $unit: ${total[$unit]} s of $limit s"
     if grep -qE "^$unit " <<< "$TIMING_OVERRUNS"; then
-      (( total[$unit] > limit )) || errors+="$unit: fits now (${total[$unit]} s of $limit s); delete its known-overrun line"$'\n'
+      (( total[$unit] > limit )) || echo "$unit: fits now (${total[$unit]} s of $limit s); delete its known-overrun line"
     elif (( total[$unit] > limit )); then
-      errors+="$unit: ${total[$unit]} s of waits against a $limit s limit"$'\n'
+      echo "$unit: ${total[$unit]} s of waits against a $limit s limit"
     fi
   done
-  echo "$errors"
-  [ -z "$errors" ]
+)
+
+@test "every unit's sessions fit its time limit (factory F0 spec §3.6, F3 §3.4)" {
+  run timing_problems "$VAULT_ROOT"
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ -z "$(grep -v '^# ' <<< "$output")" ]
+}
+
+@test "a manifest budget that disagrees, a session no step sums, a tick over its timeout and a manifest that does not load each fail (factory F3 §3.4)" {
+  r="$BATS_TEST_TMPDIR/repo"
+  mkdir -p "$r"
+  git ls-files -z | xargs -0 cp --parents -t "$r"
+  git -C "$r" init -q
+  sed -i 's/WATCH_SLACK_TIMEOUT: 420/WATCH_SLACK_TIMEOUT: 421/' "$r/extensions/intraday/extension.md"
+  sed -i '/grace\.connector JIRA_TIMEOUT/d' "$r/extensions/handoffs/extension.md"
+  sed -i 's/timeout: 1900/timeout: 1000/' "$r/extensions/telemetry/extension.md"
+  mkdir -p "$r/extensions/demo"
+  printf '%s\n' '---' 'name: demo' 'contract: 1' 'bogus: 1' '---' > "$r/extensions/demo/extension.md"
+  printf '%s\n' 'CONNECTOR_TIMEOUT="${EXTRA_TIMEOUT:-60}"' > "$r/extensions/handoffs/scripts/extra.sh"
+  git -C "$r" add -A
+  run timing_problems "$r"
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(grep -v '^# ' <<< "$output" | LC_ALL=C sort)" = "$(printf '%s\n' \
+    'demo: unknown manifest field(s) bogus' \
+    'extensions/handoffs/scripts/extra.sh: EXTRA_TIMEOUT has no budget value in its manifest' \
+    'extensions/handoffs/scripts/jira_fetch.sh: JIRA_TIMEOUT has no step' \
+    'intraday: budget value WATCH_SLACK_TIMEOUT is 421; extensions/intraday/scripts/watch_fetch.sh says 420' \
+    'tick/telemetry: 1395 s of waits against a 1000 s limit')" ]
 }

@@ -16,6 +16,22 @@ alert_tags: [{tag: watch, severity: now}, intraday]
 allow: ["Bash(extensions/intraday/scripts/watch_fetch.sh --check)"]
 deps: []
 index_ignore: []
+budget:
+  values: {WATCH_SLACK_TIMEOUT: 420, WATCH_MAIL_TIMEOUT: 480, MAX_FETCH_DAYS: 2, ROUTE_LOCK_WAIT: 120}
+  steps:
+    - "watch 2 grace.listing listing"  # the Slack and Gmail sessions each rebuild their settings
+    - "watch 1 grace.connector WATCH_SLACK_TIMEOUT"
+    - "watch 1 grace.connector WATCH_MAIL_TIMEOUT"
+    - "watch 1 grace.listing listing"  # calendar_fetch.sh for today, its own process
+    - "watch 1 grace.connector calendar"
+    - "watch MAX_FETCH_DAYS grace.listing listing"  # calendar_fetch.sh for each slot day
+    - "watch MAX_FETCH_DAYS grace.connector calendar"
+    - "watch 1 - ROUTE_LOCK_WAIT"  # watch.py route
+    - "smoke/watch 2 grace.listing listing"  # --check: the Slack and Gmail sessions and today's calendar, no slot days, no route
+    - "smoke/watch 1 grace.connector WATCH_SLACK_TIMEOUT"
+    - "smoke/watch 1 grace.connector WATCH_MAIL_TIMEOUT"
+    - "smoke/watch 1 grace.listing listing"
+    - "smoke/watch 1 grace.connector calendar"
 ---
 **Intraday.** Every 30 minutes on workdays (08:15 to 17:45), `foundry-watch.timer` runs `watch_fetch.sh` on a standalone machine or a server (phase D spec). It runs confined connector sessions of three kinds:
 - **Slack**, allowed only the search, reads the channels in `watch_channels` in full, your group DMs (`watch_group_dms`), your own messages (`watch_user_id`) and the capture channel. The model sorts the watched messages into meeting changes, deadlines, incidents, blocks, decisions and partner messages, and your own messages into commitments.

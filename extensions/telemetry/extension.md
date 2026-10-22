@@ -21,6 +21,13 @@ alert_tags:
 allow: ["Bash(extensions/telemetry/scripts/telemetry_fetch.py --list)", "Bash(extensions/telemetry/scripts/telemetry_fetch.py --check *)"]
 deps: [az]
 index_ignore: []
+budget:
+  values: {RCA_TIMEOUT: 300, PER_TICK: 3, FILED_LOCK_WAIT: 120}
+  steps:  # rca.py tick runs rca_file.sh for at most PER_TICK drafts
+    - "tick PER_TICK grace.listing listing"
+    - "tick PER_TICK grace.connector RCA_TIMEOUT"
+    - "tick PER_TICK - FILED_LOCK_WAIT"  # rca.py filed or reopen waits for run.lock
+  out: "the HTTP poller: no session, each call has its own 60 s limit"
 ---
 **Error telemetry.** Each error group from your sources becomes a `production_error` note in `raw/telemetry/`, listed in the brief's Blockers, and `/rca` diagnoses one group and drafts a ticket that is filed only after you tick its Now line. Requires the `handoffs` extension: tickets are filed to its `handoffs_site`.
 

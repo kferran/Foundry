@@ -11,7 +11,7 @@ from .config import config
 CONTRACT = 1
 NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
 FIELDS = {"name", "contract", "description", "requires", "config_keys", "sources", "smoke", "brief", "debrief",
-          "units", "alert_tags", "allow", "deps", "index_ignore", "importer", "tick", "lint"}
+          "units", "alert_tags", "allow", "deps", "index_ignore", "importer", "tick", "lint", "budget"}
 
 
 def _strs(value) -> list:

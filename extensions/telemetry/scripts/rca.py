@@ -26,6 +26,8 @@ sys.path[:0] = [str(VAULT / "system" / "scripts"), str(Path(__file__).resolve().
 from telemetrylib import rca  # noqa: E402
 from vaultlib.api import Intake, messages, UsageError  # noqa: E402
 
+FILED_LOCK_WAIT = 120   # seconds `filed` and `reopen` wait for run.lock (the manifest's budget sums it per filing)
+
 
 def target(partition: str, stem: str) -> tuple:
     if partition not in ("work", "personal") or not rca.STEM.match(stem) or not rca.note_path(VAULT, partition, stem).is_file():
@@ -53,11 +55,11 @@ def main(argv) -> int:
             print(line)
         elif len(argv) == 5 and argv[1] == "reopen":
             intake = Intake(VAULT)
-            with intake.lock("run.lock", timeout=120):
+            with intake.lock("run.lock", timeout=FILED_LOCK_WAIT):
                 rca.reopen(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
         elif len(argv) == 5 and argv[1] == "filed" and rca.KEY.match(argv[4]):
             intake = Intake(VAULT)
-            with intake.lock("run.lock", timeout=120):
+            with intake.lock("run.lock", timeout=FILED_LOCK_WAIT):
                 rca.filed(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
             for marker in ("key", "attempt"):  # a key written back, by rca_file.sh or by hand, ends the filing
                 (VAULT / "system" / "logs" / "rca" / f"{argv[2]}-{argv[3]}.{marker}").unlink(missing_ok=True)
