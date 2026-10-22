@@ -2,7 +2,7 @@
 """What each enabled extension gives the shared scripts, as lines bash can read (extensions spec §3).
 
 Usage: extensions.py list | check | field <name> <key> | smoke | brief | debrief | units <role> | allow [--write | --remove <name>] | ignore | link | migrate
-Exit: 0; 1 from `check` when an extension cannot load; 2 usage.
+Exit: 0; 1 from `check` when an extension cannot load or a field of one that loads is ignored; 2 usage.
 """
 import json
 import sys

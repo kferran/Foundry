@@ -98,6 +98,25 @@ def test_config_keys_are_stated_once_in_the_schema_and_an_old_manifest_still_loa
     assert extensions.check(vault) == [] and [n for n, _ in extensions.enabled(vault)] == ["old"]
 
 
+def test_cited_reads_each_lint_modules_table_and_skips_a_malformed_one(vault):
+    from vaultlib import index
+    manifest(vault, "a", lint="lint.py")
+    write(vault, "extensions/a/lint.py", 'CITED = {"memo": ["open"], "odd": "open"}\ndef issues(conn, add):\n    pass\n')
+    manifest(vault, "b", lint="lint.py")
+    write(vault, "extensions/b/lint.py", 'CITED = "not a table"\n')
+    assert index.cited(vault) == {"memo": ["open"]}
+
+
+def test_one_unreadable_manifest_takes_out_only_its_own_extension(vault):
+    from vaultlib import alerts
+    manifest(vault, "good", alert_tags="[{tag: good, severity: now}]")
+    (vault / "extensions/bad").mkdir(parents=True)
+    (vault / "extensions/bad/extension.md").write_bytes(b"---\nname: bad\xff\n---\n")
+    config(vault, "good", "bad")
+    assert alerts.extension_tags(vault) == {"good": "now"}
+    assert [r.split(":")[0] for r in extensions.check(vault)] == ["bad"]
+
+
 def test_field_reads_one_manifest_field(ext):
     config(ext, "demo")
     assert run(ext, "field", "demo", "description").stdout == "A fixture extension for the loader tests\n"
