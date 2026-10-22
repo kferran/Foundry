@@ -79,9 +79,9 @@ def check_stream(stream: list, tool: str, accept, max_pages: int | None = None, 
 **`too_large`** is the union of the watch's and the calendar's tests, over the result's text (a list of blocks joined, stripped):
 - it starts with `<persisted-output>`;
 - it holds `\n\n[OUTPUT TRUNCATED - exceeded `;
-- it does not start with `{` or `[`, and its first 200 characters say `exceeds maximum allowed tokens` (claude's MCP note, "Error: result (N characters) exceeds…", and the "MCP tool response (N tokens) exceeds…" form) or it starts with `Output too large` (`calendar_tsv.py:24`, test_calendar_tsv.py:87-88).
+- it does not start with `{` or `[`, and its first 200 characters say `exceeds maximum allowed tokens` (claude's MCP note, "Error: result (N characters) exceeds…" and 'MCP tool "<name>" response (N tokens) exceeds…', wherever it starts in that window) or it starts with `Output too large` (test_calendar_tsv.py:88).
 
-A JSON result text starts with `{` or `[` and holds no raw newline, so mail, chat or event text cannot fake any of the four.
+The MCP note is not anchored to the text's start (#164; the owner kept this on #348): a false hold is loud (an exit 6 or a held cursor, alerted), while a missed stand-in is silent (the model saw nothing and the run passes). A real result is JSON: its text starts with `{` or `[` and holds no raw newline, so mail, chat or event text cannot fake any of them. A plain-text result quoting the phrase past its first 200 characters does not count.
 
 ### 3.2 `system/scripts/lib_fetch.sh`
 
