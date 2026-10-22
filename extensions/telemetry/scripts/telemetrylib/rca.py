@@ -5,10 +5,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from vaultlib import cli, frontmatter, now as nowmod
-from vaultlib.cli import set_scalar
-from vaultlib.connector import Fail, check_stream, walk
-from vaultlib.stream import blocks
+from vaultlib.api import Fail, blocks, check_stream, cli, config, frontmatter, now as nowmod, set_scalar, walk
 
 TOOL = "mcp__claude_ai_Atlassian__createJiraIssue"
 PROJECT = re.compile(r"^[A-Z][A-Z0-9_]{0,30}$")
@@ -18,11 +15,6 @@ STEM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
 SUMMARY_MAX = 255
 DESCRIPTION_MAX = 32000
 PER_TICK = 3
-
-
-def config(vault) -> dict:
-    path = Path(vault) / "system" / "config.md"
-    return (frontmatter.parse(path.read_text(encoding="utf-8")).data or {}) if path.is_file() else {}
 
 
 def note_path(vault, partition: str, stem: str) -> Path:
@@ -213,7 +205,7 @@ def tick(vault) -> None:
     """The intake tick (extensions spec §3, `tick`): file the drafts you approved on the Now page, at most PER_TICK a
     tick, and reject the dropped ones; off while rca_project is empty. A busy run.lock ends the tick: the next one
     retries."""
-    from vaultlib.intake import Intake  # intake imports much of vaultlib; only the tick needs it
+    from vaultlib.api import Intake
 
     vault = Path(vault)
     intake = Intake(vault)

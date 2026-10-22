@@ -9,7 +9,7 @@ commitment, when a fetched calendar event names the person.
 import re
 from datetime import date
 
-from vaultlib import now as nowmod
+from vaultlib.api import now as nowmod
 
 from . import calendar as cal
 from .common import alert, append, records, state

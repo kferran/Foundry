@@ -24,9 +24,7 @@ from pathlib import Path
 VAULT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(VAULT / "system" / "scripts"), str(Path(__file__).resolve().parent)]
 from telemetrylib import rca  # noqa: E402
-from vaultlib.cli import UsageError  # noqa: E402
-from vaultlib.intake import Intake  # noqa: E402
-from vaultlib.stream import messages  # noqa: E402
+from vaultlib.api import Intake, messages, UsageError  # noqa: E402
 
 
 def target(partition: str, stem: str) -> tuple:

@@ -24,9 +24,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 VAULT = HERE.parents[2]
 sys.path[:0] = [str(HERE), str(VAULT / "system" / "scripts")]
-from vaultlib import triage  # noqa: E402
-from vaultlib.intake import Intake  # noqa: E402
-from vaultlib.stream import messages  # noqa: E402
+from vaultlib.api import Intake, messages, triage  # noqa: E402
 from watchlib import calendar as cal, capture, check, common, query, route  # noqa: E402
 from watchlib.common import Fail  # noqa: E402
 

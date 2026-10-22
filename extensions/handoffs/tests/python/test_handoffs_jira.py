@@ -107,11 +107,11 @@ def test_a_result_without_an_issues_list_fails_closed():
 
 
 def test_main_prints_the_lines_and_one_reason_line(monkeypatch, capsys):
-    monkeypatch.setattr(jh, "config", lambda: CFG)
+    monkeypatch.setattr(jh, "config", lambda vault: CFG)
     monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(json.dumps(m) for m in jira_stream([node()]))))
     assert jh.main(["x", "extract"]) == 0
     assert capsys.readouterr().out.startswith("- [ ] [EX-1]")
-    monkeypatch.setattr(jh, "config", lambda: {})
+    monkeypatch.setattr(jh, "config", lambda vault: {})
     assert jh.main(["x", "query"]) == 2
     assert capsys.readouterr().err == "jira_handoffs: handoffs_projects lists no Jira project keys\n"
 
@@ -132,7 +132,7 @@ def test_a_long_summary_is_cut():
 
 
 def test_main_takes_a_date(monkeypatch, capsys):
-    monkeypatch.setattr(jh, "config", lambda: CFG)
+    monkeypatch.setattr(jh, "config", lambda vault: CFG)
     monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(json.dumps(m) for m in jira_stream([node()]))))
     assert jh.main(["x", "extract", "--date", "2027-06-01"]) == 0
     assert capsys.readouterr().out.startswith("- 1 handoffs unchanged for more than 90 days (oldest: EX-1")

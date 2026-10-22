@@ -7,9 +7,7 @@ never returned is dropped.
 """
 import re
 
-from vaultlib import now as nowmod
-from vaultlib.connector import check_stream, strip_cursor, text_json
-from vaultlib.triage import one_line, reply
+from vaultlib.api import check_stream, now as nowmod, one_line, reply, strip_cursor, text_json
 
 from .common import CHANGES, INBOUND_KINDS, WATCH_KINDS, Fail
 
