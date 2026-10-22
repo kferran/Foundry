@@ -138,7 +138,6 @@ doc() { local f="$1"; shift; mkdir -p "${f%/*}"; printf '%s\n' '# T' '' "$@" > "
 COPIES_ALLOWED='
 walker system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
 walker extensions/intraday/scripts/watchlib/check.py  # F1 library PR lifts it into vaultlib/connector.py; retrofit 3 (watch)
-walker system/scripts/vaultlib/notify.py  # F1 retrofit 4 (notify)
 walker extensions/telemetry/scripts/telemetrylib/rca.py  # F1 retrofit 7 (RCA filer)
 walker system/scripts/vaultlib/nightshift_session.py  # other shape: a Work Order session with many tools and no single connector (F1 spec)
 walker system/scripts/vaultlib/connector.py  # home: the shared walker (F1 spec §3.1)
@@ -146,9 +145,6 @@ helper system/scripts/meetings_fetch.sh:logline  # F1 retrofit 2 (meetings)
 helper system/scripts/meetings_fetch.sh:alert_once  # F1 retrofit 2 (meetings)
 helper extensions/intraday/scripts/watch_fetch.sh:logline  # F1 retrofit 3 (watch)
 helper extensions/intraday/scripts/watch_fetch.sh:alert_once  # F1 retrofit 3 (watch)
-helper system/scripts/notify.sh:logline  # F1 retrofit 4 (notify)
-helper system/scripts/notify.sh:alert_once  # F1 retrofit 4 (notify)
-helper system/scripts/notify.sh:fail  # F1 retrofit 4 (notify)
 helper extensions/telemetry/scripts/rca_file.sh:logline  # F1 retrofit 7 (RCA filer)
 helper extensions/telemetry/scripts/rca_file.sh:alert_once  # F1 retrofit 7 (RCA filer)
 helper extensions/telemetry/scripts/rca_file.sh:fail  # F1 retrofit 7 (RCA filer)
@@ -159,7 +155,6 @@ helper system/scripts/lib_fetch.sh:fail  # home: the shared fetch helpers (F1 sp
 helper system/scripts/lib_fetch.sh:skip  # home: the shared fetch helpers (F1 spec §3.2)
 helper system/scripts/vault_sync.sh:fail  # other shape: fail <step> <reason> for a sync step, no fetch exit
 fail-class system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
-fail-class system/scripts/vaultlib/notify.py  # F1 retrofit 4 (notify)
 fail-class extensions/telemetry/scripts/telemetrylib/rca.py  # F1 retrofit 7 (RCA filer)
 fail-class system/scripts/vaultlib/connector.py  # home: the one Fail every retrofitted module imports (F1 spec §3.1)
 config system/scripts/alert.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
