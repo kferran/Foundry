@@ -53,8 +53,10 @@ def cited(vault) -> dict:
     """{note type: open statuses} whose notes' citations are checked, from each present lint module's CITED."""
     out = {}
     for _, _, module in lint_modules(vault):
-        for ntype, statuses in (getattr(module, "CITED", None) or {}).items():
-            out[str(ntype)] = [str(s) for s in statuses]
+        table = getattr(module, "CITED", None)
+        for ntype, statuses in (table.items() if isinstance(table, dict) else ()):
+            if isinstance(statuses, (list, tuple)):   # a malformed entry is skipped, never the codebase rows with it
+                out[str(ntype)] = [str(s) for s in statuses]
     return out
 SKIP_FILES = ("system/index.db", "system/index.lock")
 PRIVATE = re.compile(r"^wiki/[^/]+/private/")  # read-denied (#166): never walked, staged, published or opened
@@ -108,11 +110,12 @@ def citation_issues(conn, cited: dict = None) -> list:
         "SELECT n.path, (SELECT value FROM fields WHERE path=n.path AND key='path'), "
         "(SELECT value FROM fields WHERE path=n.path AND key='layers') FROM notes n WHERE n.type='codebase'")}
     rows, cited = [], cited or {}
+    types = ["codebase", *cited]
     for path, ntype, body_line, body, name, status in conn.execute(
             "SELECT n.path, n.type, n.body_line, f.body, (SELECT value FROM fields WHERE path=n.path AND key='codebase'), "
-            "(SELECT value FROM fields WHERE path=n.path AND key='status') "
-            "FROM notes n JOIN notes_fts f ON f.path=n.path WHERE n.active=1 ORDER BY n.path").fetchall():
-        if ntype != "codebase" and (ntype not in cited or (status is not None and status not in cited[ntype])):
+            "(SELECT value FROM fields WHERE path=n.path AND key='status') FROM notes n JOIN notes_fts f ON f.path=n.path "
+            f"WHERE n.active=1 AND n.type IN ({', '.join('?' * len(types))}) ORDER BY n.path", types).fetchall():
+        if ntype != "codebase" and status is not None and status not in cited[ntype]:
             continue
         name = posixpath.basename(path)[:-3] if ntype == "codebase" else name
         root, layers = codebases.get(name, (None, None))

@@ -1195,10 +1195,10 @@ foundry_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 }
 
 @test "alert tags: the manual carries the table, CLAUDE.md the Foreman push, the brief groups Pipeline by tag (#158)" {
   grep -qF 'every new alert line whose tag Slack carries' FOUNDRY.md
-  grep -qF '| `foreman`, `incident`, `orders`, `sync`, `update`, `rca`, `intake` | Slack at the next tick |' FOUNDRY.md
+  grep -qF '| `foreman`, `orders`, `sync`, `update`, `intake`; telemetry'"'"'s `incident`, `rca`, `telemetry_source` | Slack at the next tick |' FOUNDRY.md
   grep -qF 'An `incident` line is a new production error group, or a resolved one that came back' FOUNDRY.md
   grep -qF 'Leave the `[incident]` alerts out of Pipeline: this bullet lists those groups.' extensions/telemetry/brief/section.md
-  grep -qF '| `commit_runs`, `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `memory`, `extensions` | the next brief |' FOUNDRY.md
+  grep -qF '| `commit_runs`, `smoke`, `calendar`, `meetings`, `memory`, `extensions`; handoffs'"'"' `handoffs`, telemetry'"'"'s `telemetry` | the next brief |' FOUNDRY.md
   grep -qF 'system/scripts/alert.py foreman "<one line>"' FOUNDRY.md
   grep -qF 'To tell the user something now, outside the brief: `system/scripts/alert.py foreman "<one line>"`.' CLAUDE.md
   grep -qF 'grouped by tag' .claude/commands/brief.md

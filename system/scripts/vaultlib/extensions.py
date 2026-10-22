@@ -35,7 +35,10 @@ def manifest(vault: Path, name: str):
     p = vault / "extensions" / name / "extension.md"
     if not p.is_file():
         return None, f"{name}: listed in extensions but extensions/{name}/ does not exist"
-    note = frontmatter.parse(p.read_text(encoding="utf-8"))
+    try:
+        note = frontmatter.parse(p.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError) as exc:   # this extension only: the others keep their tags and routes
+        return None, f"{name}: extension.md is not readable: {exc.__class__.__name__}"
     if note.error:
         return None, f"{name}: extension.md is not readable: {note.error}"
     data = note.data or {}
