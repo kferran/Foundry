@@ -86,7 +86,9 @@ jira_errs() {
   grep -qx 'status: "filed"' "wiki/work/rca/$STEM.md"
   grep -qF '_(closed: filed EX-7 ' wiki/work/Now.md
   grep -qF '[rca] filed EX-7 for' "$ALERTS"
-  grep -qxF -- "$C" "$STUB_ARGS"
+  run jq -c '[(keys | sort), .exit, .reason, .note, .key]' system/logs/rca_file-*.jsonl
+  [ "$output" = '[["exit","key","note","reason","time"],0,"","work/'"$STEM"'","EX-7"]' ]
+  [ "$(grep -cxF -- "$C" "$STUB_ARGS")" -eq 1 ]   # allowed, and not also denied
   grep -qxF -- mcp__claude_ai_Atlassian__editJiraIssue "$STUB_ARGS"
   [ ! -e "system/logs/rca/work-$STEM.key" ]   # #106
   [ ! -e "system/logs/rca/work-$STEM.attempt" ]
@@ -130,6 +132,9 @@ jira_errs() {
   [ "$status" -eq 7 ]
   grep -qx 'status: draft' "wiki/work/rca/$STEM.md"
   [ "$(grep -c '\[rca\] Filing' "$ALERTS")" -eq 1 ]
+  grep -qF "[rca] Filing $STEM failed (exit 7):" "$ALERTS"
+  run jq -c '[(keys | sort), .exit, .note, .key]' system/logs/rca_file-*.jsonl
+  [ "${lines[0]}" = '[["exit","key","note","reason","time"],7,"work/'"$STEM"'",""]' ]
 }
 
 @test "a create call that saved no key blocks the next session until the marker goes" {

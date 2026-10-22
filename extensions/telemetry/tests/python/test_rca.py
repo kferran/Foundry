@@ -3,9 +3,10 @@ import shutil
 
 import pytest
 
+import helpers
 from helpers import REPO, write
 from telemetrylib import rca
-from vaultlib import cli, now
+from vaultlib import cli, connector, now
 
 TODAY = "2026-10-11"
 CONFIG = ('---\ntype: config\ntimezone: "America/Denver"\nhandoffs_site: "example.atlassian.net"\nrca_project: "EX"\n'
@@ -109,30 +110,22 @@ def test_incomplete_settings_or_drafts_are_a_usage_error(vault, config, body, re
     assert e.value.code == 2 and reason in e.value.reason
 
 
-def stream(args, tool=rca.TOOL, calls=1, error=False, result=None, content="…"):
-    s = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t0", "name": "ToolSearch", "input": {}}]}},
-         {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t0",
-                                                   "content": [{"type": "tool_reference", "tool_name": rca.TOOL}]}]}}]
-    for n in range(1, calls + 1):
-        s.append({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": f"t{n}", "name": tool, "input": args}]}})
-        s.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": f"t{n}", "is_error": error,
-                                                           "content": content}]},
-                  "tool_use_result": {"structuredContent": result if result is not None else {"key": "EX-7", "id": "1"}}})
-    s.append({"type": "result", "subtype": "success", "is_error": False})
-    return s
+def session(args, tool=rca.TOOL, calls=1, error=False, result=None, content="…"):
+    sc = result if result is not None else {"key": "EX-7", "id": "1"}
+    return helpers.stream(tool, [helpers.call(args, content, sc, error)] * calls)
 
 
 def test_the_session_check_reads_the_key_and_refuses_anything_else(vault):
     prepare(vault)
     note(vault)
     args = rca.arguments(vault, "work", "2026-10-11-orders")
-    assert rca.extract(stream(args), args) == "EX-7"
-    assert rca.extract(stream(args, result={"issue": {"key": "EX-8"}}), args) == "EX-8"
-    for s, code in ((stream(args, tool="mcp__claude_ai_Atlassian__editJiraIssue"), 7),
-                    (stream({**args, "summary": "something else"}), 7),
-                    (stream(args, calls=2), 7),
-                    (stream(args, error=True), 6),
-                    (stream(args, result={"id": "1"}), 1)):
+    assert rca.extract(session(args), args) == "EX-7"
+    assert rca.extract(session(args, result={"issue": {"key": "EX-8"}}), args) == "EX-8"
+    for s, code in ((session(args, tool="mcp__claude_ai_Atlassian__editJiraIssue"), 7),
+                    (session({**args, "summary": "something else"}), 7),
+                    (session(args, calls=2), 7),
+                    (session(args, error=True), 6),
+                    (session(args, result={"id": "1"}), 1)):
         with pytest.raises(rca.Fail) as e:
             rca.extract(s, args)
         assert e.value.code == code
@@ -142,8 +135,8 @@ def test_called_says_whether_the_session_called_the_create_tool(vault):
     prepare(vault)
     note(vault)
     args = rca.arguments(vault, "work", "2026-10-11-orders")
-    assert rca.called(stream({**args, "summary": "something else"})) is True
-    assert rca.called(stream(args, tool="mcp__claude_ai_Atlassian__editJiraIssue")) is False
+    assert rca.called(session({**args, "summary": "something else"})) is True
+    assert rca.called(session(args, tool="mcp__claude_ai_Atlassian__editJiraIssue")) is False
 
 
 REQUIRED = [{"type": "text", "text": 'Error: 400 Bad Request: {"errors":{"customfield_10042":"Team is required."}}'}]
@@ -154,17 +147,60 @@ def test_a_client_rejection_proves_nothing_was_created(vault):
     prepare(vault)
     note(vault)
     args = rca.arguments(vault, "work", "2026-10-11-orders")
-    assert rca.rejected_create(stream(args, error=True, content=REQUIRED)) == (
+    assert rca.rejected_create(session(args, error=True, content=REQUIRED)) == (
         'Error: 400 Bad Request: {"errors":{"customfield_10042":"Team is required."}}')
-    assert rca.rejected_create(stream(args, error=True, content="403 Forbidden")) is not None
-    for s in (stream(args, error=True, content="Request timed out"),
-              stream(args, error=True, content="500 Internal Server Error"),
-              stream(args),
-              stream(args, result={"id": "1"}),
-              stream(args, tool="mcp__claude_ai_Atlassian__editJiraIssue", error=True, content=REQUIRED)):
+    assert rca.rejected_create(session(args, error=True, content="403 Forbidden")) is not None
+    for s in (session(args, error=True, content="Request timed out"),
+              session(args, error=True, content="500 Internal Server Error"),
+              session(args),
+              session(args, result={"id": "1"}),
+              session(args, tool="mcp__claude_ai_Atlassian__editJiraIssue", error=True, content=REQUIRED)):
         assert rca.rejected_create(s) is None
-    created_then_rejected = stream(args) + stream(args, error=True, content=REQUIRED)[2:]
+    created_then_rejected = session(args) + session(args, error=True, content=REQUIRED)[2:]
     assert rca.rejected_create(created_then_rejected) is None   # a ticket may exist
+
+
+def test_rca_fails_with_the_shared_fail():
+    assert rca.Fail is connector.Fail
+
+
+def test_a_create_with_no_result_message_still_returns_its_key(vault):
+    # #122: a session killed after the create returned keeps its key
+    prepare(vault)
+    note(vault)
+    args = rca.arguments(vault, "work", "2026-10-11-orders")
+    assert rca.extract(session(args)[:-1], args) == "EX-7"
+
+
+def test_a_second_create_call_fails_7_even_after_an_error(vault):
+    prepare(vault)
+    note(vault)
+    args = rca.arguments(vault, "work", "2026-10-11-orders")
+    s = helpers.stream(rca.TOOL, [helpers.call(args, "500 Internal Server Error", error=True),
+                                  helpers.call(args, sc={"key": "EX-7"})])
+    with pytest.raises(rca.Fail) as e:
+        rca.extract(s, args)
+    assert e.value.code == 7
+
+
+def test_a_create_result_too_large_for_the_model_fails_6(vault):
+    prepare(vault)
+    note(vault)
+    args = rca.arguments(vault, "work", "2026-10-11-orders")
+    big = "Error: result (40,000 characters) exceeds maximum allowed tokens. Output has been saved to /x/1.txt"
+    with pytest.raises(rca.Fail) as e:
+        rca.extract(session(args, content=big), args)
+    assert e.value.code == 6
+
+
+def test_a_session_that_used_another_tool_is_never_a_clean_rejection(vault):
+    prepare(vault)
+    note(vault)
+    args = rca.arguments(vault, "work", "2026-10-11-orders")
+    s = session(args, error=True, content=REQUIRED)
+    s.insert(-1, {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t9", "name": "Bash",
+                                                                "input": {"command": "true"}}]}})
+    assert rca.rejected_create(s) is None
 
 
 def test_reopen_unticks_the_line_with_the_reason_and_returns_the_draft(vault):

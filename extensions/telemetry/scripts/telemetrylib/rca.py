@@ -7,6 +7,7 @@ from pathlib import Path
 
 from vaultlib import cli, frontmatter, now as nowmod
 from vaultlib.cli import set_scalar
+from vaultlib.connector import Fail, check_stream, walk
 from vaultlib.stream import blocks
 
 TOOL = "mcp__claude_ai_Atlassian__createJiraIssue"
@@ -17,12 +18,6 @@ STEM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
 SUMMARY_MAX = 255
 DESCRIPTION_MAX = 32000
 PER_TICK = 3
-
-
-class Fail(Exception):
-    def __init__(self, code, reason):
-        super().__init__(reason)
-        self.code, self.reason = code, reason
 
 
 def config(vault) -> dict:
@@ -138,38 +133,14 @@ def called(stream) -> bool:
 
 
 def extract(stream, args: dict) -> str:
-    """The new issue's key, after checking the session called only the create tool, once, with exactly `args`."""
-    calls, named, created, errors = {}, False, [], []
-    for m in stream:
-        if m.get("type") == "assistant":
-            for b in blocks(m, "tool_use"):
-                if b.get("name") not in ("ToolSearch", TOOL):
-                    raise Fail(7, f"the session used an unexpected tool: {b.get('name')}")
-                if b.get("name") == TOOL:
-                    if b.get("input") != args:
-                        raise Fail(7, "the session called the create tool with other arguments than the approved draft")
-                    if any(c.get("name") == TOOL for c in calls.values()):
-                        raise Fail(7, "the session called the create tool more than once")
-                calls[b.get("id")] = b
-        if m.get("type") == "user":
-            for b in blocks(m, "tool_result"):
-                call = calls.get(b.get("tool_use_id")) or {}
-                content = b.get("content")
-                if call.get("name") == "ToolSearch" and isinstance(content, list) and any(
-                        isinstance(c, dict) and c.get("tool_name") == TOOL for c in content):
-                    named = True
-                if call.get("name") != TOOL:
-                    continue
-                if b.get("is_error"):
-                    errors.append(json.dumps(content)[:200])
-                    continue
-                tur = m.get("tool_use_result")
-                created.append(tur.get("structuredContent") if isinstance(tur, dict) else None)
-    if errors:
-        raise Fail(6, f"the connector returned an error: {errors[0]}")
-    if not any(c.get("name") == TOOL for c in calls.values()):
-        raise Fail(1 if named else 3, f"the session never called {TOOL}" if named else "no Atlassian connector reachable")
-    key = _find_key(created[0]) if created else None
+    """The new issue's key, after checking the session called only the create tool, once, with exactly `args`. No
+    result message is needed: a session killed after the create returned still yields its key (#122)."""
+    def accept(i):
+        if i != args:
+            raise Fail(7, "the session called the create tool with other arguments than the approved draft")
+        return "create"
+    pages, _ = check_stream(stream, TOOL, accept, max_pages=1, server="Atlassian", need_result=False)
+    key = _find_key(next(iter(pages["create"]), None))
     if not key:
         raise Fail(1, "the create call returned no issue key")
     return key
@@ -187,13 +158,12 @@ def _text(content) -> str:
 
 def rejected_create(stream):
     """The first error line when every create call came back as a client rejection, which proves Jira created
-    nothing (#175); None after any other outcome, since a ticket may exist."""
-    calls, results = set(), []
-    for m in stream:
-        if m.get("type") == "assistant":
-            calls |= {b.get("id") for b in blocks(m, "tool_use") if b.get("name") == TOOL}
-        if m.get("type") == "user":
-            results += [b for b in blocks(m, "tool_result") if b.get("tool_use_id") in calls]
+    nothing (#175); None after any other outcome, since a ticket may exist, and for a session that used another tool."""
+    try:
+        w = walk(stream, TOOL, lambda i: "create")
+    except Fail:
+        return None
+    calls, results = w.calls, [b for _, b, _ in w.results]
     texts = [_text(b.get("content")) for b in results]
     if not calls or len(results) != len(calls) or not all(b.get("is_error") for b in results):
         return None
