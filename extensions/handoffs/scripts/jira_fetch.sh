@@ -4,7 +4,7 @@
 # and someone else holds with no status-category change for 7 days. The query is built from handoffs_site and
 # handoffs_projects. --check prints how many tickets the search listed instead of the lines.
 # Exit: 0 ok, 1 claude error (or a refused allow rule), 2 usage or incomplete settings, 3 no connector, 4 timeout,
-# 6 connector error, 7 unexpected tool, 127 no claude.
+# 6 connector error or a page too large for the model to read, 7 unexpected tool, 127 no claude.
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"   # extensions/handoffs/scripts/
 cd "$VAULT_ROOT"
@@ -14,10 +14,13 @@ source system/scripts/lib_config.sh
 source system/scripts/lib_confine.sh
 # shellcheck source=lib_connector.sh
 source system/scripts/lib_connector.sh
+# shellcheck source=lib_fetch.sh
+source system/scripts/lib_fetch.sh
 
 PREFIX=mcp__claude_ai_Atlassian
 TOOL="${PREFIX}__searchJiraIssuesUsingJql"
-OTHER_TOOLS=(addCommentToJiraIssue addTeamworkGraphContext addWorklogToJiraIssue atlassianUserInfo
+# The server's full tool list, the search included (core's lib_fetch.sh names no vendor: F1 spec §2 decision 7).
+ATLASSIAN_TOOLS=(addCommentToJiraIssue addTeamworkGraphContext addWorklogToJiraIssue atlassianUserInfo
   createCompassComponent createCompassComponentRelationship createCompassCustomFieldDefinition
   createConfluenceFooterComment createConfluenceInlineComment createConfluencePage createIssueLink createJiraIssue
   editJiraIssue fetch getAccessibleAtlassianResources getCompassComponent getCompassComponents
@@ -26,44 +29,23 @@ OTHER_TOOLS=(addCommentToJiraIssue addTeamworkGraphContext addWorklogToJiraIssue
   getIssueLinkTypes getJiraIssue getJiraIssueRemoteIssueLinks getJiraIssueTypeMetaWithFields
   getJiraProjectIssueTypesMetadata getPagesInConfluenceSpace getTeamworkGraphContext getTeamworkGraphObject
   getTransitionsForJiraIssue getVisibleJiraProjects lookupJiraAccountId search searchConfluenceUsingCql
-  transitionJiraIssue updateConfluencePage)
+  searchJiraIssuesUsingJql transitionJiraIssue updateConfluencePage)
 
-check=0
-case "${1:-}" in
-  "") ;;
-  --check) check=1 ;;
-  *) echo "usage: jira_fetch.sh [--check]" >&2; exit 2 ;;
-esac
-(( $# <= 1 )) || { echo "usage: jira_fetch.sh [--check]" >&2; exit 2; }
+FETCH_NAME=jira_fetch
+fetch_check_arg "$@"
 TZ="$(config_get timezone UTC)"
 export TZ
 mkdir -p system/logs
-log="system/logs/jira_fetch-$(date +%Y-%m).jsonl"
-
-logline() {  # <exit> <reason> [lines]
-  jq -cn --arg time "$(date -Iseconds)" --argjson exit "$1" --arg reason "$2" --argjson lines "${3:-0}" \
-    '{time: $time, exit: $exit, reason: $reason, lines: $lines}' >> "$log"
-}
-alert_once() {  # <key> <text>: at most one alert a day per key
-  local f="system/logs/alerts_$(date +%F).md"
-  grep -qF -- "[handoffs] $1" "$f" 2>/dev/null || printf -- '- %s [handoffs] %s %s\n' "$(date +%H:%M:%S)" "$1" "$2" >> "$f"
-}
-fail() {  # <exit> <reason>
-  connector_classify "$1" "$2" "${work:-}"   # connector health spec §2: the class leads the reason
-  set -- "$1" "${CONNECTOR_CLASS:+$CONNECTOR_CLASS: }$2"
-  logline "$1" "$2"
-  case "$1" in 1|3|6|7) alert_once "Jira fetch failed (exit $1):" "$2" ;; esac
-  echo "jira_fetch: $2" >&2
-  exit "$1"
-}
+FETCH_TAG=handoffs FETCH_LOG="system/logs/jira_fetch-$(date +%Y-%m).jsonl" FETCH_FIELDS='{"lines": 0}'
+FETCH_LABEL="Jira fetch" FETCH_ALERTS="1 3 6 7"
 
 qrc=0
 query="$(extensions/handoffs/scripts/jira_handoffs.py query 2>&1)" || qrc=$?
 (( qrc == 0 )) || fail "$qrc" "${query#jira_handoffs: }"
 site="${query%%$'\n'*}" jql="${query#*$'\n'}"
-work="$(mktemp -d -p /tmp)"
-trap 'rm -rf -- "$work"' EXIT  # the session's directory is under it: a stopped unit leaves nothing behind
-CONNECTOR_SERVER="claude.ai Atlassian" CONNECTOR_PREFIX="$PREFIX" CONNECTOR_TOOL="$TOOL" CONNECTOR_OTHERS=("${OTHER_TOOLS[@]}")
+fetch_workdir  # the session's directory is under it: a stopped unit leaves nothing behind
+CONNECTOR_SERVER="claude.ai Atlassian" CONNECTOR_PREFIX="$PREFIX" CONNECTOR_TOOL="$TOOL"
+fetch_others "${ATLASSIAN_TOOLS[@]}"
 CONNECTOR_TIMEOUT="${JIRA_TIMEOUT:-300}" CONNECTOR_TURNS=12
 
 prompt="First load the Jira tool by calling ToolSearch with query \"select:$TOOL\". If it is not found, wait for it by calling ToolSearch the same way again, up to 3 times in all.
@@ -76,7 +58,7 @@ extensions/handoffs/scripts/jira_handoffs.py extract < "$work/out.jsonl" > "$wor
 connector_outcome "$prc" "$work"
 (( CONNECTOR_EXIT == 0 )) || fail "$CONNECTOR_EXIT" "$CONNECTOR_REASON"
 n="$(wc -l < "$work/lines.md")"
-logline 0 "" "$n"
+logline 0 "" "{\"lines\": $n}"
 if (( check )); then
   echo "jira_fetch: the search listed $n stalled handoffs"
 else
