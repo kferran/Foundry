@@ -14,11 +14,10 @@ source system/scripts/lib_config.sh
 source system/scripts/lib_confine.sh
 # shellcheck source=lib_connector.sh
 source system/scripts/lib_connector.sh
+# shellcheck source=lib_fetch.sh
+source system/scripts/lib_fetch.sh
 
 TOOL=mcp__claude_ai_Google_Calendar__list_events
-SERVER_PREFIX=mcp__claude_ai_Google_Calendar
-SERVER_NAME="claude.ai Google Calendar"
-CALENDAR_OTHERS=(create_event update_event delete_event respond_to_event get_event search_events list_calendars suggest_time)
 
 TZ="$(config_get timezone UTC)"
 export TZ
@@ -32,14 +31,13 @@ next="$(date -d "$day +1 day" +%F)"
 log="system/logs/calendar_fetch-${day:0:7}.jsonl"
 mkdir -p system/logs
 
-work="$(mktemp -d -p /tmp)"
-trap 'rm -rf -- "$work"' EXIT
+fetch_workdir
 summary="$work/summary.json"
 
 # finish <exit> <reason>: append the log line, report the reason, exit.
 finish() {
-  connector_classify "$1" "$2" "${work:-}"   # connector health spec §2: the class leads the reason
-  set -- "$1" "${CONNECTOR_CLASS:+$CONNECTOR_CLASS: }$2"
+  fetch_reason "$1" "$2"   # connector health spec §2: the class leads the reason
+  set -- "$1" "$FETCH_REASON"
   local s='{}'
   [[ -s "$summary" ]] && s="$(cat "$summary")"
   jq -cn --arg date "$day" --arg time "$(date -Iseconds)" --argjson exit "$1" --argjson s "$s" \
@@ -49,7 +47,8 @@ finish() {
   exit "$1"
 }
 
-CONNECTOR_SERVER="$SERVER_NAME" CONNECTOR_PREFIX="$SERVER_PREFIX" CONNECTOR_TOOL="$TOOL" CONNECTOR_OTHERS=("${CALENDAR_OTHERS[@]}")
+CONNECTOR_SERVER="claude.ai Google Calendar" CONNECTOR_PREFIX=mcp__claude_ai_Google_Calendar CONNECTOR_TOOL="$TOOL"
+fetch_others "${CALENDAR_TOOLS[@]}"
 # Pages of 3 events: one event can carry several thousand characters of description, and a page over the harness's
 # result limit is replaced by a notice the checker fails on (#164). 34 pages cover 100 events; 40 turns leave room for
 # the ToolSearch calls and the reply. The 190 s default stays under the smoke check's 210 s.

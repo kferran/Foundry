@@ -138,7 +138,6 @@ doc() { local f="$1"; shift; mkdir -p "${f%/*}"; printf '%s\n' '# T' '' "$@" > "
 COPIES_ALLOWED='
 walker system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
 walker extensions/intraday/scripts/watchlib/check.py  # F1 library PR lifts it into vaultlib/connector.py; retrofit 3 (watch)
-walker system/scripts/calendar_tsv.py  # F1 retrofit 5 (calendar)
 walker extensions/telemetry/scripts/telemetrylib/rca.py  # F1 retrofit 7 (RCA filer)
 walker system/scripts/vaultlib/nightshift_session.py  # other shape: a Work Order session with many tools and no single connector (F1 spec)
 walker system/scripts/vaultlib/connector.py  # home: the shared walker (F1 spec §3.1)
@@ -156,7 +155,6 @@ helper system/scripts/lib_fetch.sh:fail  # home: the shared fetch helpers (F1 sp
 helper system/scripts/lib_fetch.sh:skip  # home: the shared fetch helpers (F1 spec §3.2)
 helper system/scripts/vault_sync.sh:fail  # other shape: fail <step> <reason> for a sync step, no fetch exit
 fail-class system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
-fail-class system/scripts/calendar_tsv.py  # F1 retrofit 5 (calendar)
 fail-class extensions/telemetry/scripts/telemetrylib/rca.py  # F1 retrofit 7 (RCA filer)
 fail-class system/scripts/vaultlib/connector.py  # home: the one Fail every retrofitted module imports (F1 spec §3.1)
 config system/scripts/alert.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
@@ -172,7 +170,6 @@ stub system/tests/stub_claude  # other shape: the headless stub (STUB_MODE), not
 stub system/tests/stub_claude_nightshift  # other shape: the Work Order stub, not a connector stub
 stub system/tests/stub_claude_connector  # home: the one connector stub (F1 spec §3.4)
 stream-builder extensions/intraday/tests/python/test_watch_check.py  # F1 retrofit 3 (watch): helpers.stream
-stream-builder system/tests/python/test_calendar_tsv.py  # F1 retrofit 5 (calendar): helpers.stream
 stream-builder extensions/telemetry/tests/python/test_rca.py  # F1 retrofit 7 (RCA filer): helpers.stream
 '
 
