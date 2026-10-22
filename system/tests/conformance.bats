@@ -144,13 +144,11 @@ helper system/scripts/lib_fetch.sh:fail  # home: the shared fetch helpers (F1 sp
 helper system/scripts/lib_fetch.sh:skip  # home: the shared fetch helpers (F1 spec §3.2)
 helper system/scripts/vault_sync.sh:fail  # other shape: fail <step> <reason> for a sync step, no fetch exit
 fail-class system/scripts/vaultlib/connector.py  # home: the one Fail every retrofitted module imports (F1 spec §3.1)
-config system/scripts/alert.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
-config system/scripts/commit_runs.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
-config system/scripts/vaultlib/nightshift_check.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
-config system/scripts/vaultlib/notify.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
-config system/scripts/vaultlib/triage.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
-config extensions/handoffs/scripts/jira_handoffs.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
-config extensions/telemetry/scripts/telemetrylib/rca.py  # stays through F1 (F1 spec §6): F2 extension API, F4 scaffold
+config system/scripts/alert.py  # a core copy: F3 (#308) folds the five into one core reader (F2 spec §3.5)
+config system/scripts/commit_runs.py  # a core copy: F3 (#308) folds the five into one core reader (F2 spec §3.5)
+config system/scripts/vaultlib/nightshift_check.py  # a core copy: F3 (#308) folds the five into one core reader (F2 spec §3.5)
+config system/scripts/vaultlib/notify.py  # a core copy: F3 (#308) folds the five into one core reader (F2 spec §3.5)
+config system/scripts/vaultlib/triage.py  # a core copy: F3 (#308) folds the five into one core reader (F2 spec §3.5)
 stub system/tests/stub_claude  # other shape: the headless stub (STUB_MODE), not a connector stub
 stub system/tests/stub_claude_nightshift  # other shape: the Work Order stub, not a connector stub
 stub system/tests/stub_claude_connector  # home: the one connector stub (F1 spec §3.4)
@@ -167,10 +165,6 @@ copies() {
       | sed -E 's/^([^:]+):[0-9]+:(function +)?([a-z_]+).*/helper \1:\3/'
     git grep -lE '^class Fail\b' "${py[@]}" | sed 's/^/fail-class /'
     git grep -lE '^def config\(' "${py[@]}" | sed 's/^/config /'
-    # An extension importing a private vaultlib name: single-line `from … import` only (F2's extension API test replaces this).
-    git grep -nE '^ *from vaultlib(\.[a-z_]+)* import ' -- 'extensions/*/scripts/*.py' \
-      | awk -F: '{ path = $1; sub(/^[^:]*:[^:]*:/, ""); sub(/#.*/, ""); sub(/.* import /, ""); n = split($0, a, ",")
-                   for (i = 1; i <= n; i++) { t = a[i]; sub(/^[ (]+/, "", t); sub(/[ )].*$/, "", t); if (t ~ /^_/) print "private-import " path ":" t } }'
     # Test doubles: claude stubs and pytest modules with their own stream() builder (helpers.py is F1's shared home).
     git ls-files | grep -E '(^|/)stub_claude[^/]*$' | sed 's/^/stub /'
     git grep -lE '^def stream\(' -- 'system/tests/python/*.py' 'extensions/*/tests/python/*.py' ':!system/tests/python/helpers.py' | sed 's/^/stream-builder /'

@@ -4,10 +4,8 @@ State lives in system/logs/watch/: cursors.json, the calendar snapshot, the item
 """
 from pathlib import Path
 
-from vaultlib import now as nowmod
-from vaultlib.connector import Fail
-from vaultlib.state import append, load, records, save  # noqa: F401  (re-exported for the watch's modules)
-from vaultlib.triage import config
+from vaultlib.api import Fail, config, now as nowmod
+from vaultlib.api import append, load, records, save  # noqa: F401  (re-exported for the watch's modules)
 
 STATE = Path("system") / "logs" / "watch"
 QUERIES = ("watch", "mpim", "own", "capture")

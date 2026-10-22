@@ -10,7 +10,7 @@ an OR and that a filter-only search still needs one filter).
 import re
 from datetime import datetime, timedelta, timezone
 
-from vaultlib.notify import prefix
+from vaultlib.api import prefix
 
 from .common import Fail, QUERIES, config, load, partition, save, state, truthy
 

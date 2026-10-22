@@ -7,7 +7,7 @@ from pathlib import Path
 
 import re
 
-from vaultlib import frontmatter
+from vaultlib.api import frontmatter
 from .telemetry import event_id, kql_reopen, mask, sanitize, trace_id
 
 STATE = "system/logs/telemetry_state.json"

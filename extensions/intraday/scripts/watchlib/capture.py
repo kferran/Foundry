@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from vaultlib.notify import thread_state
+from vaultlib.api import thread_state
 
 from .common import config
 

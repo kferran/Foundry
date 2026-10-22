@@ -5,7 +5,7 @@ Usage: jira_handoffs.py query             print the site, then the JQL, built fr
        jira_handoffs.py extract [--date D] < stream  check a jira_fetch.sh session; print the brief's lines: up to
                                           10 tickets, then counts (phase A spec §3.3)
 A handoff is a ticket in handoffs_projects that the owner reported and someone else holds, open and with no
-status-category change for 7 days. The lines come from each search result's structuredContent (vaultlib.connector);
+status-category change for 7 days. The lines come from each search result's structuredContent (the shared connector checks);
 the model's own words are never used.
 Exit: 0 ok, 1 claude error or a result in an unexpected shape, 2 usage or incomplete settings, 3 no connector,
 6 connector error, 7 unexpected tool use or a call with other arguments. A non-zero exit writes one reason line
@@ -18,10 +18,7 @@ from pathlib import Path
 
 VAULT = Path(__file__).resolve().parents[3]   # extensions/handoffs/scripts/
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
-from vaultlib import frontmatter  # noqa: E402
-from vaultlib.briefings import cut  # noqa: E402
-from vaultlib.connector import Fail, check_stream  # noqa: E402
-from vaultlib.stream import messages  # noqa: E402
+from vaultlib.api import Fail, check_stream, config, cut, messages  # noqa: E402
 
 TOOL = "mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql"
 PROJECT = re.compile(r"^[A-Z][A-Z0-9_]{0,30}$")
@@ -29,11 +26,6 @@ KEY = re.compile(r"^[A-Z][A-Z0-9_]{0,30}-[0-9]{1,9}$")
 SITE = re.compile(r"^[a-z0-9][a-z0-9.-]{0,200}$")
 CHANGED = re.compile(r"unchanged since (\d{4}-\d{2}-\d{2})\)$")
 MAX_LISTED, OLD_DAYS = 10, 90
-
-
-def config() -> dict:
-    path = VAULT / "system" / "config.md"
-    return (frontmatter.parse(path.read_text(encoding="utf-8")).data or {}) if path.is_file() else {}
 
 
 def query(cfg: dict) -> tuple:
@@ -52,7 +44,7 @@ def query(cfg: dict) -> tuple:
 
 
 def pages(stream, site, jql, persisted):
-    """The structuredContent of each search result, after vaultlib.connector's tool-use, argument and error checks.
+    """The structuredContent of each search result, after the shared connector's tool-use, argument and error checks.
     A page the model saw only as too large is counted in `persisted` and still read: structuredContent holds the
     whole page, and extract's last-page check catches a model that could not see hasNextPage."""
     def accept(i):
@@ -116,10 +108,10 @@ def chase(lines: list, today: str) -> list:
 def main(argv):
     try:
         if argv[1:] == ["query"]:
-            print("\n".join(query(config())))
+            print("\n".join(query(config(VAULT))))
         elif argv[1:2] == ["extract"] and (argv[2:] == [] or argv[2:3] == ["--date"] and len(argv) == 4):
             today = argv[3] if len(argv) == 4 else date.today().isoformat()
-            print("".join(f"{t}\n" for t in chase(extract(messages(sys.stdin.read()), config()), today)), end="")
+            print("".join(f"{t}\n" for t in chase(extract(messages(sys.stdin.read()), config(VAULT)), today)), end="")
         else:
             raise Fail(2, "usage: jira_handoffs.py query | extract [--date YYYY-MM-DD]")
     except Fail as f:

@@ -22,10 +22,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 VAULT = HERE.parents[2]
 sys.path[:0] = [str(HERE), str(VAULT / "system" / "scripts")]
-from vaultlib import frontmatter  # noqa: E402
-from vaultlib.intake import Intake  # noqa: E402
-from vaultlib.meetings import open_actions, owner_names  # noqa: E402
-from vaultlib.redact import redact_credentials  # noqa: E402
+from vaultlib.api import frontmatter, Intake, now as nowmod, open_actions, owner_names, redact_credentials  # noqa: E402
 from watchlib import route  # noqa: E402
 from watchlib.common import alert, append, config, records, state  # noqa: E402
 
@@ -176,7 +173,6 @@ def summary(vault: Path, day: str) -> str:
 
 def still_open(vault: Path, day: str) -> list:
     """The Now lines the watch added that day that are still open, for the debrief (B8)."""
-    from vaultlib import now as nowmod
     from watchlib.common import partition
     page = nowmod.open_lines(nowmod.read(vault, partition(vault)))
     links = [r["link"] for r in records(route.ledger_path(vault, day)) if r.get("day") == day and r.get("now") == "added"
