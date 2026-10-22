@@ -137,7 +137,6 @@ doc() { local f="$1"; shift; mkdir -p "${f%/*}"; printf '%s\n' '# T' '' "$@" > "
 # copy deletes its line, so the diff shows exactly which copies went.
 COPIES_ALLOWED='
 walker system/scripts/vaultlib/triage.py  # F1 retrofit 1 (triage): connector.check_stream
-walker system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
 walker extensions/intraday/scripts/watchlib/check.py  # F1 library PR lifts it into vaultlib/connector.py; retrofit 3 (watch)
 walker system/scripts/vaultlib/notify.py  # F1 retrofit 4 (notify)
 walker system/scripts/calendar_tsv.py  # F1 retrofit 5 (calendar)
@@ -149,8 +148,6 @@ helper system/scripts/triage_fetch.sh:logline  # F1 retrofit 1 (triage): lib_fet
 helper system/scripts/triage_fetch.sh:alert_once  # F1 retrofit 1 (triage): lib_fetch.sh
 helper system/scripts/triage_fetch.sh:fail  # F1 retrofit 1 (triage): lib_fetch.sh
 helper system/scripts/triage_fetch.sh:skip  # F1 retrofit 1 (triage): lib_fetch.sh
-helper system/scripts/meetings_fetch.sh:logline  # F1 retrofit 2 (meetings)
-helper system/scripts/meetings_fetch.sh:alert_once  # F1 retrofit 2 (meetings)
 helper extensions/intraday/scripts/watch_fetch.sh:logline  # F1 retrofit 3 (watch)
 helper extensions/intraday/scripts/watch_fetch.sh:alert_once  # F1 retrofit 3 (watch)
 helper system/scripts/notify.sh:logline  # F1 retrofit 4 (notify)
@@ -169,7 +166,6 @@ helper system/scripts/lib_fetch.sh:fail  # home: the shared fetch helpers (F1 sp
 helper system/scripts/lib_fetch.sh:skip  # home: the shared fetch helpers (F1 spec §3.2)
 helper system/scripts/vault_sync.sh:fail  # other shape: fail <step> <reason> for a sync step, no fetch exit
 fail-class system/scripts/vaultlib/triage.py  # F1 retrofit 1 (triage): connector.Fail
-fail-class system/scripts/meetings_extract.py  # F1 retrofit 2 (meetings)
 fail-class system/scripts/vaultlib/notify.py  # F1 retrofit 4 (notify)
 fail-class system/scripts/calendar_tsv.py  # F1 retrofit 5 (calendar)
 fail-class extensions/handoffs/scripts/jira_handoffs.py  # F1 retrofit 6 (handoffs)
