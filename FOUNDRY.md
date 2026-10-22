@@ -387,7 +387,7 @@ sources ──confined fetch (1 tool + checker)──► raw/  (audit log, never
 | D2 | Triage, the intraday watch and the today log write model-derived Now lines and the today file through their own scripts, outside the gate. | Give machine writers the gate's checks | F5 (#310) |
 | D3 | Core named extension features: alert tags, the `production_error` route, index and schema rules. | Fixed: they live in each extension's manifest, lint module and schemas, and the core-clean test holds the words out | F2 (#307), done |
 | D4 | Extensions imported core internals. | Fixed: extension scripts import only `vaultlib/api.py`, held by `test_extension_api.py` | F2 (#307), done |
-| D5 | The core budget counts only `system/scripts`, not `system/hooks` or `.claude/commands`. | Count them too, at a measured cap | F3 (#308) |
+| D5 | The core budget counts only `system/scripts`, not `system/hooks` or `.claude/commands`. | Fixed: the budget counts `system/scripts`, `system/hooks` and `.claude/commands` under a 15,000-line cap | F3 (#308), done |
 
 ## Development
 

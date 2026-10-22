@@ -6,6 +6,21 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
+CORE_CAP=15000
+
+core_lines() {
+  ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
+}
+
+# Prints the problem; a vault (system/config.md exists) skips the cap.
+core_problem() {
+  [ -f "$1/system/config.md" ] && return 0
+  local n
+  n="$(core_lines "$1")"
+  [ "$n" -le "$CORE_CAP" ] || echo "core is $n lines; the cap is $CORE_CAP"
+  return 0
+}
+
 @test "partition folders exist" {
   for p in work personal shared; do
     [ -d "wiki/$p/concepts" ]
@@ -450,13 +465,27 @@ sealed_problems() {
   # decision 10) took core from 13,802 to 13,822, inside the budget.
   # 13,850 -> 13,950 (#293 daily thread, owner to approve): notices in one daily Slack thread (the parent post, the
   # thread_ts lock, the posted ts read back and recorded for the capture) took core from 13,827 to 13,905 lines.
-  # Line cap removed (owner, 2026-10-21): #323 and #324 took core to 13,961 lines (13,966 with #328) while the factory's
-  # F1 library and retrofits move code between core and extensions. The count is printed; the cap returns in the
-  # tightening sweep (#122) at a measured value once F1 is done (#306).
+  # 15,000 over system/scripts, system/hooks and .claude/commands (owner, 2026-10-22; 14,906 at fd59bc5): the cap
+  # returns after its removal on 2026-10-21 (#323, #324 and #328 took scripts alone to 13,966). The #122 sweep lowers it.
+  # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
-  lines="$(git ls-files -z system/scripts | xargs -0 cat | wc -l)"
-  echo "core script lines: $lines"
+  echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
+  run core_problem "$VAULT_ROOT"
+  [ -z "$output" ]
   [ "$(git ls-files system/schemas | wc -l)" -le 14 ]
+}
+
+@test "the core cap counts hooks and commands, and a vault skips it" {
+  d="$BATS_TEST_TMPDIR/cap"
+  mkdir -p "$d/system/hooks"
+  git -C "$d" init -q
+  seq 15001 > "$d/system/hooks/big"
+  git -C "$d" add -A
+  run core_problem "$d"
+  [ "$output" = "core is 15001 lines; the cap is 15000" ]
+  : > "$d/system/config.md"
+  run core_problem "$d"
+  [ -z "$output" ]
 }
 
 @test "core names no vendor or customer outside its allowlist" {
