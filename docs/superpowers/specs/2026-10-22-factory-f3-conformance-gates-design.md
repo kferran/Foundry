@@ -4,7 +4,7 @@
 **Status:** draft for the owner
 **Program:** `docs/superpowers/2026-10-21-factory-plan.md` (phase F3)
 **Grill:** 2026-10-21, recorded in the program plan's `## Grill` section (the factory is the owner's idea; F3 is part of the program the owner approved with #304).
-**Builder check:** 2026-10-22, three questions, all settled as my calls in §6 (PR 1's merge lane, an extension unit with no sessions, the cap in a vault); the two owner decisions are in §7.
+**Builder check:** 2026-10-22, three questions, all settled as my calls in §6 (PR 1's merge lane, an extension unit with no sessions, the cap in a vault); the owner's answers are in §7.
 **Blueprint:** none: conformance tests and one core reader, no feature shape.
 **Lane:** small feature (task list in §4, no separate plan). PR 1 touches alert, intake and Work Order screen code, so the owner merges it; PR 2 auto-merges on green CI (program plan §1 table) once the owner has settled §7.
 
@@ -66,7 +66,7 @@ New `system/scripts/vaultlib/config.py`, lifted from the copies:
 - `config(vault) -> dict`: the frontmatter of `<vault>/system/config.md`; `{}` when the file is missing or unreadable (`OSError`, `UnicodeDecodeError`). `frontmatter.parse` never raises, so malformed YAML is `{}` too.
 - `text(vault, key, default) -> str`: the value when it is a non-empty string, else the default (today's `Intake.config` and `commit_runs.config`).
 
-Every core Python reader moves onto it (owner decides the scope, §7 item 2; this spec is written for all of them):
+Every core Python reader moves onto it (owner, 2026-10-22: all 13, §7 item 2):
 
 | File | Today |
 |---|---|
@@ -80,7 +80,7 @@ One behaviour changes: `triage`, `notify` and `nightshift_check` raised on a con
 
 ### 3.4 The timing rule
 
-**The overrun list stays for #299.** `TIMING_OVERRUNS` keeps its five lines, each naming #299, and F3 does not wait for #299. `intake` (an unbounded `flock 9` in `run_headless.sh`, five headless runs) and `smoke` (120 s more per telemetry source) need design work that #299 owns on the safety track, where the owner merges. The other three (`watch`, `smoke/calendar`, `smoke/watch`) are the server listings F0's table found; they are not in #299's body, so the PR adds them to its checklist. The existing check ("fits now; delete its known-overrun line") empties the list as #299 lands; the last deletion removes the variable and its loop. Any new overrun fails today.
+**The overrun list stays for #299.** `TIMING_OVERRUNS` keeps its five lines, each naming #299, and F3 does not wait for #299. `intake` (an unbounded `flock 9` in `run_headless.sh`, five headless runs) and `smoke` (120 s more per telemetry source) need design work that #299 owns on the safety track, where the owner merges. The other three (`watch`, `smoke/calendar`, `smoke/watch`) are the server listings F0's table found; they are not in #299's body, so they were added to its checklist with this spec. The existing check ("fits now; delete its known-overrun line") empties the list as #299 lands; the last deletion removes the variable and its loop. Any new overrun fails today.
 
 **Extension budgets move into the manifest.** Today `TIMING_VALUES` and `TIMING_STEPS` name extension script paths and regexes (`jira_fetch.sh`, `watch_fetch.sh`, `watchlib/calendar.py`, `watch.py`, `rca_file.sh`, the three manifests). They move to one new manifest field (`FIELDS` gains `budget`; the contract stays 1):
 
@@ -101,7 +101,7 @@ Core's `TIMING_VALUES` and `TIMING_STEPS` keep only core lines. The check that e
 
 ### 3.5 The budget counts hooks and commands
 
-The line count in `vault_integrity.bats` becomes `git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l`, and the cap comes back at a measured value (the owner removed it for F1 and F2 in #328; the test comment says it returns at a measured value once F1 is done). Measured at `fd59bc5`: `system/scripts` 14,128, `system/hooks` 372, `.claude/commands` 406, total 14,906. `.githooks/pre-commit` (90) is not named by D5 and stays out. The cap is the owner's (§7 item 1). `vault_integrity.bats` is every vault's gate, and a vault adds its own commands and hooks, so the cap assertion skips when `system/config.md` exists (as `conformance.bats` does); the count is still printed there. The #122 tightening sweep lowers it later; each raise keeps its dated comment line.
+The line count in `vault_integrity.bats` becomes `git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l`, and the cap comes back at a measured value (the owner removed it for F1 and F2 in #328; the test comment says it returns at a measured value once F1 is done). Measured at `fd59bc5`: `system/scripts` 14,128, `system/hooks` 372, `.claude/commands` 406, total 14,906. `.githooks/pre-commit` (90) is not named by D5 and stays out. The cap is 15,000 (owner, 2026-10-22, §7 item 1). `vault_integrity.bats` is every vault's gate, and a vault adds its own commands and hooks, so the cap assertion skips when `system/config.md` exists (as `conformance.bats` does); the count is still printed there. The #122 tightening sweep lowers it later; each raise keeps its dated comment line.
 
 ### 3.6 "Config keys match the schema" is moot
 
@@ -110,7 +110,7 @@ F2 (#350, #352) states each extension's config keys once, in its `schemas/config
 ## 4. Pull requests
 
 1. **One config reader and part homes** (§3.2, §3.3; the owner merges). `vaultlib/config.py`, the readers moved onto it, `api.py`'s import, `COPIES_ALLOWED` to `PART_HOMES` with the `config` scan widened. Core lines go down; the PR prints the count.
-2. **Source rule, timing in manifests, budget scope** (§3.1, §3.4, §3.5; auto-merge). The Source rule and its table, the `budget` field in `FIELDS` and the three template manifests, `watch.py`'s named lock wait, the extension lines out of the timing tables, the budget count and cap, FOUNDRY.md's D5 row and a `budget` sentence beside the other manifest parts (its Intraday paragraph), a checklist line on #299 for the three listing overruns. Core lines: about +1 (the `budget` word on the existing `FIELDS` line; the named constant is in an extension) plus the 778 lines of hooks and commands the count now includes.
+2. **Source rule, timing in manifests, budget scope** (§3.1, §3.4, §3.5; auto-merge). The Source rule and its table, the `budget` field in `FIELDS` and the three template manifests, `watch.py`'s named lock wait, the extension lines out of the timing tables, the budget count and cap, FOUNDRY.md's D5 row and a `budget` sentence beside the other manifest parts (its Intraday paragraph). Core lines: about +1 (the `budget` word on the existing `FIELDS` line; the named constant is in an extension) plus the 778 lines of hooks and commands the count now includes.
 
 PR 2 rebases on PR 1 (both edit `conformance.bats`). CHANGELOG line in each.
 
@@ -142,8 +142,11 @@ Made while specifying: write sessions owe no smoke row (§3.1 rule 3); `vault_sy
 
 ## 7. Owner decisions
 
-1. **The cap.** Recommended: the count at PR 2's merge over `system/scripts`, `system/hooks` and `.claude/commands`, rounded up to the next 50 (14,950 at `fd59bc5`; PR 1 lowers the count a little).
-2. **Reader scope.** #308 names the five `def config(` copies. Recommended: all 13 core readers in §3.3, since a rule keyed on the name `def config(` already misses three `_config` copies and the inline reads, and each move is a line or two deleted.
+Answered by the owner on 2026-10-22.
+
+1. **The cap:** 15,000 over `system/scripts`, `system/hooks` and `.claude/commands` (14,906 at `fd59bc5`). The recommendation was the measured count rounded up to the next 50.
+2. **Reader scope:** all 13 core readers in §3.3, since a rule keyed on the name `def config(` already misses three `_config` copies and the inline reads.
+3. **Issue posts:** the three listing overruns went onto #299's checklist with the spec. The calendar alert line (§9) gets no issue for now.
 
 ## 8. Left to the builder
 
