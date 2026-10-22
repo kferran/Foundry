@@ -4,7 +4,7 @@
 # and someone else holds with no status-category change for 7 days. The query is built from handoffs_site and
 # handoffs_projects. --check prints how many tickets the search listed instead of the lines.
 # Exit: 0 ok, 1 claude error (or a refused allow rule), 2 usage or incomplete settings, 3 no connector, 4 timeout,
-# 6 connector error or a page too large for the model to read, 7 unexpected tool, 127 no claude.
+# 6 connector error, 7 unexpected tool, 127 no claude.
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"   # extensions/handoffs/scripts/
 cd "$VAULT_ROOT"

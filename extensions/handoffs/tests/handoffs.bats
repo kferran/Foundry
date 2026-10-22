@@ -40,7 +40,7 @@ jira_says() {
     printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"tool_reference","tool_name":"%s"}]}]}}\n' "$J"
     jq -cn --arg t "$tool" --arg q "$jql" '{type: "assistant", message: {content: [{type: "tool_use", id: "t2", name: $t,
       input: {cloudId: "example.atlassian.net", jql: $q, maxResults: 100}}]}}'
-    jq -cn --argjson n "$nodes" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "t2", content: "…"}]},
+    jq -cn --argjson n "$nodes" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "t2", content: "<persisted-output>…"}]},
       tool_use_result: {structuredContent: {issues: {nodes: $n, pageInfo: {hasNextPage: false}}}}}'
     printf '{"type":"result","subtype":"success","is_error":false,"num_turns":3}\n'
   } > "$STUB_STREAMS/search.jsonl"
@@ -185,13 +185,6 @@ prep_handoffs() {
   fetch_stub 3
   run prep_handoffs
   grep -qF -- '- brief_prep: handoffs: no Atlassian connector reachable' "$IN/unavailable.md"
-}
-
-@test "brief section: a page too large for the model says so instead of asking to reconnect (F1 spec §3.6)" {
-  printf '#!/bin/bash\necho "jira_fetch: a search result was too large for the model to read" >&2\nexit 6\n' > "$JF"
-  run prep_handoffs
-  [ "$status" -eq 0 ]
-  grep -qxF -- '- brief_prep: handoffs: a Jira search page was too large for the model to read; nothing was listed' "$IN/unavailable.md"
 }
 
 @test "brief_prep runs the section and copies its prompt beside it (extensions spec §3)" {
