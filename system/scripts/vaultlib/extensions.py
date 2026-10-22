@@ -101,6 +101,9 @@ def _field_reasons(name: str, data: dict) -> list:
             except re.error as exc:
                 out.append(f"{name}: alert tag {t.get('tag')}: now_when is not a valid regex ({exc}); "
                            f"the tag keeps its severity")
+    imp = data.get("importer")
+    if imp is not None and not (isinstance(imp, dict) and isinstance(imp.get("type"), str) and imp["type"]):
+        out.append(f"{name}: importer needs a type string; nothing is routed to raw/{name}/")
     return out
 
 
@@ -114,6 +117,31 @@ def check(vault: Path) -> list:
 def enabled(vault: Path) -> list:
     """(name, data) of the listed extensions that load, requires first (a stable topological order)."""
     return list(_resolve(vault)[0].items())
+
+
+def present(vault: Path) -> list:
+    """(name, data) of every extensions/<name>/ whose manifest loads, listed or not, by name. Schemas, lint rules,
+    importers and config folders follow presence, so a note of an extension the owner turned off still checks and
+    routes; an unreadable manifest is skipped (`check` names it when the extension is listed)."""
+    out = []
+    for p in sorted((Path(vault) / "extensions").glob("*/extension.md")):
+        try:
+            data, _ = manifest(Path(vault), p.parent.name)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if data:
+            out.append((p.parent.name, data))
+    return out
+
+
+def importer_for(vault: Path, ntype):
+    """The present extension whose `importer` claims notes of type `ntype` (factory F2 §3.1): the intake moves such an
+    inbox note to raw/<name>/ instead of compiling it. None when no extension claims it."""
+    for name, data in present(vault):
+        imp = data.get("importer")
+        if isinstance(imp, dict) and isinstance(imp.get("type"), str) and imp["type"] and imp["type"] == ntype:
+            return name
+    return None
 
 
 def ignore(vault: Path) -> list:

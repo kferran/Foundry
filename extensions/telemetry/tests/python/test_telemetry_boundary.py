@@ -36,3 +36,9 @@ def test_with_the_extension_off_an_incident_waits_for_the_brief_and_alert_py_ref
     r = subprocess.run([*alert, "rca", "HOTFIX candidate: x"], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert "[rca] HOTFIX candidate: x" in "".join(p.read_text() for p in (vault / "system/logs").glob("alerts_*.md"))
+
+
+def test_an_inbox_production_error_routes_to_raw_telemetry_while_the_extension_is_present(vault):
+    from vaultlib import extensions
+    write(vault, "system/config.md", '---\ntype: config\nextensions: []\n---\n')   # present, not enabled
+    assert extensions.importer_for(vault, "production_error") == "telemetry"

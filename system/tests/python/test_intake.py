@@ -111,11 +111,27 @@ def test_duplicate_is_archived_without_ingest(iv):
     assert any(p.name.startswith("b-dup-") for p in (iv / "raw/archive").iterdir())
 
 
-def test_production_error_routed_to_telemetry(iv):
-    write(iv, "raw/inbox/err.md", '---\ntype: production_error\nservice: "x"\nexception: "E"\n'
-          'operation_id: "1"\ndetected_at: "2026-10-01T00:00:00Z"\n---\nboom\n')
+def with_demo(vault):
+    """The demo fixture extension, present but not listed in `extensions`: its importer claims demo_drop notes."""
+    shutil.copytree(REPO / "system/tests/fixtures/extensions", vault / "extensions")
+    return vault
+
+
+def test_an_extension_importer_routes_its_note_type_to_its_raw_folder(iv):
+    with_demo(iv)
+    (iv / "extensions/broken").mkdir()
+    (iv / "extensions/broken/extension.md").write_bytes(b"---\nname: broken\xff\n---\n")   # skipped, never a crash
+    write(iv, "raw/inbox/err.md", '---\ntype: demo_drop\nservice: "x"\n---\nboom\n')
+    write(iv, "raw/inbox/other.md", '---\ntype: something_else\n---\nhello\n')
     Intake(iv, now=later()).run()
-    assert calls(iv) == [] and (iv / "raw/telemetry/err.md").is_file()
+    assert (iv / "raw/demo/err.md").is_file()
+    assert [c["args"][1] for c in calls(iv)] == ["raw/inbox/.staging/other.md"]   # the rest is compiled as before
+
+
+def test_a_note_type_no_present_extension_claims_is_compiled(iv):
+    write(iv, "raw/inbox/err.md", "---\ntype: demo_drop\n---\nboom\n")
+    Intake(iv, now=later()).run()
+    assert len(calls(iv)) == 1 and not (iv / "raw/demo").exists()
 
 
 def test_archive_collision_renamed_before_ingest(iv):
@@ -160,13 +176,14 @@ def test_usage_ceiling_holds_inbox_and_digests_and_alerts_once_a_day(iv):
     assert alerts.count("[intake] held: 5-hour usage 70% at or above 60%") == 1
 
 
-def test_usage_ceiling_holds_only_sessions_so_telemetry_notes_still_route(iv):
-    write(iv, "raw/inbox/err.md", "---\ntype: production_error\n---\nboom\n")
+def test_usage_ceiling_holds_only_sessions_so_imported_notes_still_route(iv):
+    with_demo(iv)
+    write(iv, "raw/inbox/err.md", "---\ntype: demo_drop\n---\nboom\n")
     write(iv, "raw/inbox/a.md", "a")
     usage_reading(iv, 0.7)
     Intake(iv, now=later()).run()
     assert calls(iv) == []
-    assert (iv / "raw/telemetry/err.md").exists()
+    assert (iv / "raw/demo/err.md").exists()
     assert (iv / "raw/inbox/a.md").exists()
 
 

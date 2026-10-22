@@ -16,5 +16,6 @@ alert_tags: [demo]
 allow: ["Bash(extensions/demo/scripts/demo_check.sh)"]
 deps: []
 index_ignore: ["raw/demo"]
+importer: {type: demo_drop}
 ---
 The text /setup shows when the owner turns demo on, and the questions it asks.

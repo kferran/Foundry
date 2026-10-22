@@ -74,6 +74,19 @@ def test_a_now_when_that_is_not_a_regex_is_a_reason_and_the_extension_still_load
     assert [n for n, _ in extensions.enabled(vault)] == ["w"]
 
 
+def test_an_importer_without_a_type_string_is_a_reason_and_claims_nothing(vault):
+    manifest(vault, "w", importer="{kind: x}")
+    config(vault, "w")
+    assert extensions.check(vault) == ["w: importer needs a type string; nothing is routed to raw/w/"]
+    assert extensions.importer_for(vault, "x") is None
+
+
+def test_importer_for_reads_present_extensions_listed_or_not(ext):
+    assert extensions.importer_for(ext, "demo_drop") == "demo"
+    assert extensions.importer_for(ext, "other") is None
+    assert [n for n, _ in extensions.present(ext)] == ["demo", "items", "needs-other"]
+
+
 def test_field_reads_one_manifest_field(ext):
     config(ext, "demo")
     assert run(ext, "field", "demo", "description").stdout == "A fixture extension for the loader tests\n"

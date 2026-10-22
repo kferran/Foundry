@@ -17,6 +17,7 @@ units:
   - {name: foundry-telemetry, roles: [standalone, server]}
 tick: {run: "scripts/rca.py tick", timeout: 1900}
 lint: scripts/telemetrylib/lint.py
+importer: {type: production_error}
 alert_tags:
   - {tag: incident, severity: now}
   - {tag: rca, severity: now}
