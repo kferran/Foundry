@@ -37,10 +37,12 @@ def tree(tmp_path):
     return tmp_path
 
 
+# The three runners start sessions. lib_confine.sh (`claude mcp list`), smoke_check.sh (`--version`) and
+# vaultlib/nightshift_run.py (`auth status`) call the binary for no session, so the patterns pass them.
 RUNNERS = {"system/scripts/lib_connector.sh", "system/scripts/run_headless.sh",
            "system/scripts/vaultlib/nightshift_session.py"}
-SESSION_SH = re.compile(r"(\bclaude|\$\{?(CLAUDE_BIN|claude_bin)\b\S*)\s+-p\b")
-SESSION_PY = re.compile(r"""(["']claude["']|claude_bin\(\)|CLAUDE_BIN\b[^,\]]*)\s*,\s*["']-p["']""")
+SESSION_SH = re.compile(r"(\bclaude\b|\$\{?(CLAUDE_BIN|claude_bin)\b)[^#|;&]*\s(-p|--print)\b")
+SESSION_PY = re.compile(r"""(["']claude["']|claude_bin\(|CLAUDE_BIN).*["'](-p|--print)["']""")
 NEVER_FEATURE = {"vaultlib.api", "vaultlib.connector"}   # every extension imports the API; the walker's own home
 WALKERS = {"walk", "check_stream"}
 SMOKE_ROW = r"^\s*connector (\w+) .*system/scripts/{} --check"
@@ -199,6 +201,11 @@ CHECKS = "calls neither walk( nor check_stream("
      "system/scripts/x.sh:1: starts a claude session outside a runner"),
     ("system/scripts/x.py", lambda t: 'import subprocess\nsubprocess.run([claude_bin(), "-p", p])\n',
      "system/scripts/x.py:2: starts a claude session outside a runner"),
+    ("system/scripts/y.sh", lambda t: '# a comment: claude -p\nclaude --output-format stream-json -p "$p"\n',
+     "system/scripts/y.sh:2: starts a claude session outside a runner"),
+    ("extensions/handoffs/scripts/y.py",
+     lambda t: 'import subprocess\nsubprocess.run(["claude", "--model", m, "--print", p])\n',
+     "extensions/handoffs/scripts/y.py:2: starts a claude session outside a runner"),
 ])
 def test_a_session_outside_a_runner_is_caught(tmp_path, rel, edit, want):
     root = tree(tmp_path)
@@ -210,6 +217,7 @@ def test_a_session_outside_a_runner_is_caught(tmp_path, rel, edit, want):
 @pytest.mark.parametrize("rel,edit,want", [
     (JIRA, lambda t: t.replace("source system/scripts/lib_fetch.sh\n", ""),
      f"{JIRA}: does not source lib_fetch.sh after lib_connector.sh"),
+    (JIRA, lambda t: t.replace(' < "$work/out.jsonl"', ""), f"{JIRA}: no checker reads $work/out.jsonl"),
     ("extensions/handoffs/scripts/jira_handoffs.py", lambda t: t.replace("check_stream(", "check_other("),
      f"{JIRA}: its checker extensions/handoffs/scripts/jira_handoffs.py {CHECKS}"),
     # vaultlib/index.py, which it imports, calls os.walk( and self.walk(: neither is the walker.
