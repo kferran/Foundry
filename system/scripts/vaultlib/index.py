@@ -23,7 +23,39 @@ NOT_INDEXED = ("system/logs/", "system/quarantine/", "system/jobs/", "system/tem
 # Walked but never indexed: reachable by explicit path, never by bare [[Name]].
 NAME_EXCLUDED = ("system/tests/", "system/templates/", "system/schemas/", "system/agents/", "docs/",
                  "system/quarantine/", "wiki/.staging/",  # run copies keep their note names
-                 "system/codebases/", "system/telemetry/", "system/nightshift/")  # named after what they configure
+                 "system/codebases/", "system/nightshift/")  # named after what they configure
+
+
+def name_excluded(vault) -> tuple:
+    """NAME_EXCLUDED plus system/<name>/ of each present extension, which holds its config notes (factory F2 §3.1)."""
+    return NAME_EXCLUDED + tuple(f"system/{name}/" for name, _ in extmod.present(vault))
+
+
+def lint_modules(vault) -> list:
+    """(name, rel, module or the exception it raised) for each present extension's `lint` module (extensions spec §3)."""
+    out = []
+    for name, data in extmod.present(vault):
+        rel = data.get("lint")
+        if not isinstance(rel, str) or not rel:
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(f"foundry_ext_{name}_lint",
+                                                          Path(vault) / "extensions" / name / rel)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        except Exception as exc:  # noqa: BLE001 - one extension's rules never stop the lint
+            module = exc
+        out.append((name, rel, module))
+    return out
+
+
+def cited(vault) -> dict:
+    """{note type: open statuses} whose notes' citations are checked, from each present lint module's CITED."""
+    out = {}
+    for _, _, module in lint_modules(vault):
+        for ntype, statuses in (getattr(module, "CITED", None) or {}).items():
+            out[str(ntype)] = [str(s) for s in statuses]
+    return out
 SKIP_FILES = ("system/index.db", "system/index.lock")
 PRIVATE = re.compile(r"^wiki/[^/]+/private/")  # read-denied (#166): never walked, staged, published or opened
 ROOT_DOCS = {"README.md", "README.local.md", "FOUNDRY.md", "CLAUDE.md", "CHANGELOG.md"}   # the only Markdown files the root holds
@@ -65,21 +97,23 @@ def wall_blocked(src_partition: str, target_partition: str) -> bool:
 CITATION = re.compile(r"(?<![\w/:.-])([\w.-]+(?:/[\w.-]+)+\.[A-Za-z]\w*):(\d+)\b")
 
 
-def citation_issues(conn) -> list:
-    """Warning rows for each `dir/file.ext:NN` in an active codebase note or an open (draft or approved) rca note,
-    outside fences, that names a file missing from the codebase or shorter than NN lines (#166). An rca names its
-    codebase by file name, system/codebases/<codebase>.md; a codebase note's citation may also sit under one of its
+def citation_issues(conn, cited: dict = None) -> list:
+    """Warning rows for each `dir/file.ext:NN` in an active codebase note, or an active note of a type in `cited`
+    ({type: open statuses}, from extensions' lint modules; a note with no status is open), outside fences, that names
+    a file missing from the codebase or shorter than NN lines (#166). A cited note names its codebase by file name in
+    its `codebase` field, system/codebases/<codebase>.md; a codebase note's citation may also sit under one of its
     `layers`. Read at lint time, never cached, since the code moves on its own; a codebase not on this machine, bare
     file names and vendored paths are skipped."""
     codebases = {posixpath.basename(p)[:-3]: (root, layers) for p, root, layers in conn.execute(
         "SELECT n.path, (SELECT value FROM fields WHERE path=n.path AND key='path'), "
         "(SELECT value FROM fields WHERE path=n.path AND key='layers') FROM notes n WHERE n.type='codebase'")}
-    rows = []
-    for path, ntype, body_line, body, name in conn.execute(
-            "SELECT n.path, n.type, n.body_line, f.body, (SELECT value FROM fields WHERE path=n.path AND key='codebase') "
-            "FROM notes n JOIN notes_fts f ON f.path=n.path WHERE n.active=1 AND (n.type='codebase' OR (n.type='rca' AND "
-            "coalesce((SELECT value FROM fields WHERE path=n.path AND key='status'), 'draft') IN ('draft','approved'))) "
-            "ORDER BY n.path").fetchall():
+    rows, cited = [], cited or {}
+    for path, ntype, body_line, body, name, status in conn.execute(
+            "SELECT n.path, n.type, n.body_line, f.body, (SELECT value FROM fields WHERE path=n.path AND key='codebase'), "
+            "(SELECT value FROM fields WHERE path=n.path AND key='status') "
+            "FROM notes n JOIN notes_fts f ON f.path=n.path WHERE n.active=1 ORDER BY n.path").fetchall():
+        if ntype != "codebase" and (ntype not in cited or (status is not None and status not in cited[ntype])):
+            continue
         name = posixpath.basename(path)[:-3] if ntype == "codebase" else name
         root, layers = codebases.get(name, (None, None))
         if not root or not (root := Path(os.path.expanduser(root)).resolve()).is_dir():
@@ -334,7 +368,7 @@ class Index:
 
     def _resolve_links(self, conn, files):
         meta = {p: (part, act) for p, part, act in conn.execute("SELECT path, partition, active FROM notes")}
-        resolver = linkmod.Resolver(files, name_exclude=NAME_EXCLUDED)
+        resolver = linkmod.Resolver(files, name_exclude=name_excluded(self.vault))
         for rowid, src, target, kind in conn.execute("SELECT rowid, src, target, kind FROM links").fetchall():
             src_part = schemamod.path_partition(src)
             src_dir = posixpath.dirname(src)
@@ -418,16 +452,10 @@ class Index:
         """Each present extension's own cross-field rules (extensions spec §3, `lint`): a module path whose
         issues(conn, add) reports like the rules above. Present, like their schemas, so a note of an extension the owner
         turned off still lints; a module that does not load is one error on its manifest."""
-        for manifest in sorted((self.vault / "extensions").glob("*/extension.md")):
-            name = manifest.parent.name
-            data, _ = extmod.manifest(self.vault, name)
-            rel = (data or {}).get("lint")
-            if not isinstance(rel, str) or not rel:
-                continue
+        for name, rel, module in lint_modules(self.vault):
             try:
-                spec = importlib.util.spec_from_file_location(f"foundry_ext_{name}_lint", manifest.parent / rel)
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
+                if isinstance(module, Exception):
+                    raise module
                 module.issues(conn, add)
             except Exception as exc:  # noqa: BLE001 - one extension's rules never stop the lint
                 add(f"extensions/{name}/extension.md", 1, "error", "extension-lint",

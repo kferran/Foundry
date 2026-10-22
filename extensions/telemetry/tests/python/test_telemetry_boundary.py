@@ -42,3 +42,49 @@ def test_an_inbox_production_error_routes_to_raw_telemetry_while_the_extension_i
     from vaultlib import extensions
     write(vault, "system/config.md", '---\ntype: config\nextensions: []\n---\n')   # present, not enabled
     assert extensions.importer_for(vault, "production_error") == "telemetry"
+
+
+def _rca(stem, codebase, status, body, extra=""):
+    return (f'---\ntype: rca\ntitle: "{stem}"\npartition: work\ncreated_at: "2026-10-11"\nsource: "raw/telemetry/a.md"\n'
+            f'codebase: {codebase}\nrc_confidence: 4\nfix_confidence: 4\nstatus: {status}\n{extra}tags: [rca]\n---\n'
+            f'# {stem}\n\n{body}\n')
+
+
+def _citations(cli):
+    import json
+    return [(i["path"], i["line"], i["message"]) for i in json.loads(cli("issues", "--json").stdout)["issues"]
+            if i["code"] == "citation"]
+
+
+def test_an_open_rca_notes_citations_are_checked_live(cli, vault, tmp_path):
+    """Moved from core's test_cli.py (#166): an rca names its codebase by file name; outside fences only."""
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "app.py").write_text("a\nb\nc\n")
+    write(vault, "system/codebases/app.md", f'---\ntype: codebase\nname: app\npath: "{repo}"\npartition: work\n'
+          'search_globs: ["*"]\n---\nEntry at `src/app.py:3`.\n')
+    write(vault, "wiki/work/rca/2026-10-11-orders.md",
+          '---\ntype: rca\ntitle: "Orders fail"\npartition: work\ncreated_at: "2026-10-11"\nsource: "raw/telemetry/a.md"\n'
+          'codebase: app\nrc_confidence: 4\nfix_confidence: 4\nstatus: draft\ntags: [rca]\n---\n# Orders fail\n\n'
+          'Root cause at `src/app.py:9`, see https://example.com:443/x.py:2 and `app.py:2`.\n'
+          '```\nat src/trace.py:7\n```\n')
+    assert _citations(cli) == [("wiki/work/rca/2026-10-11-orders.md", 15, "citation src/app.py:9: the file has 3 lines")]
+    (repo / "src" / "app.py").write_text("a\n" * 9)   # read live: the code moved, the row goes without a reindex
+    assert _citations(cli) == []
+
+
+def test_only_open_active_rca_notes_are_cited(cli, vault, tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write(vault, "system/codebases/app.md", f'---\ntype: codebase\nname: "App Service"\npath: "{repo}"\npartition: work\n'
+          'search_globs: ["*"]\n---\nNothing cited.\n')
+    gone = "Gone `src/gone.py:1`."
+    for stem, status, extra in (("open", "draft", ""), ("ok", "approved", ""), ("filed", "filed", ""),
+                                ("rejected", "rejected", ""), ("old", "draft", 'superseded_by: "[[open]]"\n')):
+        write(vault, f"wiki/work/rca/{stem}.md", _rca(stem, "app", status, gone, extra))
+    write(vault, "wiki/work/rca/unset.md", _rca("unset", "app", "draft", gone).replace("status: draft\n", ""))
+    assert [(p, m) for p, _, m in _citations(cli)] == [
+        ("wiki/work/rca/ok.md", "citation src/gone.py:1: no such file in codebase app"),
+        ("wiki/work/rca/open.md", "citation src/gone.py:1: no such file in codebase app"),
+        ("wiki/work/rca/unset.md", "citation src/gone.py:1: no such file in codebase app"),   # status defaults to draft
+    ]

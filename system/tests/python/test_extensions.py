@@ -175,6 +175,20 @@ def test_index_skips_extensions_and_their_ignore_paths(ext, cli):
     assert "raw/demo" not in r.stdout
 
 
+def test_a_present_extensions_system_folder_is_indexed_but_never_a_bare_name_target(ext, cli):
+    import json
+    config_with(ext)
+    write(ext, "system/demo/site.md", "# Site\n")
+    write(ext, "wiki/work/concepts/Uses.md", "---\ntype: concept\n---\n# Uses\n\n[[site]]\n")
+    issues = json.loads(cli("issues", "--json").stdout)["issues"]
+    assert [i["message"] for i in issues if i["path"] == "wiki/work/concepts/Uses.md" and i["code"] == "dead-link"] \
+        == ["dead link [[site]]"]
+    assert "system/demo/site.md" in cli("query", "SELECT path FROM notes").stdout
+    shutil.rmtree(ext / "extensions" / "demo")   # absent: the folder is an ordinary one again
+    issues = json.loads(cli("issues", "--json").stdout)["issues"]
+    assert [i for i in issues if i["path"] == "wiki/work/concepts/Uses.md" and i["code"] == "dead-link"] == []
+
+
 # The allow rules: whole lines inserted after `"allow": [`, never a JSON rewrite (template rule for settings.json).
 RULE = "Bash(extensions/demo/scripts/demo_check.sh)"
 

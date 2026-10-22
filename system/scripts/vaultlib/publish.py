@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from . import frontmatter, links as linkmod, now as nowmod, schema as schemamod
-from .index import NAME_EXCLUDED, PRIVATE, Index, wall_blocked
+from .index import PRIVATE, Index, name_excluded, wall_blocked
 
 RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
 MEETINGS = re.compile(r"^wiki/[^/]+/meetings/")
@@ -409,7 +409,7 @@ def validate_run(vault, run_id, now=None):
     decided = {r["target"]: r["decision"] for r in decisions or [] if r["decision"] != "noop" and r.get("target")}
     schemas, ctx = schemamod.load_schemas(vault), schemamod.Context(vault)
     files = {rel for rel, _, _ in Index(vault).walk()} | set(staged)
-    resolver = linkmod.Resolver(files, name_exclude=NAME_EXCLUDED)
+    resolver = linkmod.Resolver(files, name_exclude=name_excluded(vault))
     for target in staged:
         try:
             problems += _check(vault, run_id, target, snap, decided, command, schemas, ctx, resolver, now)

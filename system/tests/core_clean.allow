@@ -23,5 +23,4 @@ system/scripts/vaultlib/triage.py:intraday
 system/systemd/foundry-smoke.service.in:telemetry
 # Leave with factory F2 PR 1:
 system/scripts/vaultlib/index.py:rca
-system/scripts/vaultlib/index.py:telemetry
 system/scripts/vaultlib/schema.py:rca

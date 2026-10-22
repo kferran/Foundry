@@ -10,7 +10,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from . import frontmatter, links as linkmod, publish, schema as schemamod
-from .index import NAME_EXCLUDED, Index
+from .index import Index, name_excluded
 
 KEYS = ("min_pass_rate", "publish", "decisions", "creates", "patches", "untouched", "walls", "absent",
         "body_contains", "body_lacks", "archived", "count", "retired", "keeps")
@@ -139,7 +139,7 @@ def _walls(vault, run_ids, want, _overlay) -> list:
     if not want:
         return []
     schemas = schemamod.load_schemas(vault)
-    resolver = linkmod.Resolver({rel for rel, _, _ in Index(vault).walk()}, name_exclude=NAME_EXCLUDED)
+    resolver = linkmod.Resolver({rel for rel, _, _ in Index(vault).walk()}, name_exclude=name_excluded(vault))
     out = []
     for rel in published(vault, run_ids):
         try:
