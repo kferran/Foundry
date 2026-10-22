@@ -77,12 +77,17 @@ def sources(root):
 
 
 def calls_walker(path):
-    """A call to walk( or check_stream(, by name or as connector.<x>/api.<x> (os.walk( and self.walk( are not it)."""
+    """A call to walk( or check_stream( by the name it was imported under from the shared parts, or as
+    connector.<x>/api.<x> (os.walk(, self.walk( and a walk( defined or imported elsewhere are not it)."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    names = {a.asname or a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)
+             and (n.module in NEVER_FEATURE or n.level == 1 and n.module == "connector")   # vaultlib's own `.connector`
+             for a in n.names if a.name in WALKERS}
     return any(isinstance(n, ast.Call) and (
-        isinstance(n.func, ast.Name) and n.func.id in WALKERS
+        isinstance(n.func, ast.Name) and n.func.id in names
         or isinstance(n.func, ast.Attribute) and n.func.attr in WALKERS
         and isinstance(n.func.value, ast.Name) and n.func.value.id in {"connector", "api"})
-        for n in ast.walk(ast.parse(path.read_text(encoding="utf-8"))))
+        for n in ast.walk(tree))
 
 
 def feature_modules(path, base):
@@ -179,6 +184,32 @@ def source_problems(root, table=CORE):
     return out
 
 
+def smoke_name_problems(root):
+    """An extension's smoke row named like a core row or another extension's row shares its log lines and streaks."""
+    text = (root / "system/scripts/smoke_check.sh").read_text(encoding="utf-8")
+    seen = {n: "core" for n in re.findall(r'^\s*(?:check|connector|report|smoke_logline) "?(\w+)', text, re.M)}
+    out = []
+    for path in sorted((root / "extensions").glob("*/extension.md")):
+        ext = path.parent.name
+        for s in manifest(root, ext).get("smoke") or []:
+            name = str(s.get("source") or ext) if isinstance(s, dict) else ext
+            if name in seen:
+                out.append(f"extensions/{ext}: smoke row {name} is also a {seen[name]} row")
+            seen.setdefault(name, f"{ext} extension")
+    return out
+
+
+def test_no_extension_smoke_row_shares_a_name():
+    assert smoke_name_problems(REPO) == []
+
+
+def test_a_shared_smoke_row_name_is_caught(tmp_path):
+    root = tree(tmp_path)
+    path = root / "extensions/handoffs/extension.md"
+    path.write_text(path.read_text().replace("{source: handoffs,", "{source: calendar,"))
+    assert smoke_name_problems(root) == ["extensions/handoffs: smoke row calendar is also a core row"]
+
+
 def test_no_script_starts_a_session_outside_a_runner():
     assert session_problems(REPO) == []
 
@@ -229,6 +260,9 @@ def test_a_session_outside_a_runner_is_caught(tmp_path, rel, edit, want):
     # vaultlib/index.py, which it imports, calls os.walk( and self.walk(: neither is the walker.
     ("system/scripts/meetings_extract.py", lambda t: t.replace("check_stream(", "check_other("),
      f"system/scripts/meetings_fetch.sh: its checker system/scripts/meetings_extract.py {CHECKS}"),
+    ("system/scripts/calendar_tsv.py",
+     lambda t: t.replace("too_large, walk\n", "too_large\nfrom os import walk\n"),
+     f"system/scripts/calendar_fetch.sh: its checker system/scripts/calendar_tsv.py {CHECKS}"),
     ("extensions/handoffs/extension.md", lambda t: re.sub(r"smoke:\n  - \{source: handoffs, .*\}\n", "", t),
      f"{JIRA}: accepts --check and has no connector smoke row in its manifest"),
     (JIRA, lambda t: t.replace("FETCH_TAG=handoffs", "FETCH_TAG=handoff"),
