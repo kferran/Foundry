@@ -110,7 +110,7 @@ F2 (#350, #352) states each extension's config keys once, in its `schemas/config
 ## 4. Pull requests
 
 1. **One config reader and part homes** (§3.2, §3.3; the owner merges). `vaultlib/config.py`, the readers moved onto it, `api.py`'s import, `COPIES_ALLOWED` to `PART_HOMES` with the `config` scan widened. Core lines go down; the PR prints the count.
-2. **Source rule, timing in manifests, budget scope** (§3.1, §3.4, §3.5; auto-merge). The Source rule and its table, the `budget` field in `FIELDS` and the three template manifests, `watch.py`'s named lock wait, the extension lines out of the timing tables, the budget count and cap, FOUNDRY.md's D5 row and a `budget` sentence beside the other manifest parts (its Intraday paragraph), a checklist line on #299 for the three listing overruns. Core lines: about +5 (the loader key, the constant) plus the 778 lines of hooks and commands the count now includes.
+2. **Source rule, timing in manifests, budget scope** (§3.1, §3.4, §3.5; auto-merge). The Source rule and its table, the `budget` field in `FIELDS` and the three template manifests, `watch.py`'s named lock wait, the extension lines out of the timing tables, the budget count and cap, FOUNDRY.md's D5 row and a `budget` sentence beside the other manifest parts (its Intraday paragraph), a checklist line on #299 for the three listing overruns. Core lines: about +1 (the `budget` word on the existing `FIELDS` line; the named constant is in an extension) plus the 778 lines of hooks and commands the count now includes.
 
 PR 2 rebases on PR 1 (both edit `conformance.bats`). CHANGELOG line in each.
 
