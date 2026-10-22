@@ -161,3 +161,7 @@ Bats or pytest for each rule (the import walk of §3.1 rule 2 reads naturally in
 1. **Pattern rules read literal code.** A session started through a computed binary name, or a config path built at run time, passes. F4's review skill checks diffs for both.
 2. **A vault's own extension is not checked.** `conformance.bats` skips in a vault, so a vault-only extension needs no `budget` field and is never failed for lacking one; the loader accepts a manifest without it.
 3. **One template update carries both sides.** A vault that edited a template manifest gets a merge conflict on the new `budget` field, and the update aborts on conflict (F2 risk 4).
+
+## 11. Corrections while building (2026-10-22)
+
+The table in section 3.1 lives in system/tests/python/test_source_rule.py, because the Source rule is a pytest module (section 8), not in conformance.bats. The telemetry tick in section 3.4 sums a third step, tick PER_TICK - FILED_LOCK_WAIT, because the filed and reopen paths in rca.py wait for run.lock up to 120 s inside each filing. The tick then sums 3 x 465 = 1,395 s of its 1,900 s limit. The Work Order refusal (section 3.3, and the screen in section 6) comes from nightshift_check.check.

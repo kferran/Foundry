@@ -154,8 +154,10 @@ def source_problems(root, table=CORE):
             if core:
                 rows, want = tuple(m.group(1) for line in smoke
                                    if (m := re.match(SMOKE_ROW.format(re.escape(name)), line))), table[name][0]
-                if want == ():
+                if want == () and not rows:
                     out.append(f"{rel}: accepts --check and has no smoke row and no reason in the table")
+                elif isinstance(want, str) and rows:
+                    out.append(f"{rel}: has smoke rows {rows} but the table gives a reason")
                 elif not isinstance(want, str) and rows != want:
                     out.append(f"{rel}: smoke rows {rows} differ from the table's {want}")
             elif not any(isinstance(s, dict) and s.get("connector") == "true"
@@ -166,6 +168,8 @@ def source_problems(root, table=CORE):
         tag = next((m.group(1) for _, line in lines if (m := re.search(r"\bFETCH_TAG=(\w+)", line))), None)
         if tag is None and not (core and table[name][1]):
             out.append(f"{rel}: sets no FETCH_TAG")
+        elif tag is None and table[name][1] not in alert_tags(root):
+            out.append(f"{rel}: the table's tag {table[name][1]} is not a key of alerts.TAGS")
         elif tag and core and tag not in alert_tags(root):
             out.append(f"{rel}: FETCH_TAG {tag} is not a key of alerts.TAGS")
         elif tag and not core and tag not in {t if isinstance(t, str) else t.get("tag")
@@ -183,11 +187,13 @@ def test_every_source_carries_its_parts():
     assert source_problems(REPO) == []
 
 
-def test_the_sources_are_the_seven():
-    assert sorted(sources(REPO)) == [
+def test_the_known_sources_are_still_found():
+    # A detection guard: a new Source adds to the set without editing this test.
+    assert {
         "extensions/handoffs/scripts/jira_fetch.sh", "extensions/intraday/scripts/watch_fetch.sh",
         "extensions/telemetry/scripts/rca_file.sh", "system/scripts/calendar_fetch.sh",
-        "system/scripts/meetings_fetch.sh", "system/scripts/notify.sh", "system/scripts/triage_fetch.sh"]
+        "system/scripts/meetings_fetch.sh", "system/scripts/notify.sh",
+        "system/scripts/triage_fetch.sh"} <= set(sources(REPO))
 
 
 JIRA = "extensions/handoffs/scripts/jira_fetch.sh"
@@ -247,6 +253,12 @@ def test_a_source_missing_a_part_is_caught(tmp_path, rel, edit, want):
     ({**CORE, "triage_fetch.sh": (("triage",), None)},
      "system/scripts/triage_fetch.sh: smoke rows ('triage', 'triage_chat') differ from the table's ('triage',)"),
     ({**CORE, "calendar_fetch.sh": (("calendar",), None)}, "system/scripts/calendar_fetch.sh: sets no FETCH_TAG"),
+    ({**CORE, "meetings_fetch.sh": ((), None)},
+     "system/scripts/meetings_fetch.sh: smoke rows ('meetings',) differ from the table's ()"),
+    ({**CORE, "calendar_fetch.sh": ("a reason", "calendar")},
+     "system/scripts/calendar_fetch.sh: has smoke rows ('calendar',) but the table gives a reason"),
+    ({**CORE, "calendar_fetch.sh": (("calendar",), "calender")},
+     "system/scripts/calendar_fetch.sh: the table's tag calender is not a key of alerts.TAGS"),
 ])
 def test_a_table_out_of_step_is_caught(table, want):
     assert source_problems(REPO, table) == [want]
