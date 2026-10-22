@@ -10,12 +10,12 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from . import frontmatter
 from . import nightshift_sched as ns
 from . import now as nowmod
 from . import state
 # _structured and _text_json stay importable for the intraday watch until its retrofit (F1 spec §3.6).
 from .connector import Fail, check_stream, strip_cursor, structured as _structured, text_json as _text_json
+from .config import config
 from .notify import prefix
 
 TOOL = "mcp__claude_ai_Gmail__search_threads"
@@ -34,11 +34,6 @@ TEXT_MAX = 160
 HEALTH_DIR = "system/logs/nightshift"
 SENDER = re.compile(r"[A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 WATCH_WINDOW = "newer_than:2d"
-
-
-def config(vault) -> dict:
-    path = Path(vault) / "system" / "config.md"
-    return (frontmatter.parse(path.read_text(encoding="utf-8")).data or {}) if path.is_file() else {}
 
 
 def _logs(vault, today: str) -> list:

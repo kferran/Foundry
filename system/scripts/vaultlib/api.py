@@ -12,7 +12,8 @@ from .notify import prefix, thread_state
 from .redact import redact_credentials
 from .state import append, load, records, save
 from .stream import blocks, messages
-from .triage import config, one_line, reply
+from .config import config
+from .triage import one_line, reply
 
 __all__ = [
     "cli", "frontmatter", "now", "schema", "triage", "yamlload",

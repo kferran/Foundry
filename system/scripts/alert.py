@@ -12,18 +12,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 VAULT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
-from vaultlib import frontmatter  # noqa: E402
+from vaultlib.config import config  # noqa: E402
 from vaultlib.alerts import TAGS, extension_tags  # noqa: E402
 
 # One line per alert: no newline, other control character or Unicode line break may forge a second one.
 CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f  ]+")
-
-
-def config() -> dict:
-    try:
-        return frontmatter.parse((VAULT / "system" / "config.md").read_text(encoding="utf-8")).data or {}
-    except (OSError, UnicodeDecodeError):
-        return {}
 
 
 def main(argv) -> int:
@@ -32,7 +25,7 @@ def main(argv) -> int:
     if len(argv) != 3 or argv[1] not in tags or not text:
         print(f"usage: alert.py <{'|'.join(tags)}> <text>", file=sys.stderr)
         return 2
-    cfg = config()
+    cfg = config(VAULT)
     if cfg.get("machine_role") == "client":
         print("alert.py: a client keeps its alerts on this machine and nothing reads them; tell the user in this "
               "session or add a Now line", file=sys.stderr)

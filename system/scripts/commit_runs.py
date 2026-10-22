@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 VAULT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
 from vaultlib import frontmatter  # noqa: E402
+from vaultlib.config import text  # noqa: E402
 
 LOGS = VAULT / "system" / "logs"
 RUNS = LOGS / "runs"
@@ -26,18 +27,9 @@ CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f  ]+")  # Unicode line breaks too:
 SUBJECT_MAX = 72
 
 
-def config(key, default):
-    try:
-        data = frontmatter.parse((VAULT / "system" / "config.md").read_text(encoding="utf-8")).data or {}
-    except (OSError, UnicodeDecodeError):
-        return default
-    value = data.get(key)
-    return value if isinstance(value, str) and value else default
-
-
 def now():
     try:
-        return datetime.now(ZoneInfo(config("timezone", "UTC")))
+        return datetime.now(ZoneInfo(text(VAULT, "timezone", "UTC")))
     except (ZoneInfoNotFoundError, ValueError):
         return datetime.now(ZoneInfo("UTC"))
 
@@ -147,7 +139,7 @@ def message(run_id, command, published, conflicts, role, carried=()):
         rows += [("update", p, "") for p in published if p not in covered]
         partition = ledger_partition(run_id) \
             or folder_partition([r["target"] for r in decisions]) or folder_partition(published) \
-            or config("default_partition", "personal")
+            or text(VAULT, "default_partition", "personal")
         head = subject(f"ingest({partition}): ", [f"{CONTROL.sub(' ', d)} {Path(t).stem}" for d, t, _ in rows])
         body = [f"{d} {t} <- {s}" if s else f"{d} {t}" for d, t, s in rows]
         body += [f"held back {p} (conflict)" for p in conflicts]
@@ -192,7 +184,7 @@ def main(argv):
         print("usage: commit_runs.py [--init-cutover]", file=sys.stderr)
         return 2
     since = init_cutover()
-    role = config("machine_role", "standalone")
+    role = text(VAULT, "machine_role", "standalone")
     runs = pending(since)
     # A note two pending runs published holds the later run's content: it is committed with that run.
     owner = {p: run_id for run_id, _, published, _ in runs for p in published}

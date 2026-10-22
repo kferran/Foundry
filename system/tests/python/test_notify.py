@@ -421,3 +421,9 @@ def test_a_post_is_paired_with_its_own_result():
     s = stream(TOOL, [call({"channel_id": "C0EXAMPLE", "message": "• Alert one"}), call({"channel_id": "C0EXAMPLE", "message": MSG})])
     del s[3]
     assert notify.check(s, TOOL, "C0EXAMPLE", MSG, SENT) == ("", [])
+
+
+def test_an_unreadable_config_gives_defaults(tmp_path):
+    (tmp_path / "system").mkdir()
+    (tmp_path / "system" / "config.md").write_bytes(b"\xff\xfe")
+    assert notify.config(tmp_path) == {}

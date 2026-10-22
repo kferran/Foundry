@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from . import frontmatter, now
+from .config import config
 from .index import Index
 
 HARD_CAP = 9500
@@ -24,19 +25,14 @@ def budget_for(vault, requested=None) -> int:
     value = requested
     if value is None:
         try:
-            data = frontmatter.parse((Path(vault) / "system" / "config.md").read_text(encoding="utf-8")).data or {}
-            value = int(str(data.get("recall_budget_chars", DEFAULT_BUDGET)))
-        except (OSError, UnicodeDecodeError, ValueError):
+            value = int(str(config(vault).get("recall_budget_chars", DEFAULT_BUDGET)))
+        except ValueError:
             value = DEFAULT_BUDGET
     return max(0, min(int(value), HARD_CAP))
 
 
 def default_partition(vault) -> str:
-    try:
-        data = frontmatter.parse((Path(vault) / "system" / "config.md").read_text(encoding="utf-8")).data or {}
-    except (OSError, UnicodeDecodeError):
-        data = {}
-    p = data.get("default_partition")
+    p = config(vault).get("default_partition")
     return p if p in ("work", "personal", "shared") else "personal"
 
 

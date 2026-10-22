@@ -16,7 +16,8 @@ from zoneinfo import ZoneInfo
 
 VAULT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
-from vaultlib import frontmatter, now  # noqa: E402
+from vaultlib import now  # noqa: E402
+from vaultlib.config import text  # noqa: E402
 from vaultlib.alerts import extension_tags, severity  # noqa: E402
 from vaultlib.recall import _open_index  # noqa: E402
 
@@ -27,9 +28,8 @@ HEADING = re.compile(r"#{1,6} ")
 def vault_tz():
     """The configured timezone (the vault's day, as the other writers use it); UTC when it cannot be read."""
     try:
-        return ZoneInfo(str(frontmatter.parse((VAULT / "system" / "config.md").read_text(encoding="utf-8")).data
-                            .get("timezone") or "UTC"))
-    except Exception:  # noqa: BLE001 - a missing or bad config reads as UTC, like alert.py
+        return ZoneInfo(text(VAULT, "timezone", "UTC"))
+    except Exception:  # noqa: BLE001 - a bad zone name reads as UTC, like alert.py
         return ZoneInfo("UTC")
 
 

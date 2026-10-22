@@ -343,3 +343,8 @@ def test_chat_enabled_and_tool_follow_config(vault):
     write(vault, "system/config.md", '---\ntype: config\ntriage_chat_enabled: "true"\nslack_connector: "plugin:slack:slack"\n---\n')
     assert tr.chat_enabled(vault) is True
     assert tr.chat_tool(vault) == "mcp__plugin_slack_slack__slack_search_public_and_private"
+
+
+def test_an_unreadable_config_gives_defaults(vault):
+    (vault / "system" / "config.md").write_bytes(b"\xff\xfe")
+    assert tr.config(vault) == {}

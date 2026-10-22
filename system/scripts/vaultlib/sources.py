@@ -8,7 +8,8 @@ import json
 import subprocess
 from pathlib import Path
 
-from . import extensions, frontmatter
+from . import extensions
+from .config import config as read_config
 
 CLASSES = ("auth", "network", "timeout", "connector", "claude", "other")
 CONNECT = "reconnect it at claude.ai, Settings, Connectors"
@@ -27,13 +28,6 @@ def classed(reason: str) -> str:
     """The reason with a class in front: one without a known class is other."""
     reason = (reason or "").strip()
     return reason if reason.split(":", 1)[0] in CLASSES and ":" in reason else f"other: {reason or 'no reason given'}"
-
-
-def _config(vault: Path) -> dict:
-    try:
-        return frontmatter.parse((vault / "system" / "config.md").read_text(encoding="utf-8")).data or {}
-    except (OSError, UnicodeDecodeError):
-        return {}
 
 
 def _extension_sources(vault: Path) -> dict:
@@ -131,7 +125,7 @@ def report(vault: Path, day: str, given: dict) -> list:
     """sources.md lines: one per source, ok, off, unknown or failed with its class, since date and renewal.
     `given` holds what the brief read itself (source -> (state, reason)); the rest come from that morning's smoke
     check, and notify from its own log."""
-    vault, config = Path(vault), _config(Path(vault))
+    vault, config = Path(vault), read_config(vault)
     order = ["calendar", "meetings", "triage", "triage_chat"]
     ext = list(_extension_sources(vault))
     # A per-item source lists its items; with none it reads off, and a list that did not run is one line read from
