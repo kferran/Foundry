@@ -467,6 +467,12 @@ sealed_problems() {
   git ls-files -z -- . ':(exclude)docs' ':(exclude)CHANGELOG.md' ':(exclude)extensions' ':(exclude)system/tests' ':(exclude)system/scripts/extensions.py' \
     | xargs -0 grep -I -o -i -E "$pattern" /dev/null 2>/dev/null \
     | awk -F: '{ term = tolower($NF); sub(/:[^:]*$/, ""); print $0 ":" term }' | sort -u > "$want" || true
+  # Extension words, in core code only (factory F2 spec §3.2): a tag, route, folder or note type an extension owns.
+  ext='handoffs|intraday|telemetry|production_error|\brca\b|\bincident\b'
+  git ls-files -z -- system/scripts system/schemas system/systemd system/hooks .githooks ':(exclude)system/scripts/extensions.py' \
+    | xargs -0 grep -I -o -i -E "$ext" /dev/null 2>/dev/null \
+    | awk -F: '{ term = tolower($NF); sub(/:[^:]*$/, ""); print $0 ":" term }' | sort -u >> "$want" || true
+  sort -u -o "$want" "$want"
   # The allowlist holds every file:term pair of today's hits; a move deletes its lines.
   run diff <(grep -v '^#' "$allow" | sort -u) "$want"
   [ "$status" -eq 0 ]

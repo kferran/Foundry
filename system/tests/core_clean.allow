@@ -1,3 +1,33 @@
 # file:term pairs core may still name (core-clean test, extensions spec §6). A move into extensions/ deletes its lines. The two azure lines stay: they are ~/.azure in the credential deny lists of headless runs and Work Order sessions.
 system/headless.settings.json:azure
 system/scripts/vaultlib/nightshift_session.py:azure
+# Extension words in core code (factory F2 spec §3.2), each with its reason:
+# the pre-commit hook keeps raw/telemetry/ out of commits, like every raw/ folder
+.githooks/pre-commit:telemetry
+# the telemetry Workcell capability, a value of concept notes
+system/schemas/concept.md:telemetry
+# the notify prose naming the intraday capture channel
+system/schemas/config.md:intraday
+# the one-time migration table that turned moved features into extensions
+system/scripts/vaultlib/extensions.py:handoffs
+system/scripts/vaultlib/extensions.py:telemetry
+# headless prompt text: "never now or rca" as a tag
+system/scripts/vaultlib/nightshift_session.py:rca
+# telemetry_state backups the quarantine report lists
+system/scripts/vaultlib/quarantine.py:telemetry
+# a docstring naming the text redact_credentials was written for
+system/scripts/vaultlib/redact.py:telemetry
+# comments naming the intraday watch beside triage
+system/scripts/vaultlib/triage.py:intraday
+# the smoke unit's timeout comment
+system/systemd/foundry-smoke.service.in:telemetry
+# Leave with factory F2 PR 1:
+system/scripts/vaultlib/alerts.py:handoffs
+system/scripts/vaultlib/alerts.py:incident
+system/scripts/vaultlib/alerts.py:rca
+system/scripts/vaultlib/alerts.py:telemetry
+system/scripts/vaultlib/index.py:rca
+system/scripts/vaultlib/index.py:telemetry
+system/scripts/vaultlib/intake.py:production_error
+system/scripts/vaultlib/intake.py:telemetry
+system/scripts/vaultlib/schema.py:rca
