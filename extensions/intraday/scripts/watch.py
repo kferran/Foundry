@@ -28,6 +28,8 @@ from vaultlib.api import Intake, messages, triage  # noqa: E402
 from watchlib import calendar as cal, capture, check, common, query, route  # noqa: E402
 from watchlib.common import Fail  # noqa: E402
 
+ROUTE_LOCK_WAIT = 120   # seconds route waits for run.lock (the manifest's budget sums it)
+
 
 def _found(path: str) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
@@ -57,7 +59,7 @@ def do_route(intake, args: list) -> str:
     for d, text in days.items():
         events += [e for e in cal.parse_tsv(text) if e["date"] == d]
         fetched.append(d)
-    with intake.lock("run.lock", timeout=120):
+    with intake.lock("run.lock", timeout=ROUTE_LOCK_WAIT):
         flags = cal.snapshot(VAULT, day, events) if today_tsv is not None else []
         crossed = cal.cross(found["items"], events, day)
         counts = route.route(VAULT, partition, found, flags, crossed, events, fetched, day, clock)

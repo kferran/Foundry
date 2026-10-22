@@ -13,6 +13,13 @@ alert_tags: [handoffs]
 allow: ["Bash(extensions/handoffs/scripts/jira_fetch.sh --check)"]
 deps: []
 index_ignore: []
+budget:
+  values: {JIRA_TIMEOUT: 300}
+  steps:
+    - "brief 1 grace.listing listing"  # the brief's prep runs jira_fetch.sh, its own process
+    - "brief 1 grace.connector JIRA_TIMEOUT"
+    - "smoke/handoffs 1 grace.listing listing"
+    - "smoke/handoffs 1 grace.connector JIRA_TIMEOUT"
 ---
 **Handoffs to chase.** Each morning brief lists the Jira tickets you reported that someone else holds, open with no status-category change for 7 days (delivered work spec §3).
 

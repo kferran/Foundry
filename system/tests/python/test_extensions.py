@@ -98,6 +98,13 @@ def test_config_keys_are_stated_once_in_the_schema_and_an_old_manifest_still_loa
     assert extensions.check(vault) == [] and [n for n, _ in extensions.enabled(vault)] == ["old"]
 
 
+def test_a_manifest_with_a_budget_loads(vault):
+    """Factory F3 §3.4: an extension's timing budget lives in its manifest; the loader does not validate it."""
+    manifest(vault, "b", budget='{values: {X_TIMEOUT: 1}, steps: ["tick 1 - X_TIMEOUT"], out: "no session"}')
+    config(vault, "b")
+    assert extensions.check(vault) == [] and [n for n, _ in extensions.enabled(vault)] == ["b"]
+
+
 def test_cited_reads_each_lint_modules_table_and_skips_a_malformed_one(vault):
     from vaultlib import index
     manifest(vault, "a", lint="lint.py")
