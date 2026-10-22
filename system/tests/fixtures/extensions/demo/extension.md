@@ -3,8 +3,6 @@ name: demo
 contract: 1
 description: "A fixture extension for the loader tests"
 requires: []
-config_keys:
-  demo_site: {kind: string, default: ""}
 sources:
   - {name: demo, credential: "Demo connector", renew: "reconnect it at example.invalid"}
 smoke:

@@ -87,6 +87,17 @@ def test_importer_for_reads_present_extensions_listed_or_not(ext):
     assert [n for n, _ in extensions.present(ext)] == ["demo", "items", "needs-other"]
 
 
+def test_config_keys_are_stated_once_in_the_schema_and_an_old_manifest_still_loads(vault):
+    """Factory F2 §3.1: an extension's keys live in its schemas/config.md; FIELDS still accepts config_keys."""
+    from vaultlib import frontmatter
+    manifests = [*(REPO / "extensions").glob("*/extension.md"), *FIXTURES.glob("*/extension.md")]
+    assert manifests
+    assert [p for p in manifests if "config_keys" in (frontmatter.parse(p.read_text()).data or {})] == []
+    manifest(vault, "old", config_keys="{k: {kind: string}}")
+    config(vault, "old")
+    assert extensions.check(vault) == [] and [n for n, _ in extensions.enabled(vault)] == ["old"]
+
+
 def test_field_reads_one_manifest_field(ext):
     config(ext, "demo")
     assert run(ext, "field", "demo", "description").stdout == "A fixture extension for the loader tests\n"

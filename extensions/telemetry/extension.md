@@ -3,12 +3,6 @@ name: telemetry
 contract: 1
 description: "Production errors from Sentry and Azure Data Explorer in the brief, and /rca with ticket filing"
 requires: [handoffs]
-config_keys:
-  rca_project: {kind: string}
-  rca_issue_type: {kind: string, default: "Bug"}
-  rca_labels: {kind: list, of: string}
-  rca_assignee: {kind: string}
-  rca_extra_fields: {kind: map, of: string}
 sources: []
 smoke:
   - {source: telemetry, timeout: 120, connector: false, each: "scripts/telemetry_fetch.py --sources", run: "scripts/telemetry_fetch.py --check {}"}
