@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
-# The factory line's conformance checks (factory F0 spec §3.5, §3.6, §3.8). The copy and timing ratchets list
-# today's known exceptions; a new one fails, and each list may only shrink. The pipeline test: a spec or plan dated on or
+# The factory line's conformance checks (factory F0 spec §3.5, §3.6, §3.8; F3 spec §3.2). The part homes are rules:
+# each line of PART_HOMES is a design fact, and a new line needs the owner's review with its reason. The timing
+# overrun list still only shrinks (#299). The pipeline test: a spec or plan dated on or
 # after PIPELINE_SINCE carries the header lines FOUNDRY.md Development requires; older documents are
 # grandfathered by the date their file name starts with, so the test needs no allowlist.
 
@@ -131,11 +132,11 @@ doc() { local f="$1"; shift; mkdir -p "${f%/*}"; printf '%s\n' '# T' '' "$@" > "
     "$S/2026-10-23-empty.md: no **Blueprint:** line naming Source, Poller, Compile run, Work Order or none: <why>")" ]
 }
 
-# --- The copy ratchet (factory F0 spec §3.5) ---
+# --- The part homes (factory F0 spec §3.5, F3 spec §3.2) ---
 
-# One line per known copy: "<kind> <path>[:<name>]  # <reason, or the F1 retrofit that removes it>". A PR that removes a
-# copy deletes its line, so the diff shows exactly which copies went.
-COPIES_ALLOWED='
+# One line per home or other shape: "<kind> <path>[:<name>]  # <reason>". Each line is a design fact, not a debt: a new
+# line needs the owner's review with its reason.
+PART_HOMES='
 walker system/scripts/vaultlib/nightshift_session.py  # other shape: a Work Order session with many tools and no single connector (F1 spec)
 walker system/scripts/vaultlib/connector.py  # home: the shared walker (F1 spec §3.1)
 helper system/scripts/lib_fetch.sh:logline  # home: the shared fetch helpers (F1 spec §3.2)
@@ -144,45 +145,63 @@ helper system/scripts/lib_fetch.sh:fail  # home: the shared fetch helpers (F1 sp
 helper system/scripts/lib_fetch.sh:skip  # home: the shared fetch helpers (F1 spec §3.2)
 helper system/scripts/vault_sync.sh:fail  # other shape: fail <step> <reason> for a sync step, no fetch exit
 fail-class system/scripts/vaultlib/connector.py  # home: the one Fail every retrofitted module imports (F1 spec §3.1)
-config system/scripts/alert.py  # a core copy: F3 (#308) folds the five into one core reader (F2 spec §3.5)
-config system/scripts/commit_runs.py  # a core copy: F3 (#308) folds the five into one core reader (F2 spec §3.5)
-config system/scripts/vaultlib/nightshift_check.py  # a core copy: F3 (#308) folds the five into one core reader (F2 spec §3.5)
-config system/scripts/vaultlib/notify.py  # a core copy: F3 (#308) folds the five into one core reader (F2 spec §3.5)
-config system/scripts/vaultlib/triage.py  # a core copy: F3 (#308) folds the five into one core reader (F2 spec §3.5)
+config system/scripts/vaultlib/config.py  # home: the one config reader (F3 spec §3.3)
+config system/scripts/vaultlib/extensions.py  # home: enable edits the extensions: line as text (F3 spec §3.2)
 stub system/tests/stub_claude  # other shape: the headless stub (STUB_MODE), not a connector stub
 stub system/tests/stub_claude_nightshift  # other shape: the Work Order stub, not a connector stub
 stub system/tests/stub_claude_connector  # home: the one connector stub (F1 spec §3.4)
 '
 
-# copies: every copy of a shared part in the tracked tree, one "<kind> <path>[:<name>]" line each, sorted.
+# copies <root>: every copy of a shared part in <root>'s tracked tree, one "<kind> <path>[:<name>]" line each, sorted.
 copies() {
   local -a src=(-- 'system/scripts/*' 'extensions/*/scripts/*') py=(-- 'system/scripts/*.py' 'extensions/*/scripts/*.py')
   {
     # Stream walkers: a file that reads tool results itself (file level: a docstring naming tool_use_id counts too).
-    git grep -lE "[\"']tool_result[\"']|tool_use_id" "${py[@]}" | sed 's/^/walker /'
+    git -C "$1" grep -lE "[\"']tool_result[\"']|tool_use_id" "${py[@]}" | sed 's/^/walker /'
     # Shell helpers defined at top level.
-    git grep -nE '^(function +)?(logline|alert_once|fail|skip)( *\(\)| *\{)' "${src[@]}" \
+    git -C "$1" grep -nE '^(function +)?(logline|alert_once|fail|skip)( *\(\)| *\{)' "${src[@]}" \
       | sed -E 's/^([^:]+):[0-9]+:(function +)?([a-z_]+).*/helper \1:\3/'
-    git grep -lE '^class Fail\b' "${py[@]}" | sed 's/^/fail-class /'
-    git grep -lE '^def config\(' "${py[@]}" | sed 's/^/config /'
+    git -C "$1" grep -lE '^class Fail\b' "${py[@]}" | sed 's/^/fail-class /'
+    # Config readers: any script that names config.md as a path literal.
+    git -C "$1" grep -lE "config\.md[\"']" "${py[@]}" | sed 's/^/config /'
     # Test doubles: claude stubs and pytest modules with their own stream() builder (helpers.py is F1's shared home).
-    git ls-files | grep -E '(^|/)stub_claude[^/]*$' | sed 's/^/stub /'
-    git grep -lE '^def stream\(' -- 'system/tests/python/*.py' 'extensions/*/tests/python/*.py' ':!system/tests/python/helpers.py' | sed 's/^/stream-builder /'
+    git -C "$1" ls-files | grep -E '(^|/)stub_claude[^/]*$' | sed 's/^/stub /'
+    git -C "$1" grep -lE '^def stream\(' -- 'system/tests/python/*.py' 'extensions/*/tests/python/*.py' ':!system/tests/python/helpers.py' | sed 's/^/stream-builder /'
   } | sort -u
 }
 
+# new_copies <root>: the copies in <root> that PART_HOMES does not list.
+new_copies() {
+  comm -13 <(sed -E 's/ +#.*$//; /^$/d' <<< "$PART_HOMES" | sort -u) <(copies "$1")
+}
+
 @test "no new copy of a shared part (factory F0 spec §3.5)" {
-  allowed="$(sed -E 's/ +#.*$//; /^$/d' <<< "$COPIES_ALLOWED" | sort -u)"
-  found="$(copies)"
+  allowed="$(sed -E 's/ +#.*$//; /^$/d' <<< "$PART_HOMES" | sort -u)"
+  found="$(copies "$VAULT_ROOT")"
   # A copy not on the list: use the shared part, or add the line with its reason in a PR the owner reviews.
-  run comm -13 <(printf '%s\n' "$allowed") <(printf '%s\n' "$found")
+  run new_copies "$VAULT_ROOT"
   [ "$status" -eq 0 ]
   echo "new copies: $output"
   [ -z "$output" ]
-  # A listed copy that is gone: delete its line in the same PR, so the list only shrinks.
+  # A listed home that is gone: delete its line in the same PR.
   run comm -23 <(printf '%s\n' "$allowed") <(printf '%s\n' "$found")
   echo "listed copies no longer found: $output"
   [ -z "$output" ]
+}
+
+@test "a new copy of a shared part fails, a home passes (factory F3 §3.2)" {
+  r="$BATS_TEST_TMPDIR/repo"
+  mkdir -p "$r"
+  git ls-files -z | xargs -0 cp --parents -t "$r"
+  git -C "$r" init -q
+  mkdir -p "$r/extensions/handoffs/scripts"
+  printf '%s\n' 'for b in blocks:' '    if b.get("type") == "tool_result":' '        pass' > "$r/system/scripts/vaultlib/walker2.py"
+  printf '%s\n' 'p = root / "system" / "config.md"' > "$r/extensions/handoffs/scripts/cfg.py"
+  git -C "$r" add -A
+  run new_copies "$r"
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf '%s\n' 'config extensions/handoffs/scripts/cfg.py' 'walker system/scripts/vaultlib/walker2.py')" ]
 }
 
 # --- The timing ratchet (factory F0 spec §3.6, defect class C3) ---

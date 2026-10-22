@@ -8,6 +8,7 @@ from pathlib import Path
 
 from . import frontmatter
 from . import nightshift_item as ni
+from .config import config
 
 TASK = re.compile(r"^### Task (\d+):", re.M)
 _BRANCH = r"(?:`(?:master|main)`|\bmaster\b|\bmain\s+branch\b|\borigin\s+main\b)"
@@ -34,10 +35,6 @@ def _fm(path: Path) -> dict:
 def setting(d: dict, new: str, old: str):
     """A Work Orders setting under its new key, else its old nightshift_* key (Foreman v1 §3.1)."""
     return d[new] if new in d else d.get(old)
-
-
-def config(vault) -> dict:
-    return _fm(Path(vault) / "system" / "config.md")
 
 
 def workspace(cfg: dict) -> Path:

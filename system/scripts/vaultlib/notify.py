@@ -9,7 +9,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
-from . import alerts as alertsmod, frontmatter, now as nowmod, state as statemod
+from . import alerts as alertsmod, now as nowmod, state as statemod
+from .config import config
 from .connector import Fail, walk
 from .redact import redact
 
@@ -37,11 +38,6 @@ POST_ARGS = {"channel_id", "message", "unfurl_app_links"}
 EXTRA_TEXT = 500  # a posted text this much longer than the collected one carries text nobody collected
 LIMIT = re.compile(r"usage limit|rate limit|limit reached|hit your limit", re.I)
 OPEN_NEEDS = ("owed", "draft")
-
-
-def config(vault) -> dict:
-    path = Path(vault) / "system" / "config.md"
-    return (frontmatter.parse(path.read_text(encoding="utf-8")).data or {}) if path.is_file() else {}
 
 
 def prefix(connector: str) -> str:

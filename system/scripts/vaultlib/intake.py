@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import cli, convert as convertmod, extensions as extmod, frontmatter, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
 from . import triage
+from .config import text
 
 FRESH_SECONDS = 60
 MAX_ATTEMPTS = 3
@@ -99,13 +100,7 @@ class Intake:
             fh.write(f"- {self.dt().strftime('%H:%M:%S')} [intake] {message}\n")
 
     def config(self, key: str, default: str) -> str:
-        path = self.vault / "system" / "config.md"
-        try:
-            data = frontmatter.parse(path.read_text(encoding="utf-8")).data or {}
-        except (OSError, UnicodeDecodeError):
-            return default
-        value = data.get(key)
-        return value if isinstance(value, str) and value else default
+        return text(self.vault, key, default)
 
     @contextlib.contextmanager
     def lock(self, name: str, timeout: float):

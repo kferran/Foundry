@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from . import frontmatter
+from .config import config
 
 CONTRACT = 1
 NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
@@ -18,14 +19,7 @@ def _strs(value) -> list:
 
 
 def listed(vault: Path) -> list:
-    path = vault / "system" / "config.md"
-    if not path.is_file():
-        return []
-    try:
-        cfg = frontmatter.parse(path.read_text(encoding="utf-8")).data or {}
-    except (OSError, UnicodeDecodeError):
-        return []
-    return _strs(cfg.get("extensions"))
+    return _strs(config(vault).get("extensions"))
 
 
 def manifest(vault: Path, name: str):
@@ -187,10 +181,8 @@ def migrate(vault: Path) -> list:
     """Enable each moved feature whose old switch is set and that was never migrated, with the extensions it requires
     first. Returns the names enabled."""
     vault = Path(vault)
-    path = vault / "system" / "config.md"
-    try:
-        cfg = frontmatter.parse(path.read_text(encoding="utf-8")).data or {}
-    except (OSError, UnicodeDecodeError):
+    cfg = config(vault)
+    if not cfg:
         return []
     log = vault / MIGRATED
     done = set(log.read_text(encoding="utf-8").split()) if log.is_file() else set()

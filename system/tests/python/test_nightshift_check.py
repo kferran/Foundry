@@ -299,3 +299,10 @@ def test_screen_runs_no_git(vault_repo, tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", boom)
     assert nc.screen(vault_repo, plan_fm(repo="shop", base="nope"), "") == []
     assert nc.screen(vault_repo, plan_fm(budget="4 hours"), "") == ["budget must look like 4h or 90m: '4 hours'"]
+
+
+def test_an_unreadable_config_gives_defaults_and_refuses_a_template_order(vault_repo, monkeypatch):
+    monkeypatch.setattr(nc, "fetch_base", lambda *a, **k: pytest.fail("fetched"))
+    (vault_repo / "system" / "config.md").write_bytes(b"\xff\xfe")
+    assert nc.config(vault_repo) == {}
+    assert nc.check(vault_repo, plan_fm(tasks="1-2"), "") == ["config has no template_remote"]

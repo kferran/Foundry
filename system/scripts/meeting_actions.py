@@ -17,19 +17,13 @@ VAULT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
 from vaultlib import briefings, frontmatter  # noqa: E402
 from vaultlib.briefings import cut  # noqa: E402
+from vaultlib.config import config as read_config  # noqa: E402
 from vaultlib.index import Index  # noqa: E402
 from vaultlib.meetings import open_actions, owner_names  # noqa: E402
 
 NO_BRIEF_DAYS = 7
 MAX_OWNERS = 5
 UNASSIGNED = "Unassigned"
-
-
-def _config():
-    try:
-        return frontmatter.parse((VAULT / "system" / "config.md").read_text(encoding="utf-8")).data or {}
-    except (OSError, UnicodeDecodeError):
-        return {}
 
 
 def _zone(config):
@@ -41,7 +35,8 @@ def _zone(config):
 
 def window_start(vault, day: str) -> datetime:
     """When the previous weekday brief ran (its date at brief_time, config timezone); 7 days back at 00:00 without one."""
-    config, tz = _config(), _zone(_config())
+    config = read_config(VAULT)
+    tz = _zone(config)
     previous = briefings.previous_weekday_briefing(vault, day)
     if previous is None:
         return datetime.combine(date.fromisoformat(day) - timedelta(days=NO_BRIEF_DAYS), time(0, 0), tz)
@@ -86,7 +81,7 @@ def imported_notes(vault, day: str, meetings=()) -> list:
     order; a note that is gone or deprecated is skipped. system/logs is per machine: a meeting note in `meetings`
     (the index's (path, date) rows) with no import record in any log falls back to its own start time, so a
     client or a restored vault prints the same window from the notes alone."""
-    start, tz, logged, out = window_start(vault, day), _zone(_config()), set(), []
+    start, tz, logged, out = window_start(vault, day), _zone(read_config(VAULT)), set(), []
     for r in _records():
         if r.get("kind") != "imported" or not isinstance(r.get("note"), str) or r["note"] in logged:
             continue
@@ -136,7 +131,7 @@ def waiting_on(others: dict) -> list:
 
 def notices(day):
     """The notices logged since the window start, so each prints in one brief (phase A spec §3.6)."""
-    out, start, tz = [], window_start(VAULT, day.isoformat()), _zone(_config())
+    out, start, tz = [], window_start(VAULT, day.isoformat()), _zone(read_config(VAULT))
     for r in _records():
         when = _when(r, tz)
         if when is None or not start < when < datetime.combine(day + timedelta(days=1), time(0, 0), tz):

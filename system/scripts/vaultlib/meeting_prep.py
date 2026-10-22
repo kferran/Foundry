@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from . import frontmatter, meetings, now
+from .config import config as read_config
 from .index import Index
 
 MAX_ENTITIES = 5
@@ -24,13 +25,6 @@ def matches(title: str, name: str) -> bool:
     if not needle or len(needle) > len(hay):
         return False
     return any(hay[i:i + len(needle)] == needle for i in range(len(hay) - len(needle) + 1))
-
-
-def _config(vault) -> dict:
-    try:
-        return frontmatter.parse((Path(vault) / "system" / "config.md").read_text(encoding="utf-8")).data or {}
-    except (OSError, UnicodeDecodeError):
-        return {}
 
 
 def entities(vault, conn, partitions) -> list:
@@ -92,7 +86,7 @@ def _actions(vault, conn, title: str) -> list:
 
 def render(vault, day: str, calendar) -> str:
     """The Before today's meetings blocks for the events in calendar (a Path), or "" when no event names an entity."""
-    config = _config(vault)
+    config = read_config(vault)
     partition = str(config.get("default_partition") or "personal")
     events = _events(Path(calendar))
     if not events:

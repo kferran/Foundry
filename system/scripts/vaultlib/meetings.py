@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import frontmatter, redact as redactmod
+from .config import config
 
 HEADING = re.compile(r"^(#{1,6})\s+\**(.*?)\**\s*$")  # real Docs bold every heading: "### **Summary**"
 DOC_TITLE = re.compile(r"^(.*) - (\d{4})/(\d{2})/(\d{2}) (\d{2}):(\d{2}) (\S+) - Notes by Gemini$")
@@ -369,11 +370,7 @@ OPEN_ACTION = re.compile(r"^- \[ \] (?:\[([^\]]+)\] )?(.+)$")
 
 def owner_names(vault) -> set:
     """The owner's names from config owner_names, stripped and case-folded; empty without a config."""
-    try:
-        data = frontmatter.parse((Path(vault) / "system" / "config.md").read_text(encoding="utf-8")).data or {}
-    except (OSError, UnicodeDecodeError):
-        return set()
-    names = data.get("owner_names")
+    names = config(vault).get("owner_names")
     return {n.strip().casefold() for n in names if isinstance(n, str)} if isinstance(names, list) else set()
 
 
