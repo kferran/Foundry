@@ -42,7 +42,8 @@ fi
 
 g remote get-url template >/dev/null 2>&1 || die 1 "no template remote; run system/scripts/setup_remote.sh first"
 # update_extensions: extensions/ is tracked and arrives with the merge (extensions spec §3). The skill links are
-# re-made, and each listed extension that cannot load is alerted once a day as "[extensions] <reason>".
+# re-made, and each listed extension that cannot load (or a field the loader ignores) is alerted once a day as
+# "[extensions] <reason>".
 update_extensions() {
   local reason moved
   # A feature that moved out of core is listed once when its old switch is set (extensions spec §4).

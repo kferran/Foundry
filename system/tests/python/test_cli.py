@@ -1,8 +1,9 @@
 import json
 import os
+import shutil
 import subprocess
 
-from helpers import concept, meeting, transcript, write
+from helpers import REPO, concept, meeting, transcript, write
 
 
 def test_issues_clean_fixture(cli):
@@ -174,12 +175,18 @@ def test_tags_in_another_form_warn(cli, vault):
 
 
 def test_system_tags_warn_off_their_notes(cli, vault):
-    write(vault, "wiki/work/concepts/Topic.md", concept("work", "Topic", tags="[now, rca]"))
+    """`now` is core's (a path rule); an extension reserves its type's tag with `reserved_tag` (factory F2 §3.1)."""
+    shutil.copytree(REPO / "system/tests/fixtures/extensions", vault / "extensions")
+    write(vault, "wiki/work/concepts/Topic.md", concept("work", "Topic", tags="[now, memo]"))
     write(vault, "wiki/work/Now.md", concept("work", "Now", tags="[now]"))
-    write(vault, "wiki/work/rca/2026-10-11-orders.md",
-          '---\ntype: rca\ntitle: "Orders fail"\npartition: work\ncreated_at: "2026-10-11"\nsource: "raw/telemetry/a.md"\n'
-          'rc_confidence: 4\nfix_confidence: 4\nstatus: draft\ntags: [rca]\n---\n# Orders fail\n')
+    write(vault, "wiki/work/memos/m.md", "---\ntype: memo\ntags: [memo]\n---\n# M\n")
     assert _tag_issues(cli) == [("wiki/work/concepts/Topic.md", "warning", "tag-reserved")] * 2
+    assert 'tag "memo" is a system tag, written only on memo notes' in cli("issues").stdout
+    write(vault, "wiki/work/concepts/Other.md", concept("work", "Other", tags="[memo, kept]"))
+    listed = cli("tags", "--partition", "work").stdout.split()
+    assert "kept" in listed and "memo" not in listed
+    shutil.rmtree(vault / "extensions")   # no extension reserves it now
+    assert _tag_issues(cli) == [("wiki/work/concepts/Topic.md", "warning", "tag-reserved")]
 
 
 def test_staged_tag_issues_never_block_a_commit(cli, vault):
@@ -193,7 +200,8 @@ def test_staged_tag_issues_never_block_a_commit(cli, vault):
 
 
 def test_citation_check_warns_on_a_missing_file_or_a_line_past_its_end(cli, vault, tmp_path):
-    """A `path:NN` in an rca or codebase note names a file of that codebase with at least NN lines (#166)."""
+    """A `path:NN` in a codebase note names a file of that codebase with at least NN lines (#166). An rca note is
+    checked only through the telemetry extension's CITED (factory F2): absent here, it gives no row."""
     repo = tmp_path / "repo"
     (repo / "src").mkdir(parents=True)
     (repo / "src" / "app.py").write_text("a\nb\nc\n")
@@ -207,7 +215,6 @@ def test_citation_check_warns_on_a_missing_file_or_a_line_past_its_end(cli, vaul
     data = json.loads(cli("issues", "--json").stdout)
     assert [(i["path"], i["line"], i["severity"], i["message"]) for i in data["issues"] if i["code"] == "citation"] == [
         ("system/codebases/app.md", 8, "warning", "citation src/old.py:1: no such file in codebase app"),
-        ("wiki/work/rca/2026-10-11-orders.md", 15, "warning", "citation src/app.py:9: the file has 3 lines"),
     ]
 
 
@@ -217,9 +224,9 @@ def _rca(stem, codebase, status, body, extra=""):
             f'# {stem}\n\n{body}\n')
 
 
-def test_citation_check_scope_fences_vendored_paths_codebase_file_name_and_layers(cli, vault, tmp_path):
-    """Open, active rca notes only; ~~~ fences and vendored paths skipped; an rca names its codebase by file name;
-    a codebase note's citation may sit under one of its layers (#251 review)."""
+def test_citation_check_skips_fences_vendored_paths_and_resolves_layers(cli, vault, tmp_path):
+    """~~~ fences and vendored paths skipped; a codebase note's citation may sit under one of its layers (#251
+    review). The rca rows are the telemetry extension's (its test_telemetry_boundary.py); absent here, none."""
     repo = tmp_path / "repo"
     (repo / "svc" / "lib").mkdir(parents=True)
     (repo / "svc" / "lib" / "core.py").write_text("a\n")
@@ -231,10 +238,7 @@ def test_citation_check_scope_fences_vendored_paths_codebase_file_name_and_layer
                                 ("rejected", "rejected", ""), ("old", "draft", 'superseded_by: "[[open]]"\n')):
         write(vault, f"wiki/work/rca/{stem}.md", _rca(stem, "app", status, gone, extra))
     data = json.loads(cli("issues", "--json").stdout)
-    assert [(i["path"], i["message"]) for i in data["issues"] if i["code"] == "citation"] == [
-        ("wiki/work/rca/ok.md", "citation src/gone.py:1: no such file in codebase app"),
-        ("wiki/work/rca/open.md", "citation src/gone.py:1: no such file in codebase app"),
-    ]
+    assert [(i["path"], i["message"]) for i in data["issues"] if i["code"] == "citation"] == []
 
 
 def test_archived_briefings_stay_indexed_and_the_debrief_embed_resolves(cli, vault):

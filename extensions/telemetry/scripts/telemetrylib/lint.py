@@ -2,6 +2,8 @@
 manifest's `lint` field (extensions spec §3)."""
 import posixpath
 
+# Core's live citation check (#166) reads open rca notes' `file:NN` citations through this (factory F2 §3.1).
+CITED = {"rca": ["draft", "approved"]}
 SENTRY_FIELDS = ("sentry_url", "sentry_org", "sentry_projects", "sentry_query")
 ADX_FIELDS = ("adx_cluster", "adx_database", "adx_filter", "adx_signals", "adx_group_keys", "covers")
 

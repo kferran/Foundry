@@ -3,8 +3,6 @@ name: handoffs
 contract: 1
 description: "Stalled Jira handoffs in the morning brief"
 requires: []
-config_keys:
-  handoffs_projects: {kind: list, of: string}
 sources:
   - {name: handoffs, credential: "Atlassian connector", renew: "reconnect it at claude.ai, Settings, Connectors"}
 smoke:

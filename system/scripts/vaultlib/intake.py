@@ -342,7 +342,7 @@ class Intake:
         return True
 
     def _inbox_file(self, path: Path) -> bool:
-        archive, telemetry = self.vault / "raw" / "archive", self.vault / "raw" / "telemetry"
+        archive = self.vault / "raw" / "archive"
         if not RAW_NAME.match(path.name):
             renamed = unique(path.with_name(sanitize(path.name)))
             path.rename(renamed)
@@ -354,12 +354,13 @@ class Intake:
             return True
         if path.suffix == ".md":
             data = frontmatter.parse(path.read_text(encoding="utf-8", errors="replace")).data or {}
-            if data.get("type") == "production_error":
-                telemetry.mkdir(parents=True, exist_ok=True)
-                path.rename(unique(telemetry / path.name))
+            name = extmod.importer_for(self.vault, data.get("type"))   # an extension's note type (factory F2 §3.1)
+            if name:
+                (self.vault / "raw" / name).mkdir(parents=True, exist_ok=True)
+                path.rename(unique(self.vault / "raw" / name / path.name))
                 return True
         if self.held():
-            return True  # this file waits for a tick under the ceiling; later duplicates and telemetry notes still route
+            return True  # this file waits for a tick under the ceiling; later duplicates and imported notes still route
         if (archive / path.name).exists():
             renamed = path.with_name(f"{path.stem}-{int(time.time())}{path.suffix}")
             path.rename(renamed)

@@ -66,6 +66,57 @@ def test_missing_requires_wrong_contract_unknown_field_each_refused_with_one_rea
     assert extensions.enabled(ext) == []
 
 
+def test_a_now_when_that_is_not_a_regex_is_a_reason_and_the_extension_still_loads(vault):
+    manifest(vault, "w", alert_tags="[{tag: w, severity: now, now_when: '('}, {tag: ok, now_when: 'x'}]")
+    config(vault, "w")
+    reasons = extensions.check(vault)
+    assert len(reasons) == 1 and reasons[0].startswith("w: alert tag w: now_when is not a valid regex")
+    assert [n for n, _ in extensions.enabled(vault)] == ["w"]
+
+
+def test_an_importer_without_a_type_string_is_a_reason_and_claims_nothing(vault):
+    manifest(vault, "w", importer="{kind: x}")
+    config(vault, "w")
+    assert extensions.check(vault) == ["w: importer needs a type string; nothing is routed to raw/w/"]
+    assert extensions.importer_for(vault, "x") is None
+
+
+def test_importer_for_reads_present_extensions_listed_or_not(ext):
+    assert extensions.importer_for(ext, "demo_drop") == "demo"
+    assert extensions.importer_for(ext, "other") is None
+    assert [n for n, _ in extensions.present(ext)] == ["demo", "items", "needs-other"]
+
+
+def test_config_keys_are_stated_once_in_the_schema_and_an_old_manifest_still_loads(vault):
+    """Factory F2 §3.1: an extension's keys live in its schemas/config.md; FIELDS still accepts config_keys."""
+    from vaultlib import frontmatter
+    manifests = [*(REPO / "extensions").glob("*/extension.md"), *FIXTURES.glob("*/extension.md")]
+    assert manifests
+    assert [p for p in manifests if "config_keys" in (frontmatter.parse(p.read_text()).data or {})] == []
+    manifest(vault, "old", config_keys="{k: {kind: string}}")
+    config(vault, "old")
+    assert extensions.check(vault) == [] and [n for n, _ in extensions.enabled(vault)] == ["old"]
+
+
+def test_cited_reads_each_lint_modules_table_and_skips_a_malformed_one(vault):
+    from vaultlib import index
+    manifest(vault, "a", lint="lint.py")
+    write(vault, "extensions/a/lint.py", 'CITED = {"memo": ["open"], "odd": "open"}\ndef issues(conn, add):\n    pass\n')
+    manifest(vault, "b", lint="lint.py")
+    write(vault, "extensions/b/lint.py", 'CITED = "not a table"\n')
+    assert index.cited(vault) == {"memo": ["open"]}
+
+
+def test_one_unreadable_manifest_takes_out_only_its_own_extension(vault):
+    from vaultlib import alerts
+    manifest(vault, "good", alert_tags="[{tag: good, severity: now}]")
+    (vault / "extensions/bad").mkdir(parents=True)
+    (vault / "extensions/bad/extension.md").write_bytes(b"---\nname: bad\xff\n---\n")
+    config(vault, "good", "bad")
+    assert alerts.extension_tags(vault) == {"good": "now"}
+    assert [r.split(":")[0] for r in extensions.check(vault)] == ["bad"]
+
+
 def test_field_reads_one_manifest_field(ext):
     config(ext, "demo")
     assert run(ext, "field", "demo", "description").stdout == "A fixture extension for the loader tests\n"
@@ -152,6 +203,20 @@ def test_index_skips_extensions_and_their_ignore_paths(ext, cli):
     assert "wiki/work/things/Blue.md" in r.stdout
     assert "extensions/" not in r.stdout
     assert "raw/demo" not in r.stdout
+
+
+def test_a_present_extensions_system_folder_is_indexed_but_never_a_bare_name_target(ext, cli):
+    import json
+    config_with(ext)
+    write(ext, "system/demo/site.md", "# Site\n")
+    write(ext, "wiki/work/concepts/Uses.md", "---\ntype: concept\n---\n# Uses\n\n[[site]]\n")
+    issues = json.loads(cli("issues", "--json").stdout)["issues"]
+    assert [i["message"] for i in issues if i["path"] == "wiki/work/concepts/Uses.md" and i["code"] == "dead-link"] \
+        == ["dead link [[site]]"]
+    assert "system/demo/site.md" in cli("query", "SELECT path FROM notes").stdout
+    shutil.rmtree(ext / "extensions" / "demo")   # absent: the folder is an ordinary one again
+    issues = json.loads(cli("issues", "--json").stdout)["issues"]
+    assert [i for i in issues if i["path"] == "wiki/work/concepts/Uses.md" and i["code"] == "dead-link"] == []
 
 
 # The allow rules: whole lines inserted after `"allow": [`, never a JSON rewrite (template rule for settings.json).

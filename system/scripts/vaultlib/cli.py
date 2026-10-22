@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from . import frontmatter, guard, publish, recall as recallmod, retrieve, schema as schemamod, scope as scopemod
-from .index import ISSUE_ROWS, NOT_INDEXED, PRIVATE, Index, citation_issues
+from .index import ISSUE_ROWS, NOT_INDEXED, PRIVATE, Index, citation_issues, cited
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
 
@@ -200,7 +200,7 @@ def cmd_issues(args, vault, sc):
     idx.refresh()
     conn = sqlite3.connect(idx.db_path)
     try:
-        cites = citation_issues(conn)
+        cites = citation_issues(conn, cited(vault))
     except Exception:  # noqa: BLE001 - a codebase path that cannot be read never stops the lint
         cites = []
     rows = sorted(conn.execute(ISSUE_ROWS).fetchall() + cites, key=lambda r: (r[2], r[0], r[1]))
@@ -384,7 +384,8 @@ def cmd_tags(args, vault, sc):
         " GROUP BY j.value ORDER BY c DESC, j.value", (args.partition,)).fetchall()
     conn.close()
     # Only tags worth reusing: system tags and tags lint would flag are left out.
-    rows = [(str(t), c) for t, c in rows if str(t) not in schemamod.RESERVED_TAGS
+    reserved = schemamod.reserved_tags(schemamod.load_schemas(vault))
+    rows = [(str(t), c) for t, c in rows if str(t) not in reserved
             and schemamod.TAG_FORM.fullmatch(str(t)) and not str(t).replace("/", "").isdigit()]
     print(json.dumps([{"tag": t, "count": c} for t, c in rows]) if args.json
           else "\n".join(f"{c}\t{t}" for t, c in rows))

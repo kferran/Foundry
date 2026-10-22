@@ -206,7 +206,7 @@ def test_the_source_tag_is_now_through_the_manifest_and_routine_telemetry_waits_
     from vaultlib import alerts
     write(v, "system/config.md", '---\ntype: config\nextensions: ["handoffs", "telemetry"]\n---\n')
     ext = alerts.extension_tags(v)
-    assert ext == {"telemetry_source": "now"}
+    assert ext["telemetry_source"] == "now" and ext["incident"] == "now" and ext["rca"] == "now"
     assert alerts.severity("- 06:10:00 [telemetry_source] prod-logs: failing since 2026-10-05 06:00 (x)", ext) == "now"
     assert alerts.severity("- 06:10:00 [telemetry] prod-logs: 900 groups; only 500 kept", ext) == "brief"
     assert alerts.severity("- 06:10:00 [incident] prod-logs: new production error in api", ext) == "now"
@@ -622,9 +622,11 @@ def test_secrets_scan_alerts_at_most_three_groups_a_run_then_counts_the_rest(v, 
     got = _secret_alerts(v)
     assert len(got) == 4 and all(" a log line in raw/telemetry/prod-adx-a-" in l for l in got[:3])
     assert got[3] == "[telemetry] prod-adx: and 2 more new groups hold a credential shape (see raw/telemetry/)"
-    from vaultlib.alerts import severity   # the owner's decision: these lines reach Slack now
+    from vaultlib.alerts import extension_tags, severity   # the owner's decision: these lines reach Slack now
     lines = (v / f"system/logs/alerts_{DAY}.md").read_text().splitlines()
-    assert [severity(l) for l in lines if "credential shape" in l] == ["now"] * 4
+    write(v, "system/config.md", '---\ntype: config\nextensions: ["handoffs", "telemetry"]\n---\n')
+    ext = extension_tags(v)
+    assert [severity(l, ext) for l in lines if "credential shape" in l] == ["now"] * 4
 
 
 def test_secrets_scan_is_off_by_default_and_ignores_a_line_redacted_upstream(v, monkeypatch):

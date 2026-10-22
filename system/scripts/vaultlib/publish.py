@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from . import frontmatter, links as linkmod, now as nowmod, schema as schemamod
-from .index import NAME_EXCLUDED, PRIVATE, Index, wall_blocked
+from .index import PRIVATE, Index, name_excluded, wall_blocked
 
 RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
 MEETINGS = re.compile(r"^wiki/[^/]+/meetings/")
@@ -377,7 +377,7 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
                 out.append(Problem(target, f"protected field {key} cannot be set by a headless run"))
     # A tag the run adds keeps the form; a tag the note already had is the owner's to fix (#158).
     added = [t for t in _tags(new) if old is None or t not in _tags(old)]
-    out += [Problem(target, i.message) for i in schemamod.tag_issues(target, (new.data or {}).get("type"), new, added)]
+    out += [Problem(target, i.message) for i in schemamod.tag_issues(target, (new.data or {}).get("type"), new, added, schemas)]
     if NOW_PAGE.match(target):   # phase A spec §3.5: a line the run adds or changes keeps the cap; older ones pass
         kept = {line.rstrip() for line in (old.body if old is not None else "").split("\n")}
         out += [Problem(target, f"a Now line over {nowmod.MAX_LINE} characters: move its history to a note under it")
@@ -409,7 +409,7 @@ def validate_run(vault, run_id, now=None):
     decided = {r["target"]: r["decision"] for r in decisions or [] if r["decision"] != "noop" and r.get("target")}
     schemas, ctx = schemamod.load_schemas(vault), schemamod.Context(vault)
     files = {rel for rel, _, _ in Index(vault).walk()} | set(staged)
-    resolver = linkmod.Resolver(files, name_exclude=NAME_EXCLUDED)
+    resolver = linkmod.Resolver(files, name_exclude=name_excluded(vault))
     for target in staged:
         try:
             problems += _check(vault, run_id, target, snap, decided, command, schemas, ctx, resolver, now)
