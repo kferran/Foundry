@@ -36,7 +36,12 @@ def test_too_large_knows_each_stand_in(text):
 
 
 @pytest.mark.parametrize("text", ['{"results": "Error: result (9 characters) exceeds maximum allowed tokens"}',
-                                  '[{"description": "Output too large"}]', '{"threads": []}'])
+                                  '[{"description": "Output too large"}]', '{"threads": []}',
+                                  # Non-JSON text (a doc, a chat line) that quotes a stand-in after its start (#306).
+                                  "From the sender: the result exceeds maximum allowed tokens, retry",
+                                  "Note: Error: result (9 characters) exceeds maximum allowed tokens",
+                                  "Re: MCP tool response (9 tokens) exceeds maximum allowed tokens",
+                                  "Minutes\n<persisted-output>\nquoted", "Meeting notes: Output too large (1 KB)"])
 def test_result_text_cannot_fake_a_stand_in(text):
     assert not connector.too_large(text)
     assert not connector.too_large([{"type": "text", "text": text}])

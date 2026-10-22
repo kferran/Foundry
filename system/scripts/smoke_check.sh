@@ -12,7 +12,7 @@ cd "$VAULT_ROOT"
 # shellcheck source=lib_config.sh
 source system/scripts/lib_config.sh
 # shellcheck source=lib_fetch.sh
-source system/scripts/lib_fetch.sh   # alert_once; smoke keeps its own logline below
+source system/scripts/lib_fetch.sh   # alert_once; smoke logs its own rows with smoke_logline below
 FETCH_TAG=smoke
 
 (( $# == 0 )) || { echo "usage: smoke_check.sh" >&2; exit 2; }
@@ -28,13 +28,13 @@ failed=0
 out="$(mktemp)"
 trap 'rm -f -- "$out"' EXIT
 
-logline() {  # <source> <exit> <reason>
+smoke_logline() {  # <source> <exit> <reason>
   jq -cn --arg time "$(date -Iseconds)" --arg source "$1" --argjson exit "$2" --arg reason "$3" \
     '{time: $time, source: $source, exit: $exit, reason: $reason}' >> "$log"
 }
 report() {  # <source> <exit> <reason>: print the line, log it, alert a failure
   local cred host since n
-  logline "$1" "$2" "$3"
+  smoke_logline "$1" "$2" "$3"
   if (( $2 == 0 )); then
     echo "$1: ok"
     return 0
@@ -93,7 +93,7 @@ else
   recorded="$(cat "$vfile" 2>/dev/null || true)"
   if [[ -n "$recorded" && "$recorded" != "$current" ]]; then
     # A change is news, not a failure (#122): the [smoke] line reaches the brief's Pipeline, never Slack.
-    logline version 0 "changed: claude $recorded -> $current"
+    smoke_logline version 0 "changed: claude $recorded -> $current"
     echo "version: changed: claude $recorded -> $current"
     alert_once version "claude $recorded -> $current; re-run the acceptance steps (FOUNDRY.md Development)"
   else
@@ -109,7 +109,7 @@ held="$(system/scripts/triage.py hold 2>/dev/null || true)"
 # connector <source> <timeout> <command…>: a connector check, or its held line.
 connector() {
   if [[ -n "$held" ]]; then
-    logline "$1" 0 "held: $held"
+    smoke_logline "$1" 0 "held: $held"
     echo "$1: held: $held"
   else
     check "$@"
@@ -144,7 +144,7 @@ each() {
   while IFS=$'\t' read -r item _; do
     [[ -n "$item" ]] || continue
     if [[ "$conn" == 1 && -n "$held" ]]; then
-      logline "$source/$item" 0 "held: $held"
+      smoke_logline "$source/$item" 0 "held: $held"
       echo "$source/$item: held: $held"
       continue
     fi
@@ -186,7 +186,7 @@ for f in "$UNIT_DIR"/foundry-*.timer; do
   props="$(TZ=UTC "$SYSTEMCTL" --user show -p LastTriggerUSec -p SubState "$t" 2>/dev/null || true)"
   last="$(sed -n 's/^LastTriggerUSec=//p' <<< "$props")"
   # A timer waiting on its own still-running service fired (a long intake run outlasts the 5-minute interval).
-  if grep -qx SubState=running <<< "$props"; then logline "$t" 0 ""; echo "$t: ok"; continue; fi
+  if grep -qx SubState=running <<< "$props"; then smoke_logline "$t" 0 ""; echo "$t: ok"; continue; fi
   [[ -z "$last" ]] || last="$(date -d "$last" +%s 2>/dev/null || true)"
   cal="$(sed -n 's/^OnCalendar=//p' "$f" | head -n 1)" span="$(sed -n 's/^OnUnitActiveSec=//p' "$f" | head -n 1)"
   due="" step=""
@@ -203,19 +203,19 @@ for f in "$UNIT_DIR"/foundry-*.timer; do
     [[ -z "$step" ]] || due=$(( last + step ))
   fi
   if [[ -z "$due" ]]; then
-    logline "$t" 0 unknown
+    smoke_logline "$t" 0 unknown
     echo "$t: unknown"
     continue
   fi
   (( step < 7200 )) || step=7200
   if (( $(date +%s) > due + step )); then
     r="stale: no run since $(date -d "@$last" '+%F %H:%M')"
-    logline "$t" 1 "$r"
+    smoke_logline "$t" 1 "$r"
     echo "$t: $r"
     alert_once "$t stale:" "${r#stale: }"
     failed=1
   else
-    logline "$t" 0 ""
+    smoke_logline "$t" 0 ""
     echo "$t: ok"
   fi
 done
@@ -238,7 +238,7 @@ else
     installed=1
     cmp -s -- "$r" "$UNIT_DIR/$n" && continue
     differs=1
-    logline units 1 "differs: $n"
+    smoke_logline units 1 "differs: $n"
     echo "units: differs: $n"
     alert_once "$n differs:" "run system/scripts/install_units.sh --update"
   done

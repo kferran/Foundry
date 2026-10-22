@@ -141,7 +141,6 @@ walker system/scripts/vaultlib/nightshift_session.py  # other shape: a Work Orde
 walker system/scripts/vaultlib/connector.py  # home: the shared walker (F1 spec §3.1)
 helper system/scripts/meetings_fetch.sh:logline  # F1 retrofit 2 (meetings)
 helper system/scripts/meetings_fetch.sh:alert_once  # F1 retrofit 2 (meetings)
-helper system/scripts/smoke_check.sh:logline  # other shape: logline <source> <exit> <reason>, one line per smoke row
 helper system/scripts/lib_fetch.sh:logline  # home: the shared fetch helpers (F1 spec §3.2)
 helper system/scripts/lib_fetch.sh:alert_once  # home: the shared fetch helpers (F1 spec §3.2)
 helper system/scripts/lib_fetch.sh:fail  # home: the shared fetch helpers (F1 spec §3.2)
