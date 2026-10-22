@@ -19,14 +19,15 @@ class Fail(Exception):
 def too_large(content) -> bool:
     """True when the model saw claude's stand-in for a result over its token limit instead of the result: a
     <persisted-output> preview, a cut ending "[OUTPUT TRUNCATED - exceeded …", the MCP note ("Error: result (…)
-    exceeds maximum allowed tokens", 'MCP tool "<name>" response (N tokens) exceeds …') or "Output too large". Each but the
-    cut must open the text, where claude puts it, so a document or message quoting one later does not count (#306);
-    a JSON result holds no raw newline, so its text cannot carry the cut."""
+    exceeds maximum allowed tokens", 'MCP tool "<name>" response (N tokens) exceeds …') or "Output too large". The
+    MCP note counts anywhere in a non-JSON text's first 200 characters (#164, kept by the owner on #348): a false hold
+    is loud, a miss is silent. A real result is JSON, starts with { or [ and holds no raw newline, so its text cannot
+    be read as any of them."""
     text = ("".join(c.get("text", "") for c in content if isinstance(c, dict)) if isinstance(content, list)
             else str(content or "")).strip()
-    return (text.startswith(("<persisted-output>", "Output too large")) or "\n\n[OUTPUT TRUNCATED - exceeded " in text
-            or (text.startswith(("Error: result (", "MCP tool "))
-                and "exceeds maximum allowed tokens" in text[:200]))
+    return (text.startswith("<persisted-output>") or "\n\n[OUTPUT TRUNCATED - exceeded " in text
+            or (not text.startswith(("{", "[")) and ("exceeds maximum allowed tokens" in text[:200]
+                                                     or text.startswith("Output too large"))))
 
 
 def structured(block: dict, message: dict) -> dict:

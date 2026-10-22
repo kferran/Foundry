@@ -9,9 +9,6 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## Changes
 
-## 2026-10-22
-- Fixed: a connector fetch counts a result as too large for the model only when claude's stand-in opens the result text (or the text holds claude's truncation mark). A plain-text result (a document's text, say) that quotes "exceeds maximum allowed tokens" in its first 200 characters, after its start, no longer fails the fetch with exit 6 or holds its place. (#348)
-
 ## 2026-10-21
 - Changed: the intraday watch checks its sessions with the shared connector parts. A Gmail search with a pageSize other than 10 now fails the mail session (exit 7), and a search past its page limit fails at that call, even when an earlier page errored. Some failure reasons in `watch_fetch` log lines read differently ("the session called <tool> with other arguments than the ones built for this run", "a <search> result was too large for the model to read", "the session made <n> <search> calls; the limit is <n>"); exit codes and alert keys are unchanged. (#339)
 - Changed: the calendar fetch now fails a session that replied `ok` without ever calling `list_events`, where it used to pass an empty day. It exits 3 ("no Google Calendar connector reachable") when the session never found the tool, and 1 when it found the tool and did not call it. The unexpected-tool exit (7) now names the first unexpected tool, and the log's `unexpected_tools` still lists all of them. A `list_events` page that claude cut short or saved to disk now also exits 6 with the `pageSize` hint. (#336)
