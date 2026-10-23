@@ -1,5 +1,6 @@
 """The new-source scaffold (factory F4 §3.2, §5): one command writes an extension Source that passes the line, the
 Source rule, the part homes, the timing rule, the loader and its own suite, with no other file edited."""
+import importlib.util
 import os
 import re
 import shutil
@@ -24,6 +25,7 @@ OWN = ["--tool", "mcp__claude_ai_Example__read_item", "--server", "claude.ai Exa
 TEXT = ["--description", "Demo items in the morning brief", "--credential", "Demo connector",
         "--renew", "reconnect it at claude.ai, Settings, Connectors"]
 GOOD = TABLE + TEXT + ["--issue", "1"]
+OWN_GOOD = OWN + TEXT + ["--issue", "1"]
 LINE = "- Added: Demo items in the morning brief. (#1)"
 
 
@@ -63,6 +65,8 @@ def timing(root):
     """conformance.bats' timing rule on root: its problem lines, without the per-unit sums."""
     r = run(root, "bash", "-c", r'''eval "$(sed -n "/^TIMING_VALUES='/,/^)$/p" system/tests/conformance.bats)"; '''
             r'''timing_problems "$VAULT_ROOT"''', env={"VAULT_ROOT": str(root)})
+    assert r.returncode == 0, r.stderr
+    assert any(line.startswith("# brief: ") for line in r.stdout.splitlines()), r.stdout   # the rule ran
     return [line for line in r.stdout.splitlines() if not line.startswith("# ")]
 
 
@@ -71,13 +75,13 @@ def enable(root, name):
     assert extensions.enable(root, name)
 
 
-@pytest.mark.parametrize("case", [TABLE, OWN], ids=["table", "own table"])
-def test_a_scaffold_passes_the_line(tmp_path, case):
+@pytest.mark.parametrize("case,name", [(TABLE, "demo_src"), (OWN, "demo_own")], ids=["table", "own table"])
+def test_a_scaffold_passes_the_line(tmp_path, case, name):
     root = repo(tmp_path)
     before = timing(root)
-    r = scaffold(root, *case, *TEXT, "--issue", "1")
+    r = scaffold(root, *case, *TEXT, "--issue", "1", name=name)
     assert r.returncode == 0, r.stderr
-    assert changed(root) == {"extensions/demo_src", "CHANGELOG.md"}   # no hand wiring
+    assert changed(root) == {f"extensions/{name}", "CHANGELOG.md"}   # no hand wiring
     assert LINE in (root / "CHANGELOG.md").read_text()
     git(root, "add", "-A")
     assert source_problems(root) == []
@@ -89,9 +93,10 @@ def test_a_scaffold_passes_the_line(tmp_path, case):
     assert [line for line in after if line not in overrun] == before
     r = bats(root, "--filter", "shared part|pipeline", "system/tests/conformance.bats")
     assert r.returncode == 0, r.stdout
-    enable(root, "demo_src")
-    assert run(root, "system/scripts/extensions.py", "check").stdout == ""
-    r = bats(root, "extensions/demo_src/tests/demo_src.bats")
+    enable(root, name)
+    r = run(root, "system/scripts/extensions.py", "check")
+    assert (r.returncode, r.stdout) == (0, "")
+    r = bats(root, f"extensions/{name}/tests/{name}.bats")
     assert r.returncode == 0, r.stdout
 
 
@@ -102,13 +107,23 @@ def swap(args, old, new):
 @pytest.mark.parametrize("name,args,reason", [
     ("handoffs", GOOD, "extensions/handoffs exists"),
     ("calendar", GOOD, "is a core alert tag"),
-    ("Demo-1", GOOD, "[a-z][a-z0-9_]*"),
+    ("Demo-1", GOOD, "[a-z][a-z_]*"),
+    ("demo_src2", GOOD, "demo_src2: a Source name is [a-z][a-z_]*"),
     ("demo_src", GOOD[:-2], "--issue"),
     ("demo_src", swap(GOOD, "GMAIL_TOOLS", "SLACK_TOOLS"), "get_thread is not in SLACK_TOOLS"),
     ("demo_src", swap(GOOD, "GMAIL_TOOLS", "OTHER_TOOLS"), "GMAIL_TOOLS"),
     ("demo_src", swap(GOOD, "Demo items in the morning brief", 'say "hi"'), "--description"),
     ("demo_src", swap(GOOD, "mcp__claude_ai_Gmail__get_thread", "not_a_tool"), "mcp__<server>__<tool>"),
-], ids=["exists", "core tag", "bad name", "no issue", "not in table", "unknown table", "quote", "bad tool"])
+    ("demo_src", swap(GOOD, "claude.ai Gmail", "a'b"), "--server"),
+    ("demo_src", swap(GOOD, "Demo connector", "a\\b"), "--credential"),
+    ("demo_src", swap(GOOD, "reconnect it at claude.ai, Settings, Connectors", "run $x"), "--renew"),
+    ("demo_src", swap(GOOD, "Demo items in the morning brief", ""), "--description is empty"),
+    ("demo_src", swap(GOOD, "claude.ai Gmail", " "), "--server is empty"),
+    ("demo_src", swap(OWN_GOOD, "read_item", "get_item"), "read_item is not in --server-tool"),
+    ("demo_src", swap(OWN_GOOD, "list_items", "list/items"), "--server-tool list/items is not a tool name"),
+], ids=["exists", "core tag", "bad name", "digit", "no issue", "not in table", "unknown table", "quote", "bad tool",
+        "apostrophe", "backslash", "dollar", "empty description", "blank server", "tool not in own table",
+        "bad own tool"])
 def test_a_usage_error_writes_nothing(tmp_path, name, args, reason):
     root = repo(tmp_path)
     r = scaffold(root, *args, name=name)
@@ -149,3 +164,38 @@ def test_the_changelog_line_lands_under_today(tmp_path):
     block = text.split(f"\n## {today}\n", 1)[1].split("\n\n", 1)[0].splitlines()
     assert LINE in block
     assert "- Added: Demo items in the morning brief. (#2)" in block
+
+
+def writer():
+    spec = importlib.util.spec_from_file_location("new_source", REPO / SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_changelog_writer_adds_or_reuses_todays_heading():
+    ns, today = writer(), date.today().isoformat()
+    text = "# Changelog\n\n## Changes\n\n## 2000-01-01\n- Fixed: old. (#9)\n"
+    assert ns.changelog(text, "- Added: a. (#1)") == (
+        f"# Changelog\n\n## Changes\n\n## {today}\n- Added: a. (#1)\n\n## 2000-01-01\n- Fixed: old. (#9)\n")
+    text = f"# Changelog\n\n## Changes\n\n## {today}\n- Added: a. (#1)\n\n## 2000-01-01\n"
+    assert ns.changelog(text, "- Added: b. (#2)") == (
+        f"# Changelog\n\n## Changes\n\n## {today}\n- Added: b. (#2)\n- Added: a. (#1)\n\n## 2000-01-01\n")
+
+
+def test_a_changelog_with_no_changes_heading_writes_nothing(tmp_path):
+    root = repo(tmp_path)
+    (root / "CHANGELOG.md").write_text("# Changelog\n")
+    git(root, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false",
+        "commit", "-qam", "no heading")
+    r = scaffold(root, *GOOD)
+    assert r.returncode == 2
+    assert "new_source: CHANGELOG.md has no ## Changes heading" in r.stderr
+    assert git(root, "status", "--porcelain").stdout == ""
+
+
+def test_a_closing_period_is_not_doubled(tmp_path):
+    root = repo(tmp_path)
+    assert scaffold(root, *swap(GOOD, "Demo items in the morning brief", "Demo items.")).returncode == 0
+    assert "- Added: Demo items. (#1)" in (root / "CHANGELOG.md").read_text()
+    assert "**Demo items.**" in (root / "extensions/demo_src/extension.md").read_text()

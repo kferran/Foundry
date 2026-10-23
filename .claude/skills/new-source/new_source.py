@@ -16,10 +16,10 @@ from datetime import date
 from pathlib import Path
 
 TEMPLATE = Path(__file__).resolve().parent / "template"
-NAME = re.compile(r"[a-z][a-z0-9_]*")
+NAME = re.compile(r"[a-z][a-z_]*")   # the runner and the alert router read tags as [a-z_]+
 TOOL = re.compile(r"mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+")
 BARE = re.compile(r"[A-Za-z0-9_-]+")
-UNSAFE = re.compile(r'["\\$`\n]')   # each value lands in a bash string, a YAML string or a prompt
+UNSAFE = re.compile(r'["\'\\$`\n]')   # each value lands in a bash string (single or double quotes), YAML or a prompt
 
 
 class Usage(Exception):
@@ -38,12 +38,14 @@ def check(root: Path, a, table: dict) -> None:
     from vaultlib import alerts, frontmatter
 
     if not NAME.fullmatch(a.name):
-        raise Usage(f"{a.name}: a Source name is [a-z][a-z0-9_]*")
+        raise Usage(f"{a.name}: a Source name is [a-z][a-z_]*")
     if not TOOL.fullmatch(a.tool):
         raise Usage(f"--tool {a.tool} is not mcp__<server>__<tool>")
     for flag in ("server", "description", "credential", "renew"):
+        if not getattr(a, flag).strip():
+            raise Usage(f"--{flag} is empty")
         if UNSAFE.search(getattr(a, flag)):
-            raise Usage(f"--{flag} holds a quote, backslash, $, backtick or newline")
+            raise Usage(f"--{flag} holds a quote, apostrophe, backslash, $, backtick or newline")
     if (root / "extensions" / a.name).exists():
         raise Usage(f"extensions/{a.name} exists")
     if a.name in alerts.TAGS:
@@ -71,6 +73,8 @@ def changelog(text: str, line: str) -> str:
     if head in lines:
         lines.insert(lines.index(head) + 1, line)
     else:
+        if "## Changes" not in lines:
+            raise Usage("CHANGELOG.md has no ## Changes heading")
         at = lines.index("## Changes") + 2   # after its blank line
         lines[at:at] = [head, line, ""]
     return "\n".join(lines)
@@ -94,14 +98,16 @@ def main(argv: list) -> int:
     p.add_argument("--renew", required=True)
     p.add_argument("--issue", type=int)
     a = p.parse_args(argv)
+    a.description = a.description.rstrip(".")   # the CHANGELOG line and the manifest body add their own
+    vault = (root / "system/config.md").exists()
+    log = root / "CHANGELOG.md"
     try:
         check(root, a, table)
+        line = f"- Added: {a.description}. (#{a.issue})"
+        new_log = None if vault else changelog(log.read_text(encoding="utf-8"), line)
     except Usage as u:
         print(f"new_source: {u}", file=sys.stderr)
         return 2
-    vault = (root / "system/config.md").exists()
-    log = root / "CHANGELOG.md"
-    new_log = None if vault else changelog(log.read_text(encoding="utf-8"), f"- Added: {a.description}. (#{a.issue})")
     own = ("# The server's full tool list, the tool included (lib_fetch.sh has no table for this server).\n"
            f"SERVER_TOOLS=({' '.join(a.server_tool)})") if a.server_tool else ""
     subs = {"@@name@@": a.name, "@@NAME@@": a.name.upper(), "@@tool@@": a.tool,
