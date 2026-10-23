@@ -24,7 +24,7 @@ It reads the lines the branch adds since its merge base with `--base` (default `
 
 | Check | Class | Flags |
 |---|---|---|
-| `now-redaction` | C7 | a Now or Slack writer in a file that calls neither `redact_credentials(` nor `redact(` |
+| `now-redaction` | C7 | a Slack writer in a file that calls neither `redact_credentials(` nor `redact(` (every Now write redacts inside `now.py`) |
 | `gate-escape` | C14 | a write on a line naming `wiki/` or `briefings/` outside the publish gate and `now.py`; an `Edit(`/`Write(` allow rule on those paths |
 | `alert-text` | C5, C7 | an alert or failure reason that interpolates a value other than an exit code, a count or a reason variable |
 | `sleep-race` | C6, C10 | `sleep` added in a test file, except a stub's `STUB_SLEEP=` knob |

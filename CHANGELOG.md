@@ -10,6 +10,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-23
+- Changed: every write to a Now page (`now.py add`, `set` and `note`, inbox triage, the intraday watch, the RCA filer, a brief's new lines) redacts credential-shaped text, keeps the line to 300 characters and refuses a link across the partition wall; a symlinked Now page is refused. Triage, the watch and the RCA filer drop a refused line and raise one alert that day naming the reason, never the line. The publish gate checks a brief's added Now lines the same way, and the brief fixes them before publish. (#310)
 - Changed: a Slack notice posted with drift keeps its collected text and posting session in `system/logs/notify/drift/` (the latest one only), and the drift alert names that folder.
 - Fixed: a Now line the morning brief adds over 300 characters is cut to fit before publish, as triage's are; one long line no longer drops the whole briefing. (#365)
 - Changed: `CLAUDE.md` is shorter. The Now rule points at `system/scripts/now.py add --help`, which now prints the flags, the evidence forms and the `--rec` and `--due` rules. The directory map names `extensions/<name>/` and `wiki/<partition>/rca/`, the Schemas rule names extension schemas, the Scannable layouts rule is one line, and the headings carry no emoji. (#361)
