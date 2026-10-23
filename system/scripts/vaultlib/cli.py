@@ -381,14 +381,14 @@ def last_commits(vault: Path) -> dict:
 
 
 def cmd_stale(args, vault, sc):
-    """Active wiki notes last changed more than --days ago: the last commit that touched the note, else its
-    compiled_at (a note never committed, or no git). compiled_at alone never moves when a note is patched (#361)."""
+    """Active compiled wiki notes (those with compiled_at; meeting records are never compiled) last changed more than
+    --days ago: the last commit that touched the note, else its compiled_at (a note never committed, or no git).
+    compiled_at alone never moves when a note is patched (#361)."""
     require_vault_scope(sc)
     conn = _open(vault)
     rows = conn.execute(
-        "SELECT n.path, (SELECT value FROM fields f WHERE f.path=n.path AND f.key='compiled_at') FROM notes n "
-        "WHERE n.path LIKE 'wiki/%' AND n.active=1 AND coalesce(n.type,'') != 'index' "
-        "AND n.path NOT LIKE 'wiki/%/now-archive/%'").fetchall()
+        "SELECT n.path, f.value FROM notes n JOIN fields f ON f.path=n.path AND f.key='compiled_at' "
+        "WHERE n.path LIKE 'wiki/%' AND n.active=1").fetchall()
     conn.close()
     commits = last_commits(vault)
     cutoff = (date.today() - timedelta(days=args.days)).isoformat()
