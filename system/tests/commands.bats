@@ -155,6 +155,9 @@ headless_contract() {
   grep -qF 'remote_mode' .claude/commands/backup.md
   grep -qF 'commits not yet pushed' .claude/commands/backup.md
   grep -qF 'system/scripts/lint_vault.sh' .claude/commands/lint.md
+  grep -qF 'notes `system/scripts/vault_index.py stale` lists' .claude/commands/lint.md   # last commit, not compiled_at (#361)
+  run grep -F 'with `compiled_at` more than 180 days old' .claude/commands/lint.md
+  [ "$status" -eq 1 ]
 }
 
 @test "/lint lists secret-shape lines first, as errors, and the manual says what the hook and the sync do with them (#166)" {
@@ -1244,6 +1247,9 @@ changelog_dup_dates() { grep -E '^## [0-9]{4}-[0-9]{2}-[0-9]{2}$' "$1" | sort | 
   grep -qF '**What changed**' "$f"
   grep -qF 'Omit What changed when `updates.md` is missing or empty.' "$f"
   grep -qF 'An absent `updates.md` means no template update merged today: never list it.' "$f"
+  grep -qF 'then `Full list: [[CHANGELOG]]`' "$f"   # resolves from briefings/ and briefings/archive/<YYYY-MM>/ (#361)
+  run grep -F '](CHANGELOG.md)' "$f"
+  [ "$status" -eq 1 ]
   grep -qF 'A pull request that changes something a vault user would notice adds its line to `CHANGELOG.md`' FOUNDRY.md
 }
 

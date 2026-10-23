@@ -500,3 +500,35 @@ def test_issues_staged_skips_a_private_note(cli, vault):
     subprocess.run(["git", "-C", str(vault), "add", "wiki/work/private/Bad.md"], check=True)
     res = cli("issues", "--staged")
     assert res.returncode == 0 and "private" not in res.stdout
+
+
+STALE_NOTES = ("wiki/work/concepts/Patched.md", "wiki/work/concepts/Untouched.md", "wiki/work/concepts/New.md")
+
+
+def _stale(cli, *args):
+    return [h for h in json.loads(cli("stale", "--json", *args).stdout) if h["path"] in STALE_NOTES]
+
+
+def test_stale_dates_a_note_by_its_last_commit_then_compiled_at(cli, vault):
+    """compiled_at never moves when a note is patched, so freshness is the last commit (#361)."""
+    _git(vault, "init", "-q")
+    for rel in STALE_NOTES[:2]:
+        write(vault, rel, concept("work", rel, "[[Index]]", compiled_at='"2020-01-01"'))
+    env = {**os.environ, "GIT_AUTHOR_DATE": "2020-01-02T00:00:00", "GIT_COMMITTER_DATE": "2020-01-02T00:00:00"}
+    subprocess.run(["git", "-C", str(vault), "-c", "user.email=t@example.com", "-c", "user.name=t", "add", "wiki"],
+                   check=True, env=env)
+    subprocess.run(["git", "-C", str(vault), "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm",
+                    "old", "--no-verify"], check=True, env=env)
+    write(vault, STALE_NOTES[0], concept("work", "Patched", "[[Index]] patched", compiled_at='"2020-01-01"'))
+    _git(vault, "commit", "-qam", "patch", "--no-verify")
+    write(vault, STALE_NOTES[2], concept("work", "New", "[[Index]]", compiled_at='"2020-01-01"'))   # never committed
+    assert _stale(cli) == [{"path": STALE_NOTES[2], "date": "2020-01-01"},
+                           {"path": STALE_NOTES[1], "date": "2020-01-02"}]
+
+
+def test_stale_falls_back_to_compiled_at_without_git(cli, vault):
+    write(vault, STALE_NOTES[1], concept("work", "Untouched", "[[Index]]", compiled_at='"2020-01-01"'))
+    res = cli("stale")
+    assert res.returncode == 0, res.stderr
+    assert f"- {STALE_NOTES[1]} (2020-01-01)" in res.stdout.splitlines()
+    assert _stale(cli, "--days", "100000") == []

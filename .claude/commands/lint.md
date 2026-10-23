@@ -9,6 +9,6 @@ Audit the vault. The deterministic checks come first; your analysis only adds to
    - **Links:** for each orphan and each dead link, suggest a link or a target.
    - **Duplicates:** notes that cover the same topic (check with `system/scripts/vault_index.py related <note>`); propose a merge by superseding one.
    - **Contradictions:** active notes in the same partition that disagree; propose `supersedes`/`superseded_by` or `status: deprecated`.
-   - **Stale notes:** canonical notes with `compiled_at` more than 180 days old that recent session digests discuss.
+   - **Stale notes:** of the notes `system/scripts/vault_index.py stale` lists (unchanged for 180 days by their last commit, else by `compiled_at`), the canonical ones that recent session digests discuss.
    - **Topic gaps:** a term that appears in 3 or more notes with no note or alias of its own.
 3. Ask before fixing anything. Never delete a note: retire it. Respect partition walls in every suggestion.

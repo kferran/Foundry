@@ -23,7 +23,8 @@ NOT_INDEXED = ("system/logs/", "system/quarantine/", "system/jobs/", "system/tem
 # Walked but never indexed: reachable by explicit path, never by bare [[Name]].
 NAME_EXCLUDED = ("system/tests/", "system/templates/", "system/schemas/", "system/agents/", "docs/",
                  "system/quarantine/", "wiki/.staging/",  # run copies keep their note names
-                 "system/codebases/", "system/nightshift/")  # named after what they configure
+                 "system/codebases/", "system/nightshift/",  # named after what they configure
+                 "system/logs/")  # prep inputs and run logs share stems with notes and dated briefings (#361)
 
 
 def name_excluded(vault) -> tuple:
@@ -423,7 +424,8 @@ class Index:
             if ambiguous:
                 add(src, line, "warning", "ambiguous-link", f"ambiguous link {self._display(raw, kind)} resolved to {target_path}")
             source, target = notes.get(src), notes.get(target_path)
-            if source and source[2] and target and not target[2] and target_path != src:
+            if (source and source[2] and target and not target[2] and target_path != src
+                    and not src.startswith("briefings/archive/")):   # an archived brief is history (#361)
                 add(src, line, "warning", "link-to-inactive", f"links to inactive note {target_path}")
             if src.startswith("wiki/") and source and source[0] != "index":
                 p, q = schemamod.path_partition(src), schemamod.path_partition(target_path)
