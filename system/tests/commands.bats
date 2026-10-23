@@ -743,7 +743,9 @@ self_edit_contract() {
   grep -qF 'after any bullet an extension section places first' "$f"
   run grep -x -- '- \*\*Telemetry\*\*:' system/templates/daily-briefing.md
   [ "$status" -eq 1 ]
-  system/scripts/now.py add --help | grep -qF 'or a telemetry note path'
+  # The evidence forms an extension adds live with it; core help names no extension (#361)
+  grep -qF -- '`--evidence <note path>`' extensions/telemetry/brief/section.md
+  system/scripts/now.py add --help | grep -qF "or the form an extension's skill or brief section names"
 }
 
 @test "dependency status is held: no template file names its fields or partner-auth (#171, telemetry escalation spec §9)" {
@@ -781,7 +783,8 @@ self_edit_contract() {
   jq -e '.permissions.allow | index("Bash(system/scripts/now.py add:*)")' .claude/settings.json >/dev/null
   help="$(system/scripts/now.py add --help)"
   [[ "$help" == *'now.py add --partition <work|personal> --kind <owed|waiting|draft> --statement "<one line>"'* ]]
-  [[ "$help" == *'--evidence <pull request URL, Work Order id, GitHub issue URL, ticket key, rca:<note stem> or a telemetry note path>'* ]]   # #106
+  [[ "$help" == *'--evidence <pull request URL, Work Order id, GitHub issue URL, ticket key, or the form an extension'* ]]
+  grep -qF -- '--evidence rca:<note stem>' extensions/telemetry/skills/rca/SKILL.md   # #106: the RCA form lives with its skill
   [[ "$help" == *'now.py set --partition <p> --match "<text>" --statement "<new statement>"'* ]]
   [[ "$help" == *'now.py note --partition <p> --match "<text>" --text "<update>"'* ]]
   [[ "$help" == *'--rec when the user must decide and you have a recommendation'* ]]

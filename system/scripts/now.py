@@ -2,7 +2,7 @@
 """The Now page (Now page spec §3.2). Exit 0 ok, 2 usage or an invalid line, 4 run.lock busy.
 
   now.py add --partition <work|personal> --kind <owed|waiting|draft> --statement "<one line>" [--who <name>]
-             [--evidence <pull request URL, Work Order id, GitHub issue URL, ticket key, rca:<note stem> or a telemetry note path>]
+             [--evidence <pull request URL, Work Order id, GitHub issue URL, ticket key, or the form an extension's skill or brief section names>]
              [--rec "<option>: <why>"] [--due YYYY-MM-DD]
                                   owed by the user, waited on from someone else, or a message drafted and not yet
                                   sent; give --rec when the user must decide and you have a recommendation. A new
