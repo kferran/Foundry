@@ -10,6 +10,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-23
+- Changed: a Slack notice posted with drift keeps its collected text and posting session in `system/logs/notify/drift/` (the latest one only), and the drift alert names that folder.
 - Fixed: a Now line the morning brief adds over 300 characters is cut to fit before publish, as triage's are; one long line no longer drops the whole briefing. (#365)
 - Changed: `CLAUDE.md` is shorter. The Now rule points at `system/scripts/now.py add --help`, which now prints the flags, the evidence forms and the `--rec` and `--due` rules. The directory map names `extensions/<name>/` and `wiki/<partition>/rca/`, the Schemas rule names extension schemas, the Scannable layouts rule is one line, and the headings carry no emoji. (#361)
 - Fixed: the lint no longer reports a link as ambiguous because a file in `system/logs/` (a prep input or a run log) shares its name; a bare `[[Name]]` never resolves to a log file. Archived briefings no longer warn when they link to a note retired since. The brief's What changed section links `[[CHANGELOG]]`, which resolves from archived briefings too. (#361)
