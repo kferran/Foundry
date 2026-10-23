@@ -10,6 +10,8 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-23
+- Added: the `health` extension. Monday's brief carries a 🩺 Health scorecard of the platform and the factory (source ticks, headless runs, the brief's time and size, the Now pages, cost, sync blocks, budget headroom and, with `gh`, defect recurrences, first-push CI and review fixes); other days show one Pipeline line per metric past its threshold. Off until listed.
+  - Action: add `health` to `extensions` in `system/config.md`, and fill `health_defect_gates` as gates land.
 - Changed: a Slack notice posted with drift keeps its collected text and posting session in `system/logs/notify/drift/` (the latest one only), and the drift alert names that folder.
 - Fixed: a Now line the morning brief adds over 300 characters is cut to fit before publish, as triage's are; one long line no longer drops the whole briefing. (#365)
 - Changed: `CLAUDE.md` is shorter. The Now rule points at `system/scripts/now.py add --help`, which now prints the flags, the evidence forms and the `--rec` and `--due` rules. The directory map names `extensions/<name>/` and `wiki/<partition>/rca/`, the Schemas rule names extension schemas, the Scannable layouts rule is one line, and the headings carry no emoji. (#361)
