@@ -69,6 +69,25 @@ def test_index_and_briefings_exempt_from_walls(vault):
     assert issues(build(vault), "partition-wall") == []
 
 
+def test_log_files_are_never_bare_name_link_targets(vault):
+    # Prep inputs and run logs share stems with notes and dated briefings (#361): a link never resolves to them by name.
+    write(vault, "system/logs/inputs/2026-10-01/kafka.md", "prep input\n")
+    write(vault, "system/logs/nightshift/2026-10-01.md", "run log\n")
+    write(vault, "briefings/2026-10-01.md", '---\ntype: briefing\ndate: "2026-10-01"\n---\n# Brief\n')
+    write(vault, "wiki/work/concepts/User.md", concept("work", "User", "[[Kafka]] [[2026-10-01]]"))
+    idx = build(vault)
+    assert issues(idx, "ambiguous-link") == []
+    assert query(idx, "SELECT target_path FROM links WHERE src='wiki/work/concepts/User.md' ORDER BY target_path") == \
+        [("briefings/2026-10-01.md",), ("wiki/work/concepts/Kafka.md",)]
+
+
+def test_archived_briefings_do_not_warn_on_links_to_notes_retired_since(vault):
+    write(vault, "wiki/work/concepts/Old.md", concept("work", "Old", "[[Index]]", status="deprecated"))
+    write(vault, "briefings/archive/2026-09/2026-09-01.md", '---\ntype: briefing\ndate: "2026-09-01"\n---\n[[Old]]')
+    write(vault, "briefings/2026-10-01.md", '---\ntype: briefing\ndate: "2026-10-01"\n---\n[[Old]]')
+    assert issues(build(vault), "link-to-inactive") == [("briefings/2026-10-01.md", "warning", "link-to-inactive")]
+
+
 def test_ambiguous_link_prefers_partition(vault):
     write(vault, "wiki/work/concepts/Dup.md", concept("work", "Dup"))
     write(vault, "wiki/personal/concepts/Dup.md", concept("personal", "Dup"))

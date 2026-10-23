@@ -5,7 +5,7 @@ folders: ["wiki/work/", "wiki/personal/", "wiki/shared/"]
 fields:
   type: {kind: const, value: concept, required: true, readers: [system/scripts/vaultlib/schema.py]}
   tags: {kind: list, of: string, required: true, readers: [system/scripts/vaultlib/index.py, system/scripts/vaultlib/publish.py]}
-  compiled_at: {kind: date, required: true, readers: [system/scripts/vaultlib/friction.py, system/scripts/vaultlib/retrieve.py, .claude/commands/lint.md]}
+  compiled_at: {kind: date, required: true, readers: [system/scripts/vaultlib/friction.py, system/scripts/vaultlib/retrieve.py, system/scripts/vaultlib/cli.py, .claude/commands/lint.md]}
   partition: {kind: enum, values: [work, personal, shared], required: true, matches_folder: true, readers: [system/scripts/vaultlib/index.py]}
   codebase: {kind: string, readers: [system/scripts/vaultlib/retrieve.py]}
   capability: {kind: enum, values: [code, tests, refactor, vault-health, dependencies, telemetry, alerts, research], readers: []}
