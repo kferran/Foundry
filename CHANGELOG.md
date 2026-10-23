@@ -10,7 +10,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-23
-- Added: `/new-source`, a development skill that scaffolds an extension Source (fetch, checker, manifest, budget, alert tag, brief section and tests) that passes CI before any feature code is written. (#309)
+- Added: `/new-source`, a development skill that scaffolds an extension Source (fetch, checker, manifest, budget, alert tag, brief prep and tests) that passes CI before any feature code is written. (#309)
 
 ## 2026-10-22
 - Changed: the core line budget counts `system/hooks` and `.claude/commands` with `system/scripts`, capped at 15,000 lines in the template; a vault prints its count and skips the cap. Extension manifests state their time budgets in a new `budget` field, checked against the scripts' defaults. (#308)
