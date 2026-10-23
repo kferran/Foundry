@@ -754,6 +754,22 @@ def test_fit_cuts_a_machine_writers_statement_to_the_cap(vault):
     assert "x…" in line
 
 
+def test_fit_staged_cuts_only_the_brief_added_long_lines(vault):
+    head = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n---\n# Now\n\n## Needs you\n"
+    old = f"- [ ] owed: {'w' * 400} (since 2026-10-01)"
+    added = f"- [ ] owed: {'e' * 320} [due:: 2026-11-08] (since {TODAY})"
+    short = f"- [ ] owed: Short one [due:: 2026-11-08] (since {TODAY})"
+    write(vault, "wiki/work/Now.md", head + old + "\n")
+    write(vault, "wiki/.staging/r1/wiki/work/Now.md", head + "\n".join([old, added, short]) + "\n")
+    assert now.fit_staged(vault, "r1") == 1
+    lines = (vault / "wiki/.staging/r1/wiki/work/Now.md").read_text(encoding="utf-8").split("\n")
+    assert lines[-4] == old
+    assert lines[-2] == short
+    assert len(lines[-3]) <= now.MAX_LINE
+    assert lines[-3].endswith(f"e… [due:: 2026-11-08] (since {TODAY})")
+    assert now.fit_staged(vault, "missing-run") == 0
+
+
 def test_a_long_line_written_before_the_cap_keeps_working(vault):
     prepare(vault)
     long = f"- [ ] owed: {'w' * 400} (since 2026-10-01)"

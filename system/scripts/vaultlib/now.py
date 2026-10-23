@@ -256,7 +256,7 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
     validate(partition, kind, statement, who, evidence, rec, due)
     over = len(render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who))) - MAX_LINE
     if fit and over > 0:
-        statement = statement[:max(len(statement) - over - 1, 40)].rstrip() + "…"
+        statement = _cut(statement, over)
     text = read(vault, partition) or new_page(vault, partition, today)
     for existing in open_lines(text):
         m = LINE.match(existing)
@@ -280,6 +280,35 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
     text = _insert(stamp(text, today), WAITING if kind == "waiting" else NEEDS, line)
     write(vault, partition, text)
     return "added", line
+
+
+def _cut(statement: str, over: int) -> str:
+    return statement[:max(len(statement) - over - 1, 40)].rstrip() + "…"
+
+
+def fit_staged(vault, run_id: str) -> int:
+    """A brief's staged Now pages: each open line the run added over MAX_LINE gets its statement cut as add's fit
+    does, keeping its clock and parenthesis, so one long line no longer rejects the whole brief (the publish gate's
+    cap is unchanged). A line the live page already holds is left as it is. Returns the lines cut."""
+    cut = 0
+    for partition in PARTITIONS:
+        path = Path(vault) / "wiki" / ".staging" / run_id / "wiki" / partition / "Now.md"
+        if not path.is_file():
+            continue
+        kept = {line.rstrip() for line in read(vault, partition).split("\n")}
+        lines, before = path.read_text(encoding="utf-8").split("\n"), cut
+        for i, line in enumerate(lines):
+            m = parse(line) if line.startswith("- [ ] ") and line.rstrip() not in kept else None
+            if m is None or len(line.rstrip()) <= MAX_LINE:
+                continue
+            bare, rec, due = fields(m.group("statement"))
+            args = (m.group("kind"), m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
+            over = len(render(args[0], bare, *args[1:])) - MAX_LINE
+            lines[i] = render(args[0], _cut(bare, over) if over > 0 else bare, *args[1:])
+            cut += 1
+        if cut > before:
+            path.write_text("\n".join(lines), encoding="utf-8")
+    return cut
 
 
 def set_statement(vault, partition: str, match: str, statement: str, today: str) -> str:

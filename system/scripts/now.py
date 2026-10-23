@@ -25,6 +25,8 @@
                                   read-only: open lines past their [due::] (before the date, today by default) in
                                   groups of 1 to 7, 8 to 30 and more than 30 days over, then the clockless count
   now.py seed YYYY-MM-DD         once: a missing default-partition page takes the previous brief's open objectives
+  now.py fit-staged <run_id>      a brief's staged Now pages: cut each added line over 300 characters (run_headless.sh
+                                  runs it under its own run.lock, before publish)
 """
 import argparse
 import os
@@ -36,6 +38,7 @@ VAULT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
 from vaultlib import now  # noqa: E402
 from vaultlib.intake import Intake  # noqa: E402
+from vaultlib.publish import PublishError, check_run_id  # noqa: E402
 from vaultlib.recall import default_partition  # noqa: E402
 
 p = argparse.ArgumentParser(prog="now.py")
@@ -66,8 +69,17 @@ r.add_argument("--partition", required=True, choices=now.PARTITIONS)
 r.add_argument("--stale-days", type=int, default=now.STALE_DAYS)
 sub.add_parser("overdue").add_argument("--date")
 sub.add_parser("seed").add_argument("date")
+sub.add_parser("fit-staged").add_argument("run_id")
 args = p.parse_args()
 
+if args.cmd == "fit-staged":  # the caller holds run.lock
+    try:
+        check_run_id(args.run_id)
+    except PublishError as exc:
+        print(f"now.py: {exc}", file=sys.stderr)
+        sys.exit(2)
+    print(f"fit: {now.fit_staged(VAULT, args.run_id)}")
+    sys.exit(0)
 intake = Intake(VAULT)
 if args.cmd == "overdue":  # read-only, so no run.lock
     if args.date is not None and not now.is_date(args.date):

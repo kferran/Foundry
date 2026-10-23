@@ -10,6 +10,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-23
+- Fixed: a Now line the morning brief adds over 300 characters is cut to fit before publish, as triage's are; one long line no longer drops the whole briefing. (#365)
 - Added: `/new-source`, a development skill that scaffolds an extension Source (fetch, checker, manifest, budget, alert tag, brief prep and tests) that passes CI before any feature code is written. (#309)
 - Added: `/foundry-review`, a development skill that runs nine checks on a branch's diff for defect classes that tests miss (unredacted Now writers, writes around the publish gate, outside text in alerts, sleeps in tests, skips with no reason, a missing CHANGELOG line or defect label, and three Source rule hand-offs) before its pull request opens. Specs that name a blueprint now carry a `## Blueprint checklist` section, checked in CI. (#309)
 
