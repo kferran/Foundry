@@ -11,7 +11,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-23
-- Added: the `health` extension. Monday's brief carries a 🩺 Health scorecard of the platform and the factory (source ticks, headless runs, the brief's time and size, the Now pages, cost, sync blocks, budget headroom and, with `gh`, defect recurrences, first-push CI and review fixes); other days show one Pipeline line per metric past its threshold. Off until listed.
+- Added: the `health` extension. Monday's brief carries a 🩺 Health scorecard of the platform and the factory (source ticks, headless runs, the brief's time and size, the Now pages, cost, sync blocks, budget headroom and, with `gh`, defect recurrences, first-push CI and review fixes); other days show one Pipeline line per metric past its threshold. Off until listed. (#374)
   - Action: add `health` to `extensions` in `system/config.md`, and fill `health_defect_gates` as gates land.
 - Changed: a Slack notice posted with drift keeps its collected text and posting session in `system/logs/notify/drift/` (the latest one only), and the drift alert names that folder.
 - Fixed: a Now line the morning brief adds over 300 characters is cut to fit before publish, as triage's are; one long line no longer drops the whole briefing. (#365)
