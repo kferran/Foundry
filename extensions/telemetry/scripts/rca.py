@@ -24,7 +24,7 @@ from pathlib import Path
 VAULT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(VAULT / "system" / "scripts"), str(Path(__file__).resolve().parent)]
 from telemetrylib import rca  # noqa: E402
-from vaultlib.api import Intake, messages, UsageError  # noqa: E402
+from vaultlib.api import alert, Intake, messages, UsageError  # noqa: E402
 
 FILED_LOCK_WAIT = 120   # seconds `filed` and `reopen` wait for run.lock (the manifest's budget sums it per filing)
 
@@ -56,7 +56,11 @@ def main(argv) -> int:
         elif len(argv) == 5 and argv[1] == "reopen":
             intake = Intake(VAULT)
             with intake.lock("run.lock", timeout=FILED_LOCK_WAIT):
-                rca.reopen(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
+                try:
+                    rca.reopen(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
+                except ValueError as exc:   # the reason only, never the line (factory F5 spec §4.2)
+                    alert(VAULT, intake.today(), intake.dt().strftime("%H:%M:%S"), "rca",
+                          f"a Now line was refused ({exc})", key="a Now line was refused")
         elif len(argv) == 5 and argv[1] == "filed" and rca.KEY.match(argv[4]):
             intake = Intake(VAULT)
             with intake.lock("run.lock", timeout=FILED_LOCK_WAIT):

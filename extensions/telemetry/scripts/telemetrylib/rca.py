@@ -173,13 +173,14 @@ def reopen(vault, partition: str, stem: str, reason: str, today: str) -> None:
     for i, line in enumerate(lines):
         m = nowmod.LINE.match(line)
         if m and m.group("evidence") == f"rca:{stem}":
-            # The reason joins the bare statement; the Now clock's fields stay after it (Now clock spec §3).
+            # The reason joins the bare statement; the Now clock's fields stay after it (Now clock spec §3). The
+            # reason is outside text: redacted and cut by the Now check (factory F5 spec §4.1).
             bare, rec, due = nowmod.fields(m.group("statement"))
             bare = re.sub(r": not filed \d{4}-\d{2}-\d{2}, .*$", "", bare)
-            clock = (f" [rec:: {rec}]" if rec else "") + (f" [due:: {due}]" if due else "")
-            rest = line[m.end("statement"):]
-            lines[i] = (f"- [ ] {m.group('kind')}: {bare}: not filed {today}, {why}{clock}"
-                        f"{nowmod.STAMP.sub('', rest).rstrip()}")
+            statement = nowmod.screen_fields(f"{bare}: not filed {today}, {why}")[0]
+            lines[i] = nowmod.screen_line(vault, partition, nowmod.render(
+                m.group("kind"), statement, m.group("since"), m.group("who") or "", m.group("evidence"), rec, due),
+                fit=True)
     nowmod.write(vault, partition, "\n".join(lines))
 
 

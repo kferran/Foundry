@@ -15,6 +15,7 @@ from . import calendar as cal
 from .common import alert, append, records, state
 
 MAX_ALERTS = 3
+REFUSED = "a Now line was refused"
 NOW_KINDS = {"deadline": "owed", "blocked": "waiting", "commitment": "owed", "request": "owed"}
 ALERT_CHANGES = ("cancelled", "moved")
 SAID_WORDS = 4
@@ -109,8 +110,8 @@ def now_line(vault, partition: str, item: dict, day: str, events: list) -> tuple
     except ValueError:
         try:
             status, line = nowmod.add(vault, partition, kind, statement, day, "", item["link"], due=due, fit=True)
-        except ValueError:
-            return "refused", ""
+        except ValueError as exc:
+            return "refused", str(exc)
     return ("added" if status == "added" else "exists"), line
 
 
@@ -133,6 +134,8 @@ def route(vault, partition: str, found: dict, flags: list, crossed: list, events
         status = ""
         if item["kind"] in NOW_KINDS and not (item["kind"] == "blocked" and not item["who"]):
             status, line = now_line(vault, partition, item, day, events)
+            if status == "refused":   # the reason only, never the line (factory F5 spec §4.2)
+                alert(vault, day, clock, "intraday", f"{REFUSED} ({line})", key=REFUSED)
             if status == "added":
                 counts["now"] += 1
                 if item["kind"] == "commitment" and item["meeting"]:
@@ -140,7 +143,7 @@ def route(vault, partition: str, found: dict, flags: list, crossed: list, events
                                            f"{day} {clock[:5]}")
                     if slots:
                         try:
-                            nowmod.note(vault, partition, item["what"], f"free: {', '.join(slots)}", day)
+                            nowmod.note(vault, partition, item["what"], f"free: {', '.join(slots)}", day, fit=True)
                         except ValueError:
                             pass   # another open line holds the same text: the slots are an offer, not the item
         e = next((e for i, e in crossed if i is item), None)   # a cancellation the calendar still lists: one line
