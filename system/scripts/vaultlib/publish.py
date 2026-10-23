@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from . import frontmatter, links as linkmod, now as nowmod, schema as schemamod
-from .index import PRIVATE, Index, name_excluded, wall_blocked
+from .index import PRIVATE, Index, name_excluded, walled
 
 RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
 MEETINGS = re.compile(r"^wiki/[^/]+/meetings/")
@@ -307,17 +307,11 @@ def _walls(vault, target, note, schemas, resolver) -> list:
     # Only the cross-partition index itself is exempt; a note anywhere else is walled whatever its type (audit S2).
     if not target.startswith("wiki/") or target == INDEX_NOTE:
         return []
-    src_part = schemamod.path_partition(target)
     body_links, _ = linkmod.extract(note.body, note.body_line)
     ntype = (note.data or {}).get("type")
     fm_links = Index(vault)._frontmatter_links(schemas.get(ntype) if isinstance(ntype, str) else None, note)
-    out = []
-    for link in body_links + fm_links:
-        hit, _ = resolver.resolve(link.target, target, "md" if link.kind == "md" else "wiki", lambda c: (len(c), c))
-        part = schemamod.path_partition(hit) if hit else None
-        if src_part and part and wall_blocked(src_part, part):
-            out.append(Problem(target, f"partition wall: {src_part} note links to {hit}"))
-    return out
+    return [Problem(target, f"partition wall: {schemamod.path_partition(target)} note links to {hit}")
+            for hit in walled(resolver, target, body_links + fm_links)]
 
 
 def _is_file_path(vault: Path, target: str) -> bool:

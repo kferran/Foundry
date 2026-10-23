@@ -64,3 +64,11 @@ def test_extension_tags_reads_every_tag_of_enabled_manifests(vault):
     assert alerts.severity("- 06:10:00 [t] api is fine", ext) == "brief"
     (vault / "extensions" / "w" / "extension.md").write_bytes(b"---\nname: w\xff\n---\n")
     assert alerts.extension_tags(vault) == {}   # an unreadable manifest stops no Slack notice
+
+
+def test_alert_writes_once_a_day_per_key(vault):
+    assert alerts.alert(vault, "2026-10-23", "09:00:00", "triage", "k1 first", key="k1")
+    assert not alerts.alert(vault, "2026-10-23", "09:05:00", "triage", "k1 again", key="k1")
+    assert alerts.alert(vault, "2026-10-23", "09:06:00", "triage", "no key")
+    text = (vault / "system/logs/alerts_2026-10-23.md").read_text(encoding="utf-8")
+    assert text == "- 09:00:00 [triage] k1 first\n- 09:06:00 [triage] no key\n"

@@ -2,6 +2,7 @@
 brief. notify.py sends only `now` lines; an untagged line or a tag outside the table waits for the brief. An
 extension's tags live in its manifest's `alert_tags` (factory F2 §3.1)."""
 import re
+from pathlib import Path
 
 TAGS = {
     "foreman": ("a session's message to the owner", "now"),
@@ -66,3 +67,16 @@ def severity(line: str, extra: dict = None) -> str:
         sev, when = sev
         return "now" if when.match(line, m.end()) else sev
     return sev
+
+
+def alert(vault, day: str, clock: str, tag: str, text: str, key: str = "") -> bool:
+    """Append `- HH:MM:SS [tag] text` to the day's alerts file; with a key, at most once a day per key. True when
+    written."""
+    path = Path(vault) / "system" / "logs" / f"alerts_{day}.md"
+    line = f"- {clock} [{tag}] {text}\n"
+    if key and path.is_file() and f"[{tag}] {key}" in path.read_text(encoding="utf-8"):
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(line)
+    return True
