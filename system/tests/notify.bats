@@ -87,7 +87,9 @@ slack_posts() {
   slack_posts "• Alert 06:10:00 [intake] one"
   run "$N"
   [ "$status" -eq 0 ]
-  grep -qF '[notify] Notice posted with drift: 1 of 2 event lines missing from the post' "$ALERTS"
+  grep -qF '[notify] Notice posted with drift: 1 of 2 event lines missing from the post (kept in system/logs/notify/drift/)' "$ALERTS"
+  [ "$(jq '.lines | length' system/logs/notify/drift/collected.json)" -eq 2 ]
+  grep -qF '"message":"• Alert 06:10:00 [intake] one"' system/logs/notify/drift/out.jsonl
   rm -f "$STUB_ARGS"
   run "$N"
   [ "$status" -eq 0 ]

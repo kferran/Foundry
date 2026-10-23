@@ -90,6 +90,10 @@ post "$work/collected.json" "$parent"
 (( CONNECTOR_EXIT == 0 )) || fail "$CONNECTOR_EXIT" "$CONNECTOR_REASON"
 (( check )) || system/scripts/notify.py commit "$work/collected.json"
 drift="$(head -n 1 "$work/drift.txt")"
-[[ -z "$drift" ]] || alert_once "Notice posted with drift:" "$drift"
+if [[ -n "$drift" ]]; then  # the latest drifted post's text and session, kept so the cause can be read
+  mkdir -p system/logs/notify/drift
+  cp -- "$work/collected.json" "$work/out.jsonl" system/logs/notify/drift/
+  alert_once "Notice posted with drift:" "$drift (kept in system/logs/notify/drift/)"
+fi
 logline 0 "${drift:-$( (( check )) && echo check || true)}" "{\"events\": $n}"
 exit 0
