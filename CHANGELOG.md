@@ -4,7 +4,8 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## What's next
 
-- A people Workcell, then a planning and communications Workcell, each with its note types as extension schemas.
+- Every model write to a Now page passes one check: redaction, the 300-character cap and the partition walls (#310).
+- Then FOUNDRY.md lists what the Foundry offers: features, extensions, commands and skills, and the factory line for builders (#331).
 - Details: [roadmap](docs/superpowers/roadmap.md).
 
 ## Changes
