@@ -25,13 +25,13 @@ CORE = {
 
 
 def tree(tmp_path):
-    """A copy of the tracked files in a fresh git repository."""
+    """A copy of the tracked files, modes kept, in a fresh git repository."""
     out = subprocess.run(["git", "-C", str(REPO), "ls-files", "-z"], capture_output=True, text=True, check=True)
     for rel in filter(None, out.stdout.split("\0")):
         src = REPO / rel
         if src.is_file():
             (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(src, tmp_path / rel)
+            shutil.copy(src, tmp_path / rel)
     subprocess.run(["git", "-C", str(tmp_path), "init", "-q"], check=True)
     subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True)
     return tmp_path
