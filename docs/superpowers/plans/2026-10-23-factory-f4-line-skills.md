@@ -17,7 +17,7 @@
 - Core-clean (`vault_integrity.bats`): every tracked file outside `docs/`, `CHANGELOG.md`, `extensions/` and `system/tests/` must not match `dtcc|sentry|kusto|azure|\bjira\b|atlassian`. That covers both `SKILL.md`s, `new_source.py`, `review_diff.py`, the whole template folder and FOUNDRY.md. Say "the handoffs extension's server table", never the vendor.
 - Retired names (`vault_integrity.bats` `OLD`): no `fleet`, `crew`, `task_id`, `chief of staff` and the rest in `.claude/`.
 - Scripts are stdlib Python plus `vaultlib` (put `<repo>/system/scripts` on `sys.path`); no new dependency. Run as `python3 .claude/skills/<skill>/<script>`.
-- Name rule: `[a-z][a-z0-9_]*`. The checker is `<name>_check.py`, the fetch `<name>_fetch.sh`, the suite `tests/<name>.bats`, the timeout `<NAME>_TIMEOUT` (default 300), `FETCH_TAG=<name>`, `FETCH_NAME=<name>_fetch`.
+- Name rule: `[a-z][a-z_]*`, no digits (lib_connector.sh's reason-prefix strip and vaultlib/alerts.py's tag line read names as `[a-z_]+`). The checker is `<name>_check.py`, the fetch `<name>_fetch.sh`, the suite `tests/<name>.bats`, the timeout `<NAME>_TIMEOUT` (default 300), `FETCH_TAG=<name>`, `FETCH_NAME=<name>_fetch`.
 - Exit codes: `new_source.py` 0 written, 2 usage (reason on stderr, nothing written). `review_diff.py` 0 no hits, 1 hits, 2 could not run.
 - Both new test files skip when `system/config.md` exists (`pytestmark = pytest.mark.skipif(..., reason="this checkout is a vault ...")`, as `test_source_rule.py`).
 - bats ruling R1 for every bats file touched or written (the scaffold's included): no mid-test `!`, no `&&` assertion chains, no wall-clock timing assertions.
@@ -82,7 +82,7 @@ assert r.returncode == 0, r.stdout
 |---|---|
 | name `handoffs` | `extensions/handoffs exists` |
 | name `calendar` | `is a core alert tag` |
-| name `Demo-1` | `[a-z][a-z0-9_]*` |
+| name `Demo-1` | `[a-z][a-z_]*` |
 | no `--issue` | `--issue` |
 | `--tools SLACK_TOOLS` with the Gmail tool | `get_thread is not in SLACK_TOOLS` |
 | `--tools OTHER_TOOLS` | `GMAIL_TOOLS` (the choices) |

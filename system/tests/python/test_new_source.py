@@ -1,6 +1,7 @@
 """The new-source scaffold (factory F4 §3.2, §5): one command writes an extension Source that passes the line, the
 Source rule, the part homes, the timing rule, the loader and its own suite, with no other file edited."""
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -9,7 +10,7 @@ from datetime import date
 
 import pytest
 
-from helpers import REPO
+from helpers import REPO, call, stream
 from test_source_rule import session_problems, smoke_name_problems, source_problems, tree
 from vaultlib import extensions
 
@@ -88,10 +89,12 @@ def test_a_scaffold_passes_the_line(tmp_path, case, name):
     assert session_problems(root) == []
     assert smoke_name_problems(root) == []
     after = timing(root)
-    overrun = [line for line in after if line.startswith("brief: ") and line not in before]
+    overrun = [line for line in after if re.match(r"brief: \d+ s of waits against", line) and line not in before]
     print("brief overrun tolerated:", overrun)   # §5 item 3: left to the next feature's own CI run
     assert [line for line in after if line not in overrun] == before
     r = bats(root, "--filter", "shared part|pipeline", "system/tests/conformance.bats")
+    assert r.returncode == 0, r.stdout
+    r = bats(root, "--filter", "brief prompt is at most", "system/tests/prep.bats")   # the brief's word cap
     assert r.returncode == 0, r.stdout
     enable(root, name)
     r = run(root, "system/scripts/extensions.py", "check")
@@ -121,9 +124,11 @@ def swap(args, old, new):
     ("demo_src", swap(GOOD, "claude.ai Gmail", " "), "--server is empty"),
     ("demo_src", swap(OWN_GOOD, "read_item", "get_item"), "read_item is not in --server-tool"),
     ("demo_src", swap(OWN_GOOD, "list_items", "list/items"), "--server-tool list/items is not a tool name"),
+    ("jira", GOOD, "extensions/handoffs/scripts/jira_fetch.sh exists"),
+    ("triage_chat", GOOD, "triage_chat is a core smoke row"),
 ], ids=["exists", "core tag", "bad name", "digit", "no issue", "not in table", "unknown table", "quote", "bad tool",
         "apostrophe", "backslash", "dollar", "empty description", "blank server", "tool not in own table",
-        "bad own tool"])
+        "bad own tool", "fetch name taken", "core smoke row"])
 def test_a_usage_error_writes_nothing(tmp_path, name, args, reason):
     root = repo(tmp_path)
     r = scaffold(root, *args, name=name)
@@ -181,6 +186,18 @@ def test_the_changelog_writer_adds_or_reuses_todays_heading():
     text = f"# Changelog\n\n## Changes\n\n## {today}\n- Added: a. (#1)\n\n## 2000-01-01\n"
     assert ns.changelog(text, "- Added: b. (#2)") == (
         f"# Changelog\n\n## Changes\n\n## {today}\n- Added: b. (#2)\n- Added: a. (#1)\n\n## 2000-01-01\n")
+    text = "# Changelog\n\n## Changes\n## 2000-01-01\n"   # no blank line after the heading
+    assert ns.changelog(text, "- Added: c. (#3)") == (
+        f"# Changelog\n\n## Changes\n## {today}\n- Added: c. (#3)\n\n## 2000-01-01\n")
+
+
+def test_a_second_call_is_named_by_its_tool(tmp_path):
+    root = repo(tmp_path)
+    assert scaffold(root, *GOOD).returncode == 0
+    s = "\n".join(json.dumps(m) for m in stream(TABLE[1], [call(sc={}), call(sc={})]))
+    r = subprocess.run(["extensions/demo_src/scripts/demo_src_check.py", "extract"], cwd=root, input=s,
+                       capture_output=True, text=True)
+    assert (r.returncode, r.stderr) == (7, "demo_src_check: the session made 2 get_thread calls; the limit is 1\n")
 
 
 def test_a_changelog_with_no_changes_heading_writes_nothing(tmp_path):

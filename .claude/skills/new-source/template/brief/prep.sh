@@ -1,6 +1,6 @@
 # @@description@@, read live every brief. Sourced by brief_prep.sh in a subshell, from the vault root, with PREP_DATE,
 # PREP_DIR and the prep_* functions (extensions spec §3). Writes sections/@@name@@.md: the fetch's lines, or an empty
-# file when the fetch failed.
+# file when the fetch failed. The brief prints the lines once the feature writes brief/section.md, its prompt.
 : > "$PREP_DIR/sections/@@name@@.md"
 rc=0
 prep_write sections/@@name@@.md extensions/@@name@@/scripts/@@name@@_fetch.sh || rc=$?

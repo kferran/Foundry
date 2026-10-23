@@ -98,7 +98,7 @@ others() (
   session "$T" '{}' '{"content": "<persisted-output>…"}' "$DONE"
   run "$F"
   [ "$status" -eq 6 ]
-  [[ "$output" == *'a call result was too large for the model to read' ]]
+  [[ "$output" == *"a ${T##*__} result was too large for the model to read" ]]
 }
 
 @test "fetch: other arguments or another tool exit 7 with one alert a day" {

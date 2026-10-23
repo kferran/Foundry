@@ -54,6 +54,13 @@ def check(root: Path, a, table: dict) -> None:
         tags = (frontmatter.parse(p.read_text(encoding="utf-8")).data or {}).get("alert_tags") or []
         if a.name in [t.get("tag") if isinstance(t, dict) else t for t in tags]:
             raise Usage(f"{a.name} is the {p.parent.name} extension's alert tag")
+    fetch = f"{a.name}_fetch.sh"
+    taken = sorted(root.glob(f"system/scripts/{fetch}")) + sorted(root.glob(f"extensions/*/scripts/{fetch}"))
+    if taken:   # it would share that fetch's log, stderr prefix and prep_reason lines
+        raise Usage(f"{taken[0].relative_to(root)} exists")
+    smoke = (root / "system/scripts/smoke_check.sh").read_text(encoding="utf-8")
+    if a.name in re.findall(r'^\s*(?:check|connector|report|smoke_logline) "?(\w+)', smoke, re.M):
+        raise Usage(f"{a.name} is a core smoke row")   # the same rows test_source_rule.smoke_name_problems reads
     bare = a.tool.rsplit("__", 1)[1]
     if a.tools and bare not in table[a.tools]:
         raise Usage(f"{bare} is not in {a.tools}")
@@ -75,7 +82,9 @@ def changelog(text: str, line: str) -> str:
     else:
         if "## Changes" not in lines:
             raise Usage("CHANGELOG.md has no ## Changes heading")
-        at = lines.index("## Changes") + 2   # after its blank line
+        at = lines.index("## Changes") + 1
+        while at < len(lines) and not lines[at].strip():
+            at += 1
         lines[at:at] = [head, line, ""]
     return "\n".join(lines)
 

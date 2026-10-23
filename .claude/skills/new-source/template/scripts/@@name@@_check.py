@@ -19,9 +19,12 @@ SERVER = "@@server@@"
 ARGS = {}   # TODO(feature): the call's input
 
 
+CALL = TOOL.rsplit("__", 1)[1]   # the call's name in the walker's reasons ("made 2 <CALL> calls")
+
+
 def accept(i):
     """The call's name for the one input built for this run; None (the walker's exit 7) for any other."""
-    return "call" if i == ARGS else None
+    return CALL if i == ARGS else None
 
 
 def lines(pages) -> list:
@@ -32,7 +35,7 @@ def lines(pages) -> list:
 
 def extract(stream) -> list:
     """The brief's lines, after the shared checks. Without `persisted`, a result too large for the model fails 6."""
-    return lines(check_stream(stream, TOOL, accept, max_pages=1, server=SERVER)[0].get("call", []))
+    return lines(check_stream(stream, TOOL, accept, max_pages=1, server=SERVER)[0].get(CALL, []))
 
 
 def main(argv):
