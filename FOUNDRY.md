@@ -453,6 +453,7 @@ An idea that comes from an audit finding, an issue a live vault logged, or a rev
 - A retired load-bearing claim leaves one marker: `superseded <date>, was "<old claim>"`.
 - Verify before you destroy: uncommitted work or an unfiled action stops a delete.
 - No colleague's name in a commit message; write the fact or point at the record.
+- Open a pull request meant to merge as ready for review; open it as a draft only when it must not merge.
 - A hook that fires on every tool call fails open and resolves its root from `BASH_SOURCE`, never `$HOME`.
 
 **Release notes.** A pull request that changes something a vault user would notice adds its line to `CHANGELOG.md`, under today's date in **Changes**, in plain words, ending with its PR number: `- <what changed> (#<n>)`. When a vault must do something, an indented `  - Action: <what to run>` line follows. Docs, test and CI changes add none. A Work Order's plan adds the line in its last task. The morning update shows the lines it merged in the brief's What changed.
