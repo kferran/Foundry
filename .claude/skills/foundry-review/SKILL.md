@@ -6,7 +6,7 @@ description: |
 ---
 # Foundry review
 
-Spec: `docs/superpowers/specs/2026-10-23-factory-f4-line-skills-design.md` §3.3. The script flags lines that match nine past defect classes no test holds. Its hits are candidates for you to read. It never gates CI.
+Spec: `docs/superpowers/specs/2026-10-23-factory-f4-line-skills-design.md` §3.3. The script runs nine checks for past defect classes that tests miss. Its hits are candidates for you to read. It never gates CI.
 
 **1. Run it** from the root of the repository under review, on the branch:
 
@@ -14,10 +14,10 @@ Spec: `docs/superpowers/specs/2026-10-23-factory-f4-line-skills-design.md` §3.3
 python3 .claude/skills/foundry-review/review_diff.py [--base <ref>]
 ```
 
-It reads the lines the branch adds since its merge base with `origin/master` (else `master`, or `--base`). It prints `<check>: <path>:<line>: <text>` per hit, then `<check>: pass` for each check with none. Exit 0 no hits, 1 hits, 2 could not run (no git, an unknown base): on 2, fix the cause and run it again.
+It reads the lines the branch adds since its merge base with `--base` (default `origin/master`, else `master`). It prints `<check>: <path>:<line>: <text>` per hit, then `<check>: pass` for each check with none. Exit 0 no hits, 1 hits, 2 could not run (no git, an unknown base): on 2, fix the cause and run it again.
 
-**2. Settle each hit.** Read the hunk around it, then fix the line or keep it with a one-line reason. Run the script again after a fix.
-- A `fix/` branch always gets a `changelog-label` line asking for its `defect:` label, so the script exits 1 until the PR is opened with it. Keep that line with the label as its reason.
+**2. Settle each hit.** Read the hunk around it, then fix the line or keep it with a one-line reason. Commit a fix before running the script again: it reads HEAD only.
+- A `fix/` branch always exits 1 with a `changelog-label` line asking for its `defect:` label (the script never reads PR labels). Keep that line, and put the label on `gh pr create --label`.
 - A hit in a test file that seeds a check (a test of the checks themselves, or a fixture holding the bad shape on purpose) is expected noise: keep it with that reason.
 
 **3. Read past the checks.** They are regexes and a floor: a writer called through a helper, or a path built across lines, passes them. Read every hunk that adds a Now or Slack writer, an alert line or a test, whatever the script printed.

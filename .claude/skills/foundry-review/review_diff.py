@@ -16,7 +16,7 @@ RUNNERS = ("system/scripts/lib_connector.sh", "system/scripts/run_headless.sh",
            "system/scripts/vaultlib/nightshift_session.py")
 VISIBLE = re.compile(r"(system/(scripts|hooks|systemd|schemas)/|\.claude/(commands|skills)/|CLAUDE\.md$|"
                      r"extensions/[^/]+/(?!tests/))")
-ALLOWED = re.compile(r"(rc|n|code|status)(_\w+)?|(count|total|num)\w*|\w+_(rc|n|count|status|code)|"
+ALLOWED = re.compile(r"(rc|n|code|status)(_\w+)?|\w*rc|\w+_EXIT|(count|total|num)\w*|\w+_(rc|n|count|status|code)|"
                      r"CONNECTOR_REASON|FETCH_REASON|reason|len\(.*\)")
 
 
@@ -26,7 +26,7 @@ class Stop(Exception):
 
 def git(*args, check=True):
     try:
-        out = subprocess.run(["git", *args], capture_output=True, text=True)
+        out = subprocess.run(["git", "-c", "core.quotePath=false", *args], capture_output=True, text=True)
     except FileNotFoundError:
         raise Stop("git is not installed")
     if check and out.returncode:
@@ -36,21 +36,23 @@ def git(*args, check=True):
 
 def added(diff_text):
     """(path, new line number, text) for each added line of a -U0 diff."""
-    out, path, n = [], None, 0
+    out, path, n, in_hunk = [], None, 0, False
     for line in diff_text.splitlines():
-        if line.startswith("+++ "):
-            path = line[4:].removeprefix("b/") if line != "+++ /dev/null" else None
+        if line.startswith("diff --git "):
+            in_hunk = False
         elif m := re.match(r"@@ -\S+ \+(\d+)", line):
-            n = int(m.group(1))
-        elif path and line.startswith("+") and not line.startswith("+++"):
+            n, in_hunk = int(m.group(1)), True
+        elif not in_hunk and line.startswith("+++ "):
+            path = line[4:].removeprefix("b/") if line != "+++ /dev/null" else None
+        elif in_hunk and path and line.startswith("+"):
             out.append((path, n, line[1:]))
             n += 1
     return out
 
 
 def code(adds):
-    """The added lines that are not shell or Python comments."""
-    return [a for a in adds if not a[2].lstrip().startswith("#") or a[0].endswith(".md")]
+    """The added lines that can run: not prose in a .md file (a command or skill file holds shell), not a comment."""
+    return [a for a in adds if (a[0].startswith(".claude/") if a[0].endswith(".md") else not a[2].lstrip().startswith("#"))]
 
 
 def hit(check, path, n, text):
@@ -62,7 +64,7 @@ def head_text(path):
 
 
 def now_redaction(adds, paths):
-    writer = re.compile(r"now\.add\(|now\.py add|notify\.sh|\bnotify\(")
+    writer = re.compile(r"\bnow(mod)?\.(add|note|set_statement)\(|now\.py (add|set|note)\b|notify\.sh|\bnotify\(")
     redacted = {}
     out = []
     for p, n, t in code(adds):
@@ -76,25 +78,28 @@ def now_redaction(adds, paths):
 
 
 def gate_escape(adds, paths):
-    write = re.compile(r"write_text|write_bytes|open\([^)]*,\s*[\"'][wa]|(?<![-=>2&])>>?(?![&=>])|\btee\b|\bcp\b|\bmv\b|"
-                       r"os\.replace")
+    write = re.compile(r"write_text|write_bytes|open\(\s*(?:[^)]*,\s*)?[\"'][wa][bt+]*[\"']|os\.replace")
+    shell = re.compile(r"(?<![-=>2&])>>?(?![&=>])|\btee\b|\bcp\b|\bmv\b")   # a > in Python is a comparison
     wiki = re.compile(r"\b(wiki|briefings)[\"']?\s*/")
     out = []
     for p, n, t in code(adds):
         if re.search(r"settings[\w.-]*\.json$", p):
             if re.search(r"(Edit|Write)\(", t) and wiki.search(t):
                 out.append(hit("gate-escape", p, n, t))
-        elif not p.endswith(("vaultlib/publish.py", "vaultlib/now.py")) and wiki.search(t) and write.search(t):
+        elif (not p.endswith(("vaultlib/publish.py", "vaultlib/now.py")) and wiki.search(t)
+              and (write.search(t) or not p.endswith(".py") and shell.search(t))):
             out.append(hit("gate-escape", p, n, t))
     return out
 
 
 def alert_text(adds, paths):
-    sink = re.compile(r"\b(alert_once|alert\.py|fail\s|alerts_\w*)|raise Fail\(")
+    sink = re.compile(r"\b(alert_once|alert\.py|fail\s)|raise Fail\(|\balerts_\w*(?=.*(>>|[\"']a[\"']))")
     interp = re.compile(r"\$\{?(\w+)|(?<!\$)\{([^{}]+)\}")
     out = []
     for p, n, t in code(adds):
-        if sink.search(t) and any(not ALLOWED.fullmatch(a or b) for a, b in interp.findall(t)):
+        m = sink.search(t)
+        # only what follows the sink is its text; a brace group's format spec ({n:>3}) is not a value
+        if m and any(not ALLOWED.fullmatch(a or b.split(":")[0].strip()) for a, b in interp.findall(t[m.start():])):
             out.append(hit("alert-text", p, n, t))
     return out
 
@@ -119,7 +124,7 @@ def skip_reason(adds, paths):
 def changelog_label(adds, paths):
     out = []
     root = git("rev-parse", "--show-toplevel").stdout.strip()
-    if not os.path.exists(f"{root}/system/config.md") and any(VISIBLE.match(p) for p in paths):
+    if not os.path.exists(os.path.join(root, "system", "config.md")) and any(VISIBLE.match(p) for p in paths):
         if not any(p == "CHANGELOG.md" and re.match(r"\s*-\s.*\(#\d+\)", t) for p, _, t in adds):
             out.append("changelog-label: a vault-visible path changed and CHANGELOG.md gains no `- ... (#N)` line")
     if git("rev-parse", "--abbrev-ref", "HEAD").stdout.startswith("fix/"):
