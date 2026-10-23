@@ -10,7 +10,8 @@
                                   the statement, else + 30); --due names a known deadline and can only move a line's
                                   date earlier (exit 2 if later). A repeat add may also set --rec or missing
                                   evidence, and writes nothing when nothing is new.
-                                  add and set refuse a line over 300 characters
+                                  add and set refuse a line over 300 characters; add, set and note redact
+                                  credential-shaped text and refuse a link across the partition wall
   now.py set --partition <p> --match "<text>" --statement "<new statement>"
                                   the one open line whose statement contains the text gets the new statement, keeping
                                   its kind, who, since, evidence, clock and notes (exit 2 on no match or several)

@@ -10,7 +10,8 @@ import subprocess
 from datetime import date, timedelta
 from pathlib import Path
 
-from . import briefings, frontmatter, nightshift_item
+from . import briefings, frontmatter, index, links as linkmod, nightshift_item
+from .redact import redact_credentials
 
 PARTITIONS = ("work", "personal")
 KINDS = ("owed", "waiting", "draft")
@@ -94,6 +95,9 @@ def read(vault, partition: str) -> str:
 
 
 def write(vault, partition: str, text: str) -> None:
+    from .publish import _resolves   # publish imports this module
+    if not _resolves(vault, f"wiki/{partition}/Now.md"):
+        raise ValueError("symlink on the Now page path")
     path = page_path(vault, partition)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(".Now.md.tmp")
@@ -169,10 +173,10 @@ def archive(vault, partition: str, today: str) -> int:
     return sum(len(blocks) for blocks in moved.values())
 
 
-def note(vault, partition: str, match: str, text: str, today: str) -> str:
+def note(vault, partition: str, match: str, text: str, today: str, fit: bool = False) -> str:
     """Under run.lock: add `  - <today>: <text>` after the notes of the one open line whose statement contains
     `match` (any case), so a line keeps its statement short and its history under it (phase A spec §3.5)."""
-    text, page, match = " ".join(text.split()), read(vault, partition), match.strip().lower()
+    text, page, match = redact_credentials(" ".join(text.split())), read(vault, partition), match.strip().lower()
     if not match or not text:
         raise ValueError("--match and --text need text")
     if FIELD_KEY.search(text):
@@ -182,7 +186,7 @@ def note(vault, partition: str, match: str, text: str, today: str) -> str:
              and match in fields(m.group("statement"))[0].lower()]
     if len(found) != 1:
         raise ValueError(f"{len(found)} open lines match {match!r}; give text that names exactly one")
-    line = f"  - {today}: {text}"
+    line = screen_line(vault, partition, f"  - {today}: {text}", fit=fit)
     end = _block_end(lines, found[0])
     write(vault, partition, "\n".join(lines[:end] + [line] + lines[end:]))
     return line
@@ -220,13 +224,57 @@ def validate(partition: str, kind: str, statement: str, who: str, evidence: str,
         raise ValueError("due must be a date, YYYY-MM-DD")
 
 
-def _fits(line: str, old: str = "") -> str:
-    """line, or ValueError when it is over MAX_LINE and longer than the line it replaces (a long line written before
-    the cap may keep its length)."""
+def screen_fields(statement: str, who: str = "", evidence: str = "", rec: str = "") -> tuple:
+    """(statement, who, evidence, rec) with credential-shaped text redacted in each field before the line is rendered,
+    so a redaction never eats the line's parenthesis (factory F5 spec §4.1). rec keeps no bracket ([rec::] cannot hold
+    one); evidence that redaction would change is dropped."""
+    rec = re.sub(r"\[(REDACTED:\w+)\]", r"\1", redact_credentials(rec))
+    evidence = "" if redact_credentials(evidence) != evidence else evidence
+    return redact_credentials(statement), redact_credentials(who), evidence, rec
+
+
+def screen_line(vault, partition: str, line: str, old: str = "", fit: bool = False) -> str:
+    """line held to MAX_LINE and the partition walls. Over the cap and longer than old (a line written before the cap
+    keeps its length): with fit an open line's bare statement is cut, keeping its fields and parenthesis, and a note
+    is cut at its end; otherwise ValueError. A link into a partition the page may not link to is a ValueError."""
     if len(line) > MAX_LINE and len(line) > len(old.rstrip()):
-        raise ValueError(f"the line is {len(line)} characters; the limit is {MAX_LINE}: "
-                         "keep the statement short and add history with now.py note")
+        m = LINE.match(line) if fit and line.startswith("- [ ] ") else None
+        if m:
+            bare, rec, due = fields(m.group("statement"))
+            line = render(m.group("kind"), _cut(bare, len(line) - MAX_LINE), m.group("since"), m.group("who") or "",
+                          m.group("evidence") or "", rec, due)
+        elif fit and line.startswith("  - "):
+            line = line[:MAX_LINE - 1].rstrip() + "…"
+        if len(line) > MAX_LINE:
+            raise ValueError(f"the line is {len(line)} characters; the limit is {MAX_LINE}: "
+                             "keep the statement short and add history with now.py note")
+    found, _ = linkmod.extract(line, 0)
+    if found:
+        resolver = linkmod.Resolver({rel for rel, _, _ in index.Index(vault).walk()}, index.name_excluded(vault))
+        for hit in index.walled(resolver, f"wiki/{partition}/Now.md", found):
+            raise ValueError(f"partition wall: the {partition} Now page may not link to {hit}")
     return line
+
+
+def screen(vault, partition: str, line: str) -> str:
+    """An added open line in its fixed form (fit_staged, the publish gate): a line in now.py's form is rebuilt from
+    its redacted fields and cut. A hand-shaped one (unparsed, text after the parenthesis, an invalid due) is returned
+    as it is, or ValueError when it runs over the cap or holds credential-shaped text."""
+    line = line.rstrip()
+    m = LINE.match(line)
+    if m:
+        bare, rec, due = fields(m.group("statement"))
+        rest = (m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
+        m = m if render(m.group("kind"), bare, *rest) == line else None
+    if m is None:
+        if len(line) > MAX_LINE:
+            raise ValueError(f"over {MAX_LINE} characters and not in now.py's form: move its history to a note under it")
+        if redact_credentials(line) != line:
+            raise ValueError("credential-shaped text in a Now line not in now.py's form")
+        return line
+    bare, who, evidence, rec = screen_fields(bare, m.group("who") or "", m.group("evidence") or "", rec)
+    return screen_line(vault, partition, render(m.group("kind"), bare, m.group("since"), who, evidence, rec, due),
+                       fit=True)
 
 
 def is_date(text: str) -> bool:
@@ -252,7 +300,7 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
     added twice: a repeat add moves its clock earlier ("tightened"), sets or replaces rec and sets missing evidence
     ("updated"), writes nothing when nothing is new, and raises ValueError when it would move the clock later.
     fit (machine writers: triage, the watch) cuts a statement that would put the line over MAX_LINE."""
-    statement, who, rec = statement.strip(), who.strip(), rec.strip()
+    statement, who, evidence, rec = screen_fields(statement.strip(), who.strip(), evidence, rec.strip())
     validate(partition, kind, statement, who, evidence, rec, due)
     over = len(render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who))) - MAX_LINE
     if fit and over > 0:
@@ -271,12 +319,14 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
         new_rec, new_evidence = rec or old_rec, m.group("evidence") or evidence
         if (new_due, new_rec, new_evidence) == (old_due, old_rec, m.group("evidence") or ""):
             return "exists", existing
-        line = _fits(render(kind, bare, m.group("since"), m.group("who") or "", new_evidence, new_rec, new_due), existing)
+        line = screen_line(vault, partition, render(kind, bare, m.group("since"), m.group("who") or "", new_evidence,
+                                                    new_rec, new_due), existing, fit)
         lines = text.split("\n")
         lines[[x.rstrip() for x in lines].index(existing.rstrip())] = line
         write(vault, partition, stamp("\n".join(lines), today))
         return "tightened" if new_due != old_due else "updated", line
-    line = _fits(render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who)))
+    line = screen_line(vault, partition, render(kind, statement, today, who, evidence, rec,
+                                                due or default_due(statement, today, who)), fit=fit)
     text = _insert(stamp(text, today), WAITING if kind == "waiting" else NEEDS, line)
     write(vault, partition, text)
     return "added", line
@@ -320,7 +370,7 @@ def set_statement(vault, partition: str, match: str, statement: str, today: str)
     """Under run.lock: the one open line whose statement contains `match` (any case) gets `statement` as its bare
     statement, keeping kind, who, since, evidence, rec and due (#211: rewrite a line instead of appending updates).
     ValueError, writing nothing, on no match, several matches or an invalid statement."""
-    statement, text, match = statement.strip(), read(vault, partition), match.strip().lower()
+    statement, text, match = screen_fields(statement.strip())[0], read(vault, partition), match.strip().lower()
     if not match:
         raise ValueError("--match needs text from the line's statement")
     if FIELD_KEY.search(statement):
@@ -335,8 +385,8 @@ def set_statement(vault, partition: str, match: str, statement: str, today: str)
            for o, p in parsed):
         raise ValueError("another open line of the same kind already has that statement")
     validate(partition, m.group("kind"), statement, m.group("who") or "", m.group("evidence") or "", rec, due)
-    line = _fits(render(m.group("kind"), statement, m.group("since"), m.group("who") or "", m.group("evidence") or "",
-                        rec, due))
+    line = screen_line(vault, partition, render(m.group("kind"), statement, m.group("since"), m.group("who") or "",
+                                                m.group("evidence") or "", rec, due))
     lines = text.split("\n")
     lines[[x.rstrip() for x in lines].index(old.rstrip())] = line
     write(vault, partition, stamp("\n".join(lines), today))
@@ -501,7 +551,13 @@ def seed(vault, partition: str, day: str) -> int:
     items = [(t, s) for t, s in latest_open_objectives(vault, day) if t]
     if not items:
         return 0
+    seeded = 0
     for statement, since in items:
-        text = _insert(text, NEEDS, render("owed", statement, since))
-    write(vault, partition, text)
-    return len(items)
+        try:
+            line = screen_line(vault, partition, render("owed", screen_fields(statement)[0], since), fit=True)
+        except ValueError:
+            continue   # a link across the wall: the brief still lists it
+        text, seeded = _insert(text, NEEDS, line), seeded + 1
+    if seeded:
+        write(vault, partition, text)
+    return seeded
