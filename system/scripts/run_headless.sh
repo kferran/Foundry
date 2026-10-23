@@ -194,6 +194,8 @@ denials="$(jq -r '(.permission_denials // []) | length' "$out" 2>/dev/null || tr
 
 if (( rc == 0 )); then
   set +e
+  # A brief-added Now line over the cap is cut as triage's are, so the gate does not reject the whole brief.
+  [[ "$cmd" == brief ]] && system/scripts/now.py fit-staged "$run_id" >> "$LOG" 2>&1
   system/scripts/publish_staged.py commit "$run_id" >> "$LOG" 2>&1
   prc=$?
   # A conflict publish succeeded with held-back notes (audit C2): the paths go to the alert, the run stays 0.

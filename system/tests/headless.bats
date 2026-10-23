@@ -143,6 +143,14 @@ EOF
   [ "$(jq -r '.publish.published | sort | join(" ")' "$LEDGER")" = "briefings/$(TZ=America/Denver date +%F).md wiki/work/Now.md" ]
 }
 
+@test "a brief-added Now line over 300 characters is cut and the brief publishes" {
+  STUB_NOW="Long objective $(printf 'x%.0s' {1..320})" STUB_MODE=brief_now run "$RH" brief
+  [ "$status" -eq 0 ]
+  [ -f "briefings/$(TZ=America/Denver date +%F).md" ]
+  run grep -c '^- \[ \] owed: Long objective x*… (since ' wiki/work/Now.md
+  [ "$output" -eq 1 ]
+}
+
 @test "claude failure and timeout are recorded and staging is quarantined" {
   STUB_MODE=fail run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 1 ]
