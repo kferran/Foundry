@@ -170,6 +170,7 @@ CLAUDE.md                     generic rules; imports @system/config.md
 .claude/skills/grilling/      vendored grilling from mattpocock-skills 1.2.3 (MIT), plus the Foundry's idea questions: /grilling
 .claude/skills/order/         /order: queue plans and research briefs as Work Orders
 .claude/skills/new-source/    /new-source: scaffold an extension Source that passes the line (factory F4)
+.claude/skills/foundry-review/  /foundry-review: the line's checks on a branch's diff before its pull request (factory F4)
 .githooks/pre-commit          deterministic linter and write caps (lint_vault.sh --staged); redacts staged drops (redact.py --drop); refuses secret shapes (secret_scan.py --staged)
 .scratch/                     throwaway clones, worktrees and temp files (ignored; the gate's temp files go here)
 raw/                          contents gitignored
@@ -400,16 +401,35 @@ Work follows the superpowers pipeline. Each station has its skill and leaves a r
 | Spec | `superpowers:brainstorming`, ending with its builder check (`builder-check-prompt.md`) | `<date>-<topic>-design.md` in [`docs/superpowers/specs/`](docs/superpowers/specs/) |
 | Plan | `superpowers:writing-plans` | `<date>-<topic>.md` in [`docs/superpowers/plans/`](docs/superpowers/plans/) |
 | Build | `superpowers:subagent-driven-development` or `superpowers:executing-plans`, with `superpowers:test-driven-development`; a new Source starts from `/new-source` | commits, one task each |
-| Review | `superpowers:requesting-code-review` (and `foundry-review` once the factory's F4 ships it) | findings fixed before merge |
+| Review | `superpowers:requesting-code-review`, then `/foundry-review` | findings fixed before merge; the PR body's `## Foundry review` section |
 | Close | `superpowers:verification-before-completion`, `superpowers:finishing-a-development-branch` | the gate green, the roadmap row updated |
 
 An idea that comes from an audit finding, an issue a live vault logged, or a review is not an owner idea: its spec's Grill line names that source instead. A feature names its blueprint in its spec ([Architecture](#architecture)) and is built from the standard parts. Spike results go in [`docs/superpowers/spikes/`](docs/superpowers/spikes/). Every finding from the design reviews is traced in spec §13.
 
 **Required header lines.** `system/tests/conformance.bats` fails a spec or plan dated 2026-10-21 or later that lacks them (research briefs excepted); older ones are grandfathered by the date in their file name.
-- A spec: `**Grill:**` (the date and where the decisions are recorded, as an issue URL or a `## Grill` section in the spec or in the file its `**Program:**` line names, or `not an owner idea: <source>`), `**Builder check:**` (the date, the questions found and how each was settled), `**Blueprint:**` (Source, Poller, Compile run, Work Order, or `none: <why>`).
+- A spec: `**Grill:**` (the date and where the decisions are recorded, as an issue URL or a `## Grill` section in the spec or in the file its `**Program:**` line names, or `not an owner idea: <source>`), `**Builder check:**` (the date, the questions found and how each was settled), `**Blueprint:**` (Source, Poller, Compile run, Work Order, or `none: <why>`). A spec dated 2026-10-23 or later whose `**Blueprint:**` names a shape also has a `## Blueprint checklist` section: each part of that shape (the [Blueprints](#architecture) list) marked `uses` or `n/a: <why>`, then each defect class the change can reopen and what holds it (Defect classes, below).
 - A plan: the writing-plans header (`REQUIRED SUB-SKILL`), `## Global Constraints`, `## Review Focus`, and a `**Spec:**` line naming its spec.
 
 **Two lanes.** That pipeline is the feature lane. A fix takes the fast lane and skips the grill, the spec and the plan. A fix is a change whose scope is clear from one sentence, with one failing test that passes after the change and the gate green, that touches none of the safety surfaces: permissions and settings files, the sandbox, the publish gate, redaction, and new note types. A fix that edits the `ingest`, `brief` or `debrief` command text also re-runs the live acceptance steps (below). It ships as a pull request whose body is the issue line or review finding it fixes and the name of its test, and which carries one `defect:` label for the class it fixes: `defect:C1-too-large` (tool result too large, page caps), `defect:C2-now-line`, `defect:C3-timeout`, `defect:C4-confinement`, `defect:C5-alerts` (routing, alert-once), `defect:C6-race`, `defect:C7-redaction`, `defect:C8-names` (names leaking), `defect:C9-extension` (manifest and loader gaps), `defect:C10-flaky-test` (tests that skip or flake), `defect:C11-input-bounds` (encoding, input bounds), `defect:C12-stale-docs`, `defect:C13-changelog` (CHANGELOG conflicts), `defect:C14-gate-escape` (a write that escapes the publish gate or a session's confinement path). A class that recurs after its gate exists means the gate is wrong. A fix may run as a Work Order: the readiness check reads the plan from a file committed at the Work Order's base, so it then needs a short plan file with its `### Task N:` list. A fix that grows past its sentence, or draws a design question in review, stops and becomes a feature; the default when in doubt is the feature lane.
+
+**Defect classes.** What holds each class today: a CI test by file name, a `/foundry-review` check by name, or "prose only" when nothing does. The review's checks flag candidates for a person to read; they never fail CI. `computed-config` holds no class: it guards the part homes.
+
+| Class | What holds it |
+|---|---|
+| C1 too large | `test_connector.py` (`too_large` and the exit 6 it gives); a scaffolded Source's own bats (exit 6 on a `<persisted-output>` result), run on every CI by `test_new_source.py` |
+| C2 Now line | `test_now.py` (`now.py add` and `set` refuse long and duplicate lines) |
+| C3 timeout | `conformance.bats` (each unit's sessions fit its time limit) |
+| C4 confinement | `test_source_rule.py` (the Source rule), `connector.bats`; `read-source-check`, `computed-session` |
+| C5 alerts | `test_alerts.py`; `alert-text` |
+| C6 race | `sleep-race` |
+| C7 redaction | `test_redact.py`; `now-redaction`, `alert-text` |
+| C8 names | `vault_integrity.bats` (the forbidden-names and core-clean tests) |
+| C9 extension | `test_extensions.py` (`extensions.py check`), `test_extension_api.py` |
+| C10 flaky test | `sleep-race`, `skip-reason`; CI's `--require-suites` fails an `environment:` skip |
+| C11 input bounds | prose only |
+| C12 stale docs | `vault_integrity.bats` (the manual names every command, skill, Workcell and unit); `changelog-label` |
+| C13 CHANGELOG | `merge=union` in `.gitattributes`, `commands.bats` (each date heading once); `changelog-label` |
+| C14 gate escape | `test_publish.py`, `headless.bats`; `gate-escape` |
 
 **Keeping it quick.** These rules trim the feature lane; bring the stricter ones back if problems appear.
 - **Probe first:** a spec that relies on an outside tool or API calls it once (in a throwaway directory) and records what came back before the design settles.

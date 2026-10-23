@@ -2,7 +2,7 @@
 # The factory line's conformance checks (factory F0 spec §3.5, §3.6, §3.8; F3 spec §3.2). The part homes are rules:
 # each line of PART_HOMES is a design fact, and a new line needs the owner's review with its reason. The timing
 # overrun list still only shrinks (#299). The pipeline test: a spec or plan dated on or
-# after PIPELINE_SINCE carries the header lines FOUNDRY.md Development requires; older documents are
+# after PIPELINE_SINCE carries the header lines FOUNDRY.md Development requires (and a spec naming a blueprint, its checklist); older documents are
 # grandfathered by the date their file name starts with, so the test needs no allowlist.
 
 setup() {
@@ -13,6 +13,9 @@ setup() {
 }
 
 PIPELINE_SINCE=2026-10-21
+# A spec dated CHECKLIST_SINCE or later that names a blueprint carries a ## Blueprint checklist section. The date is
+# the day the rule was built, standing for its merge date; F1's Source spec stays grandfathered.
+CHECKLIST_SINCE=2026-10-23
 
 # grill_problem <root> <spec> <rel>: why the spec's Grill line fails, or nothing. CI does not call gh, so the line
 # is checked by pattern: `not an owner idea: <source>` with a real source, an issue URL, or a `## Grill` section
@@ -52,6 +55,11 @@ pipeline_problems() {
         grep -qE '^\*\*Builder check:\*\* *[^ <]' "$f" || echo "$rel: no **Builder check:** line with its outcome"
         grep -qE '^\*\*Blueprint:\*\* ((Source|Poller|Compile run|Work Order)( |$|[,.])|none: *[^ <])' "$f" \
           || echo "$rel: no **Blueprint:** line naming Source, Poller, Compile run, Work Order or none: <why>"
+        if [[ ! "${name:0:10}" < "$CHECKLIST_SINCE" ]] \
+          && grep -qE '^\*\*Blueprint:\*\* (Source|Poller|Compile run|Work Order)( |$|[,.])' "$f" \
+          && ! grep -qx '## Blueprint checklist' "$f"; then
+          echo "$rel: names a blueprint and has no ## Blueprint checklist section"
+        fi
         ;;
       *)
         grep -qF 'REQUIRED SUB-SKILL' "$f" || echo "$rel: no writing-plans header (REQUIRED SUB-SKILL)"
@@ -96,7 +104,12 @@ doc() { local f="$1"; shift; mkdir -p "${f%/*}"; printf '%s\n' '# T' '' "$@" > "
   doc "$s/2026-10-21-program-design.md" '**Program:** `docs/superpowers/prog.md`' "$cites" "$ok_b" '**Blueprint:** Source (its parts)'
   doc "$s/2026-10-21-own-grill-design.md" '**Grill:** 2026-10-21, see `## Grill` below.' "$ok_b" '**Blueprint:** Work Order' '## Grill' 'Decided.'
   doc "$p/2026-10-21-good.md" "$hdr" '**Spec:** `docs/superpowers/specs/2026-10-21-good-design.md`' '## Global Constraints' '## Review Focus'
+  g='**Grill:** 2026-10-23, https://github.com/o/r/issues/7'
+  doc "$s/2026-10-23-src-ok-design.md" "$g" "$ok_b" '**Blueprint:** Source' '## Blueprint checklist'
+  doc "$s/2026-10-23-none-design.md" "$g" "$ok_b" '**Blueprint:** none: docs only.'
+  doc "$s/2026-10-22-src-old-design.md" "$g" "$ok_b" '**Blueprint:** Source'
   # Failing.
+  doc "$s/2026-10-23-src-design.md" "$g" "$ok_b" '**Blueprint:** Source'
   doc "$s/2026-10-21-no-grill-section-design.md" "$cites" "$ok_b" '**Blueprint:** Poller'
   doc "$s/2026-10-21-lost-program-design.md" '**Program:** `docs/superpowers/gone.md`' "$cites" "$ok_b" '**Blueprint:** Compile run.'
   doc "$s/2026-10-21-placeholder-design.md" '**Grill:** not an owner idea: <source>' '**Builder check:**' '**Blueprint:** none:'
@@ -129,7 +142,8 @@ doc() { local f="$1"; shift; mkdir -p "${f%/*}"; printf '%s\n' '# T' '' "$@" > "
     "$S/2026-10-22-weak-grill-design.md: the **Grill:** line names no issue URL, \`## Grill\` section or \`not an owner idea:\` source" \
     "$S/2026-10-23-empty.md: no **Grill:** line" \
     "$S/2026-10-23-empty.md: no **Builder check:** line with its outcome" \
-    "$S/2026-10-23-empty.md: no **Blueprint:** line naming Source, Poller, Compile run, Work Order or none: <why>")" ]
+    "$S/2026-10-23-empty.md: no **Blueprint:** line naming Source, Poller, Compile run, Work Order or none: <why>" \
+    "$S/2026-10-23-src-design.md: names a blueprint and has no ## Blueprint checklist section")" ]
 }
 
 # --- The part homes (factory F0 spec §3.5, F3 spec §3.2) ---
