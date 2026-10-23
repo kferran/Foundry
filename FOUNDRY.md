@@ -169,6 +169,7 @@ CLAUDE.md                     generic rules; imports @system/config.md
 .claude/skills/humanizer/     vendored humanizer v3.0.0 (MIT): /humanizer and /rca
 .claude/skills/grilling/      vendored grilling from mattpocock-skills 1.2.3 (MIT), plus the Foundry's idea questions: /grilling
 .claude/skills/order/         /order: queue plans and research briefs as Work Orders
+.claude/skills/new-source/    /new-source: scaffold an extension Source that passes the line (factory F4)
 .claude/skills/foundry-review/  /foundry-review: the line's checks on a branch's diff before its pull request (factory F4)
 .githooks/pre-commit          deterministic linter and write caps (lint_vault.sh --staged); redacts staged drops (redact.py --drop); refuses secret shapes (secret_scan.py --staged)
 .scratch/                     throwaway clones, worktrees and temp files (ignored; the gate's temp files go here)
@@ -399,7 +400,7 @@ Work follows the superpowers pipeline. Each station has its skill and leaves a r
 | Grill (an idea the owner proposes) | `/grilling`: is it worth building, for whom, what happens without it, its smallest version, what it displaces | the decisions on the idea's issue, or a `## Grill` section in the spec |
 | Spec | `superpowers:brainstorming`, ending with its builder check (`builder-check-prompt.md`) | `<date>-<topic>-design.md` in [`docs/superpowers/specs/`](docs/superpowers/specs/) |
 | Plan | `superpowers:writing-plans` | `<date>-<topic>.md` in [`docs/superpowers/plans/`](docs/superpowers/plans/) |
-| Build | `superpowers:subagent-driven-development` or `superpowers:executing-plans`, with `superpowers:test-driven-development` | commits, one task each |
+| Build | `superpowers:subagent-driven-development` or `superpowers:executing-plans`, with `superpowers:test-driven-development`; a new Source starts from `/new-source` | commits, one task each |
 | Review | `superpowers:requesting-code-review`, then `/foundry-review` | findings fixed before merge; the PR body's `## Foundry review` section |
 | Close | `superpowers:verification-before-completion`, `superpowers:finishing-a-development-branch` | the gate green, the roadmap row updated |
 
@@ -415,7 +416,7 @@ An idea that comes from an audit finding, an issue a live vault logged, or a rev
 
 | Class | What holds it |
 |---|---|
-| C1 too large | `test_connector.py` (`too_large` and the exit 6 it gives) |
+| C1 too large | `test_connector.py` (`too_large` and the exit 6 it gives); a scaffolded Source's own bats (exit 6 on a `<persisted-output>` result), run on every CI by `test_new_source.py` |
 | C2 Now line | `test_now.py` (`now.py add` and `set` refuse long and duplicate lines) |
 | C3 timeout | `conformance.bats` (each unit's sessions fit its time limit) |
 | C4 confinement | `test_source_rule.py` (the Source rule), `connector.bats`; `read-source-check`, `computed-session` |
