@@ -171,3 +171,11 @@ The template's placeholder syntax and how `new_source.py` fills it; `review_diff
 3. **The template drifts from handoffs.** A change to `lib_fetch.sh`, `vaultlib.api` or the Source rule can break the template without touching handoffs. `test_new_source.py` runs the line on a fresh scaffold in every CI run, so drift fails the gate.
 4. **Review patterns read literal code.** A writer reached through a helper, or a path built across lines, passes the script. The skill tells the reviewer the checks are a floor and to read every hunk that adds a writer, an alert or a test.
 5. **Work Order PRs skip the review** until the runner runs it (§7).
+
+## 11. Corrections from the build (#359, #360)
+
+The sections above stand as approved. These changes came out of the build:
+- **The name rule is `[a-z][a-z_]*`** (§3.2, §6), with no digits. Three core regexes read tags as `[a-z_]+` (the reason prefix in `lib_connector.sh`, alert routing in `alerts.py`, the tag scans in `scripts.bats`), and F4 changes no core.
+- **The scaffold writes no `brief/section.md`** (§3.2 table). The brief prompt's 2,500-word cap had 5 words left. The feature writes its section prompt when it fills `lines()`, and `test_new_source.py` runs the word check on the scaffold. The first real brief Source raises the cap with a measured reason.
+- **`new_source.py` refuses more than §3.2 lists:** empty values; quotes, backslashes, `$`, backticks or newlines in text; a malformed `--tool`, or a tool missing from its table; an existing `<name>_fetch.sh` or a core smoke row name; a CHANGELOG with no `## Changes` heading.
+- **`foundry-review`:** the checks skip `.md` files outside `.claude/`, `now-redaction` also matches `nowmod.add/note/set_statement`, and `alert-text` reads only from the alert or failure call onward and allows exit-code names.
