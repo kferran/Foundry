@@ -35,6 +35,14 @@ def git(root, *args):
     return run(root, "git", *args)
 
 
+def repo(tmp_path):
+    """tree() with its files committed, so git status names only what the scaffold writes."""
+    root = tree(tmp_path / "repo")
+    git(root, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false",
+        "commit", "-qm", "base")
+    return root
+
+
 def scaffold(root, *args, name="demo_src"):
     return run(root, "python3", SCRIPT, name, *args)
 
@@ -65,7 +73,7 @@ def enable(root, name):
 
 @pytest.mark.parametrize("case", [TABLE, OWN], ids=["table", "own table"])
 def test_a_scaffold_passes_the_line(tmp_path, case):
-    root = tree(tmp_path / "repo")
+    root = repo(tmp_path)
     before = timing(root)
     r = scaffold(root, *case, *TEXT, "--issue", "1")
     assert r.returncode == 0, r.stderr
@@ -102,7 +110,7 @@ def swap(args, old, new):
     ("demo_src", swap(GOOD, "mcp__claude_ai_Gmail__get_thread", "not_a_tool"), "mcp__<server>__<tool>"),
 ], ids=["exists", "core tag", "bad name", "no issue", "not in table", "unknown table", "quote", "bad tool"])
 def test_a_usage_error_writes_nothing(tmp_path, name, args, reason):
-    root = tree(tmp_path / "repo")
+    root = repo(tmp_path)
     r = scaffold(root, *args, name=name)
     assert r.returncode == 2
     assert reason in r.stderr
@@ -110,7 +118,7 @@ def test_a_usage_error_writes_nothing(tmp_path, name, args, reason):
 
 
 def test_another_extensions_tag_is_refused(tmp_path):
-    root = tree(tmp_path / "repo")
+    root = repo(tmp_path)
     text = (root / "extensions/handoffs/extension.md").read_text()
     (root / "extensions/x").mkdir()
     (root / "extensions/x/extension.md").write_text(
@@ -122,7 +130,7 @@ def test_another_extensions_tag_is_refused(tmp_path):
 
 
 def test_a_vault_scaffold_adds_no_changelog_line(tmp_path):
-    root = tree(tmp_path / "repo")
+    root = repo(tmp_path)
     shutil.copyfile(root / "system/config.example.md", root / "system/config.md")
     before = (root / "CHANGELOG.md").read_text()
     r = scaffold(root, *GOOD[:-2])
@@ -131,7 +139,7 @@ def test_a_vault_scaffold_adds_no_changelog_line(tmp_path):
 
 
 def test_the_changelog_line_lands_under_today(tmp_path):
-    root = tree(tmp_path / "repo")
+    root = repo(tmp_path)
     assert scaffold(root, *GOOD, name="demo_a").returncode == 0
     assert scaffold(root, *swap(GOOD, "1", "2"), name="demo_b").returncode == 0
     text = (root / "CHANGELOG.md").read_text()
