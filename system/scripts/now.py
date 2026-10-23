@@ -9,13 +9,13 @@
                                   line gets a decide-by [due::] (--due, else since + 3 days with --who or a date in
                                   the statement, else + 30); --due names a known deadline and can only move a line's
                                   date earlier (exit 2 if later). A repeat add may also set --rec or missing
-                                  evidence, and writes nothing when nothing is new
+                                  evidence, and writes nothing when nothing is new.
+                                  add and set refuse a line over 300 characters
   now.py set --partition <p> --match "<text>" --statement "<new statement>"
                                   the one open line whose statement contains the text gets the new statement, keeping
                                   its kind, who, since, evidence, clock and notes (exit 2 on no match or several)
   now.py note --partition <p> --match "<text>" --text "<update>"
-                                  adds "  - <today>: <update>" under the one open line that matches (exit 2 as set);
-                                  add and set refuse a line over 300 characters
+                                  adds "  - <today>: <update>" under the one open line that matches (exit 2 as set)
   now.py archive --partition <p> --date YYYY-MM-DD
                                   moves closed lines and their notes to wiki/<p>/now-archive/<YYYY-MM>.md (brief prep)
   now.py list [--partition <p>]   the open lines; without --partition, both pages under "## <partition>"
@@ -44,7 +44,7 @@ from vaultlib.recall import default_partition  # noqa: E402
 
 p = argparse.ArgumentParser(prog="now.py", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 sub = p.add_subparsers(dest="cmd", required=True)
-a = sub.add_parser("add")
+a = sub.add_parser("add", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)  # allowlisted, so CLAUDE.md points here
 a.add_argument("--partition", required=True)
 a.add_argument("--kind", required=True)
 a.add_argument("--statement", required=True)

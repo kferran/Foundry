@@ -743,7 +743,7 @@ self_edit_contract() {
   grep -qF 'after any bullet an extension section places first' "$f"
   run grep -x -- '- \*\*Telemetry\*\*:' system/templates/daily-briefing.md
   [ "$status" -eq 1 ]
-  system/scripts/now.py --help | grep -qF 'or a telemetry note path'
+  system/scripts/now.py add --help | grep -qF 'or a telemetry note path'
 }
 
 @test "dependency status is held: no template file names its fields or partner-auth (#171, telemetry escalation spec §9)" {
@@ -777,8 +777,9 @@ self_edit_contract() {
 @test "CLAUDE.md and the settings let sessions record Now lines (Now page spec §3.2)" {
   # CLAUDE.md says what goes on the page and points at the help, which carries the flags (#361)
   grep -qF 'with `system/scripts/now.py add`' CLAUDE.md
-  grep -qF '`system/scripts/now.py --help` has' CLAUDE.md
-  help="$(system/scripts/now.py --help)"
+  grep -qF '`system/scripts/now.py add --help` has' CLAUDE.md   # add:* is allowlisted, so the lookup never prompts
+  jq -e '.permissions.allow | index("Bash(system/scripts/now.py add:*)")' .claude/settings.json >/dev/null
+  help="$(system/scripts/now.py add --help)"
   [[ "$help" == *'now.py add --partition <work|personal> --kind <owed|waiting|draft> --statement "<one line>"'* ]]
   [[ "$help" == *'--evidence <pull request URL, Work Order id, GitHub issue URL, ticket key, rca:<note stem> or a telemetry note path>'* ]]   # #106
   [[ "$help" == *'now.py set --partition <p> --match "<text>" --statement "<new statement>"'* ]]
@@ -810,7 +811,7 @@ self_edit_contract() {
   grep -qF -- '- [ ] owed: <statement> [due:: <due>] (since <date>)' "$f"  # review finding 4
   grep -qF '[ [rec:: <option>: <why>]][ [due:: YYYY-MM-DD]]' system/templates/now.md  # review finding 5
   grep -qF 'ignoring their `[rec:: …]` and `[due:: …]` fields' "$f"
-  system/scripts/now.py --help | grep -qF '[--rec "<option>: <why>"] [--due YYYY-MM-DD]'
+  system/scripts/now.py add --help | grep -qF '[--rec "<option>: <why>"] [--due YYYY-MM-DD]'
   now_par="$(grep -F '**The Now page.**' FOUNDRY.md)"
   [[ "$now_par" == *'[due:: YYYY-MM-DD]'* ]]
   [[ "$now_par" == *'system/scripts/now.py overdue'* ]]
