@@ -20,12 +20,13 @@ PATTERNS = [
     ("ssn", re.compile(r"(?<![\d-])(?!000|666|9)(?!123-45-6789)(?!\d{3}-00-)(?!\d{3}-\d{2}-0000)"
                        r"\d{3}-\d{2}-\d{4}(?![\d-])", re.ASCII)),
 ]
-BEARER = re.compile(r"(?i)(authorization:\s*bearer\s+)\S+")
-ASSIGNMENT = re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key)(\s*[:=]\s*)(?!\[REDACTED)(\S+)")
+# The guards skip a marker, with or without its brackets, and a cut's "…", so a second pass changes nothing (F5 §4.3).
+BEARER = re.compile(r"(?i)(authorization:\s*bearer\s+)(?!\[?REDACTED|…)\S+")
+ASSIGNMENT = re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key)(\s*[:=]\s*)(?!\[?REDACTED|…)(\S+)")
 BARE_BEARER = re.compile(r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/-]{16,}=*")
 USERINFO = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^/\s:@]+:)[^/\s@]+@")
 CONNECTION = re.compile(r"(?i)\b(pwd|accountkey|sharedaccesskey|sharedaccesssignature|sig|client_secret|access_token"
-                        r"|refresh_token)(\s*=\s*)(?!\[REDACTED)([^;&\s]+)")
+                        r"|refresh_token)(\s*=\s*)(?!\[?REDACTED|…)([^;&\s]+)")
 JSON_SECRET = re.compile(r'(?i)("(?:password|passwd|pwd|(?:client_)?secret|(?:access_|refresh_)?token|api[_-]?key'
                          r'|accountkey)"\s*:\s*)"[^"]*"')
 CANDIDATE = re.compile(r"[A-Za-z0-9+/=_-]{32,}")

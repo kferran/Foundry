@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from . import frontmatter, links as linkmod, now as nowmod, schema as schemamod
-from .index import PRIVATE, Index, name_excluded, wall_blocked
+from .index import PRIVATE, Index, name_excluded, walled
 
 RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
 MEETINGS = re.compile(r"^wiki/[^/]+/meetings/")
@@ -307,17 +307,11 @@ def _walls(vault, target, note, schemas, resolver) -> list:
     # Only the cross-partition index itself is exempt; a note anywhere else is walled whatever its type (audit S2).
     if not target.startswith("wiki/") or target == INDEX_NOTE:
         return []
-    src_part = schemamod.path_partition(target)
     body_links, _ = linkmod.extract(note.body, note.body_line)
     ntype = (note.data or {}).get("type")
     fm_links = Index(vault)._frontmatter_links(schemas.get(ntype) if isinstance(ntype, str) else None, note)
-    out = []
-    for link in body_links + fm_links:
-        hit, _ = resolver.resolve(link.target, target, "md" if link.kind == "md" else "wiki", lambda c: (len(c), c))
-        part = schemamod.path_partition(hit) if hit else None
-        if src_part and part and wall_blocked(src_part, part):
-            out.append(Problem(target, f"partition wall: {src_part} note links to {hit}"))
-    return out
+    return [Problem(target, f"partition wall: {schemamod.path_partition(target)} note links to {hit}")
+            for hit in walled(resolver, target, body_links + fm_links)]
 
 
 def _is_file_path(vault: Path, target: str) -> bool:
@@ -378,11 +372,16 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
     # A tag the run adds keeps the form; a tag the note already had is the owner's to fix (#158).
     added = [t for t in _tags(new) if old is None or t not in _tags(old)]
     out += [Problem(target, i.message) for i in schemamod.tag_issues(target, (new.data or {}).get("type"), new, added, schemas)]
-    if NOW_PAGE.match(target):   # phase A spec §3.5: a line the run adds or changes keeps the cap; older ones pass
+    if NOW_PAGE.match(target):   # a line the run adds passes the Now check; older ones pass (factory F5 spec §4.3)
         kept = {line.rstrip() for line in (old.body if old is not None else "").split("\n")}
-        out += [Problem(target, f"a Now line over {nowmod.MAX_LINE} characters: move its history to a note under it")
-                for line in new.body.split("\n") if line.startswith("- [ ] ") and len(line.rstrip()) > nowmod.MAX_LINE
-                and line.rstrip() not in kept]
+        for line in (x.rstrip() for x in new.body.split("\n") if x.startswith("- [ ] ")):
+            if line in kept:
+                continue
+            try:
+                if nowmod.screen(vault, schemamod.path_partition(target), line) != line:
+                    out.append(Problem(target, "a Now line the check would redact or cut: run now.py fit-staged before publish"))
+            except ValueError as exc:
+                out.append(Problem(target, f"a Now line: {exc}"))
     out += _conflict(vault, target, snap, now)
     return out
 

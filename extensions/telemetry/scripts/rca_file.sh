@@ -97,7 +97,7 @@ if (( CONNECTOR_EXIT != 0 )); then
     rm -f -- "$attempt"
     msg="Jira refused the ticket, nothing was created; fix the setting and tick the line again: $rejection"
     extensions/telemetry/scripts/rca.py reopen "$partition" "$stem" "$rejection" 2> "$work/reopen.err" \
-      || msg="$msg; the Now line was not reopened: $(sed 's/^rca: //' "$work/reopen.err" | head -n 1)"
+      || msg="$msg; the Now line was not reopened as planned: $(sed 's/^rca: //' "$work/reopen.err" | head -n 1)"
     fail 6 "$msg"
   fi
   if extensions/telemetry/scripts/rca.py called < "$work/out.jsonl"; then

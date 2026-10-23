@@ -10,7 +10,7 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from . import nightshift_sched as ns
+from . import alerts, nightshift_sched as ns
 from . import now as nowmod
 from . import state
 # _structured and _text_json stay importable for the intraday watch until its retrofit (F1 spec §3.6).
@@ -264,6 +264,9 @@ def chat_extract(stream, q: dict, tool: str, notify_channel: str) -> dict:
     return {"items": items, "full": full, "hold": False, "stats": s}
 
 
+REFUSED = "a Now line was refused"   # an alert names the reason, never the line (factory F5 spec §4.2)
+
+
 def record(vault, partition: str, found: dict, today: str, now_iso: str, now_epoch: int, source: str = "mail") -> list:
     """Add a Now line for each item whose (thread, latest message) is new to its source, then record the tick (held
     when found["hold"]: the next tick reads the same window). The caller holds run.lock. Returns the lines added."""
@@ -281,8 +284,9 @@ def record(vault, partition: str, found: dict, today: str, now_iso: str, now_epo
         except ValueError:  # a link or sender the Now line cannot hold: keep the item, drop the metadata
             try:
                 status, line = nowmod.add(vault, partition, "owed", f"{statement} ({i['link']})", today, fit=True)
-            except ValueError:   # still no valid line: record the item so the tick and the items after it go on
+            except ValueError as exc:   # still no valid line: record the item so the tick and the items after it go on
                 status, line = "refused", ""
+                alerts.alert(vault, today, now_iso[11:19], "triage", f"{REFUSED} ({exc})", key=REFUSED)
         state.append(log, {"kind": "item", "thread_id": i["thread_id"], "date": i["date"], "line": line,
                            "time": now_iso, "source": source})
         known.add((i["thread_id"], i["date"]))

@@ -217,3 +217,25 @@ jira_errs() {
   run "$RF" work
   [ "$status" -eq 2 ]
 }
+
+@test "a Now page the check refuses: filed still clears the markers and alerts the reason (factory F5)" {
+  mkdir -p system/logs/rca
+  touch "system/logs/rca/work-$STEM.attempt"
+  mv wiki/work/Now.md "$BATS_TEST_TMPDIR/Now.md"
+  ln -s "$BATS_TEST_TMPDIR/Now.md" wiki/work/Now.md
+  run extensions/telemetry/scripts/rca.py filed work "$STEM" EX-5
+  [ "$status" -eq 0 ]
+  grep -qx 'ticket: "EX-5"' "wiki/work/rca/$STEM.md"
+  [ ! -e "system/logs/rca/work-$STEM.attempt" ]
+  grep -qF '[rca] a Now line was refused (symlink on the Now page path)' "$ALERTS"
+}
+
+@test "a reopen the check refuses unticks the line as it stands and exits 1 (factory F5)" {
+  mkdir -p wiki/personal/concepts
+  printf -- '---\ntype: concept\n---\n' > wiki/personal/concepts/diary.md
+  sed -i "s/Review RCA draft: $STEM /Review RCA draft: $STEM [[diary]] /" wiki/work/Now.md
+  run extensions/telemetry/scripts/rca.py reopen work "$STEM" "Team is required"
+  [ "$status" -eq 1 ]
+  grep -qx -- "- \[ \] owed: Review RCA draft: $STEM \[\[diary\]\] (since 2026-10-11, rca:$STEM)" wiki/work/Now.md
+  grep -qF '[rca] a Now line was refused (partition wall' "$ALERTS"
+}

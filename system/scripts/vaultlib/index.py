@@ -97,6 +97,21 @@ def wall_blocked(src_partition: str, target_partition: str) -> bool:
     return (src_partition, target_partition) in WALLS
 
 
+def walled(resolver, src_rel: str, links) -> list:
+    """The resolved paths of links (links.extract's) that src_rel's partition may not link to. Only the cross-partition
+    index itself is exempt (audit S2); the publish gate and the Now check share this loop (factory F5 spec §4.1)."""
+    src = schemamod.path_partition(src_rel)
+    if not src or src_rel == "wiki/Index.md":
+        return []
+    out = []
+    for link in links:
+        hit, _ = resolver.resolve(link.target, src_rel, "md" if link.kind == "md" else "wiki", lambda c: (len(c), c))
+        part = schemamod.path_partition(hit) if hit else None
+        if part and wall_blocked(src, part):
+            out.append(hit)
+    return out
+
+
 CITATION = re.compile(r"(?<![\w/:.-])([\w.-]+(?:/[\w.-]+)+\.[A-Za-z]\w*):(\d+)\b")
 
 

@@ -5,10 +5,13 @@ import shutil
 import subprocess
 import sys
 
+import pytest
+
 from helpers import REPO, write
 from vaultlib import now
 
 TODAY = "2026-10-09"
+KEY = "ghp_" + "a" * 36
 CONFIG = ('---\ntype: config\ntimezone: "America/Denver"\nbrief_time: "06:00"\ndebrief_time: "17:00"\n'
           'remote_mode: "none"\ndefault_partition: "work"\n---\n')
 
@@ -808,3 +811,95 @@ def test_a_github_issue_url_is_evidence(vault, tmp_path):
     for _ in range(3):
         now.check(vault, TODAY, alerts.append, gh_stub(tmp_path, "", rc=1))
     assert "- [ ] owed: Open issue" in page(vault) and len(alerts) == 1
+
+
+def test_add_redacts_each_field_and_the_line_still_parses(vault):
+    prepare(vault)
+    status, line = now.add(vault, "work", "owed", f"Rotate {KEY} today", TODAY, "Pat",
+                           "https://example.com/x?token=abc123", rec=f"rotate: password={KEY}")
+    assert status == "added"
+    assert KEY not in page(vault)
+    m = now.LINE.match(line)
+    assert m.group("evidence") is None
+    assert now.fields(m.group("statement"))[1] == "rotate: password=REDACTED:github_token"
+    assert now.add(vault, "work", "owed", f"Rotate {KEY} today", TODAY, "Pat")[0] == "exists"
+
+
+def test_set_and_note_redact_and_note_fits(vault):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Rotate the key", TODAY)
+    assert KEY not in now.set_statement(vault, "work", "rotate", f"Rotate {KEY}", TODAY)
+    assert KEY not in now.note(vault, "work", "rotate", f"token: {KEY}", TODAY)
+    with pytest.raises(ValueError, match="limit is 300"):
+        now.note(vault, "work", "rotate", "n" * 300, TODAY)
+    noted = now.note(vault, "work", "rotate", "n" * 300, TODAY, fit=True)
+    assert noted.endswith("n…")
+    assert len(noted) == now.MAX_LINE
+
+
+def test_a_link_across_the_wall_is_refused_and_index_and_shared_are_not(vault):
+    prepare(vault)
+    write(vault, "wiki/personal/concepts/diary.md", "---\ntype: concept\n---\n")
+    write(vault, "wiki/shared/concepts/glossary.md", "---\ntype: concept\n---\n")
+    with pytest.raises(ValueError, match="partition wall"):
+        now.add(vault, "work", "owed", "Read [[diary]]", TODAY)
+    assert now.add(vault, "work", "owed", "See [[glossary]] and [[Index]]", TODAY)[0] == "added"
+
+
+def test_a_symlinked_now_page_is_refused(vault, tmp_path):
+    prepare(vault)
+    (tmp_path / "elsewhere").mkdir()
+    shutil.rmtree(vault / "wiki" / "work")   # the fixture holds wiki/work/
+    (vault / "wiki" / "work").symlink_to(tmp_path / "elsewhere")
+    with pytest.raises(ValueError, match="symlink"):
+        now.add(vault, "work", "owed", "Anything", TODAY)
+    assert not any((tmp_path / "elsewhere").iterdir())
+
+
+def test_check_leaves_an_owner_reopened_long_or_walled_line_alone(vault, tmp_path):
+    prepare(vault)
+    write(vault, "wiki/personal/concepts/diary.md", "---\ntype: concept\n---\n")
+    kept = [f"- [ ] owed: {'w' * 400} (since 2026-10-01)", "- [ ] owed: Read [[diary]] (since 2026-10-01)"]
+    done = "- [ ] owed: Ship it (since 2026-10-01, https://github.com/acme/shop/pull/7)"
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\n---\n# Now\n\n## Needs you\n" + "\n".join(kept + [done]) + "\n")
+    assert now.check(vault, TODAY, lambda m: None, gh_stub(tmp_path)) == 1
+    assert all(line in page(vault).split("\n") for line in kept)
+
+
+def test_screen_rebuilds_a_canonical_line_and_checks_a_hand_shaped_one_whole(vault):
+    prepare(vault)
+    line = now.render("owed", f"Rotate {KEY}", "2026-10-01", f"token={KEY}", "", f"rotate: password={KEY}", "2026-11-01")
+    once = now.screen(vault, "work", line)
+    assert KEY not in once
+    assert now.LINE.match(once)
+    assert now.screen(vault, "work", once) == once
+    assert len(now.screen(vault, "work", now.render("owed", "e" * 320, "2026-10-01"))) == now.MAX_LINE
+    hand = "- [ ] owed: two  spaces (since 2026-10-01)"
+    assert now.screen(vault, "work", hand) == hand
+    with pytest.raises(ValueError, match="credential"):
+        now.screen(vault, "work", f"- [ ] owed: two  spaces {KEY} (since 2026-10-01)")
+
+
+def test_fit_staged_redacts_and_cuts_added_lines(vault):
+    head = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n---\n# Now\n\n## Needs you\n"
+    old = f"- [ ] owed: Rotate {KEY} (since 2026-10-01)"
+    added = f"- [ ] owed: Rotate {KEY} {'e' * 300} (since {TODAY})"
+    write(vault, "wiki/work/Now.md", head + old + "\n")
+    write(vault, "wiki/.staging/r3/wiki/work/Now.md", head + "\n".join([old, added]) + "\n")
+    assert now.fit_staged(vault, "r3") == 1
+    lines = (vault / "wiki/.staging/r3/wiki/work/Now.md").read_text(encoding="utf-8").split("\n")
+    assert lines[-3] == old
+    assert KEY not in lines[-2]
+    assert len(lines[-2]) <= now.MAX_LINE
+    assert lines[-2].endswith(f"e… (since {TODAY})")
+
+
+@pytest.mark.parametrize("secret", [f"token: {KEY}", f"authorization: bearer {KEY}", f"password={KEY}", f"pwd={KEY}",
+                                    "<private>x</private>", f"see token: {KEY} now"])
+def test_screen_is_stable_on_a_second_pass_wherever_the_cut_lands(vault, secret):
+    # fit_staged writes the first pass and the gate compares a second: any change rejects the whole brief.
+    for pad in range(200, 300):
+        line = now.render("owed", f"{'p' * pad} {secret} tail words", "2026-10-01", rec="use <private>x</private>")
+        once = now.screen(vault, "work", line)
+        assert now.screen(vault, "work", once) == once, (pad, once)
+        assert now.fields(now.LINE.match(once).group("statement"))[1] == "use PRIVATE"

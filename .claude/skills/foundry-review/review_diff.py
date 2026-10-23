@@ -64,7 +64,7 @@ def head_text(path):
 
 
 def now_redaction(adds, paths):
-    writer = re.compile(r"\bnow(mod)?\.(add|note|set_statement)\(|now\.py (add|set|note)\b|notify\.sh|\bnotify\(")
+    writer = re.compile(r"notify\.sh|\bnotify\(")   # a Now write redacts inside now.py (factory F5 spec §4.1)
     redacted = {}
     out = []
     for p, n, t in code(adds):

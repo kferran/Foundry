@@ -42,12 +42,12 @@ def case(tmp_path, before, after, branch="feat/x", args=("--base", "master")):
 
 
 SEEDS = [
-    ("now-redaction", {"system/scripts/x.py": 'now.add("work", "owed", one_line(text))\n'}, "system/scripts/x.py:1"),
+    ("now-redaction", {"system/scripts/x.py": 'notify("work", one_line(text))\n'}, "system/scripts/x.py:1"),
     ("gate-escape", {"system/scripts/x.py": '(root / "wiki/work/x.md").write_text(body)\n'}, "system/scripts/x.py:1"),
     ("gate-escape", {".claude/settings.json": '"Edit(/wiki/**)"\n'}, ".claude/settings.json:1"),
     ("alert-text", {"extensions/x/scripts/x.sh": 'alert_once "x failed:" "$subject"\n'}, "extensions/x/scripts/x.sh:1"),
     ("alert-text", {"extensions/x/scripts/x.sh": 'alert_once "x failed:" "$note"\n'}, "extensions/x/scripts/x.sh:1"),
-    ("now-redaction", {"system/scripts/x.py": 'nowmod.add("work", "owed", one_line(text))\n'}, "system/scripts/x.py:1"),
+    ("now-redaction", {"extensions/x/scripts/x.sh": 'system/scripts/notify.sh "$text"\n'}, "extensions/x/scripts/x.sh:1"),
     ("gate-escape", {"system/scripts/x.py": 'f = Path("wiki/work/x.md").open("w")\n'}, "system/scripts/x.py:1"),
     ("read-source-check", {"extensions/x/scripts/café.sh": 'connector_run "$p" "$work"\n'},
      "extensions/x/scripts/café.sh:1"),
@@ -68,7 +68,8 @@ SEEDS = [
 ]
 
 NEAR_MISSES = [
-    ("now-redaction", {"system/scripts/x.py": 'text = redact_credentials(text)\nnow.add("work", "owed", one_line(text))\n'}, {}),
+    ("now-redaction", {"system/scripts/x.py": 'text = redact_credentials(text)\nnotify("work", one_line(text))\n'}, {}),
+    ("now-redaction", {"system/scripts/x.py": 'now.add("work", "owed", one_line(text))\n'}, {}),
     ("gate-escape", {"system/scripts/x.py": '(root / "wiki/work/x.md").read_text()\n'}, {}),
     ("gate-escape", {"system/scripts/vaultlib/publish.py": '(root / "wiki/work/x.md").write_text(body)\n'}, {}),
     ("alert-text", {"extensions/x/scripts/x.sh": 'fail 7 "$CONNECTOR_REASON"\n'}, {}),
@@ -90,7 +91,7 @@ NEAR_MISSES = [
     ("alert-text", {"extensions/x/scripts/x.sh": 'fail "$qrc" "$FETCH_REASON"\n'}, {}),
     ("alert-text", {"system/scripts/x.py": 'p = root / f"alerts_{day}.md"\n'}, {}),
     ("alert-text", {"system/scripts/x.py": 'alert_once(f"x failed: {n:>3} threads")\n'}, {}),
-    ("now-redaction", {"docs/x.md": "call now.add( to record it\n"}, {}),
+    ("now-redaction", {"docs/x.md": "call notify( to post it\n"}, {}),
     ("skip-reason", {"system/tests/python/test_x.py": "@pytest.mark.skipif(cond,\n    reason=\"vault\")\n"}, {}),
 ]
 

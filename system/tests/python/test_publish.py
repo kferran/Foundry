@@ -515,7 +515,21 @@ def test_the_gate_refuses_a_new_now_line_over_300_characters(vault):
     added = f"- [ ] owed: {'x' * 270} (since 2026-10-01)"
     assert len(added) > 300
     assert brief_run(vault, [OLD_LONG, added]) == [
-        "a Now line over 300 characters: move its history to a note under it"]
+        "a Now line the check would redact or cut: run now.py fit-staged before publish"]
+
+
+HAND = "- [ ] owed: two  spaces (since 2026-10-01)"   # not in now.py's form: checked whole, never rebuilt
+
+
+def test_the_gate_refuses_an_added_now_line_holding_a_credential_and_passes_a_clean_hand_shaped_one(vault):
+    key = "ghp_" + "a" * 36
+    assert brief_run(vault, [OLD_LONG, f"- [ ] owed: Rotate {key} (since 2026-10-01)", HAND]) == [
+        "a Now line the check would redact or cut: run now.py fit-staged before publish"]
+
+
+def test_the_gate_refuses_a_long_hand_shaped_now_line(vault):
+    assert brief_run(vault, [OLD_LONG, f"- [ ] owed: two  spaces {'h' * 280} (since 2026-10-01)"]) == [
+        "a Now line: over 300 characters and not in now.py's form: move its history to a note under it"]
 
 
 def test_the_gate_passes_an_unchanged_long_line_and_one_at_300(vault):

@@ -294,3 +294,17 @@ def test_a_busy_run_lock_ends_the_tick_with_nothing_changed(vault):
         fcntl.flock(held, fcntl.LOCK_EX)
         rca.tick(vault)
     assert "status: draft" in (vault / "wiki/work/rca/dropped.md").read_text()
+
+
+def test_reopen_cuts_a_long_jira_reason_and_redacts_it(vault):
+    prepare(vault)
+    stem = "2026-10-11-" + "o" * 90
+    note(vault, stem)
+    line(vault, stem, "x")
+    key = "ghp_" + "a" * 36
+    rca.reopen(vault, "work", stem, f"password={key} " + "r" * 200, TODAY)
+    reopened = next(l for l in now.read(vault, "work").split("\n") if f"rca:{stem}" in l)
+    assert reopened.startswith("- [ ] owed: Review RCA draft: ")
+    assert len(reopened) <= now.MAX_LINE
+    assert key not in reopened
+    assert reopened.endswith(f"(since {TODAY}, rca:{stem})")
