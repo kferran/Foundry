@@ -7,6 +7,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from datetime import date, timedelta
 from pathlib import Path
 
 from . import frontmatter, guard, publish, recall as recallmod, retrieve, schema as schemamod, scope as scopemod
@@ -362,6 +363,42 @@ def cmd_orphans(args, vault, sc):
     return EXIT_OK
 
 
+def last_commits(vault: Path) -> dict:
+    """{path: YYYY-MM-DD} of the last commit that touched each wiki note, from one `git log` pass (newest first);
+    empty when the vault is not a git repository or has no commits."""
+    try:
+        out = _git(vault, "-c", "core.quotepath=false", "log", "--format=%cs", "--name-only", "--", "wiki/",
+                   what="git log")
+    except UsageError:
+        return {}
+    dates, day = {}, None
+    for line in out.stdout.decode("utf-8", errors="replace").splitlines():
+        if line.startswith("wiki/"):
+            dates.setdefault(line, day)
+        elif line:
+            day = line
+    return dates
+
+
+def cmd_stale(args, vault, sc):
+    """Active compiled wiki notes (those with compiled_at; meeting records are never compiled) last changed more than
+    --days ago: the last commit that touched the note, else its compiled_at (a note never committed, or no git).
+    compiled_at alone never moves when a note is patched (#361)."""
+    require_vault_scope(sc)
+    conn = _open(vault)
+    rows = conn.execute(
+        "SELECT n.path, f.value FROM notes n JOIN fields f ON f.path=n.path AND f.key='compiled_at' "
+        "WHERE n.path LIKE 'wiki/%' AND n.active=1").fetchall()
+    conn.close()
+    commits = last_commits(vault)
+    cutoff = (date.today() - timedelta(days=args.days)).isoformat()
+    hits = sorted((day, path) for path, compiled in rows
+                  if (day := commits.get(path) or (compiled or "").strip('"')[:10]) and day < cutoff)
+    print(json.dumps([{"path": p, "date": d} for d, p in hits]) if args.json
+          else "\n".join(f"- {p} ({d})" for d, p in hits))
+    return EXIT_OK
+
+
 def cmd_field(args, vault, sc):
     require_vault_scope(sc)
     path = inside_vault(vault, args.file)
@@ -468,6 +505,8 @@ def build_parser():
     p = add("backlinks", cmd_backlinks, "notes linking to a note")
     p.add_argument("note")
     add("orphans", cmd_orphans, "wiki notes with no inbound links")
+    p = add("stale", cmd_stale, "active wiki notes unchanged for --days (last commit, else compiled_at)")
+    p.add_argument("--days", type=int, default=180)
     p = add("field", cmd_field, "print one frontmatter value")
     p.add_argument("file")
     p.add_argument("key")
