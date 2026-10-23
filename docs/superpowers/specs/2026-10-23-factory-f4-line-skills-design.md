@@ -4,7 +4,7 @@
 **Status:** draft for the owner
 **Program:** `docs/superpowers/2026-10-21-factory-plan.md` (phase F4, #309)
 **Grill:** 2026-10-21, recorded in the program plan's `## Grill` section: item 4 set F4's order (`new-source` and `foundry-review` first, with the spec template's blueprint checklist; `connector-probe` and `live-acceptance` after the first new feature built on the line). The factory is the owner's idea, approved with #304.
-**Builder check:** 2026-10-22, three questions, all settled as my calls in §6: the scaffold test once the brief is full, `changelog-label` in a vault, the acceptance run's tool and stopping point (plus the name rule, tightened). Two deviations from the plan's wording go to the owner in §7.
+**Builder check:** 2026-10-22, three questions, all settled as my calls in §6: the scaffold test once the brief is full, `changelog-label` in a vault, the acceptance run's tool and stopping point (plus the name rule, tightened). The owner settled two deviations from the plan's wording (§7).
 **Blueprint:** none: two development skills and their scripts; `new-source` writes the Source shape for later features.
 **Lane:** small feature, two PRs (task list in §4, no separate plan). Both auto-merge on green CI (program plan §1 table); neither changes a safety surface, an existing Source's confinement or the Work Order runner.
 
@@ -151,10 +151,10 @@ From the builder check:
 
 ## 7. Owner decisions
 
-Pending. Neither changes the spec as written if the owner takes the recommendation.
+Answered by the owner on 2026-10-23: the recommendation, for both. The spec as written stands.
 
-1. **The runner: the brief only, or unit files too?** The plan's `new-source` bullet says "unit files"; the template it names (handoffs) has none and runs in the brief. Recommendation: the brief only (§3.2). A unit runner is a second shape with no feature asking for it yet, and the first Source that cannot fit the brief adds it from a real use.
-2. **Do Work Order pull requests run `foundry-review`?** The plan says the review "runs before a PR opens"; a Work Order opens its pull request from the runner's sealed session, and changing its prompt is an owner-merge change to the runner. Recommendation: not in F4. The review runs in interactive and subagent builds; a Work Order PR's reviewer runs it on the branch, and the runner learns it when a Work Order PR ships a class the review would have caught.
+1. **The runner: the brief only, or unit files too?** Owner: the brief only. The plan's `new-source` bullet says "unit files"; the template it names (handoffs) has none and runs in the brief. Recommendation: the brief only (§3.2). A unit runner is a second shape with no feature asking for it yet, and the first Source that cannot fit the brief adds it from a real use.
+2. **Do Work Order pull requests run `foundry-review`?** Owner: not in F4. The plan says the review "runs before a PR opens"; a Work Order opens its pull request from the runner's sealed session, and changing its prompt is an owner-merge change to the runner. Recommendation: not in F4. The review runs in interactive and subagent builds; a Work Order PR's reviewer runs it on the branch, and the runner learns it when a Work Order PR ships a class the review would have caught.
 
 ## 8. Left to the builder
 
