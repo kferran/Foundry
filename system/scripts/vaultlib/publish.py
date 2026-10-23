@@ -372,11 +372,16 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
     # A tag the run adds keeps the form; a tag the note already had is the owner's to fix (#158).
     added = [t for t in _tags(new) if old is None or t not in _tags(old)]
     out += [Problem(target, i.message) for i in schemamod.tag_issues(target, (new.data or {}).get("type"), new, added, schemas)]
-    if NOW_PAGE.match(target):   # phase A spec §3.5: a line the run adds or changes keeps the cap; older ones pass
+    if NOW_PAGE.match(target):   # a line the run adds passes the Now check; older ones pass (factory F5 spec §4.3)
         kept = {line.rstrip() for line in (old.body if old is not None else "").split("\n")}
-        out += [Problem(target, f"a Now line over {nowmod.MAX_LINE} characters: move its history to a note under it")
-                for line in new.body.split("\n") if line.startswith("- [ ] ") and len(line.rstrip()) > nowmod.MAX_LINE
-                and line.rstrip() not in kept]
+        for line in (x.rstrip() for x in new.body.split("\n") if x.startswith("- [ ] ")):
+            if line in kept:
+                continue
+            try:
+                if nowmod.screen(vault, schemamod.path_partition(target), line) != line:
+                    out.append(Problem(target, "a Now line the check would redact or cut: run now.py fit-staged before publish"))
+            except ValueError as exc:
+                out.append(Problem(target, f"a Now line: {exc}"))
     out += _conflict(vault, target, snap, now)
     return out
 

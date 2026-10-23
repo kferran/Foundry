@@ -30,8 +30,8 @@
                                   read-only: open lines past their [due::] (before the date, today by default) in
                                   groups of 1 to 7, 8 to 30 and more than 30 days over, then the clockless count
   now.py seed YYYY-MM-DD         once: a missing default-partition page takes the previous brief's open objectives
-  now.py fit-staged <run_id>      a brief's staged Now pages: cut each added line over 300 characters (run_headless.sh
-                                  runs it under its own run.lock, before publish)
+  now.py fit-staged <run_id>      a brief's staged Now pages: redact each added line and cut it to 300 characters
+                                  (run_headless.sh runs it under its own run.lock, before publish)
 """
 import argparse
 import os

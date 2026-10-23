@@ -337,33 +337,29 @@ def _cut(statement: str, over: int) -> str:
 
 
 def fit_staged(vault, run_id: str) -> int:
-    """A brief's staged Now pages: each open line the run added over MAX_LINE gets its statement cut as add's fit
-    does, keeping its clock and parenthesis, so one long line no longer rejects the whole brief (the publish gate's
-    cap is unchanged). A line the live page already holds, one the re-render would change (text after the
-    parenthesis, an invalid [due::]) and one the cut cannot bring under the cap are left for the gate. Returns the
-    lines cut."""
-    cut = 0
+    """A brief's staged Now pages: each open line the run added becomes screen()'s fixed form (redacted and cut), so
+    the publish gate only verifies (factory F5 spec §4.3). A line the live page already holds, and one screen()
+    refuses, are left for the gate. Returns the lines changed."""
+    changed = 0
     for partition in PARTITIONS:
         path = Path(vault) / "wiki" / ".staging" / run_id / "wiki" / partition / "Now.md"
         if not path.is_file():
             continue
         kept = {line.rstrip() for line in read(vault, partition).split("\n")}
-        lines, before = path.read_text(encoding="utf-8").split("\n"), cut
+        lines, before = path.read_text(encoding="utf-8").split("\n"), changed
         for i, line in enumerate(lines):
             line = line.rstrip()
-            m = LINE.match(line) if line.startswith("- [ ] ") and line not in kept else None
-            if m is None or len(line) <= MAX_LINE:
+            if not line.startswith("- [ ] ") or line in kept:
                 continue
-            bare, rec, due = fields(m.group("statement"))
-            rest = (m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
-            if render(m.group("kind"), bare, *rest) != line:
+            try:
+                new = screen(vault, partition, line)
+            except ValueError:
                 continue
-            new = render(m.group("kind"), _cut(bare, len(line) - MAX_LINE), *rest)
-            if len(new) <= MAX_LINE:
-                lines[i], cut = new, cut + 1
-        if cut > before:
+            if new != line:
+                lines[i], changed = new, changed + 1
+        if changed > before:
             path.write_text("\n".join(lines), encoding="utf-8")
-    return cut
+    return changed
 
 
 def set_statement(vault, partition: str, match: str, statement: str, today: str) -> str:

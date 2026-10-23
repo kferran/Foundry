@@ -878,3 +878,17 @@ def test_screen_rebuilds_a_canonical_line_and_checks_a_hand_shaped_one_whole(vau
     assert now.screen(vault, "work", hand) == hand
     with pytest.raises(ValueError, match="credential"):
         now.screen(vault, "work", f"- [ ] owed: two  spaces {KEY} (since 2026-10-01)")
+
+
+def test_fit_staged_redacts_and_cuts_added_lines(vault):
+    head = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n---\n# Now\n\n## Needs you\n"
+    old = f"- [ ] owed: Rotate {KEY} (since 2026-10-01)"
+    added = f"- [ ] owed: Rotate {KEY} {'e' * 300} (since {TODAY})"
+    write(vault, "wiki/work/Now.md", head + old + "\n")
+    write(vault, "wiki/.staging/r3/wiki/work/Now.md", head + "\n".join([old, added]) + "\n")
+    assert now.fit_staged(vault, "r3") == 1
+    lines = (vault / "wiki/.staging/r3/wiki/work/Now.md").read_text(encoding="utf-8").split("\n")
+    assert lines[-3] == old
+    assert KEY not in lines[-2]
+    assert len(lines[-2]) <= now.MAX_LINE
+    assert lines[-2].endswith(f"e… (since {TODAY})")
