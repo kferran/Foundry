@@ -31,6 +31,7 @@ PUBLISHED = ("published", "noop")
 DISMISS_MIN = 5                                 # closed lines a host needs before its dismissed share is scored
 TREND_WEEKS, TREND_FACTOR = 4, 1.5
 GH_CALL_SECONDS = 15
+HEALTH_GH_SECONDS = 90                          # every gh call of one score shares this (the manifest's budget value)
 REVIEW_FIX = re.compile(r"review fix|final review|address(?:es|ed)? review", re.IGNORECASE)
 GREEN = ("success", "neutral", "skipped")
 BUDGETS = ("core lines", "brief words")         # headroom that can run out; the other caps are ratchets
@@ -449,7 +450,7 @@ def compute(vault: Path, day: date) -> list:
     repo = github_repo(cfg)
     caches = []
     if repo and shutil.which("gh"):
-        gh = GH(repo, float(budget(vault)))
+        gh = GH(repo, HEALTH_GH_SECONDS)
         cache = {r["pr"]: r["green"] for r in hist if r.get("cache") == "first_push"}
         known = set(cache)
         try:
@@ -486,11 +487,6 @@ def compute(vault: Path, day: date) -> list:
 
 def _raise(why: str):
     raise Unavailable(why)
-
-
-def budget(vault: Path) -> int:
-    m = re.search(r"HEALTH_GH_SECONDS:\s*(\d+)", (HERE.parent / "extension.md").read_text(encoding="utf-8"))
-    return int(m.group(1)) if m else 60
 
 
 def lines(rows: list, day: date, hist: list) -> list:
