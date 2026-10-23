@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """The Now page (Now page spec §3.2). Exit 0 ok, 2 usage or an invalid line, 4 run.lock busy.
 
-  now.py add --partition <work|personal> --kind <owed|waiting|draft> --statement "<text>" [--who <name>]
-             [--evidence <PR URL, Work Order id or key>] [--rec "<option>: <why>"] [--due YYYY-MM-DD]
-                                  a new line gets [due::] (--due, else since + 3 days with --who or a date in the
-                                  statement, else + 30); a repeat add may move it earlier (exit 2 if later), set
-                                  --rec, or set missing evidence, and writes nothing when nothing is new
+  now.py add --partition <work|personal> --kind <owed|waiting|draft> --statement "<one line>" [--who <name>]
+             [--evidence <pull request URL, Work Order id, GitHub issue URL, ticket key, or the form an extension's skill or brief section names>]
+             [--rec "<option>: <why>"] [--due YYYY-MM-DD]
+                                  owed by the user, waited on from someone else, or a message drafted and not yet
+                                  sent; give --rec when the user must decide and you have a recommendation. A new
+                                  line gets a decide-by [due::] (--due, else since + 3 days with --who or a date in
+                                  the statement, else + 30); --due names a known deadline and can only move a line's
+                                  date earlier (exit 2 if later). A repeat add may also set --rec or missing
+                                  evidence, and writes nothing when nothing is new.
+                                  add and set refuse a line over 300 characters
   now.py set --partition <p> --match "<text>" --statement "<new statement>"
                                   the one open line whose statement contains the text gets the new statement, keeping
                                   its kind, who, since, evidence, clock and notes (exit 2 on no match or several)
   now.py note --partition <p> --match "<text>" --text "<update>"
-                                  adds "  - <today>: <update>" under the one open line that matches (exit 2 as set);
-                                  add and set refuse a line over 300 characters
+                                  adds "  - <today>: <update>" under the one open line that matches (exit 2 as set)
   now.py archive --partition <p> --date YYYY-MM-DD
                                   moves closed lines and their notes to wiki/<p>/now-archive/<YYYY-MM>.md (brief prep)
   now.py list [--partition <p>]   the open lines; without --partition, both pages under "## <partition>"
@@ -38,9 +42,9 @@ from vaultlib import now  # noqa: E402
 from vaultlib.intake import Intake  # noqa: E402
 from vaultlib.recall import default_partition  # noqa: E402
 
-p = argparse.ArgumentParser(prog="now.py")
+p = argparse.ArgumentParser(prog="now.py", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 sub = p.add_subparsers(dest="cmd", required=True)
-a = sub.add_parser("add")
+a = sub.add_parser("add", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)  # allowlisted, so CLAUDE.md points here
 a.add_argument("--partition", required=True)
 a.add_argument("--kind", required=True)
 a.add_argument("--statement", required=True)
