@@ -169,6 +169,7 @@ CLAUDE.md                     generic rules; imports @system/config.md
 .claude/skills/humanizer/     vendored humanizer v3.0.0 (MIT): /humanizer and /rca
 .claude/skills/grilling/      vendored grilling from mattpocock-skills 1.2.3 (MIT), plus the Foundry's idea questions: /grilling
 .claude/skills/order/         /order: queue plans and research briefs as Work Orders
+.claude/skills/new-source/    /new-source: scaffold an extension Source that passes the line (factory F4)
 .githooks/pre-commit          deterministic linter and write caps (lint_vault.sh --staged); redacts staged drops (redact.py --drop); refuses secret shapes (secret_scan.py --staged)
 .scratch/                     throwaway clones, worktrees and temp files (ignored; the gate's temp files go here)
 raw/                          contents gitignored
@@ -398,7 +399,7 @@ Work follows the superpowers pipeline. Each station has its skill and leaves a r
 | Grill (an idea the owner proposes) | `/grilling`: is it worth building, for whom, what happens without it, its smallest version, what it displaces | the decisions on the idea's issue, or a `## Grill` section in the spec |
 | Spec | `superpowers:brainstorming`, ending with its builder check (`builder-check-prompt.md`) | `<date>-<topic>-design.md` in [`docs/superpowers/specs/`](docs/superpowers/specs/) |
 | Plan | `superpowers:writing-plans` | `<date>-<topic>.md` in [`docs/superpowers/plans/`](docs/superpowers/plans/) |
-| Build | `superpowers:subagent-driven-development` or `superpowers:executing-plans`, with `superpowers:test-driven-development` | commits, one task each |
+| Build | `superpowers:subagent-driven-development` or `superpowers:executing-plans`, with `superpowers:test-driven-development`; a new Source starts from `/new-source` | commits, one task each |
 | Review | `superpowers:requesting-code-review` (and `foundry-review` once the factory's F4 ships it) | findings fixed before merge |
 | Close | `superpowers:verification-before-completion`, `superpowers:finishing-a-development-branch` | the gate green, the roadmap row updated |
 
