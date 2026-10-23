@@ -289,7 +289,9 @@ def _cut(statement: str, over: int) -> str:
 def fit_staged(vault, run_id: str) -> int:
     """A brief's staged Now pages: each open line the run added over MAX_LINE gets its statement cut as add's fit
     does, keeping its clock and parenthesis, so one long line no longer rejects the whole brief (the publish gate's
-    cap is unchanged). A line the live page already holds is left as it is. Returns the lines cut."""
+    cap is unchanged). A line the live page already holds, one the re-render would change (text after the
+    parenthesis, an invalid [due::]) and one the cut cannot bring under the cap are left for the gate. Returns the
+    lines cut."""
     cut = 0
     for partition in PARTITIONS:
         path = Path(vault) / "wiki" / ".staging" / run_id / "wiki" / partition / "Now.md"
@@ -298,14 +300,17 @@ def fit_staged(vault, run_id: str) -> int:
         kept = {line.rstrip() for line in read(vault, partition).split("\n")}
         lines, before = path.read_text(encoding="utf-8").split("\n"), cut
         for i, line in enumerate(lines):
-            m = parse(line) if line.startswith("- [ ] ") and line.rstrip() not in kept else None
-            if m is None or len(line.rstrip()) <= MAX_LINE:
+            line = line.rstrip()
+            m = LINE.match(line) if line.startswith("- [ ] ") and line not in kept else None
+            if m is None or len(line) <= MAX_LINE:
                 continue
             bare, rec, due = fields(m.group("statement"))
-            args = (m.group("kind"), m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
-            over = len(render(args[0], bare, *args[1:])) - MAX_LINE
-            lines[i] = render(args[0], _cut(bare, over) if over > 0 else bare, *args[1:])
-            cut += 1
+            rest = (m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
+            if render(m.group("kind"), bare, *rest) != line:
+                continue
+            new = render(m.group("kind"), _cut(bare, len(line) - MAX_LINE), *rest)
+            if len(new) <= MAX_LINE:
+                lines[i], cut = new, cut + 1
         if cut > before:
             path.write_text("\n".join(lines), encoding="utf-8")
     return cut
