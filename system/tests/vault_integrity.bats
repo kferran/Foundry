@@ -468,7 +468,7 @@ sealed_problems() {
   # 15,000 over system/scripts, system/hooks and .claude/commands (owner, 2026-10-22; 14,906 at fd59bc5, 14,860 with F3): the cap
   # returns after its removal on 2026-10-21 (#323, #324 and #328 took scripts alone to 13,966). The #122 sweep lowers it.
   # 15,000 -> 15,100 (factory F5 PR 1, owner to approve at merge): one Now check for every writer (redaction, cap, walls,
-  # the page's symlink test) and the shared once-a-day alert took core from 14,946 to 15,041 lines.
+  # the page's symlink test) and the shared once-a-day alert took core from 14,946 to 15,047 lines.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"

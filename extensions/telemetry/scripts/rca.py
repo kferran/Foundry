@@ -35,6 +35,11 @@ def target(partition: str, stem: str) -> tuple:
     return partition, stem
 
 
+def refused(intake, exc) -> None:
+    alert(VAULT, intake.today(), intake.dt().strftime("%H:%M:%S"), "rca", f"a Now line was refused ({exc})",
+          key="a Now line was refused")
+
+
 def main(argv) -> int:
     try:
         if argv[1:] == ["tick"]:
@@ -59,12 +64,15 @@ def main(argv) -> int:
                 try:
                     rca.reopen(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
                 except ValueError as exc:   # the reason only, never the line (factory F5 spec §4.2)
-                    alert(VAULT, intake.today(), intake.dt().strftime("%H:%M:%S"), "rca",
-                          f"a Now line was refused ({exc})", key="a Now line was refused")
+                    refused(intake, exc)
+                    raise rca.Fail(1, f"the Now check refused the reason ({exc})")
         elif len(argv) == 5 and argv[1] == "filed" and rca.KEY.match(argv[4]):
             intake = Intake(VAULT)
             with intake.lock("run.lock", timeout=FILED_LOCK_WAIT):
-                rca.filed(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
+                try:
+                    rca.filed(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
+                except ValueError as exc:   # the note holds the key; only the Now line's stamp is missing
+                    refused(intake, exc)
             for marker in ("key", "attempt"):  # a key written back, by rca_file.sh or by hand, ends the filing
                 (VAULT / "system" / "logs" / "rca" / f"{argv[2]}-{argv[3]}.{marker}").unlink(missing_ok=True)
         else:

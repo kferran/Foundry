@@ -39,6 +39,7 @@ SINCE = re.compile(r"\s*_\(open since (\d{4}-\d{2}-\d{2})(?:, \d+ days?)?\)_")
 REC = re.compile(r"\[rec::\s*([^\[\]\n]*[^\[\]\s])\s*\]", re.IGNORECASE)
 DUE = re.compile(r"\[due::\s*(\d{4}-\d{2}-\d{2})\s*\]", re.IGNORECASE)
 FIELD_KEY = re.compile(r"\[(?:rec|due)::", re.IGNORECASE)
+MARKER = re.compile(r"\[(REDACTED:\w+|PRIVATE)\]")   # what redact_credentials writes in place of a secret
 # A line now.py wrote, with text appended after its parenthesis by hand (#211): it no longer parses.
 SCRIPT_META = re.compile(r"^- \[.\] (?:owed|waiting|draft): .*?\((?:[^(),]+, )?since \d{4}-\d{2}-\d{2}[^()]*\)(?=\s*\S)")
 
@@ -228,7 +229,7 @@ def screen_fields(statement: str, who: str = "", evidence: str = "", rec: str = 
     """(statement, who, evidence, rec) with credential-shaped text redacted in each field before the line is rendered,
     so a redaction never eats the line's parenthesis (factory F5 spec §4.1). rec keeps no bracket ([rec::] cannot hold
     one); evidence that redaction would change is dropped."""
-    rec = re.sub(r"\[(REDACTED:\w+)\]", r"\1", redact_credentials(rec))
+    rec = MARKER.sub(r"\1", redact_credentials(rec))
     evidence = "" if redact_credentials(evidence) != evidence else evidence
     return redact_credentials(statement), redact_credentials(who), evidence, rec
 
@@ -333,7 +334,11 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
 
 
 def _cut(statement: str, over: int) -> str:
-    return statement[:max(len(statement) - over - 1, 40)].rstrip() + "…"
+    end = max(len(statement) - over - 1, 40)
+    for m in MARKER.finditer(statement):   # never split a redaction marker: half of one reads as text again
+        if m.start() < end < m.end():
+            end = m.start()
+    return statement[:end].rstrip() + "…"
 
 
 def fit_staged(vault, run_id: str) -> int:

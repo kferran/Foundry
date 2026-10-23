@@ -892,3 +892,14 @@ def test_fit_staged_redacts_and_cuts_added_lines(vault):
     assert KEY not in lines[-2]
     assert len(lines[-2]) <= now.MAX_LINE
     assert lines[-2].endswith(f"e… (since {TODAY})")
+
+
+@pytest.mark.parametrize("secret", [f"token: {KEY}", f"authorization: bearer {KEY}", f"password={KEY}", f"pwd={KEY}",
+                                    "<private>x</private>", f"see token: {KEY} now"])
+def test_screen_is_stable_on_a_second_pass_wherever_the_cut_lands(vault, secret):
+    # fit_staged writes the first pass and the gate compares a second: any change rejects the whole brief.
+    for pad in range(200, 300):
+        line = now.render("owed", f"{'p' * pad} {secret} tail words", "2026-10-01", rec="use <private>x</private>")
+        once = now.screen(vault, "work", line)
+        assert now.screen(vault, "work", once) == once, (pad, once)
+        assert now.fields(now.LINE.match(once).group("statement"))[1] == "use PRIVATE"

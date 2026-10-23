@@ -168,7 +168,7 @@ def reopen(vault, partition: str, stem: str, reason: str, today: str) -> None:
     """Under run.lock, after a rejected create: the note goes back to draft and its Now line is unticked with the
     reason in its statement, so nothing retries until you tick it again (#175)."""
     set_scalar(note_path(vault, partition, stem), "status", "draft")
-    why = " ".join(re.sub(r"[()]", "", reason).split())[:160]
+    why, refused = " ".join(re.sub(r"[()]", "", reason).split())[:160], None
     lines = nowmod.read(vault, partition).split("\n")
     for i, line in enumerate(lines):
         m = nowmod.LINE.match(line)
@@ -178,10 +178,15 @@ def reopen(vault, partition: str, stem: str, reason: str, today: str) -> None:
             bare, rec, due = nowmod.fields(m.group("statement"))
             bare = re.sub(r": not filed \d{4}-\d{2}-\d{2}, .*$", "", bare)
             statement = nowmod.screen_fields(f"{bare}: not filed {today}, {why}")[0]
-            lines[i] = nowmod.screen_line(vault, partition, nowmod.render(
-                m.group("kind"), statement, m.group("since"), m.group("who") or "", m.group("evidence"), rec, due),
-                fit=True)
+            try:
+                lines[i] = nowmod.screen_line(vault, partition, nowmod.render(
+                    m.group("kind"), statement, m.group("since"), m.group("who") or "", m.group("evidence"), rec, due),
+                    fit=True)
+            except ValueError as exc:   # unticked as it stands, without the reason, so nothing retries the filing
+                lines[i], refused = f"- [ ] {nowmod.STAMP.sub('', line)[6:].rstrip()}", exc
     nowmod.write(vault, partition, "\n".join(lines))
+    if refused:
+        raise refused
 
 
 def filed(vault, partition: str, stem: str, key: str, today: str) -> None:
