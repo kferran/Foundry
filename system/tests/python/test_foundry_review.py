@@ -46,6 +46,13 @@ SEEDS = [
     ("gate-escape", {"system/scripts/x.py": '(root / "wiki/work/x.md").write_text(body)\n'}, "system/scripts/x.py:1"),
     ("gate-escape", {".claude/settings.json": '"Edit(/wiki/**)"\n'}, ".claude/settings.json:1"),
     ("alert-text", {"extensions/x/scripts/x.sh": 'alert_once "x failed:" "$subject"\n'}, "extensions/x/scripts/x.sh:1"),
+    ("alert-text", {"extensions/x/scripts/x.sh": 'alert_once "x failed:" "$note"\n'}, "extensions/x/scripts/x.sh:1"),
+    ("gate-escape", {"system/scripts/x.py": '(vault / "wiki" / p / "x.md").write_text(body)\n'}, "system/scripts/x.py:1"),
+    ("computed-session", {"system/scripts/x.sh": 'timeout 60 "$tool" -p "$p"\n'}, "system/scripts/x.sh:1"),
+    ("computed-session", {"system/scripts/x.sh": '"${TOOL:-claude}" -p "$p"\n'}, "system/scripts/x.sh:1"),
+    ("computed-session", {"system/scripts/x.sh": 'exec "$tool" -p "$p"\n'}, "system/scripts/x.sh:1"),
+    ("computed-session", {"system/scripts/x.sh": '"${cmd[@]}" -p "$p"\n'}, "system/scripts/x.sh:1"),
+    ("skip-reason", {"system/tests/x.bats": "  [ -x foo ] || skip\n"}, "system/tests/x.bats:1"),
     ("sleep-race", {"system/tests/x.bats": "  sleep 2\n"}, "system/tests/x.bats:1"),
     ("skip-reason", {"system/tests/x.bats": "  skip\n"}, "system/tests/x.bats:1"),
     ("skip-reason", {"system/tests/python/test_x.py": "@pytest.mark.skip()\n"}, "system/tests/python/test_x.py:1"),
@@ -69,6 +76,9 @@ NEAR_MISSES = [
     ("read-source-check", {"extensions/x/scripts/x.sh": 'fetch_check_arg "$@"\nconnector_run "$p" "$work"\n'}, {}),
     ("computed-session", {"system/scripts/x.sh": '"${CLAUDE_BIN:-claude}" -p "$prompt"\n'}, {}),
     ("computed-config", {"system/scripts/x.py": "from vaultlib.api import config\n"}, {}),
+    ("computed-config", {"system/scripts/x.py": 'log(f"bad config: {e}")\n'}, {}),
+    ("gate-escape", {"system/scripts/x.py": 'open("wiki/work/x.md").read()\n'}, {}),
+    ("skip-reason", {"system/tests/python/test_x.py": "@pytest.mark.skipif(cond,\n    reason=\"vault\")\n"}, {}),
 ]
 
 
@@ -99,7 +109,17 @@ def test_a_clean_diff_exits_0(tmp_path):
 def test_an_unknown_base_exits_2(tmp_path):
     result = case(tmp_path, {}, {"docs/x.md": "words\n"}, args=("--base", "nope"))
     assert result.returncode == 2
-    assert result.stderr.strip()
+    assert "review_diff:" in result.stderr
+
+
+def test_a_bad_argument_exits_2(tmp_path):
+    assert case(tmp_path, {}, {"docs/x.md": "words\n"}, args=("--base",)).returncode == 2
+
+
+def test_outside_a_repository_exits_2(tmp_path):
+    result = subprocess.run([sys.executable, str(SCRIPT)], cwd=tmp_path, capture_output=True, text=True)
+    assert result.returncode == 2
+    assert "not a git repository" in result.stderr
 
 
 def test_no_origin_falls_back_to_master(tmp_path):

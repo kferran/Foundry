@@ -6,6 +6,7 @@
 Run with the working directory inside the repository under review. Prints one `<check>: <path>:<line>: <text>` per
 hit, then `<check>: pass` for each check with no hits. Exit 0 no hits, 1 hits, 2 could not run. The checks flag
 candidates for a human to read; they are regexes and err toward flagging."""
+import argparse
 import os
 import re
 import subprocess
@@ -15,7 +16,7 @@ RUNNERS = ("system/scripts/lib_connector.sh", "system/scripts/run_headless.sh",
            "system/scripts/vaultlib/nightshift_session.py")
 VISIBLE = re.compile(r"(system/(scripts|hooks|systemd|schemas)/|\.claude/(commands|skills)/|CLAUDE\.md$|"
                      r"extensions/[^/]+/(?!tests/))")
-ALLOWED = re.compile(r"(rc|n|count|total|num|status|code)\w*|\w+_(rc|n|count|status|code)|"
+ALLOWED = re.compile(r"(rc|n|code|status)(_\w+)?|(count|total|num)\w*|\w+_(rc|n|count|status|code)|"
                      r"CONNECTOR_REASON|FETCH_REASON|reason|len\(.*\)")
 
 
@@ -75,9 +76,9 @@ def now_redaction(adds, paths):
 
 
 def gate_escape(adds, paths):
-    write = re.compile(r"write_text|write_bytes|open\([^)]*[\"'][wa]|(?<![-=>2&])>>?(?![&=>])|\btee\b|\bcp\b|\bmv\b|"
+    write = re.compile(r"write_text|write_bytes|open\([^)]*,\s*[\"'][wa]|(?<![-=>2&])>>?(?![&=>])|\btee\b|\bcp\b|\bmv\b|"
                        r"os\.replace")
-    wiki = re.compile(r"\b(wiki|briefings)/")
+    wiki = re.compile(r"\b(wiki|briefings)[\"']?\s*/")
     out = []
     for p, n, t in code(adds):
         if re.search(r"settings[\w.-]*\.json$", p):
@@ -106,10 +107,10 @@ def sleep_race(adds, paths):
 def skip_reason(adds, paths):
     out = []
     for p, n, t in code(adds):
-        bare = p.endswith((".bats", ".sh")) and re.fullmatch(r"\s*skip\s*", t)
+        bare = p.endswith((".bats", ".sh")) and re.search(r"(^|\|\||&&|;)\s*skip\s*$", t)
         # ponytail: a call that continues on the next line is not judged; read it by hand.
         py = p.endswith(".py") and (re.search(r"\bskip\(\s*\)|mark\.skip\b(?!if)(?!\()", t)
-                                    or re.search(r"skipif\(", t) and not t.rstrip().endswith("(") and "reason" not in t)
+                                    or re.search(r"skipif\(", t) and not t.rstrip().endswith(("(", ",")) and "reason" not in t)
         if bare or py:
             out.append(hit("skip-reason", p, n, t))
     return out
@@ -129,8 +130,10 @@ def changelog_label(adds, paths):
 def read_source_check(adds, paths):
     out = []
     for p, status in paths.items():
+        if status != "A":
+            continue
         text = head_text(p)
-        if status != "A" or "--check" in text or "fetch_check_arg" in text:
+        if "--check" in text or "fetch_check_arg" in text:
             continue
         out += [hit("read-source-check", p, n, t) for q, n, t in code(adds)
                 if q == p and re.search(r"\bconnector_run\b", t)][:1]
@@ -138,7 +141,8 @@ def read_source_check(adds, paths):
 
 
 def computed_session(adds, paths):
-    sh = re.compile(r"(?:^|[|;&(]|\$\()\s*(?:\"\$\{?\w+\}?\"|\$\{?\w+\})\s[^#|;&]*?(?<=\s)(?:-p|--print)\b")
+    sh = re.compile(r"(?:^|[|;&(]|\$\()\s*(?:(?:exec|nohup|env|time)\s+|timeout\s+\S+\s+)*"
+                    r"\"?\$(?:\{[^}]*\}|\w+)\"?\s[^#|;&]*?(?<=\s)(?:-p|--print)\b")
     py = re.compile(r"\[\s*(?![\"'])\w[\w.()]*\s*,[^\]]*[\"'](?:-p|--print)[\"']")
     out = []
     for p, n, t in code(adds):
@@ -149,7 +153,7 @@ def computed_session(adds, paths):
 
 
 def computed_config(adds, paths):
-    built = re.compile(r"[\"']\s*\+\s*[\"']\.md|\bf[\"'][^\"']*config|with_suffix\(\s*[\"']\.md")
+    built = re.compile(r"[\"']\s*\+\s*[\"']\.md|\bf[\"'][^\"']*config[^\"']*\.md|with_suffix\(\s*[\"']\.md")
     return [hit("computed-config", p, n, t) for p, n, t in code(adds)
             if p.endswith(".py") and not p.endswith("vaultlib/config.py") and "config" in t and built.search(t)]
 
@@ -169,7 +173,10 @@ def merge_base(base):
 
 
 def main(argv):
-    base = argv[argv.index("--base") + 1] if "--base" in argv[:-1] else None
+    parser = argparse.ArgumentParser(description="Run the foundry-review diff checks on HEAD against a base.")
+    parser.add_argument("--base", help="the base ref (default origin/master, then master)")
+    base = parser.parse_args(argv).base   # a bad argument exits 2
+    git("rev-parse", "--git-dir")         # outside a repository: exit 2 with git's own message
     mb = merge_base(base)
     diff = git("diff", "-U0", "--no-color", "--no-ext-diff", "--no-renames", f"{mb}..HEAD").stdout
     status = {}
