@@ -903,3 +903,78 @@ def test_screen_is_stable_on_a_second_pass_wherever_the_cut_lands(vault, secret)
         once = now.screen(vault, "work", line)
         assert now.screen(vault, "work", once) == once, (pad, once)
         assert now.fields(now.LINE.match(once).group("statement"))[1] == "use PRIVATE"
+
+
+# --- now.py list --json (#375) ---
+
+def json_page(vault, lines, partition="work"):
+    write(vault, f"wiki/{partition}/Now.md",
+          f"---\ntype: concept\ntags: [now]\ncompiled_at: \"{TODAY}\"\npartition: {partition}\n---\n\n"
+          "## Needs you\n" + "\n".join(lines) + "\n\n## Waiting\n")
+
+
+def test_list_json_parses_fields_and_notes(vault):
+    import json
+    prepare(vault)
+    json_page(vault, [
+        "- [ ] owed: Reply on the cap [rec:: 3: shorter queue] [due:: 2026-10-08] "
+        "(Blake Sample, since 2026-10-01, https://github.com/acme/shop/pull/7)",
+        "  - 2026-10-02: asked for metrics",
+        "  - free text note",
+        "- [x] owed: Done already (since 2026-10-01) _(closed: ticked 2026-10-02)_",
+    ])
+    r = cli(vault, "list", "--json", "--date", TODAY)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["v"] == 1 and out["date"] == TODAY and set(out["partitions"]) == {"work", "personal"}
+    [line] = out["partitions"]["work"]["lines"]
+    assert line == {
+        "kind": "owed", "section": "Needs you", "statement": "Reply on the cap", "who": "Blake Sample",
+        "since": "2026-10-01", "evidence": "https://github.com/acme/shop/pull/7", "rec": "3: shorter queue",
+        "due": "2026-10-08", "over": 1, "band": "1-7",
+        "notes": [{"date": "2026-10-02", "text": "asked for metrics"}, {"date": "", "text": "free text note"}],
+        "raw": "- [ ] owed: Reply on the cap [rec:: 3: shorter queue] [due:: 2026-10-08] "
+               "(Blake Sample, since 2026-10-01, https://github.com/acme/shop/pull/7)",
+    }
+    assert out["partitions"]["work"]["unparsed"] == []
+    assert out["partitions"]["personal"] == {"lines": [], "unparsed": []}
+
+
+def test_list_json_bands_match_overdue(vault):
+    import json
+    prepare(vault)
+    dues = {"2026-10-06": "1-7", "2026-09-29": "8-30", "2026-08-30": "30+", "2026-10-20": None}
+    json_page(vault, [f"- [ ] owed: Item {d} [due:: {d}] (since 2026-08-01)" for d in dues])
+    out = json.loads(cli(vault, "list", "--json", "--date", TODAY).stdout)
+    lines = out["partitions"]["work"]["lines"]
+    assert {ln["due"]: ln["band"] for ln in lines} == dues
+    assert [ln["over"] for ln in lines] == [3, 10, 40, None]
+    block = now.overdue(vault, TODAY)
+    for heading, d in zip(now.OVERDUE_HEADINGS, ["2026-10-06", "2026-09-29", "2026-08-30"]):
+        assert f"Item {d}" in block.split(heading)[1].split("\n\n")[0]
+
+
+def test_list_json_keeps_unparsed_lines_and_counts_every_open_line(vault):
+    import json
+    prepare(vault)
+    json_page(vault, ["- [ ] owed: Parsed (since 2026-10-01)", "- [ ] a hand-written line"])
+    out = json.loads(cli(vault, "list", "--json", "--partition", "work").stdout)
+    assert set(out["partitions"]) == {"work"}
+    work = out["partitions"]["work"]
+    assert work["unparsed"] == ["- [ ] a hand-written line"]
+    assert len(work["lines"]) + len(work["unparsed"]) == len(now.open_lines(page(vault)))
+    assert work["lines"][0]["due"] == "" and work["lines"][0]["over"] is None and work["lines"][0]["band"] is None
+
+
+def test_list_json_missing_pages_are_empty(vault):
+    import json
+    prepare(vault)
+    out = json.loads(cli(vault, "list", "--json", "--date", TODAY).stdout)
+    assert out["partitions"] == {"work": {"lines": [], "unparsed": []}, "personal": {"lines": [], "unparsed": []}}
+
+
+def test_list_without_json_is_unchanged(vault):
+    prepare(vault)
+    json_page(vault, ["- [ ] owed: One (since 2026-10-01)", "  - 2026-10-02: a note", "- [ ] waiting: Two (Sam, since 2026-10-01)"])
+    assert cli(vault, "list").stdout == "## work\n- [ ] owed: One (since 2026-10-01)\n- [ ] waiting: Two (Sam, since 2026-10-01)\n"
+    assert cli(vault, "list", "--date", "bad", "--json").returncode == 2

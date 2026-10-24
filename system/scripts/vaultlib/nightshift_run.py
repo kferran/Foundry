@@ -72,11 +72,12 @@ def _parser():
     a.add_argument("--model", default="sonnet")
     c = sub.add_parser("check")
     c.add_argument("note")
-    sub.add_parser("list")
+    sub.add_parser("list").add_argument("--json", action="store_true")
     x = sub.add_parser("cancel")
     x.add_argument("id")
     r = sub.add_parser("report")
     r.add_argument("date", nargs="?")
+    r.add_argument("--json", action="store_true")
     sub.add_parser("selftest")
     return p
 
@@ -910,6 +911,12 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
         errs = nc.check(vault, fm, body, Path(a.note).resolve())
         print("\n".join(f"not ready: {e}" for e in errs) or "ready")
         return 2 if errs else 0
+    if cmd == "list" and a.json:  # read-only (#375)
+        keys = ("id", "partition", "kind", "state", "start", "start_at", "queued_at", "started_at", "finished_at",
+                "repo", "base", "result", "reason")
+        items = [{k: (str(fm[k]) if fm.get(k) not in (None, "") else None) for k in keys} for _, fm, _ in ni.items(vault)]
+        print(json.dumps({"v": 1, "items": items}, ensure_ascii=False))
+        return 0
     if cmd == "list":
         for p, fm, _ in ni.items(vault):
             print(f"{fm.get('id')}  {fm.get('kind')}  {fm.get('state')}  {fm.get('start')}  {fm.get('result') or fm.get('reason') or ''}")
@@ -920,6 +927,9 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
             print(f"no item {a.id}")
             return 2
         ni.update(hits[0], state="cancelled")
+        return 0
+    if cmd == "report" and a.json:  # built from the files without writing the report (#375)
+        print(json.dumps({"v": 1, **rep.data(vault, a.date or ctx.date)}, ensure_ascii=False))
         return 0
     if cmd == "report":
         print(rep.write(vault, a.date or ctx.date).read_text())

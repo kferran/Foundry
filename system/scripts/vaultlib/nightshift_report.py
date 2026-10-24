@@ -80,24 +80,36 @@ def _hm(value, tz) -> str:
         return ""
 
 
-def build(vault, date: str) -> str:
+def data(vault, date: str) -> dict:
+    """The report as nightshift.py report --json prints it (#375), read from the files only; build() formats it."""
     hp = Path(vault) / DIR / f"health-{date}.json"
     health = json.loads(hp.read_text(encoding="utf-8")) if hp.is_file() else {}
+    held = health.pop("held", None) or None
+    outcomes = _outcomes(vault, date)
+    return {"date": date, "health": health, "held": held,
+            "needs": [{"id": o["id"], "text": _clean(n)} for o in outcomes for n in o.get("needs") or []],
+            "items": [{"id": o["id"], "kind": o["kind"], "state": o["state"], "reason": _clean(o.get("reason")) or None,
+                       "started_at": o.get("started_at") or None, "finished_at": o.get("finished_at") or None,
+                       "result": _clean(o.get("result")) or None, "notes": _clean(o.get("notes")) or None}
+                      for o in outcomes]}
+
+
+def build(vault, date: str) -> str:
+    d = data(vault, date)
+    health = d["health"]
     parts = [f"{k.replace('_', ' ')} {health[k]}" for k in HEALTH_ORDER if health.get(k)]
     lines = [f"# Work Orders: {date}", "> Health: " + (" · ".join(parts) if parts else "not checked"),
-             *([f"> Held: {health['held']}"] if health.get("held") else []), ""]
-    outcomes = _outcomes(vault, date)
-    if not outcomes:
+             *([f"> Held: {d['held']}"] if d["held"] else []), ""]
+    if not d["items"]:
         return "\n".join(lines + ["Nothing ran.", ""])
-    needs = [f"- [ ] {_clean(n)} ({o['id']})" for o in outcomes for n in o.get("needs") or []]
-    if needs:
-        lines += ["## Needs you", *needs, ""]
+    if d["needs"]:
+        lines += ["## Needs you", *[f"- [ ] {n['text']} ({n['id']})" for n in d["needs"]], ""]
     tz = ZoneInfo(str(nc.config(vault).get("timezone") or "UTC"))
     lines += ["## Items", "| Item | Kind | Result | Time | Notes |", "|---|---|---|---|---|"]
-    for o in outcomes:
-        state = o["state"] + (f" ({o['reason']})" if o.get("reason") else "")
-        span = f"{_hm(o.get('started_at'), tz)}–{_hm(o.get('finished_at'), tz)}"
-        lines.append(f"| {o['id']} | {o['kind']} | {_clean(state)} | {span} | {_clean(o.get('result') or o.get('notes'))} |")
+    for o in d["items"]:
+        state = o["state"] + (f" ({o['reason']})" if o["reason"] else "")
+        span = f"{_hm(o['started_at'], tz)}–{_hm(o['finished_at'], tz)}"
+        lines.append(f"| {o['id']} | {o['kind']} | {_clean(state)} | {span} | {o['result'] or o['notes'] or ''} |")
     return "\n".join(lines) + "\n"
 
 

@@ -4,7 +4,11 @@
 Usage: active_projects.py YYYY-MM-DD   prints projects.md: for wiki/<partition>/ActiveProjects.md in work and
 personal, the "## Active" entries in order, each with its first 3 open checkboxes and the first 3 open checkboxes
 under its "Decisions…" headings. Run from the vault root. Exit 0, 2 on a bad date, 1 on any other failure.
+       active_projects.py YYYY-MM-DD --json
+                                     the same as one JSON object (#375): {"v": 1, "date", "partitions": {<p>:
+                                     {"projects", "also_active"}}, "notices"}, items uncut
 """
+import json
 import re
 import sys
 from datetime import date
@@ -87,29 +91,40 @@ def page_items(text: str) -> tuple[list[str], list[str]]:
     return nxt, decisions
 
 
-def project_block(raw: str, focus: str, text: str) -> list[str]:
-    """At most MAX_NEXT next actions and MAX_DECISIONS decisions, each cut to one brief item (phase A spec §3.1)."""
+def project_data(raw: str, path: str, focus: str, text: str) -> dict:
+    """One project as --json prints it (#375): at most MAX_NEXT next actions and MAX_DECISIONS decisions, uncut."""
     nxt, decisions = page_items(text)
-    lines = ["", f"### [[{raw}]]" + (f": {focus}" if focus else ""), "Next:"]
-    lines += [f"- {cut(t)}" for t in nxt] or ["- None open."]
-    if decisions:
-        lines += ["Decisions waiting:", *[f"- {cut(t)}" for t in decisions[:MAX_DECISIONS]]]
-        if len(decisions) > MAX_DECISIONS:
-            lines.append(f"- and {len(decisions) - MAX_DECISIONS} more decisions on the page")
+    return {"link": raw, "path": path, "focus": focus, "next": nxt, "decisions": decisions[:MAX_DECISIONS],
+            "decisions_more": max(len(decisions) - MAX_DECISIONS, 0), "stale": None}
+
+
+def render_project(project: dict) -> list[str]:
+    """The brief's block for one project, each item cut to one brief item (phase A spec §3.1)."""
+    lines = ["", f"### [[{project['link']}]]" + (f": {project['focus']}" if project["focus"] else ""), "Next:"]
+    lines += [f"- {cut(t)}" for t in project["next"]] or ["- None open."]
+    if project["decisions"]:
+        lines += ["Decisions waiting:", *[f"- {cut(t)}" for t in project["decisions"]]]
+        if project["decisions_more"]:
+            lines.append(f"- and {project['decisions_more']} more decisions on the page")
     return lines
 
 
-def partition_blocks(part: str, resolver: Resolver, notices: list[str]) -> list[str]:
+def project_block(raw: str, focus: str, text: str) -> list[str]:
+    return render_project(project_data(raw, "", focus, text))
+
+
+def partition_data(part: str, resolver: Resolver, notices: list[str]):
+    """The partition's projects in list order, or None when it has no ActiveProjects list."""
     listing = Path("wiki") / part / LIST_NAME
     if not listing.is_file():
-        return []
+        return None
     list_text = listing.read_text(encoding="utf-8")
     notices += [f"- {part}: {problem}" for problem in list_problems(list_text)]
     entries = active_entries(list_text)
     if len(entries) > MAX_ACTIVE:
         notices.append(f"- {part}: only the first {MAX_ACTIVE} active projects are shown.")
         entries = entries[:MAX_ACTIVE]
-    lines = []
+    projects = []
     for raw, focus in entries:
         link = f"[[{raw}]]"
         path, ambiguous = resolver.resolve(wiki_target(raw), listing.as_posix(), "link", len)
@@ -128,23 +143,33 @@ def partition_blocks(part: str, resolver: Resolver, notices: list[str]) -> list[
         except (OSError, UnicodeDecodeError):
             notices.append(f"- {part}: {link} could not be read.")
             continue
-        lines += project_block(raw, focus, text)
-    return ["", f"## {part}", *lines] if lines else []
+        projects.append(project_data(raw, path, focus, text))
+    return projects
 
 
 def main(argv) -> int:
+    as_json = argv[2:] == ["--json"]
     try:
-        day = date.fromisoformat(argv[1]) if len(argv) == 2 else None
+        day = date.fromisoformat(argv[1]) if len(argv) == 2 or as_json else None
     except ValueError:
         day = None
     if day is None:
-        print("usage: active_projects.py YYYY-MM-DD", file=sys.stderr)
+        print("usage: active_projects.py YYYY-MM-DD [--json]", file=sys.stderr)
         return 2
     files = [p.as_posix() for p in Path("wiki").rglob("*.md") if not PRIVATE.match(p.as_posix())] if Path("wiki").is_dir() else []
     resolver = Resolver(files, name_exclude=("wiki/.staging/",))
-    notices, blocks = [], []
+    notices, data = [], {}
     for part in PARTITIONS:
-        blocks += partition_blocks(part, resolver, notices)
+        projects = partition_data(part, resolver, notices)
+        if projects is not None:
+            data[part] = {"projects": projects, "also_active": []}
+    if as_json:
+        print(json.dumps({"v": 1, "date": day.isoformat(), "partitions": data, "notices": notices}, ensure_ascii=False))
+        return 0
+    blocks = []
+    for part, d in data.items():
+        lines = [line for project in d["projects"] for line in render_project(project)]
+        blocks += ["", f"## {part}", *lines] if lines else []
     print(f"# Active projects for {day}")
     print("\n".join(blocks) if blocks else "\nNone.")
     if notices:

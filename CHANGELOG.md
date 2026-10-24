@@ -13,6 +13,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## 2026-10-24
 - Changed: FOUNDRY.md opens with **What the Foundry offers**: every feature with what turns it on, the unit that runs it, its smoke row and its output, and what each extension needs. **The factory line**, under Development, is the builders' entry point and ends with how to add a Source. A test fails when a command, skill, extension or unit ships without its row. (#331)
 - Changed: the today file masks credentials in an item's link, as it does its text, and refuses a symlinked file. Interactive `/brief`, `/debrief` and `/rca` end with `system/scripts/lint_vault.sh`, as `/ingest` does. Lint walls every note but `wiki/Index.md`, as the publish gate does: a note of `type: index` elsewhere that links across partitions is now a lint error. (#310)
+- Added: `--json` on `now.py list`, `active_projects.py`, `nightshift.py list` and `nightshift.py report`, for the console extension's reads (#377). Each prints one object starting `"v": 1`; text output is unchanged, and `report --json` writes no report file. (#378)
 
 ## 2026-10-23
 - Added: the `health` extension. Monday's brief carries a 🩺 Health scorecard of the platform and the factory (source ticks, headless runs, the brief's time and size, the Now pages, cost, sync blocks, budget headroom and, with `gh`, defect recurrences, first-push CI and review fixes); other days show one Pipeline line per metric past its threshold. Off until listed. (#374)
