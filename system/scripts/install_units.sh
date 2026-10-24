@@ -118,20 +118,19 @@ if [[ "$role" != client && "$(config_get update_enabled true)" == true ]]; then
   ENABLE+=(foundry-update.timer)
 fi
 # Extension units (extensions spec §3): extensions/<name>/units/<unit>.{service,timer}.in for each unit an enabled
-# extension lists for this role. A list that fails decides nothing (audit C5): nothing is changed.
+# extension lists for this role. An always-on unit (`timer: false`, console spec §8.2) is its .service alone,
+# enabled itself, and is the only kind a client gets. A list that fails decides nothing (audit C5): nothing is changed.
 declare -A EXT_TEMPLATE=()
-if [[ "$role" != client ]]; then
-  ext_units="$(system/scripts/extensions.py units "$role" 2>/dev/null)" \
-    || die 1 "extensions.py units failed, so the extension units cannot be decided; nothing was changed"
-  while IFS=$'\t' read -r ext unit; do
-    [[ -n "$ext" && -n "$unit" ]] || continue
-    for kind in service timer; do
-      UNITS+=("$unit.$kind")
-      EXT_TEMPLATE["$unit.$kind"]="extensions/$ext/units/$unit.$kind.in"
-    done
-    ENABLE+=("$unit.timer")
-  done <<< "$ext_units"
-fi
+ext_units="$(system/scripts/extensions.py units "$role" 2>/dev/null)" \
+  || die 1 "extensions.py units failed, so the extension units cannot be decided; nothing was changed"
+while IFS=$'\t' read -r ext unit form; do
+  [[ -n "$ext" && -n "$unit" ]] || continue
+  if [[ "$form" == service ]]; then kinds=(service); ENABLE+=("$unit.service"); else kinds=(service timer); ENABLE+=("$unit.timer"); fi
+  for kind in "${kinds[@]}"; do
+    UNITS+=("$unit.$kind")
+    EXT_TEMPLATE["$unit.$kind"]="extensions/$ext/units/$unit.$kind.in"
+  done
+done <<< "$ext_units"
 # A server syncs around every run (two-machine spec §5.2): one drop-in per run service, with the
 # service's own prep step and a timeout raised by two sync deadlines plus margin.
 DROPINS=()
@@ -157,7 +156,7 @@ if [[ "$mode" == update ]]; then
   UNITS=("${keep[@]}") ENABLE=("${keep_enable[@]}") DROPINS=("${keep_dropins[@]}")
 fi
 
-if [[ "$role" == client ]]; then
+if [[ "$role" == client && ${#UNITS[@]} -eq 0 ]]; then
   echo "install_units: machine_role client: no units"
   if [[ "$mode" == install ]]; then
     mapfile -t stale < <(owned_units)
@@ -177,6 +176,10 @@ SAFE='^/[A-Za-z0-9._/@+ -]+$'
 [[ "$VAULT_ROOT" =~ $SAFE ]] \
   || die 1 "the vault path contains characters a unit file cannot carry (allowed: letters, digits, space and . _ / @ + -): $VAULT_ROOT"
 claude_bin="$(command -v claude || true)"  # deliberately not symlink-resolved: version-manager shims dispatch on their own path
+# A client's always-on units run no claude, so a client without it still installs them.
+if [[ "$role" == client && "$claude_bin" != /* ]]; then
+  claude_bin=/usr/bin/false
+fi
 [[ "$claude_bin" == /* ]] || die 1 "claude is not on PATH"
 [[ "$claude_bin" =~ $SAFE ]] || die 1 "the claude path contains characters a unit file cannot carry: $claude_bin"
 if ! out="$(config_validate 2>&1)"; then

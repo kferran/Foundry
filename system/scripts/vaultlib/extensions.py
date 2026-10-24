@@ -88,6 +88,13 @@ def _resolve(vault: Path):
     return {n: loadable[n] for n in order if n in loadable}, reasons
 
 
+def unit_kind(unit: dict) -> str:
+    """"service" for an always-on unit (`timer: false`, console spec §8.2), else "timer": a unit installed with its
+    timer, which is the only form it took before. The loader keeps scalars strings, so false arrives as "false"; a
+    timer that is neither true nor false keeps the timer form."""
+    return "service" if str(unit.get("timer")).lower() == "false" else "timer"
+
+
 def _field_reasons(name: str, data: dict) -> list:
     """Reasons for a field the loader ignores while the extension still loads (factory F2 §3.1)."""
     out = []
@@ -101,6 +108,14 @@ def _field_reasons(name: str, data: dict) -> list:
     imp = data.get("importer")
     if imp is not None and not (isinstance(imp, dict) and isinstance(imp.get("type"), str) and imp["type"]):
         out.append(f"{name}: importer needs a type string; nothing is routed to raw/{name}/")
+    for u in data.get("units") or []:
+        if not isinstance(u, dict):
+            continue
+        if "timer" in u and str(u["timer"]).lower() not in ("true", "false"):
+            out.append(f"{name}: unit {u.get('name')}: timer must be true or false; it is installed with its timer")
+        elif unit_kind(u) == "timer" and "client" in (u.get("roles") or []):
+            out.append(f"{name}: unit {u.get('name')} lists client, but a client runs only timer: false units; "
+                       f"it is not installed there")
     return out
 
 
