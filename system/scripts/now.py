@@ -20,6 +20,10 @@
   now.py archive --partition <p> --date YYYY-MM-DD
                                   moves closed lines and their notes to wiki/<p>/now-archive/<YYYY-MM>.md (brief prep)
   now.py list [--partition <p>]   the open lines; without --partition, both pages under "## <partition>"
+  now.py list [--partition <p>] --json [--date YYYY-MM-DD]
+                                  read-only: one JSON object, {"v": 1, "date", "partitions": {<p>: {"lines",
+                                  "unparsed"}}}; each line's kind, section, statement, who, since, evidence, rec, due,
+                                  days over and band (as of --date, today by default), notes and raw text (#375)
   now.py check                    close lines on checked evidence, stamp hand ticks (the intake timer runs it)
   now.py review --partition <p> [--stale-days N]
                                   read-only: lines closed by their evidence, open more than N days (14) with no
@@ -34,6 +38,7 @@
                                   (run_headless.sh runs it under its own run.lock, before publish)
 """
 import argparse
+import json
 import os
 import sys
 from datetime import date
@@ -67,7 +72,10 @@ n.add_argument("--text", required=True)
 ar = sub.add_parser("archive")
 ar.add_argument("--partition", required=True, choices=now.PARTITIONS)
 ar.add_argument("--date", required=True)
-sub.add_parser("list").add_argument("--partition", choices=now.PARTITIONS)
+ls = sub.add_parser("list")
+ls.add_argument("--partition", choices=now.PARTITIONS)
+ls.add_argument("--json", action="store_true")
+ls.add_argument("--date")
 sub.add_parser("check")
 r = sub.add_parser("review")
 r.add_argument("--partition", required=True, choices=now.PARTITIONS)
@@ -93,6 +101,14 @@ if args.cmd == "overdue":  # read-only, so no run.lock
     text = now.overdue(VAULT, args.date or intake.today())
     if text:
         print(text)
+    sys.exit(0)
+if args.cmd == "list" and args.json:  # read-only, so no run.lock
+    if args.date is not None and not now.is_date(args.date):
+        print("usage: now.py list [--partition <p>] [--json [--date YYYY-MM-DD]]", file=sys.stderr)
+        sys.exit(2)
+    day = args.date or intake.today()
+    parts = [args.partition] if args.partition else now.PARTITIONS
+    print(json.dumps({"v": 1, "date": day, "partitions": now.list_data(VAULT, parts, day)}, ensure_ascii=False))
     sys.exit(0)
 if args.cmd == "list":
     for part in [args.partition] if args.partition else now.PARTITIONS:
