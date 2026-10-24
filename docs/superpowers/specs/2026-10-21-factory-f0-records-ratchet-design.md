@@ -1,7 +1,7 @@
 # Factory F0: records and the ratchet
 
 **Date:** 2026-10-21
-**Status:** draft for the owner
+**Status:** approved and built (#312, #313, #315, #322, #325)
 **Program:** `docs/superpowers/2026-10-21-factory-plan.md` (phase F0)
 **Grill:** 2026-10-21, recorded in the program plan's `## Grill` section (the factory is the owner's idea).
 **Builder check:** 2026-10-21, five questions: sources and audit version, usage hook scope, timing ratchet scope, PR layout (settled in §3.2, §3.6, §3.7 and §4 as the builder's calls), tracking issues (the program plan's §5 covers them).

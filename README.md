@@ -24,4 +24,4 @@ An Obsidian + Claude Code "second brain" vault template. It runs on Linux (Arch 
 
 ## The manual
 
-Everything else (how it works, daily use, memory, machine roles, security and updating) is in [FOUNDRY.md](FOUNDRY.md).
+Everything else (how it works, daily use, memory, machine roles, security and updating) is in [FOUNDRY.md](FOUNDRY.md). Start with [What the Foundry offers](FOUNDRY.md#what-the-foundry-offers), every feature and what turns it on, and, to build on it, [The factory line](FOUNDRY.md#the-factory-line).

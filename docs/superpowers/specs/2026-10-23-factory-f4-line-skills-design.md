@@ -1,7 +1,7 @@
 # F4: the line's skills (`new-source`, `foundry-review`)
 
 **Date:** 2026-10-23
-**Status:** draft for the owner
+**Status:** approved and built (#359, #360, #362; connector-probe and live-acceptance still open on #309)
 **Program:** `docs/superpowers/2026-10-21-factory-plan.md` (phase F4, #309)
 **Grill:** 2026-10-21, recorded in the program plan's `## Grill` section: item 4 set F4's order (`new-source` and `foundry-review` first, with the spec template's blueprint checklist; `connector-probe` and `live-acceptance` after the first new feature built on the line). The factory is the owner's idea, approved with #304.
 **Builder check:** 2026-10-22, three questions, all settled as my calls in §6: the scaffold test once the brief is full, `changelog-label` in a vault, the acceptance run's tool and stopping point (plus the name rule, tightened). The owner settled two deviations from the plan's wording (§7).

@@ -264,31 +264,52 @@ boundary_rules() {
   [ -z "$bad" ]
 }
 
-# Each command, skill, Workcell and unit the tree ships that <manual> does not name; exits 1 when any is missing.
-# Units come only from the tree listing's `systemd/` line; a command or skill matches its whole name.
+# Each command, skill, Workcell, extension and unit the tree ships that <manual> does not name; exits 1 when any is
+# missing. Core units come only from the tree listing's `systemd/` line; extensions and their units only from the
+# "What the Foundry offers" section (#331), so a mention elsewhere does not count; a command or skill matches its
+# whole name.
 manual_drift() {
-  local bad="" units f n
+  local bad="" units offers f n
   units="$(grep -E '^ +systemd/ ' "$1" | grep -oE 'foundry-\{[a-z,]+\}' | tr -d '{}' | sed 's/^foundry-//' | tr ',' '\n')"
-  for f in .claude/commands/*.md .claude/skills/*/SKILL.md system/agents/workcells/*.md system/systemd/foundry-*.service.in; do
+  offers="$(sed -n '/^## What the Foundry offers$/,/^## /p' "$1")"
+  for f in .claude/commands/*.md .claude/skills/*/SKILL.md extensions/*/skills/*/SKILL.md system/agents/workcells/*.md \
+      system/systemd/foundry-*.service.in extensions/*/units/foundry-*.service.in extensions/*/extension.md; do
     case $f in
       .claude/commands/*) grep -qE "\| \`/$(basename "$f" .md)[\` ]" "$1" || bad="$bad $f" ;;
-      .claude/skills/*) grep -qE "\`/$(basename "$(dirname "$f")")[\` ]" "$1" || bad="$bad $f" ;;
+      */skills/*) grep -qE "\`/$(basename "$(dirname "$f")")[\` ]" "$1" || bad="$bad $f" ;;
       system/agents/*) grep -qF "| \`$(basename "$f")\` |" "$1" || bad="$bad $f" ;;
-      *) n="${f#system/systemd/foundry-}"; grep -qx "${n%.service.in}" <<< "$units" || bad="$bad $f" ;;
+      system/systemd/*) n="${f#system/systemd/foundry-}"; grep -qx "${n%.service.in}" <<< "$units" || bad="$bad $f" ;;
+      */units/*) grep -qF "\`$(basename "$f" .service.in)\`" <<< "$offers" || bad="$bad $f" ;;
+      *) grep -qF "| \`$(basename "$(dirname "$f")")\` |" <<< "$offers" || bad="$bad $f" ;;
     esac
   done
   printf 'missing from the manual:%s\n' "$bad"
   [ -z "$bad" ]
 }
 
-@test "the manual names every command, skill, Workcell and unit the tree ships (#166 manual-table drift)" {
+# Each FOUNDRY.md#<anchor> in <readme> that no heading of <manual> makes (GitHub's slug: lower case, punctuation
+# dropped, spaces to hyphens). The relative-link test above strips anchors; this one reads them (#331).
+readme_anchors() {
+  local bad="" a slugs
+  slugs="$(grep -E '^#+ ' "$2" | sed -E 's/^#+ //' | tr 'A-Z' 'a-z' | sed -E 's/[^a-z0-9 -]//g; s/ /-/g')"
+  for a in $(grep -oE 'FOUNDRY\.md#[a-z0-9-]+' "$1" | sed 's/.*#//'); do
+    grep -qx "$a" <<< "$slugs" || bad="$bad $a"
+  done
+  printf 'unresolved anchors:%s\n' "$bad"
+  [ -z "$bad" ]
+}
+
+@test "the manual names every command, skill, Workcell, extension and unit the tree ships (#166 manual-table drift, #331)" {
   [ ! -e system/config.md ] || skip "this checkout is a vault (system/config.md exists); its own commands and skills are not in the manual"
   run manual_drift FOUNDRY.md
   printf '%s\n' "$output"
   [ "$status" -eq 0 ]
+  run readme_anchors README.md FOUNDRY.md
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
 }
 
-@test "the drift check reads units from the systemd/ line only and matches a command's whole name (#251)" {
+@test "the drift check reads units from the systemd/ line only, extensions from their section, and matches a command's whole name (#251, #331)" {
   m="$BATS_TEST_TMPDIR/manual.md"
   sed -E '/^ +systemd\/ /s/smoke,//' FOUNDRY.md > "$m"
   run manual_drift "$m"
@@ -298,6 +319,24 @@ manual_drift() {
   run manual_drift "$m"
   [ "$status" -eq 1 ]
   [[ "$output" == *".claude/commands/brief.md"* ]]
+  sed -E '/^\| `health` \|/d' FOUNDRY.md > "$m"
+  run manual_drift "$m"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"extensions/health/extension.md"* ]]
+  sed -E 's#`/rca#`/rcx#g' FOUNDRY.md > "$m"
+  run manual_drift "$m"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"extensions/telemetry/skills/rca/SKILL.md"* ]]
+  # The intraday paragraph still names foundry-watch.timer; only the section's cell counts.
+  sed -E 's#\| `foundry-watch` \|#| none |#' FOUNDRY.md > "$m"
+  run manual_drift "$m"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"extensions/intraday/units/foundry-watch.service.in"* ]]
+  r="$BATS_TEST_TMPDIR/README.md"
+  sed 's/#what-the-foundry-offers/#what-it-offers/' README.md > "$r"
+  run readme_anchors "$r" FOUNDRY.md
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"what-it-offers"* ]]
 }
 
 # Files the template owns (Plan 9 spec §6), never the user's notes. ':!system/codebases' also drops

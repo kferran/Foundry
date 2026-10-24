@@ -1,7 +1,7 @@
 # F3: conformance gates
 
 **Date:** 2026-10-22
-**Status:** draft for the owner
+**Status:** approved and built (#355, #356, #357; #308 closed)
 **Program:** `docs/superpowers/2026-10-21-factory-plan.md` (phase F3)
 **Grill:** 2026-10-21, recorded in the program plan's `## Grill` section (the factory is the owner's idea; F3 is part of the program the owner approved with #304).
 **Builder check:** 2026-10-22, three questions, all settled as my calls in §6 (PR 1's merge lane, an extension unit with no sessions, the cap in a vault); the owner's answers are in §7.
