@@ -1,9 +1,17 @@
+import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vitest/config'
 
-// Unit tests import server/utils and the components directly, without a Nuxt runtime; a component test picks
-// happy-dom with its own `@vitest-environment` comment.
+// Tests import slices and server utils directly, without a Nuxt runtime (ARCHITECTURE.md §6). `@` is app/, as in
+// Nuxt; `#imports` is Nuxt's, so a test mocks it. A component test picks happy-dom with its own
+// `@vitest-environment` comment.
 export default defineConfig({
   plugins: [vue()],
-  test: { include: ['tests/**/*.test.ts'], environment: 'node' },
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./app', import.meta.url)),
+      '#imports': fileURLToPath(new URL('./tests/imports-stub.ts', import.meta.url)),
+    },
+  },
+  test: { include: ['app/**/*.test.ts', 'server/**/*.test.ts', 'tests/**/*.test.ts'], environment: 'node' },
 })

@@ -98,5 +98,7 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/console/app/package-lock.json
       - run: npm ci --no-audit --no-fund
+      # The client's Feature-Sliced Design rules (ARCHITECTURE.md §2): a cross-layer or cross-slice import fails here.
+      - run: npx steiger ./app
       - run: npx vitest run
       - run: npx nuxi build
