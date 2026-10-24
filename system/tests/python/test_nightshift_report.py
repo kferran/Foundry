@@ -26,6 +26,32 @@ def test_report_from_files_only(vault: Path):
     assert "2026-10-05-c" not in text
 
 
+def test_report_json_matches_build_and_writes_no_file(vault: Path, capsys):
+    import json
+    from vaultlib import nightshift_run
+    write(vault, "system/config.md", '---\ntype: config\ntimezone: "America/Denver"\n---\n')
+    nr.write_health(vault, "2026-10-07", {"claude": "ok", "held": "usage 5h 70% >= 60%"})
+    nr.write_outcome(vault, outcome())
+    nr.write_outcome(vault, outcome(id="2026-10-06-b", kind="research", state="failed", reason="no result",
+                                    result="", needs=[], notes="log | tail"))
+    assert nightshift_run.main(["report", "2026-10-07", "--json"], vault) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert not (vault / nr.DIR / "2026-10-07.md").exists()
+    assert out == {
+        "v": 1, "date": "2026-10-07", "health": {"claude": "ok"}, "held": "usage 5h 70% >= 60%",
+        "needs": [{"id": "2026-10-06-a", "text": "Review and merge: https://github.com/o/r/pull/7"}],
+        "items": [
+            {"id": "2026-10-06-a", "kind": "plan", "state": "done", "reason": None, "started_at": "2026-10-06T22:00:00-06:00",
+             "finished_at": "2026-10-07T01:10:00-06:00", "result": "https://github.com/o/r/pull/7", "notes": "8 tasks"},
+            {"id": "2026-10-06-b", "kind": "research", "state": "failed", "reason": "no result",
+             "started_at": "2026-10-06T22:00:00-06:00", "finished_at": "2026-10-07T01:10:00-06:00", "result": None,
+             "notes": "log / tail"}]}
+    text = nr.build(vault, "2026-10-07")
+    for item in out["items"]:
+        assert f"| {item['id']} | {item['kind']} | {item['state']}" in text
+    assert "> Held: usage 5h 70% >= 60%" in text
+
+
 def test_record_usage_creates_merges_and_skips_without_a_reading(vault: Path):
     import json
     hp = vault / nr.DIR / "health-2026-10-07.json"
