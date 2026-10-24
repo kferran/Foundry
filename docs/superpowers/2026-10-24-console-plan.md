@@ -1,7 +1,8 @@
 # The console: program plan
 
 **Date:** 2026-10-24
-**Issue:** https://github.com/kferran/Foundry/issues/377 (the grill, Q1 to Q11, is recorded there)
+**Issue:** https://github.com/kferran/Foundry/issues/377 (the grill, Q1 to Q12, is recorded there)
+**Architecture:** `extensions/console/ARCHITECTURE.md` (Q12: Feature-Sliced Design on the client, Steiger in CI, no Nuxt auto-imports); every phase follows it.
 **Mockup:** https://claude.ai/artifact/XPgEhZdiXxjHdQy2HUcYvW (private to the owner; Today and Search and manage screens, sample data)
 **Built by:** the Foundry's pipeline in a Foundry session (Q11), never a Work Order handed to the Foreman.
 
