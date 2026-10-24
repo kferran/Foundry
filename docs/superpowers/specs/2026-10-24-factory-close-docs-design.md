@@ -1,7 +1,7 @@
 # Factory close-out: one inventory of what the Foundry offers
 
 **Date:** 2026-10-24
-**Status:** draft for the owner
+**Status:** approved (owner, 2026-10-24; spec merged in #381) and built in the pull request that follows it
 **Program:** `docs/superpowers/2026-10-21-factory-plan.md` (the close-out, #331)
 **Grill:** not an owner idea: the owner asked for it on 2026-10-21, https://github.com/kferran/Foundry/issues/331
 **Builder check:** 2026-10-24, five questions and seven fact corrections, all settled as my calls (none needed the owner): the README anchors get their own check, the link test stays as it is (§3.4); the unit and extension cases read only the new section (§3.4); old records get a "since raised" note, never a rewrite (§3.5); all six F-spec status lines are corrected (§3.5); "Turn on" names whatever turns a feature on, the role and the hooks included (§3.1).
@@ -61,7 +61,7 @@ A new `##` section after "How it works" (:34), replacing the Status section's "W
      - `install_hooks.sh`, for memory;
      - `extensions: [<name>]`, for an extension.
 
-     Where `install_units.sh`'s default and `config.example.md` disagree, the row states the script's behavior.
+     `orders_enabled` and `update_enabled` are on when absent, so a vault made before they were opt-in keeps both (`install_units.sh:108-109`), while `config.example.md` starts a new vault with both off and `/setup` asks; the row says both.
    - **"Runs as"** is the unit's base name in backticks (`` `foundry-watch` ``), or "none" (health, handoffs).
    - **"Output"** names the brief or debrief section, the alert tag, or the Slack notice.
    - Each Feature cell links the paragraph below that explains it.
@@ -110,7 +110,7 @@ The core-unit case keeps reading the layout tree's `systemd/` line. The README's
 - `2026-10-17-cto-gap-plan.md:14` and :109, and roadmap :52, give the line budget as 13,950 and 13,800. Those lines record decisions, so each gets the file's own note form, "(since raised to 15,100 by #373)", and the old figure stays.
 - The six factory specs (F0 to F5) still read `**Status:** draft for the owner`. Each becomes `**Status:** approved and built (<the PRs>)`.
 
-**Builder's finding, not fixed here:** `install_units.sh` treats `orders_enabled` and `update_enabled` as on when absent, while `config.example.md` sets them to `"false"`. The inventory states the script's behavior. The mismatch goes to a new issue (a fix: which default is right is a behavior question, outside a docs PR).
+- `.claude/skills/new-source/SKILL.md` says the brief prompt has 5 words left; since F5 it has none (found while building).
 
 ## 4. Done when
 
@@ -119,4 +119,3 @@ The core-unit case keeps reading the layout tree's `systemd/` line. The README's
 | every command, skill (core and extension), Workcell, extension and unit (core and extension) on disk has its row | `manual_drift` on FOUNDRY.md passes; each seed fails it |
 | README links both new sections, and each anchor matches a FOUNDRY.md heading | the new anchor check in `manual_drift`'s test; its seed fails it |
 | the stale claims in §3.5 are corrected | read in review |
-| the mismatch in §3.5 is an issue | its URL in the PR body |

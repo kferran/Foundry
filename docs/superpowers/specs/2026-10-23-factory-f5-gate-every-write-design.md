@@ -1,7 +1,7 @@
 # F5: every model write passes the gate's checks
 
 **Date:** 2026-10-23
-**Status:** draft for the owner
+**Status:** approved and built (#373, #379; #310 closed)
 **Program:** `docs/superpowers/2026-10-21-factory-plan.md` (phase F5, #310)
 **Grill:** 2026-10-23, two rounds, every recommendation taken, recorded on https://github.com/kferran/Foundry/issues/310 (comment of 2026-10-23); summarised in §3.
 **Builder check:** 2026-10-23, four questions and four code corrections, all settled as my calls: each write path checks only its own line, not a page diff (§4.1); redaction runs per field before rendering (§4.1); `add` and `set` redact before their repeat test (§4.1); the 60 s conflict stays with #299 (§1); the once-a-day alert helper moves to `vaultlib` (§4.2); `set` takes no `fit`; `_resolves` is a symlink test, enough for the fixed Now path. None needed the owner.

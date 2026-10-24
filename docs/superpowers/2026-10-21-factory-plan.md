@@ -47,24 +47,24 @@ Each phase follows FOUNDRY.md Development: F1, F2 and F5 get a spec and plan; F0
 ## 3. Phases
 
 ### F0: records and the ratchet
-- [ ] FOUNDRY.md gains an **Architecture** section (the name, the diagram, principles P1–P10 with where each is enforced). Owner merges. CLAUDE.md is at its 50-line cap, so no pointer line there; FOUNDRY.md's Development section links it.
-- [ ] The documents land generic: this plan as `docs/superpowers/2026-10-21-factory-plan.md`, the architecture note and both surveys under `docs/reviews/`, with "the live vault" for the vault's name and no `.scratch/` paths.
-- [ ] Roadmap row "The factory" pointing here; a row "Hardening after the 2026-10-20 audit" (#298–#302).
-- [ ] **The pipeline is required** (owner, 2026-10-21): FOUNDRY.md Development names the station and skill for each step (grill an owner's idea with `grilling`; spec with `superpowers:brainstorming` and its builder check; plan with `superpowers:writing-plans`; build, review and close with the superpowers skills). Specs carry `**Grill:**`, `**Builder check:**` and `**Blueprint:**` lines and plans the writing-plans header; a pipeline test in `conformance.bats` fails a new spec or plan without them. The `grilling` skill is vendored into `.claude/skills/` so every vault has it.
-- [ ] `.gitattributes`: `CHANGELOG.md merge=union` (C13), plus a CHANGELOG test line that fails on a duplicated date heading (two same-day PRs can each add one).
-- [ ] Defect-class labels `defect:<class>` (C1–C13) on the repository; FOUNDRY.md's fix lane says a fix PR carries one.
-- [ ] **Ratchet test** `system/tests/conformance.bats`: lists today's re-implementations (stream walkers, `alert_once`, `logline`, `class Fail`, stub files, private imports from extensions) and fails on any new one. Known violators sit in an allowlist that each F1 retrofit shrinks.
-- [ ] **Timing ratchet** in the same file: reads each unit's `TimeoutStartSec` and its sessions' timeouts (from the unit files and the fetch scripts' `CONNECTOR_TIMEOUT` defaults) and fails when the sum plus 10 s grace each passes the unit limit, or a `--check` passes the smoke timeout. Seeded from today's values, so every F1 retrofit that changes a session's time is checked (C3).
-- [ ] D5 docs fix: the gap plan's stale budget numbers (the gap plan belongs to another session's phases; coordinate the edit with it).
+- [x] FOUNDRY.md gains an **Architecture** section (the name, the diagram, principles P1–P10 with where each is enforced). Owner merges. CLAUDE.md is at its 50-line cap, so no pointer line there; FOUNDRY.md's Development section links it.
+- [x] The documents land generic: this plan as `docs/superpowers/2026-10-21-factory-plan.md`, the architecture note and both surveys under `docs/reviews/`, with "the live vault" for the vault's name and no `.scratch/` paths.
+- [x] Roadmap row "The factory" pointing here; a row "Hardening after the 2026-10-20 audit" (#298–#302).
+- [x] **The pipeline is required** (owner, 2026-10-21): FOUNDRY.md Development names the station and skill for each step (grill an owner's idea with `grilling`; spec with `superpowers:brainstorming` and its builder check; plan with `superpowers:writing-plans`; build, review and close with the superpowers skills). Specs carry `**Grill:**`, `**Builder check:**` and `**Blueprint:**` lines and plans the writing-plans header; a pipeline test in `conformance.bats` fails a new spec or plan without them. The `grilling` skill is vendored into `.claude/skills/` so every vault has it.
+- [x] `.gitattributes`: `CHANGELOG.md merge=union` (C13), plus a CHANGELOG test line that fails on a duplicated date heading (two same-day PRs can each add one).
+- [x] Defect-class labels `defect:<class>` (C1–C13) on the repository; FOUNDRY.md's fix lane says a fix PR carries one.
+- [x] **Ratchet test** `system/tests/conformance.bats`: lists today's re-implementations (stream walkers, `alert_once`, `logline`, `class Fail`, stub files, private imports from extensions) and fails on any new one. Known violators sit in an allowlist that each F1 retrofit shrinks.
+- [x] **Timing ratchet** in the same file: reads each unit's `TimeoutStartSec` and its sessions' timeouts (from the unit files and the fetch scripts' `CONNECTOR_TIMEOUT` defaults) and fails when the sum plus 10 s grace each passes the unit limit, or a `--check` passes the smoke timeout. Seeded from today's values, so every F1 retrofit that changes a session's time is checked (C3).
+- [x] D5 docs fix: the gap plan's stale budget numbers (the gap plan belongs to another session's phases; coordinate the edit with it).
 
 **Done when:** both ratchets are green on master and the Architecture section is merged.
 
 ### F1: standard parts and retrofits
 Libraries (one PR, with tests ported from their source):
-- [ ] `vaultlib/connector.py`: a low-level `walk`, `too_large(content)` and `Fail` for every caller, and `check_stream` on top for the read sessions. From `extensions/intraday/scripts/watchlib/check.py:31-90`. Notify (a write session) and calendar (structured output) use `walk` directly. Closes C1 and C4 for every caller.
-- [ ] `system/scripts/lib_fetch.sh`: `logline`, `alert_once`, `fail`, `skip`, `--check` parsing, the work-dir trap, and `fetch_others` (the deny list per connector, as bash arrays). From `triage_fetch.sh:50-69`. The ticket-tracker deny list stays in its extensions, since core may not name the vendor.
-- [ ] Cursor and ledger helpers: from `watchlib/common.py` state and the triage ledger (the one with atomic writes; no copy has a prune, so none is added).
-- [ ] Test doubles: one `system/tests/stub_claude_connector` dispatching on `--allowedTools` (from `stub_claude_watch`; `stub_claude` stays the headless stub), one `stream()` builder in the pytest helpers.
+- [x] `vaultlib/connector.py`: a low-level `walk`, `too_large(content)` and `Fail` for every caller, and `check_stream` on top for the read sessions. From `extensions/intraday/scripts/watchlib/check.py:31-90`. Notify (a write session) and calendar (structured output) use `walk` directly. Closes C1 and C4 for every caller.
+- [x] `system/scripts/lib_fetch.sh`: `logline`, `alert_once`, `fail`, `skip`, `--check` parsing, the work-dir trap, and `fetch_others` (the deny list per connector, as bash arrays). From `triage_fetch.sh:50-69`. The ticket-tracker deny list stays in its extensions, since core may not name the vendor.
+- [x] Cursor and ledger helpers: from `watchlib/common.py` state and the triage ledger (the one with atomic writes; no copy has a prune, so none is added).
+- [x] Test doubles: one `system/tests/stub_claude_connector` dispatching on `--allowedTools` (from `stub_claude_watch`; `stub_claude` stays the headless stub), one `stream()` builder in the pytest helpers.
 
 Retrofits, one PR each, in order of the live vault's use:
 1. [ ] **Inbox and chat triage.** Triage mail asks for pages of 50 with no too-large check (`triage_fetch.sh:111`), the setup that lost mail in #289. If the live logs show a tick with many threads and no rows, the page fix moves to track S now; otherwise it rides this retrofit (pages of 10 with token paging, as #297 did).
@@ -79,16 +79,16 @@ Retrofits, one PR each, in order of the live vault's use:
 
 ### F2: extension boundary (D3, D4)
 Cut by the grill: a core manifest for core features (units, smoke rows and tags read from a manifest instead of `install_units.sh:94-118`, `smoke_check.sh:120-128` and `alerts.py`) waits until a ratchet shows the hard-coded blocks drifting.
-- [ ] Extension tags, routes and lint rules leave core: `alerts.py` (`incident`, `rca`, `handoffs`, `telemetry` and the telemetry regex), `intake.py:357` (`production_error` routing becomes an extension `importer`), `index.py:26, 69-80`, `schema.py:19`. The core-clean test learns those words.
-- [ ] Extension API: `vaultlib/api.py` re-exports what extensions may use (`connector`, `now.add`, `alerts`, `redact`, `cli`, the cursor helpers); the ratchet bans other `vaultlib` imports from `extensions/`.
-- [ ] `config_keys` stated once: the loader reads them from the extension's schema (today they are written twice, and `handoffs_site` is missing from one).
+- [x] Extension tags, routes and lint rules leave core: `alerts.py` (`incident`, `rca`, `handoffs`, `telemetry` and the telemetry regex), `intake.py:357` (`production_error` routing becomes an extension `importer`), `index.py:26, 69-80`, `schema.py:19`. The core-clean test learns those words.
+- [x] Extension API: `vaultlib/api.py` re-exports what extensions may use (`connector`, `now.add`, `alerts`, `redact`, `cli`, the cursor helpers); the ratchet bans other `vaultlib` imports from `extensions/`.
+- [x] `config_keys` stated once: the loader reads them from the extension's schema (today they are written twice, and `handoffs_site` is missing from one).
 
 **Done when:** no extension name appears in core outside the allowlist, no extension imports a `vaultlib` name outside `vaultlib/api.py`, and each extension states its config keys once.
 
 ### F3: conformance gates
-- [ ] `conformance.bats` turns from ratchet into rule: every source's fetch script sources `lib_fetch.sh` and runs `connector_run`; its checker calls `connector.walk` or `connector.check_stream`; it has a smoke row, a unit and its alert tags (an extension in its manifest; a core source in the test's own table, since F2 keeps core's blocks); its config keys match its schema.
-- [ ] **Timing budget rule:** F0's timing ratchet loses its known-overrun list once #299 fixes intake and smoke; an extension's session timeouts move from script comments into its manifest, and core's stay in the test's table (C3).
-- [ ] **Budget scope (D5):** the core budget counts `system/hooks` and `.claude/commands` too, at a measured cap.
+- [x] `conformance.bats` turns from ratchet into rule: every source's fetch script sources `lib_fetch.sh` and runs `connector_run`; its checker calls `connector.walk` or `connector.check_stream`; it has a smoke row, a unit and its alert tags (an extension in its manifest; a core source in the test's own table, since F2 keeps core's blocks); its config keys match its schema.
+- [ ] **Timing budget rule:** F0's timing ratchet loses its known-overrun list once #299 fixes intake and smoke; an extension's session timeouts move from script comments into its manifest, and core's stay in the test's table (C3). (The manifest budgets are in, #356; the overrun list waits for #299.)
+- [x] **Budget scope (D5):** the core budget counts `system/hooks` and `.claude/commands` too, at a measured cap.
 
 **Done when:** each rule has a test that failed on a seeded violation before it passed.
 
@@ -111,8 +111,8 @@ Grill first. Questions for the grill:
 **Done when:** every model-derived write to `wiki/` or `briefings/` passes the same checks, with a test per writer.
 
 ### S: safety track (parallel)
-1. [ ] #298 high: publish through a symlinked folder (realpath under `wiki/<p>/`, never `private/`).
-2. [ ] #298 high: the Work Order tick re-runs the full add-time screen; research context skips `private/`.
+1. [x] #298 high (#328): publish through a symlinked folder (realpath under `wiki/<p>/`, never `private/`).
+2. [x] #298 high (#330): the Work Order tick re-runs the full add-time screen; research context skips `private/`.
 3. [ ] #299: a brief is never lost to one bad line or a conflict (cut to fit, one retry, a `now` alert); #107 closes with it.
 4. [ ] #298 medium: commit-hook bypass denied, redaction gaps (with #288), research publish under `run.lock`.
 5. [ ] #302 medium and small, #298 low, #122 minors: fast lane as capacity allows.

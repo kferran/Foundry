@@ -1,7 +1,7 @@
 # F2: the extension boundary
 
 **Date:** 2026-10-22
-**Status:** draft for the owner
+**Status:** approved and built (#350, #352; #307 closed)
 **Program:** docs/superpowers/2026-10-21-factory-plan.md (phase F2)
 **Grill:** 2026-10-21, recorded in the program plan's `## Grill` section (the factory is the owner's idea).
 **Builder check:** 2026-10-22, two questions, settled in §3.5 (the seven `def config(` copies; whole-module versus named exports); the spec passes the pipeline test.

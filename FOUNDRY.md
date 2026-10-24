@@ -2,7 +2,7 @@
 
 An Obsidian + Claude Code "second brain" vault template. This file is its manual. A vault's own `README.md` describes that vault (its machines, codebases and what runs where), and template updates never change it (see [Updating and uninstalling](#updating-and-uninstalling)).
 
-> **Status:** in daily use since 2026-10-05 on one Debian server and a laptop client. The headless brief, debrief and intake pipeline passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md)), as did memory capture and recall ([record](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md)), two-machine sync ([record](docs/superpowers/spikes/2026-10-04-plan-8c-acceptance.md)) and meetings ([record](docs/superpowers/spikes/2026-10-06-plan-11-acceptance.md)). Preferences, style lint and the Foreman orchestrator are still to come (see [Status](#status)).
+> **Status:** in daily use since 2026-10-05 on one Debian server and a laptop client. The headless brief, debrief and intake pipeline passed live acceptance ([record](docs/superpowers/spikes/2026-10-02-plan-4a-acceptance.md)), as did memory capture and recall ([record](docs/superpowers/spikes/2026-10-02-plan-3-acceptance.md)), two-machine sync ([record](docs/superpowers/spikes/2026-10-04-plan-8c-acceptance.md)) and meetings ([record](docs/superpowers/spikes/2026-10-06-plan-11-acceptance.md)). Preferences (Plan 5) and style lint (Plan 7) are still to come (see [Status](#status)).
 
 ## What The Foundry is
 
@@ -16,17 +16,9 @@ Automation runs on systemd user timers: isolated headless `claude -p` jobs for i
 
 ## Status
 
-**Works today:**
-- Headless intake, morning brief and evening debrief, published through a deterministic gate
-- Memory: session digest capture and bounded recall (optional hooks)
-- Two machines: a server runs the automation and syncs through a private `origin`; clients read and edit in Obsidian
-- Calendar input to the brief from the Google Calendar connector
-- Extensions: handoffs to chase, and error telemetry with root-cause analysis (`extensions/`)
-- Meetings: Gemini notes and dropped transcripts become meeting notes, tracked actions and searchable transcripts
-- Work Orders: queued plans and research briefs run unattended
-- Active Projects in the brief, and an archive of past briefings
+What runs today, feature by feature, is in [What the Foundry offers](#what-the-foundry-offers). The factory line every feature is built on is complete (F0 to F5).
 
-**Next:** preference notes from `/ingest`, then the Foreman orchestrator (Sub-project 2). Preferences (Plan 5) and style lint (Plan 7) wait for a few weeks of real use.
+**Next:** the roadmap candidates (#333), each grilled before any spec, then the gap plan's phases E to G. Preferences (Plan 5) and style lint (Plan 7) wait for more real use.
 
 - Roadmap, with every plan, its records and its status: [docs/superpowers/roadmap.md](docs/superpowers/roadmap.md)
 - Design spec: [docs/superpowers/specs/2026-09-30-vault-template-design.md](docs/superpowers/specs/2026-09-30-vault-template-design.md)
@@ -60,6 +52,40 @@ The intended loop is **capture → compile → index → recall → correct**:
 
 Script and module filenames stay descriptive so they are easy to grep. Unit `Description=` lines read `The Foundry: <role>`, and log and alert tags use plain names (`[intake]`, `[memory]`, `[sync]`).
 
+## What the Foundry offers
+
+Every feature, what turns it on, the unit that runs it, its smoke row and where its output shows up. A standalone machine or a server runs the units; a client runs none ([Machine roles](#machine-roles)). Besides the rows below, the smoke check prints a `version` line, a `units` line and one line per installed timer. Each feature's detail is in the paragraph its name links.
+
+| Feature | What it does | Turn on | Runs as | Smoke row | Output |
+|---|---|---|---|---|---|
+| [Intake](#how-it-works) | Compiles dropped files and session digests into the wiki through `/ingest` and the publish gate | `machine_role`: standalone or server | `foundry-intake` | none | the wiki; `[intake]` alerts |
+| [Morning brief](#daily-use) | The Foreman's briefing for the day | `machine_role`: standalone or server | `foundry-brief` | `calendar` | `briefings/<date>.md` |
+| [Evening debrief](#daily-use) | What the day delivered and what it left open | `machine_role`: standalone or server | `foundry-debrief` | none | `briefings/<date>.debrief.md`, embedded in the briefing |
+| [Memory](#memory) | Session digests and recall in new sessions | `system/scripts/install_hooks.sh` | session hooks | none | `raw/<partition>/notes/`, the recall block; `[memory]` alerts |
+| [The Now page](#daily-use) | One checklist of open loops per partition, closed by its evidence | always on | `foundry-intake` (`now.py check`) | none | `wiki/<partition>/Now.md`; Overdue and From Now in the brief |
+| [Work Orders](#daily-use) | Approved plans and research briefs run unattended | `orders_enabled: "true"` (`/setup` asks; a vault made before the key keeps them on) | `foundry-nightshift` | none | a pull request or a findings note; 🛠 Work Orders in the brief; `[orders]` alerts |
+| [Meetings](#how-it-works) | Gemini notes and dropped transcripts become meeting notes with tracked actions | `meetings_enabled: true` for the Drive fetch | `foundry-meetings` | `meetings` | `wiki/<partition>/meetings/`; actions in the brief; `[meetings]` alerts |
+| [Inbox triage](#daily-use) | Mail, and with chat on the Slack channels you are in, that needs you becomes Now lines | `triage_enabled: "true"`; `triage_chat_enabled: "true"` for chat | `foundry-triage` | `triage`, `triage_chat` | `owed` Now lines; a `[triage]` count |
+| [Slack notices](#daily-use) | One Slack message with everything new | `slack_notify_channel` set | `foundry-notify` | none: `notify.sh --check` posts, so run it by hand | Slack |
+| [Sync](#machine-roles) | Commits and syncs the vault through the private `origin` | `machine_role: server` | `foundry-sync` | none | `[sync]` alerts |
+| [Template update](#updating-and-uninstalling) | Merges template updates every morning | `update_enabled: "true"` (as Work Orders) | `foundry-update` | none | What changed in the brief; `[update]` alerts |
+| [Smoke check](#daily-use) | Checks every source and timer before the brief | `machine_role`: standalone or server | `foundry-smoke` | all of them | the brief's Sources line; `[smoke]` alerts |
+| [handoffs](#daily-use) (extension) | Stalled handoffs you reported that someone else holds | `extensions: [handoffs]` | none: the brief prep fetches it | `handoffs` | its brief section; `[handoffs]` alerts |
+| [health](#daily-use) (extension) | A scorecard of the platform and the factory | `extensions: [health]` | none: the brief prep scores it | none | 🩺 Health on Mondays, Pipeline lines on other days |
+| [intraday](#daily-use) (extension) | What changed since the brief | `extensions: [intraday]` | `foundry-watch` | `watch` | Now lines, `[watch]` alerts to Slack, 🕑 Today so far, a debrief section |
+| [telemetry](#daily-use) (extension) | Production error groups, and `/rca` with ticket filing | `extensions: [telemetry]`, with handoffs | `foundry-telemetry` | `telemetry/<name>` | `raw/telemetry/` notes, Blockers in the brief; `[incident]`, `[rca]`, `[telemetry]` alerts |
+
+What each extension needs (its `extension.md` and `schemas/config.md` hold the detail):
+
+| Extension | Needs | Connectors | Config keys | Commands and skills |
+|---|---|---|---|---|
+| `handoffs` | nothing else | the one its manifest names | `handoffs_site`, `handoffs_projects` | none |
+| `health` | `gh` and a GitHub `template_remote` for the factory metrics | none | `health_thresholds`, `health_defect_gates` | none |
+| `intraday` | nothing else | Slack, Gmail and Google Calendar | `watch_channels`, `watch_group_dms`, `watch_user_id`, `watch_partition`, `watch_commitments_mail`, `watch_inbound_mail`, `watch_inbound_skip`, `watch_inbound_rules`, `capture_channel`, `capture_partition` | none |
+| `telemetry` | the `handoffs` extension; `az`; a source note per source in `system/telemetry/` | none for the fetch; the handoffs connector files tickets | `rca_project`, `rca_issue_type`, `rca_labels`, `rca_assignee`, `rca_extra_fields` | `/rca` |
+
+The commands and skills are under [Daily use](#daily-use).
+
 ## Daily use
 
 | Command | What it does |
@@ -76,6 +102,8 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 | `/setup` | Onboarding; safe to re-run |
 | `/humanizer`, `/digest` | Edit prose against the vendored skill; write a session digest on demand |
 | `/grilling` | Grill a plan or a new idea, one round of numbered questions at a time, each with a recommended answer; the Foundry adds five questions that validate a new idea (Development) |
+| `/new-source <name>` | For builders: writes a new Source extension that passes CI before any feature code ([The factory line](#the-factory-line)) |
+| `/foundry-review` | For builders: flags the defect classes no test holds in a branch's diff, before its pull request opens |
 
 **Superpowers** are your strategic anchors, set in `system/config.md` (`superpowers:`). The brief ties each objective to one, and onboarding notes name the ones they serve. They are unrelated to the superpowers Claude Code plugin used in [Development](#development).
 
@@ -363,7 +391,7 @@ sources ──confined fetch (1 tool + checker)──► raw/  (audit log, never
 ```
 
 **Blueprints.** Every feature has one of four shapes; its spec names which.
-- **Source**: confined fetch → check → parse → cursor → route (Now, alerts, brief, inbox). Parts: a `lib_connector.sh` session with one tool, a checker that reads the session's tool use, a cursor, `now.add` for Now lines, `redact` for outside text, a smoke row, a unit and its alert tags. F1 moves the checker and the fetch helpers into shared libraries. Triage, calendar, meetings, handoffs, the intraday watch, notify, and RCA filing (`extensions/telemetry/scripts/rca_file.sh`, a write session with no `--check`). `system/tests/python/test_source_rule.py` enforces the Source rule.
+- **Source**: confined fetch → check → parse → cursor → route (Now, alerts, brief, inbox). Parts: a `lib_connector.sh` session with one tool, a checker that reads the session's tool use, a cursor, `now.add` for Now lines, `redact` for outside text, a smoke row, a unit and its alert tags. F1 moved the checker and the fetch helpers into shared libraries. Triage, calendar, meetings, handoffs, the intraday watch, notify, and RCA filing (`extensions/telemetry/scripts/rca_file.sh`, a write session with no `--check`). `system/tests/python/test_source_rule.py` enforces the Source rule.
 - **Poller**: HTTP fetch with no model → store → route. Parts: a source's cursor, alerts and unit, and no `claude` session. Telemetry.
 - **Compile run**: headless session → `wiki/.staging/<run>/` → publish gate. Parts: `run_headless.sh` (restricted settings, a timeout, the daily cap, `run.lock`), staging and `publish.py`. Ingest, brief, debrief, research.
 - **Work Order**: plan-then-execute in a sandboxed session → pull request or findings note. Parts: an approved plan that passes the readiness check, the runner's sealed profile (`system/nightshift/*.settings.json`).
@@ -387,13 +415,30 @@ sources ──confined fetch (1 tool + checker)──► raw/  (audit log, never
 
 | # | Departure | Fix | Phase |
 |---|---|---|---|
-| D1 | Interactive sessions skip the gate: `.claude/settings.json` allows `Edit(/wiki/**)`. | Gate interactive wiki edits | F5 (#310) |
-| D2 | Triage, the intraday watch and the today log write model-derived Now lines and the today file through their own scripts, outside the gate. | Give machine writers the gate's checks | F5 (#310) |
+| D1 | Interactive sessions skip the gate: `.claude/settings.json` allows `Edit(/wiki/**)`. | Partly fixed: interactive `/ingest`, `/rca`, `/brief` and `/debrief` end with the lint step; a staging hook waits until an interactive edit causes a defect lint cannot catch | F5 (#310), done |
+| D2 | Triage, the intraday watch and the today log write model-derived Now lines and the today file through their own scripts, outside the gate. | Fixed: every Now writer passes one check (redaction, the 300-character cap, the walls), the gate verifies a brief's Now lines with it, and the today file masks its text and links | F5 (#310), done |
 | D3 | Core named extension features: alert tags, the `production_error` route, index and schema rules. | Fixed: they live in each extension's manifest, lint module and schemas, and the core-clean test holds the words out | F2 (#307), done |
 | D4 | Extensions imported core internals. | Fixed: extension scripts import only `vaultlib/api.py`, held by `test_extension_api.py` | F2 (#307), done |
 | D5 | The core budget counts only `system/scripts`, not `system/hooks` or `.claude/commands`. | Fixed: the budget counts `system/scripts`, `system/hooks` and `.claude/commands` under a 15,000-line cap (15,100 since F5, #310) | F3 (#308), done |
 
 ## Development
+
+### The factory line
+
+Every feature is built on one line, in this order. Each step names where its detail lives.
+
+1. **Blueprint:** the feature's shape (Source, Poller, Compile run or Work Order), named in its spec ([Architecture](#architecture)).
+2. **Standard parts:** `vaultlib/connector.py` (the stream walker and `Fail`), `lib_fetch.sh` (`logline`, `alert_once`, `fail`, `skip`), `vaultlib/config.py` (the one config reader) and `system/tests/stub_claude_connector` (the connector stub), each listed with its reason in `conformance.bats`'s `PART_HOMES`; and `vaultlib/api.py`, the one module an extension imports.
+3. **Stations:** grill, spec, plan, build, review and close, each with its skill (the table below).
+4. **Gates:** `conformance.bats` (the spec and plan header lines, the part homes, the timing budgets), `test_source_rule.py` (the Source rule) and `vault_integrity.bats` (the core budget, the vendor names, this manual's inventory) fail CI.
+5. **Defect labels:** one `defect:` label per fix ([Two lanes](#development)), and what holds each class (Defect classes, below).
+
+**Add a Source.**
+1. Grill the idea with `/grilling`, unless it is not an owner idea.
+2. Write its spec with `**Blueprint:** Source` and its Blueprint checklist.
+3. Run `/new-source <name>`: it writes `extensions/<name>/` (manifest, fetch, checker, brief prep, tests) that passes CI before any feature code.
+4. Write the feature, tests first: the tool call, the parse and the brief section.
+5. Run `/foundry-review` before the pull request.
 
 Work follows the superpowers pipeline. Each station has its skill and leaves a record:
 

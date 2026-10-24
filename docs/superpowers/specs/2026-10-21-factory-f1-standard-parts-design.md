@@ -1,7 +1,7 @@
 # F1: standard parts and retrofits
 
 **Date:** 2026-10-21
-**Status:** Draft for the owner. Program: the factory plan (`docs/superpowers/2026-10-21-factory-plan.md`, phase F1). Depends on F0 (`system/tests/conformance.bats` and its allowlist). §2 items 4 to 10 were decided while specifying and are open to the owner's review; §7 lists the owner's decisions.
+**Status:** approved and built (#334 to #342, #348, #349; #306 closed)
 **Program:** `docs/superpowers/2026-10-21-factory-plan.md` (phase F1)
 **Grill:** 2026-10-21, recorded in the program plan's `## Grill` section (the factory is the owner's idea).
 **Builder check:** 2026-10-21, six questions. Settled as the builder's calls: merge sequence (§2 item 10), F0 as the ratchet authority (§3.7), who runs the server checks (§3.9), `StructuredOutput` for the calendar only (§3.1). Answered: no vault-only code imports what moves (the live vault's session checked 2026-10-21: its only vault-only extension imports `frontmatter`, `schema` and `yamlload`), so the triage re-export is temporary and needs no cutover note. The owner's §7 decisions are recorded there.
