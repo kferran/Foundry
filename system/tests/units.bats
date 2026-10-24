@@ -559,3 +559,56 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   [ "$status" -eq 0 ]
   [ ! -e "$UD/foundry-demo.timer" ]
 }
+
+# with_web_unit <roles>: the demo extension gains an always-on unit, foundry-demo-web (console spec §8.2).
+with_web_unit() {
+  use_extension demo
+  sed -i "s|^units: .*|units: [{name: foundry-demo, roles: [standalone, server, client]}, {name: foundry-demo-web, roles: [$1], timer: false}]|" \
+    extensions/demo/extension.md
+  printf '[Unit]\nDescription=demo web\n\n[Service]\nType=simple\nWorkingDirectory={{VAULT_ROOT}}\nExecStart=/bin/true\n\n[Install]\nWantedBy=default.target\n' \
+    > extensions/demo/units/foundry-demo-web.service.in
+}
+
+@test "an always-on extension unit installs and enables its service alone" {
+  with_web_unit "standalone, server"
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx "new foundry-demo-web.service" <<< "$output"
+  [ ! -e "$UD/foundry-demo-web.timer" ]
+  [ "$(head -n 1 "$UD/foundry-demo-web.service")" = "# Managed by vault: $VP" ]
+  grep -qx -- '--user enable --now foundry-intake.timer foundry-brief.timer foundry-debrief.timer foundry-smoke.timer foundry-nightshift.timer foundry-update.timer foundry-demo.timer foundry-demo-web.service' "$STUB_SYSTEMCTL_LOG"
+  run "$IU" --dry-run
+  grep -qx "===== foundry-demo-web.service" <<< "$output"
+  run grep -c "===== foundry-demo-web.timer" <<< "$output"
+  [ "$output" = 0 ]
+}
+
+@test "a client installs only the always-on units it is listed for, never a timer" {
+  with_web_unit "standalone, server, client"
+  set_role client
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx "new foundry-demo-web.service" <<< "$output"
+  [ "$(ls "$UD")" = "foundry-demo-web.service" ]
+  grep -qx -- '--user enable --now foundry-demo-web.service' "$STUB_SYSTEMCTL_LOG"
+  # Unlisted for client: the client keeps no units and says so, as before.
+  sed -i 's|roles: \[standalone, server, client\], timer: false|roles: [standalone, server], timer: false|' extensions/demo/extension.md
+  run "$IU"
+  [ "$status" -eq 0 ]
+  grep -qx 'install_units: machine_role client: no units' <<< "$output"
+  grep -qx "removed foundry-demo-web.service" <<< "$output"
+  [ ! -e "$UD/foundry-demo-web.service" ]
+}
+
+@test "--update and --uninstall treat an always-on unit like the others" {
+  with_web_unit "standalone, server"
+  "$IU" > /dev/null
+  : > "$STUB_SYSTEMCTL_LOG"
+  run "$IU" --update
+  [ "$status" -eq 0 ]
+  grep -qx "unchanged foundry-demo-web.service" <<< "$output"
+  run "$IU" --uninstall
+  [ "$status" -eq 0 ]
+  grep -qx "removed foundry-demo-web.service" <<< "$output"
+  [ ! -e "$UD/foundry-demo-web.service" ]
+}

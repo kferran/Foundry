@@ -54,7 +54,7 @@ Script and module filenames stay descriptive so they are easy to grep. Unit `Des
 
 ## What the Foundry offers
 
-Every feature, what turns it on, the unit that runs it, its smoke row and where its output shows up. A standalone machine or a server runs the units; a client runs none ([Machine roles](#machine-roles)). Besides the rows below, the smoke check prints a `version` line, a `units` line and one line per installed timer. Each feature's detail is in the paragraph its name links.
+Every feature, what turns it on, the unit that runs it, its smoke row and where its output shows up. A standalone machine or a server runs the units; a client runs none but an extension's always-on units ([Machine roles](#machine-roles)). Besides the rows below, the smoke check prints a `version` line, a `units` line and one line per installed timer. Each feature's detail is in the paragraph its name links.
 
 | Feature | What it does | Turn on | Runs as | Smoke row | Output |
 |---|---|---|---|---|---|
@@ -247,7 +247,9 @@ Each machine that holds the vault has a `machine_role` in its own `system/config
 |---|---|---|
 | `standalone` (default) | intake, brief, debrief and smoke check units, and the meetings fetch when enabled; memory hooks; codebases | one machine that does everything |
 | `server` | intake, brief, debrief, smoke check and sync units, and the meetings fetch when enabled; memory hooks; codebases | an always-on machine that runs the automation and your coding sessions |
-| `client` | nothing automated | reading and editing the vault in Obsidian on another machine |
+| `client` | nothing automated; only an enabled extension's always-on units that list `client` | reading and editing the vault in Obsidian on another machine |
+
+**Always-on extension units.** An extension's manifest `units` entry is a `.service` plus a `.timer`, and `install_units.sh` enables the timer. An entry with `timer: false` (such as the console's web server, #377) is its `.service` alone, installed and enabled by itself, and is the only kind a client installs when the entry's `roles` list `client`. `extensions.py check` names a `timer` that is not `true` or `false`, and a timer entry that lists `client`, which a client never installs. `--dry-run`, `--update` and `--uninstall` treat these units like the others.
 
 A server and its clients share the vault through a private `origin` (`remote_mode: private`):
 

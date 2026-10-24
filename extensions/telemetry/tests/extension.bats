@@ -42,7 +42,7 @@ prep_telemetry() {
   run system/scripts/extensions.py smoke
   grep -qxF "$(printf 'telemetry\t120\t0\textensions/telemetry/scripts/telemetry_fetch.py --check {}\textensions/telemetry/scripts/telemetry_fetch.py --sources')" <<< "$output"
   run system/scripts/extensions.py units server
-  [ "$output" = "$(printf 'telemetry\tfoundry-telemetry')" ]
+  [ "$output" = "$(printf 'telemetry\tfoundry-telemetry\ttimer')" ]
   for s in telemetry_fetch.py rca.py rca_file.sh; do
     [ -x "extensions/telemetry/scripts/$s" ]
   done

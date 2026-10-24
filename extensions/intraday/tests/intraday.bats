@@ -16,7 +16,7 @@ setup() {
   run system/scripts/extensions.py smoke
   [ "$output" = "$(printf 'watch\t1140\t1\textensions/intraday/scripts/watch_fetch.sh --check')" ]
   run system/scripts/extensions.py units server
-  [ "$output" = "$(printf 'intraday\tfoundry-watch')" ]
+  [ "$output" = "$(printf 'intraday\tfoundry-watch\ttimer')" ]
   run system/scripts/extensions.py units client
   [ -z "$output" ]
   run system/scripts/extensions.py brief
