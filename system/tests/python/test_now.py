@@ -1030,3 +1030,22 @@ def test_fit_staged_tags_brief_lines_and_keeps_a_writer_already_there(vault):
     lines = (vault / "wiki/.staging/r9/wiki/work/Now.md").read_text(encoding="utf-8").split("\n")
     assert lines[-3] == f"- [ ] owed: New objective [due:: 2026-11-08] [via:: brief] (since {TODAY})"
     assert lines[-2] == kept
+
+
+def test_check_expires_untouched_machine_lines_only(vault, tmp_path):
+    prepare(vault)
+    expire = ["- [ ] owed: Old mail [via:: mail] (since 2026-10-02)",
+              "- [ ] owed: Old watch [via:: watch] (since 2026-10-01)", "  - 2026-10-01: free: Mon 10:00"]
+    stay = ["- [ ] owed: Six days [via:: mail] (since 2026-10-03)",
+            "- [ ] owed: Dated chat [due:: 2026-10-09] [via:: chat] (since 2026-10-01)",
+            "- [ ] owed: Called [via:: mail] (since 2026-10-01)", "  - 2026-10-05: called them",
+            "- [ ] owed: Mine [via:: session] (since 2026-09-01)",
+            "- [ ] owed: Old untagged (since 2026-09-01)",
+            "- [ ] owed: A PR (since 2026-09-01, https://github.com/acme/shop/pull/7)"]
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\n---\n# Now\n\n## Needs you\n" + "\n".join(expire + stay) + "\n")
+    # gh fails, which skips the pull-request checks; expiry still runs and still writes the page
+    assert now.check(vault, TODAY, lambda m: None, gh_stub(tmp_path, rc=1)) == 2
+    lines = page(vault).split("\n")
+    assert f"- [-] owed: Old mail [via:: mail] (since 2026-10-02) _(closed: expired {TODAY})_" in lines
+    assert f"- [-] owed: Old watch [via:: watch] (since 2026-10-01) _(closed: expired {TODAY})_" in lines
+    assert all(line in lines for line in stay)

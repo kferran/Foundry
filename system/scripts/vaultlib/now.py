@@ -17,6 +17,7 @@ PARTITIONS = ("work", "personal")
 KINDS = ("owed", "waiting", "draft")
 NEEDS, WAITING = "## Needs you", "## Waiting"
 STALE_DAYS = 14
+EXPIRE_DAYS = 7   # a machine line nobody touched closes itself after a week (Now writer spec §3.2)
 MAX_LINE = 300   # an open line written in full (phase A spec §3.5); history goes to notes under it
 MAX_OVERDUE = 10   # lines the brief's Overdue block prints
 PAGE_BYTES = 25 * 1024   # review limit (#211; phase A target)
@@ -487,25 +488,41 @@ def closures(vault, lines: list, gh: str = "gh", on_fail=lambda line, reason: No
     return found
 
 
-def check(vault, today: str, alert, gh: str = "gh") -> int:
-    """Close each open line whose evidence shows it is finished. Returns the lines closed.
+FREE_NOTE = re.compile(r"^\s+- \d{4}-\d{2}-\d{2}: free: ")   # the watch's own note, written with its line
 
-    The page is written only when a line closes, and from a fresh read, so a tick made while gh ran is kept.
-    The first failed pull-request check skips the others until the next tick."""
+
+def expires(lines: list, i: int, today: str) -> bool:
+    """lines[i] is a machine line nobody touched for EXPIRE_DAYS: no due today or later, and no note under it but
+    the watch's own free: note (Now writer spec §3.2)."""
+    m = parse(lines[i]) if lines[i].startswith("- [ ] ") else None
+    if m is None or via(m.group("statement")) not in MACHINE:
+        return False
+    due = fields(m.group("statement"))[2]
+    return ((date.fromisoformat(today) - date.fromisoformat(m.group("since"))).days >= EXPIRE_DAYS
+            and not (due and due >= today)
+            and all(FREE_NOTE.match(note) for note in lines[i + 1:_block_end(lines, i)]))
+
+
+def check(vault, today: str, alert, gh: str = "gh") -> int:
+    """Close each open line whose evidence shows it is finished, and expire each untouched machine line. Returns the
+    lines closed.
+
+    A page is written only when a line closes, and from a fresh read, so a tick made while gh ran is kept.
+    The first failed pull-request check skips the others until the next tick; expiry runs regardless."""
     closed = 0
     pages = {partition: open_lines(read(vault, partition)) for partition in PARTITIONS}
     found = closures(vault, [line for lines in pages.values() for line in lines], gh,
                      lambda line, reason: _failed(vault, today, line, reason, alert))
-    for partition, open_ in pages.items():
-        if not any(line.rstrip() in found for line in open_):
-            continue
-        lines = read(vault, partition).split("\n")
+    for partition in PARTITIONS:
+        lines, before = read(vault, partition).split("\n"), closed
         for i, line in enumerate(lines):
             key = line.rstrip()
             if key in found:
-                lines[i] = f"- [x]{key[5:]} _(closed: {found[key]} {today})_"
-                closed += 1
-        write(vault, partition, stamp("\n".join(lines), today))
+                lines[i], closed = f"- [x]{key[5:]} _(closed: {found[key]} {today})_", closed + 1
+            elif expires(lines, i, today):
+                lines[i], closed = f"- [-]{key[5:]} _(closed: expired {today})_", closed + 1
+        if closed > before:
+            write(vault, partition, stamp("\n".join(lines), today))
     return closed
 
 
