@@ -3,7 +3,7 @@ import ast
 from datetime import date, timedelta
 from pathlib import Path
 
-from conftest import EXT, active, now_page, order, project, run, today_json, write
+from console_today_fixtures import EXT, active, now_page, order, project, run, today_json, write
 
 
 def fixture(vault: Path, day: str) -> None:
