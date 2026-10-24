@@ -112,7 +112,7 @@ if args.cmd == "list" and args.json:  # read-only, so no run.lock
     sys.exit(0)
 if args.cmd == "list":
     for part in [args.partition] if args.partition else now.PARTITIONS:
-        lines = now.open_lines(now.read(VAULT, part))
+        lines = [now.strip_via(line) for line in now.open_lines(now.read(VAULT, part))]   # the brief's now.md
         if lines:
             print("\n".join(lines if args.partition else [f"## {part}", *lines]))
     sys.exit(0)

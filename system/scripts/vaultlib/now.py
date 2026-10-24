@@ -38,7 +38,11 @@ SINCE = re.compile(r"\s*_\(open since (\d{4}-\d{2}-\d{2})(?:, \d+ days?)?\)_")
 # Dataview reads the key in any case and "::" with or without spaces, so a hand edit may write either.
 REC = re.compile(r"\[rec::\s*([^\[\]\n]*[^\[\]\s])\s*\]", re.IGNORECASE)
 DUE = re.compile(r"\[due::\s*(\d{4}-\d{2}-\d{2})\s*\]", re.IGNORECASE)
-FIELD_KEY = re.compile(r"\[(?:rec|due)::", re.IGNORECASE)
+# Who wrote a line (Now writer spec §3.1): no field means a session or the owner; mail, chat and watch are machines.
+VIA = re.compile(r"\s*\[via::\s*([A-Za-z]+)\s*\]", re.IGNORECASE)
+WRITERS = ("mail", "chat", "watch", "brief", "session")
+MACHINE = ("mail", "chat", "watch")
+FIELD_KEY = re.compile(r"\[(?:rec|due|via)::", re.IGNORECASE)
 MARKER = re.compile(r"\[(REDACTED:\w+|PRIVATE)\]")   # what redact_credentials writes in place of a secret
 # A line now.py wrote, with text appended after its parenthesis by hand (#211): it no longer parses.
 SCRIPT_META = re.compile(r"^- \[.\] (?:owed|waiting|draft): .*?\((?:[^(),]+, )?since \d{4}-\d{2}-\d{2}[^()]*\)(?=\s*\S)")
@@ -81,14 +85,27 @@ def fields(statement: str) -> tuple:
     """(bare statement, rec, due): the statement without its two fields, whitespace collapsed; "" for a missing field
     and for a due that is not a real date (a hand edit such as 2026-02-30)."""
     rec, due = REC.search(statement), DUE.search(statement)
-    bare = " ".join(DUE.sub("", REC.sub("", statement)).split())
+    bare = " ".join(VIA.sub("", DUE.sub("", REC.sub("", statement))).split())
     return bare, rec.group(1) if rec else "", due.group(1) if due and is_date(due.group(1)) else ""
 
 
+def via(statement: str) -> str:
+    """The line's writer, lower-cased; "" when the field is missing or names no writer."""
+    m = VIA.search(statement)
+    return m.group(1).lower() if m and m.group(1).lower() in WRITERS else ""
+
+
+_writer = via   # add() takes a via argument
+
+
+def strip_via(line: str) -> str:
+    return VIA.sub("", line)
+
+
 def render(kind: str, statement: str, since: str, who: str = "", evidence: str = "", rec: str = "",
-           due: str = "") -> str:
+           due: str = "", via: str = "") -> str:
     meta = (f"{who}, " if who else "") + f"since {since}" + (f", {evidence}" if evidence else "")
-    clock = (f" [rec:: {rec}]" if rec else "") + (f" [due:: {due}]" if due else "")
+    clock = (f" [rec:: {rec}]" if rec else "") + (f" [due:: {due}]" if due else "") + (f" [via:: {via}]" if via else "")
     return f"- [ ] {kind}: {statement}{clock} ({meta})"
 
 
@@ -245,7 +262,7 @@ def screen_line(vault, partition: str, line: str, old: str = "", fit: bool = Fal
         if m:
             bare, rec, due = fields(m.group("statement"))
             line = render(m.group("kind"), _cut(bare, len(line) - MAX_LINE), m.group("since"), m.group("who") or "",
-                          m.group("evidence") or "", rec, due)
+                          m.group("evidence") or "", rec, due, via(m.group("statement")))
         elif fit and line.startswith("  - "):
             line = line[:MAX_LINE - 1].rstrip() + "…"
         if len(line) > MAX_LINE:
@@ -267,7 +284,8 @@ def screen(vault, partition: str, line: str) -> str:
     m = LINE.match(line)
     if m:
         bare, rec, due = fields(m.group("statement"))
-        rest = (m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
+        writer = via(m.group("statement"))
+        rest = (m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due, writer)
         m = m if render(m.group("kind"), bare, *rest) == line else None
     if m is None:
         if len(line) > MAX_LINE:
@@ -276,8 +294,8 @@ def screen(vault, partition: str, line: str) -> str:
             raise ValueError("credential-shaped text in a Now line not in now.py's form")
         return line
     bare, who, evidence, rec = screen_fields(bare, m.group("who") or "", m.group("evidence") or "", rec)
-    return screen_line(vault, partition, render(m.group("kind"), bare, m.group("since"), who, evidence, rec, due),
-                       fit=True)
+    return screen_line(vault, partition, render(m.group("kind"), bare, m.group("since"), who, evidence, rec, due,
+                                                writer), fit=True)
 
 
 def is_date(text: str) -> bool:
@@ -298,14 +316,17 @@ def default_due(statement: str, since: str, who: str) -> str:
 
 
 def add(vault, partition: str, kind: str, statement: str, today: str, who: str = "", evidence: str = "",
-        rec: str = "", due: str = "", fit: bool = False) -> tuple:
+        rec: str = "", due: str = "", fit: bool = False, via: str = "") -> tuple:
     """("added"|"exists"|"tightened"|"updated", line). An open line with the same kind and bare statement is not
     added twice: a repeat add moves its clock earlier ("tightened"), sets or replaces rec and sets missing evidence
     ("updated"), writes nothing when nothing is new, and raises ValueError when it would move the clock later.
-    fit (machine writers: triage, the watch) cuts a statement that would put the line over MAX_LINE."""
+    fit (machine writers: triage, the watch) cuts a statement that would put the line over MAX_LINE. via names the
+    writer (Now writer spec §3.1); a repeat keeps the line's own."""
+    writer = via
     statement, who, evidence, rec = screen_fields(statement.strip(), who.strip(), evidence, rec.strip())
     validate(partition, kind, statement, who, evidence, rec, due)
-    over = len(render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who))) - MAX_LINE
+    over = len(render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who),
+                      writer)) - MAX_LINE
     if fit and over > 0:
         statement = _cut(statement, over)
     text = read(vault, partition) or new_page(vault, partition, today)
@@ -323,13 +344,14 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
         if (new_due, new_rec, new_evidence) == (old_due, old_rec, m.group("evidence") or ""):
             return "exists", existing
         line = screen_line(vault, partition, render(kind, bare, m.group("since"), m.group("who") or "", new_evidence,
-                                                    new_rec, new_due), existing, fit)
+                                                    new_rec, new_due, _writer(m.group("statement")) or writer),
+                           existing, fit)
         lines = text.split("\n")
         lines[[x.rstrip() for x in lines].index(existing.rstrip())] = line
         write(vault, partition, stamp("\n".join(lines), today))
         return "tightened" if new_due != old_due else "updated", line
     line = screen_line(vault, partition, render(kind, statement, today, who, evidence, rec,
-                                                due or default_due(statement, today, who)), fit=fit)
+                                                due or default_due(statement, today, who), writer), fit=fit)
     text = _insert(stamp(text, today), WAITING if kind == "waiting" else NEEDS, line)
     write(vault, partition, text)
     return "added", line
@@ -377,7 +399,7 @@ def set_statement(vault, partition: str, match: str, statement: str, today: str)
     if not match:
         raise ValueError("--match needs text from the line's statement")
     if FIELD_KEY.search(statement):
-        raise ValueError("the new statement holds a [rec::] or [due::] field; set keeps the line's own")
+        raise ValueError("the new statement holds a [rec::], [due::] or [via::] field; set keeps the line's own")
     parsed = [(line, m) for line in open_lines(text) if (m := parse(line))]
     found = [(line, m) for line, m in parsed if match in fields(m.group("statement"))[0].lower()]
     if len(found) != 1:
@@ -530,7 +552,8 @@ def list_data(vault, partitions, day: str) -> dict:
             kind = m.group("kind")
             lines.append({"kind": kind, "section": (WAITING if kind == "waiting" else NEEDS)[3:], "statement": statement,
                           "who": m.group("who") or "", "since": m.group("since"), "evidence": m.group("evidence") or "",
-                          "rec": rec, "due": due, "over": over if group is not None else None,
+                          "rec": rec, "due": due, "via": via(m.group("statement")),
+                          "over": over if group is not None else None,
                           "band": BANDS[group] if group is not None else None, "notes": notes, "raw": line.rstrip()})
         out[partition] = {"lines": lines, "unparsed": unparsed}
     return out

@@ -931,7 +931,7 @@ def test_list_json_parses_fields_and_notes(vault):
     assert line == {
         "kind": "owed", "section": "Needs you", "statement": "Reply on the cap", "who": "Blake Sample",
         "since": "2026-10-01", "evidence": "https://github.com/acme/shop/pull/7", "rec": "3: shorter queue",
-        "due": "2026-10-08", "over": 1, "band": "1-7",
+        "due": "2026-10-08", "via": "", "over": 1, "band": "1-7",
         "notes": [{"date": "2026-10-02", "text": "asked for metrics"}, {"date": "", "text": "free text note"}],
         "raw": "- [ ] owed: Reply on the cap [rec:: 3: shorter queue] [due:: 2026-10-08] "
                "(Blake Sample, since 2026-10-01, https://github.com/acme/shop/pull/7)",
@@ -978,3 +978,43 @@ def test_list_without_json_is_unchanged(vault):
     json_page(vault, ["- [ ] owed: One (since 2026-10-01)", "  - 2026-10-02: a note", "- [ ] waiting: Two (Sam, since 2026-10-01)"])
     assert cli(vault, "list").stdout == "## work\n- [ ] owed: One (since 2026-10-01)\n- [ ] waiting: Two (Sam, since 2026-10-01)\n"
     assert cli(vault, "list", "--date", "bad", "--json").returncode == 2
+
+
+def test_add_writes_the_writer_and_a_repeat_keeps_it(vault):
+    prepare(vault)
+    assert "[via::" not in now.add(vault, "work", "owed", "Send the deck", TODAY)[1]
+    status, line = now.add(vault, "work", "owed", "Reply to Blake", TODAY, via="mail")
+    assert status == "added"
+    assert line.endswith(f"[via:: mail] (since {TODAY})")
+    assert now.add(vault, "work", "owed", "Reply to Blake", TODAY) == ("exists", line)
+
+
+def test_set_hands_the_line_to_the_session(vault):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Reply to Blake", TODAY, via="mail")
+    assert now.via(now.set_statement(vault, "work", "blake", "Reply to Blake today", TODAY)) == ""
+
+
+def test_the_writer_survives_every_re_render(vault):
+    prepare(vault)
+    line = now.add(vault, "work", "owed", "w" * 320, TODAY, via="watch", fit=True)[1]
+    assert "[via:: watch]" in line
+    assert len(line) <= now.MAX_LINE
+    chat = now.render("owed", "Answer the thread", "2026-10-01", via="chat")
+    assert now.screen(vault, "work", chat) == chat
+    assert now.fields("x [via:: mail]") == ("x", "", "")
+    assert now.via("x [VIA::  Mail ]") == "mail"
+    assert now.via("x [via:: robot]") == ""
+    with pytest.raises(ValueError):
+        now.add(vault, "work", "owed", "Sneak [via:: mail] in", TODAY)
+
+
+def test_list_json_has_via_and_plain_list_leaves_it_out(vault):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Reply to Blake", TODAY, via="mail")
+    now.add(vault, "work", "owed", "Send the deck", TODAY)
+    lines = now.list_data(vault, ["work"], TODAY)["work"]["lines"]
+    assert [l["via"] for l in lines] == ["mail", ""]
+    out = cli(vault, "list").stdout
+    assert "Reply to Blake" in out
+    assert "[via::" not in out
