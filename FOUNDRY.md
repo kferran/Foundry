@@ -70,6 +70,7 @@ Every feature, what turns it on, the unit that runs it, its smoke row and where 
 | [Sync](#machine-roles) | Commits and syncs the vault through the private `origin` | `machine_role: server` | `foundry-sync` | none | `[sync]` alerts |
 | [Template update](#updating-and-uninstalling) | Merges template updates every morning | `update_enabled: "true"` (as Work Orders) | `foundry-update` | none | What changed in the brief; `[update]` alerts |
 | [Smoke check](#daily-use) | Checks every source and timer before the brief | `machine_role`: standalone or server | `foundry-smoke` | all of them | the brief's Sources line; `[smoke]` alerts |
+| [console](#daily-use) (extension) | A web app over the vault: the Today screen, read-only | `extensions: [console]`, then `extensions/console/scripts/build.sh` | `foundry-console` (always on, `127.0.0.1`; a client too) | `console` | a page on `127.0.0.1:<console_port>`, on the tailnet through `tailscale serve` |
 | [handoffs](#daily-use) (extension) | Stalled handoffs you reported that someone else holds | `extensions: [handoffs]` | none: the brief prep fetches it | `handoffs` | its brief section; `[handoffs]` alerts |
 | [health](#daily-use) (extension) | A scorecard of the platform and the factory | `extensions: [health]` | none: the brief prep scores it | none | 🩺 Health on Mondays, Pipeline lines on other days |
 | [intraday](#daily-use) (extension) | What changed since the brief | `extensions: [intraday]` | `foundry-watch` | `watch` | Now lines, `[watch]` alerts to Slack, 🕑 Today so far, a debrief section |
@@ -79,6 +80,7 @@ What each extension needs (its `extension.md` and `schemas/config.md` hold the d
 
 | Extension | Needs | Connectors | Config keys | Commands and skills |
 |---|---|---|---|---|
+| `console` | `mise` (it pins Node), `rsync`, `curl`; `tailscale` on the server | none | `console_port`, `console_auth`, `console_login`, `console_foreman_url`, `console_build_dir` | none |
 | `handoffs` | nothing else | the one its manifest names | `handoffs_site`, `handoffs_projects` | none |
 | `health` | `gh` and a GitHub `template_remote` for the factory metrics | none | `health_thresholds`, `health_defect_gates` | none |
 | `intraday` | nothing else | Slack, Gmail and Google Calendar | `watch_channels`, `watch_group_dms`, `watch_user_id`, `watch_partition`, `watch_commitments_mail`, `watch_inbound_mail`, `watch_inbound_skip`, `watch_inbound_rules`, `capture_channel`, `capture_partition` | none |
