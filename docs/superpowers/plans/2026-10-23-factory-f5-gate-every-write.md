@@ -200,3 +200,15 @@ Plus `test_screen_rebuilds_a_canonical_line_and_checks_a_hand_shaped_one_whole`:
 - [ ] **Step 2:** Run `system/scripts/test.sh system/tests/vault_integrity.bats` and `system/tests/conformance.bats` (sandbox disabled): PASS, core under 15,000 (print the count for the PR body).
 - [ ] **Step 3:** Run `.claude/skills/foundry-review/review_diff.py`; fix or explain each hit.
 - [ ] **Step 4:** Push `feat/f5-gate-every-write`, open the PR (body: what changed, the plan decisions above, "Part of #310", the core count, ends with the session link), watch CI, post the ready comment naming the head SHA.
+
+---
+
+## PR 2 (spec §4.4-§4.6, added 2026-10-24)
+
+Small enough to run from this section (FOUNDRY.md Development: small features skip a separate plan). Auto-merge on green CI: it touches no safety surface (no publish gate, redaction, settings, hooks or notify code).
+
+- **Today file** (`extensions/intraday/scripts/today_log.py:write`): the item's `link` goes through `clean`; the file path passes `resolves` (`publish._resolves`, exported by `vaultlib/api.py`), else one `[intraday] today file refused: a symlink on its path` alert a day and nothing written. Test: `test_today_log.py::test_a_credential_in_a_link_is_masked_and_a_symlinked_today_file_is_refused`.
+- **Lint steps:** `brief.md` and `debrief.md` Self-edit, and the RCA skill's step 7: "finish with `system/scripts/lint_vault.sh` and fix each error in the files you wrote". The brief prompt stays under its 2,500-word cap by dropping one restatement, the `unavailable.md` aside (2,499 words). Test: `commands.bats` key check; `prep.bats` word cap.
+- **One wall rule:** `index.py`'s lint exempts only `wiki/Index.md`. Test: `test_index_rules.py::test_only_the_cross_partition_index_is_exempt_from_walls`.
+- **`[watch]` exception:** a comment at the watch's alert line and a line in foundry-review's `alert-text` row.
+- Live acceptance for the edited headless brief text: the next scheduled brief after merge, read from its run ledger.

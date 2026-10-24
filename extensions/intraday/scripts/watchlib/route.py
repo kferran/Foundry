@@ -165,7 +165,7 @@ def route(vault, partition: str, found: dict, flags: list, crossed: list, events
         log(key, "meeting", text)
         if f["change"] in ALERT_CHANGES:
             alerts.append(text)
-    for text in alerts[:MAX_ALERTS]:
+    for text in alerts[:MAX_ALERTS]:   # outside text by design: notify redacts every line it posts (factory F5 spec §4.6)
         alert(vault, day, clock, "watch", text)
         counts["alerts"] += 1
     if len(alerts) > MAX_ALERTS:

@@ -86,3 +86,19 @@ def test_a_bulleted_bold_outcome_reads_as_plain_text():
     body = ("## Outcome\n- **Intraday is on.** The config lists the channels. More.\n\n## Delivered\n"
             "- **decision** — intraday turned on — https://x\n")
     assert tl.digest_entry(body) == ["Intraday is on.", "  - delivered: decision — intraday turned on — https://x"]
+
+
+def test_a_credential_in_a_link_is_masked_and_a_symlinked_today_file_is_refused(vault, tmp_path):
+    item(vault, "watch:k", link="https://x.example/r?access_token=hunter2hunter2")
+    tl.write(vault, DAY, "09:00:00")
+    assert "https://x.example/r?access_token=[REDACTED" in today(vault)
+    assert "hunter2hunter2" not in today(vault)
+    item(vault, "watch:s")
+    (tmp_path / "elsewhere.md").write_text("")
+    path = vault / "briefings" / f"{DAY}.today.md"
+    path.unlink()
+    path.symlink_to(tmp_path / "elsewhere.md")
+    tl.write(vault, DAY, "09:05:00")
+    assert (tmp_path / "elsewhere.md").read_text() == ""
+    alerts = (vault / "system" / "logs" / f"alerts_{DAY}.md").read_text()
+    assert "[intraday] today file refused: a symlink on its path" in alerts

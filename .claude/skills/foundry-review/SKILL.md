@@ -26,7 +26,7 @@ It reads the lines the branch adds since its merge base with `--base` (default `
 |---|---|---|
 | `now-redaction` | C7 | a Slack writer in a file that calls neither `redact_credentials(` nor `redact(` (every Now write redacts inside `now.py`) |
 | `gate-escape` | C14 | a write on a line naming `wiki/` or `briefings/` outside the publish gate and `now.py`; an `Edit(`/`Write(` allow rule on those paths |
-| `alert-text` | C5, C7 | an alert or failure reason that interpolates a value other than an exit code, a count or a reason variable |
+| `alert-text` | C5, C7 | an alert or failure reason that interpolates a value other than an exit code, a count or a reason variable. Known exception: the watch's `[watch]` alert carries a meeting title or a channel snippet, which notify redacts before it posts (factory F5 spec §4.6) |
 | `sleep-race` | C6, C10 | `sleep` added in a test file, except a stub's `STUB_SLEEP=` knob |
 | `skip-reason` | C10 | a bats `skip` or a pytest skip with no reason |
 | `changelog-label` | C13, C12 | a vault-visible path changed with no `- … (#N)` line in `CHANGELOG.md` (skipped in a vault); any `fix/` branch |

@@ -10,6 +10,7 @@ from .connector import Fail, check_stream, strip_cursor, text_json, walk
 from .intake import Intake
 from .meetings import open_actions, owner_names
 from .notify import prefix, thread_state
+from .publish import _resolves as resolves
 from .redact import redact_credentials
 from .state import append, load, records, save
 from .stream import blocks, messages
@@ -19,6 +20,6 @@ from .triage import one_line, reply
 __all__ = [
     "cli", "frontmatter", "now", "schema", "triage", "yamlload",
     "alert", "cut", "UsageError", "set_scalar", "Fail", "check_stream", "strip_cursor", "text_json", "walk", "Intake",
-    "open_actions", "owner_names", "prefix", "thread_state", "redact_credentials", "append", "load", "records", "save",
+    "open_actions", "owner_names", "prefix", "thread_state", "resolves", "redact_credentials", "append", "load", "records", "save",
     "blocks", "messages", "config", "one_line", "reply",
 ]

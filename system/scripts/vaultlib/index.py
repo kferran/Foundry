@@ -442,7 +442,7 @@ class Index:
             if (source and source[2] and target and not target[2] and target_path != src
                     and not src.startswith("briefings/archive/")):   # an archived brief is history (#361)
                 add(src, line, "warning", "link-to-inactive", f"links to inactive note {target_path}")
-            if src.startswith("wiki/") and source and source[0] != "index":
+            if src.startswith("wiki/") and src != "wiki/Index.md":   # the publish gate's rule (factory F5 spec §4.6)
                 p, q = schemamod.path_partition(src), schemamod.path_partition(target_path)
                 if p and q and wall_blocked(p, q):
                     add(src, line, "error", "partition-wall", f"{p} note links to {q} note {target_path}")

@@ -1296,3 +1296,9 @@ changelog_dup_dates() { grep -E '^## [0-9]{4}-[0-9]{2}-[0-9]{2}$' "$1" | sort | 
   grep -qF 'Every new Workcell ships with at least one eval case.' FOUNDRY.md
   grep -qF 'Evals are not gating' FOUNDRY.md
 }
+
+@test "interactive /rca, /brief and /debrief end with /ingest's lint step (factory F5 spec §4.5)" {
+  for f in .claude/commands/brief.md .claude/commands/debrief.md extensions/telemetry/skills/rca/SKILL.md; do
+    grep -qiF 'finish with `system/scripts/lint_vault.sh` and fix each error in the files you wrote' "$f"
+  done
+}

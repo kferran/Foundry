@@ -10,6 +10,9 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## Changes
 
+## 2026-10-24
+- Changed: the today file masks credentials in an item's link, as it does its text, and refuses a symlinked file. Interactive `/brief`, `/debrief` and `/rca` end with `system/scripts/lint_vault.sh`, as `/ingest` does. Lint walls every note but `wiki/Index.md`, as the publish gate does: a note of `type: index` elsewhere that links across partitions is now a lint error. (#310)
+
 ## 2026-10-23
 - Added: the `health` extension. Monday's brief carries a 🩺 Health scorecard of the platform and the factory (source ticks, headless runs, the brief's time and size, the Now pages, cost, sync blocks, budget headroom and, with `gh`, defect recurrences, first-push CI and review fixes); other days show one Pipeline line per metric past its threshold. Off until listed. (#374)
   - Action: add `health` to `extensions` in `system/config.md`, and fill `health_defect_gates` as gates land.

@@ -22,7 +22,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 VAULT = HERE.parents[2]
 sys.path[:0] = [str(HERE), str(VAULT / "system" / "scripts")]
-from vaultlib.api import frontmatter, Intake, now as nowmod, open_actions, owner_names, redact_credentials  # noqa: E402
+from vaultlib.api import frontmatter, Intake, now as nowmod, open_actions, owner_names, redact_credentials, resolves  # noqa: E402
 from watchlib import route  # noqa: E402
 from watchlib.common import alert, append, config, records, state  # noqa: E402
 
@@ -134,7 +134,7 @@ def write(vault: Path, day: str, clock: str) -> int:
             text = clean(r.get("text"))
             if r.get("now") == "added":
                 text += " → Now"
-            link = f" {r['link']}" if r.get("link") else ""
+            link = f" {clean(r['link'])}" if r.get("link") else ""   # outside text, masked as the text is (F5 §4.4)
             new.append((f"item:{r['key']}", "", str(r.get("time") or clock[:5]), [f"**{r.get('kind')}** {text}{link}"]))
     for source, sha, at, lines in digests(vault, day):
         if source not in done:
@@ -145,6 +145,9 @@ def write(vault: Path, day: str, clock: str) -> int:
     if not new:
         return 0
     path = vault / "briefings" / f"{day}.today.md"
+    if not resolves(vault, f"briefings/{day}.today.md"):
+        alert(vault, day, clock, "intraday", "today file refused: a symlink on its path", key="today file refused:")
+        return 0
     try:
         old = path.read_text(encoding="utf-8") if path.is_file() else f'---\ntype: today\ndate: "{day}"\n---\n'
     except (OSError, UnicodeDecodeError) as exc:

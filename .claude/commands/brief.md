@@ -78,4 +78,4 @@ The prep caps every input to what the brief prints. Read what exists; every inpu
 
 ## Self-edit
 
-Edit the briefing against the Writing rules in `CLAUDE.md` (wording rules 1 to 10, already in this session). Keep the template's headings, emoji and bullets. Keep every fact, name, number, date and link, and leave frontmatter unchanged. Where a rule says to cut a sentence, keep any fact it carries. Edit only the text this run wrote and keep everything the user wrote. Headless, edit only `wiki/.staging/<run_id>/briefings/<date>.md`.
+Edit the briefing against the Writing rules in `CLAUDE.md` (wording rules 1 to 10, already in this session). Keep the template's headings, emoji and bullets. Keep every fact, name, number, date and link, and leave frontmatter unchanged. Where a rule says to cut a sentence, keep any fact it carries. Edit only the text this run wrote and keep everything the user wrote. Headless, edit only `wiki/.staging/<run_id>/briefings/<date>.md`. Interactive: finish with `system/scripts/lint_vault.sh` and fix each error in the files you wrote.
