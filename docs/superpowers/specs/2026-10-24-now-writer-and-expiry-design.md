@@ -1,7 +1,7 @@
 # A Now page you can keep up with: each line names its writer, and machine lines expire
 
 **Date:** 2026-10-24
-**Status:** draft for the owner
+**Status:** approved (owner, 2026-10-24), with the one-time tag of open lines (§3.4)
 **Grill:** 2026-10-24, rounds 1 and 2 of #333 (Q4, Q13 to Q17), every recommendation taken, recorded on https://github.com/kferran/Foundry/issues/333
 **Builder check:** 2026-10-24, five questions and three code gaps, all settled as my calls (none needed the owner): a line never expires before its own `due` (§3.2); the watch's own `free:` note does not count as a touch (§3.2); `set` hands a line to the session (§3.1); health keeps writer keys apart from evidence guesses (§3.3); the brief's `now.md` input leaves `via` out (§3.1); `screen()`, the fit path, repeat `add`, `set` and RCA `reopen` all carry `via` through their re-render (§3.1); expiry runs whether or not an evidence check closed anything (§3.2).
 **Blueprint:** none: a field and a close rule on the existing Now writers; no new feature shape.
@@ -75,9 +75,13 @@ A line gains a third optional Dataview field after `[rec:: …]` and `[due:: …
 
 The line becomes `- [-] … _(closed: expired <today>)_`, a drop the archive moves at the next brief like any other.
 
-The owner keeps a machine line by adding a note under it (`now.py note`, or an indented line typed in Obsidian), or by deleting its `[via:: …]` field, which makes the line theirs. A line with no `via`, which includes every line written before this change, never expires. `check()` already writes the page only when a line closes, from a fresh read. Expiry is its own pass over that fresh read: it runs whether or not an evidence check closed a line, and a failed `gh` check, which skips the remaining pull requests, does not skip it.
+The owner keeps a machine line by adding a note under it (`now.py note`, or an indented line typed in Obsidian), or by deleting its `[via:: …]` field, which makes the line theirs. A line with no `via` never expires; §3.4 tags the lines already open once. `check()` already writes the page only when a line closes, from a fresh read. Expiry is its own pass over that fresh read: it runs whether or not an evidence check closed a line, and a failed `gh` check, which skips the remaining pull requests, does not skip it.
 
 FOUNDRY.md's Now paragraph states the rule and how to keep a line.
+
+### 3.4 Tagging the lines already open (owner, 2026-10-24)
+
+A one-time verb, `now.py tag-writers [--dry-run]`, under `run.lock`, gives each open line that has no `via` one from its evidence: a `mail.google.com` link becomes `mail`, a `slack.com` link `chat`. Any other line is left untagged. The watch's lines carry the same links, so they are tagged `mail` or `chat`, which expire the same way. `--dry-run` prints, per partition, how many lines it would tag and how many of those the next `check` would expire, and writes nothing. Without it, the verb writes the tags and prints the same counts. The owner runs it in the vault after the update. A line the owner wrote with a mail or Slack link is tagged too, and the dry-run shows the count before anything is written. An expired line goes to the archive, so nothing is lost. FOUNDRY.md and the CHANGELOG line name the verb.
 
 ### 3.3 Health reads the writer
 
@@ -92,4 +96,5 @@ FOUNDRY.md's Now paragraph states the rule and how to keep a line.
 | brief | `fit_staged` adds `[via:: brief]` to an added line that has none, and the gate passes the result |
 | expiry | a `mail` line 7 days old with no note is closed `expired`, also on a tick whose `gh` check failed. A watch line holding only its `free:` note expires too. These stay open: a 6-day-old line, a line whose `due` is today or later, a line with an owner's note, a `session` or `brief` line, and a line with no `via`. |
 | health | the dismissed share is keyed by `via`, with `guess:` keys for lines that have none |
+| tag-writers | `--dry-run` writes nothing and prints the counts. The verb tags only untagged open lines with a Gmail or Slack link, and a second run tags nothing. |
 | docs | FOUNDRY.md's Now paragraph names `via` and the expiry rule (a `commands.bats` key check) |
