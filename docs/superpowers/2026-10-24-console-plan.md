@@ -41,5 +41,5 @@ C1.1 merges first. C1.2 and C1.3 can build in parallel once it has.
 
 ## 5. Open items
 
-- Omarchy's role: if it is a client (Obsidian Git), C1.1 lets an always-on unit install there; if it is standalone, nothing changes.
+- Omarchy is a client (owner, 2026-10-24), so C1.1 lets an always-on unit install there. Its copy of the vault is only as fresh as its last sync. Today that sync is Obsidian Git, which runs only while Obsidian is open; #385 adds a sync timer for a client so the console's fallback stays current without Obsidian.
 - The focus-first brief (#351) adds `stale` and `also_active` to `active_projects.py --json`. The Today screen shows them when present and hides them when not.
