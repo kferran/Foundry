@@ -41,21 +41,21 @@
 - `via(statement: str) -> str` returns the lower-cased value when it is in `WRITERS`, else `""`.
 - `fields()` also strips `VIA` from the bare statement and still returns its three-tuple.
 - `render(..., due="", via="")` writes ` [via:: <via>]` after due.
-- `add(..., fit=False, via="session")`. A repeat keeps the existing line's `via` (falling back to the caller's when the old line has none).
-- `set_statement` renders with `via="session"`.
+- `add(..., fit=False, via="")`: no field means a session (or the owner) wrote the line (ruling 1). A repeat keeps the existing line's `via`, else takes the caller's.
+- `set_statement` renders with no `via`, which hands the line to the session.
 - `screen_line`'s fit cut, `screen()`'s canonical test and rebuild, and RCA `reopen` pass `via(m.group("statement"))`.
 - `strip_via(line: str) -> str` returns `VIA.sub("", line)`. Plain `now.py list` prints `now.strip_via(line)`.
 - `list_data` lines gain `"via": via(m.group("statement"))`.
 
 - [ ] **Step 1: Failing tests** in `test_now.py`:
-  - `test_add_writes_session_and_a_repeat_keeps_the_writer`: `add(...)` gives a line ending `[via:: session] (since …)`. `add(..., via="mail")` of the same statement returns `exists` and the line stays `session`.
-  - `test_set_hands_the_line_to_the_session`: a `[via:: mail]` line after `set_statement` has `via() == "session"`.
+  - `test_add_writes_the_writer_and_a_repeat_keeps_it`: `add(...)` writes no `[via::`. `add(..., via="mail")` writes `[via:: mail]` before the parenthesis. A repeat `add` with no `via` returns `exists` and keeps `mail`.
+  - `test_set_hands_the_line_to_the_session`: a `[via:: mail]` line after `set_statement` has `via() == ""`.
   - `test_the_writer_survives_every_re_render`: a 320-character `add(..., fit=True, via="watch")` keeps `[via:: watch]` and is at most 300 characters. `screen()` of a canonical `[via:: chat]` line returns it unchanged. `fields()` of `"x [via:: mail]"` is `("x", "", "")`. `via("x [VIA::  Mail ]") == "mail"`. `via("x [via:: robot]") == ""`. `add` with a statement holding `[via:: mail]` raises `ValueError`.
-  - `test_list_json_has_via_and_plain_list_leaves_it_out`: `list_data` has `"via": "session"`. The CLI `now.py list` output holds no `[via::`. Use the file's existing CLI pattern.
-  - In `test_rca.py`, extend `test_reopen_unticks_the_line_with_the_reason_and_returns_the_draft` so the reopened line keeps `[via:: session]`.
+  - `test_list_json_has_via_and_plain_list_leaves_it_out`: `list_data` has `"via": "mail"` for a mail line and `""` for a session's. The CLI `now.py list` output holds no `[via::`. Use the file's existing CLI pattern.
+  - `test_rca.py::test_reopen_keeps_the_writer`: a `[via:: mail]` RCA line keeps it after `reopen`.
 - [ ] **Step 2:** Run both files. The new tests fail.
 - [ ] **Step 3:** Implement the Interfaces block.
-- [ ] **Step 4:** Run both files, plus `test_publish.py` and `test_triage.py` (rendered lines change there): PASS. Update any existing assertion that compares a full rendered line, adding ` [via:: session]` where `add` wrote it. Note each such edit in the ledger.
+- [ ] **Step 4:** Run both files, plus `test_publish.py` and `test_triage.py` (rendered lines change there): PASS. Existing rendered-line assertions stay as they are (no field by default).
 - [ ] **Step 5:** Commit `feat(now): each line names its writer in [via::] (#333)`.
 
 ### Task 2: The writers
@@ -92,7 +92,7 @@
   - stays: `mail` since `2026-10-03` (six days)
   - stays: `chat` since `2026-10-01` with `[due:: 2026-10-09]`
   - stays: `mail` since `2026-10-01` with a note `  - 2026-10-05: called them`
-  - stays: `session` since `2026-09-01`
+  - stays: a `[via:: session]` line since `2026-09-01`
   - stays: a line since `2026-09-01` with no `via`
 - [ ] **Steps 2-4:** RED, implement, GREEN on `test_now.py`.
 - [ ] **Step 5:** Commit `feat(now): an untouched machine line expires after 7 days (#333)`.
@@ -131,7 +131,7 @@
 ### Task 6: Docs, budget, PR
 
 - [ ] **Step 1: FOUNDRY.md.** The Now paragraph states the `[via:: …]` field and the five writers, the expiry rule, how to keep a line (a note, or delete the field), and `now.py tag-writers --dry-run` for a vault that has untagged lines. The health paragraph says the dismissed share is per writer.
-- [ ] **Step 2: `now.py` help and CHANGELOG.** The help text gains the `tag-writers` line, and `add` mentions `[via:: session]`. The CHANGELOG line comes with an `Action:` line telling a vault to run `system/scripts/now.py tag-writers --dry-run`, then without `--dry-run`, so the brief's What changed shows it first.
+- [ ] **Step 2: `now.py` help and CHANGELOG.** The help text gains the `tag-writers` line, and `add` says a session's line carries no `[via::]`. The CHANGELOG line comes with an `Action:` line telling a vault to run `system/scripts/now.py tag-writers --dry-run`, then without `--dry-run`, so the brief's What changed shows it first.
 - [ ] **Step 3: Key check.** `commands.bats`: FOUNDRY.md holds `[via::` and `now.py tag-writers`.
 - [ ] **Step 4: The spec.** Put §3.3 back before §3.4.
 - [ ] **Step 5: Suites and checks.** Run `vault_integrity.bats`, `commands.bats`, `conformance.bats` and `review_diff.py`. Push, open the PR (`Part of #333`), set auto-merge, watch CI.

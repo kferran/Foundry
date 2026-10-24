@@ -11,6 +11,8 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-24
+- Changed: each Now line a machine writes names its writer in `[via:: …]` (`mail`, `chat`, `watch`, `brief`), and a `mail`, `chat` or `watch` line nobody touched closes itself as expired after 7 days (never before its own `due`; a note under it keeps it). The health scorecard's dismissed share is per writer. (#333)
+  - Action: run `system/scripts/now.py tag-writers --dry-run`, then `system/scripts/now.py tag-writers`, to name the writer of the lines already open; the next check expires the old untouched ones.
 - Changed: FOUNDRY.md opens with **What the Foundry offers**: every feature with what turns it on, the unit that runs it, its smoke row and its output, and what each extension needs. **The factory line**, under Development, is the builders' entry point and ends with how to add a Source. A test fails when a command, skill, extension or unit ships without its row. (#331)
 - Changed: the today file masks credentials in an item's link, as it does its text, and refuses a symlinked file. Interactive `/brief`, `/debrief` and `/rca` end with `system/scripts/lint_vault.sh`, as `/ingest` does. Lint walls every note but `wiki/Index.md`, as the publish gate does: a note of `type: index` elsewhere that links across partitions is now a lint error. (#310)
 - Added: `--json` on `now.py list`, `active_projects.py`, `nightshift.py list` and `nightshift.py report`, for the console extension's reads (#377). Each prints one object starting `"v": 1`; text output is unchanged, and `report --json` writes no report file. (#378)
