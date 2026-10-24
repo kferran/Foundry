@@ -78,3 +78,25 @@ jobs:
       - name: Gate, everything on
         if: steps.cfg.outputs.configured == 'true'
         run: system/scripts/verify_setup.sh --require-suites
+  # The console's web app (console C1 spec §8.7): Node from extensions/console/app/mise.toml's major, its unit tests
+  # and a production build. The two jobs above need no Node; today.py's tests run in gate-all-extensions.
+  console:
+    if: vars.FOUNDRY_CI == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: extensions/console/app
+    steps:
+      - uses: actions/checkout@v5
+      - name: Node, as mise.toml pins it
+        id: node
+        run: echo "major=$(sed -nE 's/^node = "([0-9]+)"$/\1/p' mise.toml)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.node.outputs.major }}
+          cache: npm
+          cache-dependency-path: extensions/console/app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx vitest run
+      - run: npx nuxi build

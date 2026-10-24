@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "date": "2026-10-24",
+  "stamps": {"prep": "05:41", "index": "09:12"},
+  "partitions": {
+    "work": {
+      "tiles": {"focus": 2, "stale": 1, "needs_you": 2, "waiting": 1, "overdue": 1, "orders": 1},
+      "projects": [
+        {"rank": 1, "link": "Alpha", "path": "wiki/work/concepts/Alpha.md", "focus": "cutover plan",
+         "next": ["Write the runbook", "Confirm the owner"], "decisions": ["Retry cap: 3 or 5"], "decisions_more": 2,
+         "stale": null, "now_lines": 2, "prs": 1, "changed": "2026-10-23"},
+        {"rank": 2, "link": "Beta", "path": "wiki/work/concepts/Beta.md", "focus": "",
+         "next": [], "decisions": [], "decisions_more": 0, "stale": "2026-10-16", "now_lines": 0, "prs": 0, "changed": "2026-10-10"}
+      ],
+      "also_active": ["Gamma"],
+      "today": [{"text": "Write the runbook", "project": "Alpha"}],
+      "now": [
+        {"kind": "owed", "section": "Needs you", "statement": "Reply on the cap for [[Alpha]]", "who": "Blake Sample",
+         "since": "2026-10-01", "evidence": "https://github.com/acme/shop/pull/7", "rec": "", "due": "2026-10-20",
+         "over": 4, "band": "1-7", "notes": [], "raw": "", "project": "Alpha"},
+        {"kind": "waiting", "section": "Waiting", "statement": "Rollback owner for alpha cutover", "who": "Jordan Example",
+         "since": "2026-10-02", "evidence": "", "rec": "", "due": "2026-10-29", "over": null, "band": null, "notes": [],
+         "raw": "", "project": "Alpha"},
+        {"kind": "owed", "section": "Needs you", "statement": "Unrelated chore", "who": "", "since": "2026-10-03",
+         "evidence": "ABC-123", "rec": "", "due": "", "over": null, "band": null, "notes": [], "raw": "", "project": ""}
+      ],
+      "unparsed": 1,
+      "actions": [{"bracket": "Blake Sample", "text": "Send the metrics", "meeting": "2026-10-21 Billing sync", "age": "2 days open"}]
+    },
+    "personal": {
+      "tiles": {"focus": 0, "stale": 0, "needs_you": 1, "waiting": 0, "overdue": 0, "orders": 0},
+      "projects": [], "also_active": [], "today": [],
+      "now": [
+        {"kind": "draft", "section": "Needs you", "statement": "Note to the garden club", "who": "", "since": "2026-10-03",
+         "evidence": "", "rec": "", "due": "", "over": null, "band": null, "notes": [], "raw": "", "project": ""}
+      ],
+      "unparsed": 0,
+      "actions": []
+    }
+  },
+  "calendar": [{"start": "09:30", "end": "10:00", "title": "Standup"}],
+  "orders": {
+    "open": [{"id": "2026-10-23-alpha-runbook", "state": "queued", "partition": "work"}],
+    "today": [{"id": "2026-10-22-market-page", "kind": "plan", "state": "done", "result": "https://github.com/acme/shop/pull/9", "reason": null}],
+    "needs": [], "held": null
+  },
+  "pipeline": {"sources": ["calendar: ok", "triage: failed: auth: expired"], "quarantine": 1, "alerts": 2},
+  "foreman_url": "https://claude.ai/code",
+  "errors": []
+}

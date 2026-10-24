@@ -1,0 +1,21 @@
+{
+  "name": "foundry-console",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxi build",
+    "dev": "nuxi dev --host 127.0.0.1",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tanstack/vue-query": "5.104.5",
+    "nuxt": "4.6.2",
+    "vue": "3.5.44"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.10",
+    "@vue/test-utils": "2.5.1",
+    "happy-dom": "21.0.4",
+    "vitest": "5.0.5"
+  }
+}
