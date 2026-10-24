@@ -20,6 +20,8 @@ setup() {
   grep -qF 'marked "meaning unconfirmed". Never guess a meaning.' "$f"
   grep -qF -- '--kind owed --statement "Review RCA draft: <note stem>" --evidence rca:<note stem>' "$f"
   grep -qF 'Never queue it yourself.' "$f"
+  grep -qF 'Only with `--file` in the arguments' "$f"   # #333 Q8: no Review line by default; the draft is filed by hand
+  grep -qF 'argument-hint: <raw/telemetry/<note>.md> [--file]' "$f"
   grep -qF 'from `extensions/telemetry/templates/rca.md`' "$f"
   grep -qF '**RCA.**' "$E/extension.md"
   grep -qF 'approved `/rca` drafts should be filed to Jira' "$E/extension.md"
