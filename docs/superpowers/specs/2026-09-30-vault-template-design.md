@@ -3,6 +3,7 @@
 **Date:** 2026-09-30
 **Status:** Approved in brainstorming; revised after two senior systems reviews (incl. memory addendum); pending spec review
 **Names (Plan 9, 2026-10-05):** Jarvis is The Foundry and Optimus the Foreman; CodingAgent and SystemMaintenance are the Coding and Maintenance Workcells; jarvis-* units, JARVIS_* variables and Jarvis-* trailers are foundry-*, FOUNDRY_* and Foundry-* (see 2026-10-05-foundry-rename-design.md §2).
+**Amended (2026-10-24, #333):** connector sessions now run headless, each confined to one tool (§3, Connector sessions; §14); the telemetry fetch and CI are built (§3, §14). What runs today is in FOUNDRY.md, What the Foundry offers.
 **Branch:** `feat/vault-template`
 
 ## 1. Context
@@ -35,9 +36,10 @@ A survey of 20 open-source second-brain and agent-memory projects (§13.5) found
 | Topic | Decision |
 |---|---|
 | Scope | All original review findings, plus accepted senior-review findings |
-| Headless isolation | `run_headless.sh` runs `claude -p` in restricted mode with a dedicated settings file, no MCP, no session persistence, per-command tool lists and a timeout (§7.2) |
+| Headless isolation | `run_headless.sh` runs `claude -p` in restricted mode with a dedicated settings file, no MCP, no session persistence, per-command tool lists and a timeout (§7.2). This holds for the compile runs (ingest, brief, debrief); connector sessions follow the next row |
+| Connector sessions (amended 2026-10-24) | A read from or a write to an outside service runs headless as its own `claude -p` session through `lib_connector.sh`. The one MCP tool it needs is allowed and every other tool denied (`lib_confine.sh`: the built-in tools, the server's other tools and every allow rule in the user's settings), with hooks off, a timeout and a turn cap. A script then reads the session's tool use from its stream, and that checker's verdict wins (FOUNDRY.md, principle P3). The session never writes the vault: its script routes the checked result, as Now lines through `now.py`'s check, redacted outside text, alerts that carry no outside text, or `raw/` drops the gate compiles. The reads (calendar, meetings, inbox triage, the intraday watch, handoffs) and the two writes (Slack notices, RCA ticket filing) all run this way, each with a smoke row; all but notices and an approved filing wait at the usage ceiling |
 | Interactive permissions | Committed `.claude/settings.json` denies reads of secret locations and outside the vault; allows only vault-local script calls and wiki/briefing edits (§7.1) |
-| Telemetry enricher | **Deferred.** Removed with its units; `raw/telemetry/` routing remains for manually dropped production-error notes |
+| Telemetry enricher | **Deferred.** Removed with its units; `raw/telemetry/` routing remains for manually dropped production-error notes. (Since built: the `telemetry` extension, an hourly fetch with no model) |
 | Metrics quarantine | **Deferred.** `check_metrics.sh` and `/backup` quarantine removed; `/debrief` still reports metric files if present |
 | Pre-commit | Deterministic linter; no LLM in the hook; schema errors block, dead links warn |
 | Re-runs | `/setup` and every script it calls are idempotent; existing config is shown and edited, never overwritten blindly |
@@ -920,15 +922,15 @@ None is integrated as a dependency: each needs a server or database, a cloud LLM
 - Clipboard capture into `raw/inbox/` via a Hyprland keybinding (OpenWiki).
 - Ingesting Claude Code's own per-project auto-memory files into the vault.
 - Capturing sessions that end before reaching a digest (no SessionEnd capture; accepted loss).
-- Telemetry enricher, its timer, and a real Kusto query. `raw/telemetry/` and the `production_error` schema remain for manual drops.
+- Telemetry enricher, its timer, and a real Kusto query. `raw/telemetry/` and the `production_error` schema remain for manual drops. (Since built: the `telemetry` extension.)
 - Automated agent quarantine from metric files (`/debrief` reports only).
 - Storing machine data (metrics, focus samples, alerts) in SQLite.
 - An Obsidian plugin that reads `index.db`; Obsidian-side querying is Dataview.
 - A filesystem watcher for the index.
 - Blended ranking (tags/links) in `related`; embedding/vector search.
 - Performance benchmark.
-- Live Gmail/Slack intake via claude.ai connectors (never in headless runs).
-- CI running the test suites.
+- Live Gmail/Slack intake via claude.ai connectors (never in headless runs). (Since built headless and confined: inbox triage and the intraday watch; §3, Connector sessions.)
+- CI running the test suites. (Since built: the GitHub Actions `gate` and `gate-all-extensions` jobs.)
 - `herdr` integration beyond a README mention.
 - Sub-project 2, the Optimus orchestrator (§16), beyond the reserved seams.
 
