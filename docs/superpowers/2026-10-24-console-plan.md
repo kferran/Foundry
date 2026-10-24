@@ -13,7 +13,7 @@ A web app over the vault, shipped as the extension `extensions/console/`. Vue wi
 
 | Phase | Issue milestone | What ships | Depends on | Spec and plan | State |
 |---|---|---|---|---|---|
-| C0 | M0 | `--json` on `now.py list`, `active_projects.py`, `nightshift.py list` and `report` | none | `specs/2026-10-24-json-output-design.md` (task list in the spec) | Spec merged (#378); build in #383 |
+| C0 | M0 | `--json` on `now.py list`, `active_projects.py`, `nightshift.py list` and `report` | none | `specs/2026-10-24-json-output-design.md` (task list in the spec) | Complete (2026-10-24): spec #378, build #383 |
 | C1 | M1 | The Today screen, read-only, and the "Talk to the Foreman" link | C0 merged; F2 closed (#307) | `specs/2026-10-24-console-today-design.md`, `plans/2026-10-24-console-today.md` | Spec and plan drafted |
 | C2 | M2 | `ask`: a read-only headless command over the compiled wiki, answered in the app (and later from Slack, #333) | C1 | to write when C1 is live: it adds a `run_headless.sh` command, a confinement surface the owner merges | Not started |
 | C3 | M3 | Search and manage: index search; actions that run one vault script each (tick or add a Now line, queue a Work Order, retry a quarantined input, rebuild the index); handing requests to the Foreman | C1, C2; F5 closed (#310) | to write after C2: the first writes from the app | Not started |
