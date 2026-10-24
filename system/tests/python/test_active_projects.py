@@ -186,3 +186,59 @@ def test_long_items_are_cut_to_one_brief_item():
     lines = ap.project_block("Alpha", "", page(body))
     assert all(len(line) <= 163 for line in lines)
     assert lines[3].endswith("…") and lines[-1].endswith("…")
+
+
+# --- active_projects.py <date> --json (#375) ---
+
+def json_fixture(vault):
+    long_item = "long " * 60
+    write(vault, "wiki/work/ActiveProjects.md", listing("- [[Alpha]]: cutover plan\n- [[Missing]]\n- [[Beta]]\n"))
+    write(vault, "wiki/work/concepts/Alpha.md", page(f"- [ ] a1\n- [ ] {long_item}\n## Decisions\n"
+                                                     + "".join(f"- [ ] d{i}\n" for i in range(5))))
+    write(vault, "wiki/work/concepts/Beta.md", page("Nothing open.\n"))
+    return long_item.strip()
+
+
+def run_json(vault):
+    import json
+    r = subprocess.run([sys.executable, str(SCRIPT), "2026-10-07", "--json"], cwd=vault, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+def test_json_matches_the_markdown_uncut(vault):
+    long_item = json_fixture(vault)
+    out = run_json(vault)
+    assert out["v"] == 1 and out["date"] == "2026-10-07" and set(out["partitions"]) == {"work"}
+    alpha, beta = out["partitions"]["work"]["projects"]
+    assert alpha == {"link": "Alpha", "path": "wiki/work/concepts/Alpha.md", "focus": "cutover plan",
+                     "next": ["a1", long_item], "decisions": ["d0", "d1", "d2"], "decisions_more": 2, "stale": None}
+    assert beta["link"] == "Beta" and beta["focus"] == "" and beta["next"] == [] and beta["decisions"] == []
+    markdown = run(vault).stdout
+    for project in (alpha, beta):
+        assert f"### [[{project['link']}]]" in markdown
+    for item in ["a1", "d0", "d1", "d2", "and 2 more decisions on the page"]:
+        assert f"- {item}\n" in markdown
+
+
+def test_json_carries_notices_and_the_stale_and_also_active_keys(vault):
+    json_fixture(vault)
+    out = run_json(vault)
+    assert out["notices"] == ["- work: [[Missing]] in ActiveProjects does not resolve to a note."]
+    assert out["partitions"]["work"]["also_active"] == []
+    assert all(p["stale"] is None for p in out["partitions"]["work"]["projects"])
+
+
+def test_json_with_no_lists_is_empty(vault):
+    assert run_json(vault) == {"v": 1, "date": "2026-10-07", "partitions": {}, "notices": []}
+
+
+def test_markdown_is_unchanged_and_bad_arguments_exit_two(vault):
+    json_fixture(vault)
+    assert run(vault).stdout == (
+        "# Active projects for 2026-10-07\n\n## work\n\n### [[Alpha]]: cutover plan\nNext:\n- a1\n"
+        f"- {ap.cut('long ' * 60)}\n"
+        "Decisions waiting:\n- d0\n- d1\n- d2\n- and 2 more decisions on the page\n\n### [[Beta]]\nNext:\n- None open.\n"
+        "\n## Notices\n- work: [[Missing]] in ActiveProjects does not resolve to a note.\n")
+    bad = subprocess.run([sys.executable, str(SCRIPT), "2026-10-07", "--yaml"], cwd=vault, capture_output=True, text=True)
+    assert bad.returncode == 2
