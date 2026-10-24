@@ -11,6 +11,7 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 ## Changes
 
 ## 2026-10-24
+- Changed: interactive sessions no longer ask before nine read-only commands: `now.py overdue` and `now.py --help`, `extensions.py check` and `allow` (without `--write`), `intake.py --quarantine`, `systemctl --user status`, `is-active` and `is-enabled`, and `journalctl --user`. (#393)
 - Changed: `/rca` no longer adds a "Review RCA draft" line to the Now page; its Ticket draft is for filing by hand. `/rca <note> --file` adds the line as before, and ticking it files the ticket. (#333)
 - Changed: FOUNDRY.md opens with **What the Foundry offers**: every feature with what turns it on, the unit that runs it, its smoke row and its output, and what each extension needs. **The factory line**, under Development, is the builders' entry point and ends with how to add a Source. A test fails when a command, skill, extension or unit ships without its row. (#331)
 - Changed: the today file masks credentials in an item's link, as it does its text, and refuses a symlinked file. Interactive `/brief`, `/debrief` and `/rca` end with `system/scripts/lint_vault.sh`, as `/ingest` does. Lint walls every note but `wiki/Index.md`, as the publish gate does: a note of `type: index` elsewhere that links across partitions is now a lint error. (#310)

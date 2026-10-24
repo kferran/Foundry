@@ -54,7 +54,16 @@
       "Bash(git config user.name)",
       "Bash(git config user.email)",
       "Bash(git fetch -q template:*)",
-      "Bash(system/scripts/now.py review:*)"
+      "Bash(system/scripts/now.py review:*)",
+      "Bash(system/scripts/now.py overdue:*)",
+      "Bash(system/scripts/now.py --help)",
+      "Bash(system/scripts/extensions.py check)",
+      "Bash(system/scripts/extensions.py allow)",
+      "Bash(system/scripts/intake.py --quarantine)",
+      "Bash(systemctl --user status *)",
+      "Bash(systemctl --user is-active *)",
+      "Bash(systemctl --user is-enabled *)",
+      "Bash(journalctl --user *)"
     ],
     "deny": [
       "Read(~/.ssh/**)", "Read(~/.gnupg/**)",
