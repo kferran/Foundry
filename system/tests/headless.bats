@@ -147,7 +147,7 @@ EOF
   STUB_NOW="Long objective $(printf 'x%.0s' {1..320})" STUB_MODE=brief_now run "$RH" brief
   [ "$status" -eq 0 ]
   [ -f "briefings/$(TZ=America/Denver date +%F).md" ]
-  run grep -c '^- \[ \] owed: Long objective x*… (since ' wiki/work/Now.md
+  run grep -c '^- \[ \] owed: Long objective x*… \[via:: brief\] (since ' wiki/work/Now.md
   [ "$output" -eq 1 ]
 }
 

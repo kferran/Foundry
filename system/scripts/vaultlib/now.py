@@ -381,7 +381,7 @@ def fit_staged(vault, run_id: str) -> int:
             if not line.startswith("- [ ] ") or line in kept:
                 continue
             try:
-                new = screen(vault, partition, line)
+                new = screen(vault, partition, _brief(line))
             except ValueError:
                 continue
             if new != line:
@@ -389,6 +389,17 @@ def fit_staged(vault, run_id: str) -> int:
         if changed > before:
             path.write_text("\n".join(lines), encoding="utf-8")
     return changed
+
+
+def _brief(line: str) -> str:
+    """A line the brief added, named as the brief's (Now writer spec §3.1) when it is in now.py's form and names no
+    writer; any other line as it is."""
+    m = LINE.match(line)
+    if m is None or via(m.group("statement")):
+        return line
+    bare, rec, due = fields(m.group("statement"))
+    rest = (m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
+    return render(m.group("kind"), bare, *rest, "brief") if render(m.group("kind"), bare, *rest) == line else line
 
 
 def set_statement(vault, partition: str, match: str, statement: str, today: str) -> str:

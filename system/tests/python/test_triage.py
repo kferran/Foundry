@@ -133,7 +133,7 @@ def test_record_adds_one_owed_line_per_new_message_and_records_the_tick(vault):
     assert tr.record(vault, "work", found, TODAY, "t", 5_000) == ["Blake: asks how to proceed with a rejected case"]
     lines = now.open_lines(now.read(vault, "work"))
     assert lines == ["- [ ] owed: Blake: asks how to proceed with a rejected case. Next: reply with the fix plan "
-                     "[due:: 2026-10-12] (blake@example.com, since 2026-10-09, https://mail.google.com/mail/#all/a1)"]
+                     "[due:: 2026-10-12] [via:: mail] (blake@example.com, since 2026-10-09, https://mail.google.com/mail/#all/a1)"]
     assert tr.record(vault, "work", found, TODAY, "t", 6_000) == []  # a rerun adds nothing
     newer = tr.extract(mail_stream([thread(date="2026-10-09T22:00:00Z")], items=[item(ask="asks again")]), Q)
     assert tr.record(vault, "work", newer, TODAY, "t", 7_000) == ["Blake: asks again"]
@@ -362,3 +362,10 @@ def test_a_refused_line_is_dropped_with_one_alert_a_day_and_the_tick_goes_on(vau
     assert len(alerts) == 1
     assert alerts[0].startswith("- 09:10:00 [triage] a Now line was refused (partition wall")
     assert "diary" not in alerts[0].split("(partition wall")[0]
+
+
+def test_a_chat_record_names_chat_as_its_writer(vault):
+    prepare(vault)
+    found = tr.extract(mail_stream([thread()], items=[item()]), Q)
+    tr.record(vault, "work", found, TODAY, "t", 5_000, source="chat")
+    assert now.via(now.open_lines(now.read(vault, "work"))[0]) == "chat"

@@ -764,12 +764,12 @@ def test_fit_staged_cuts_only_the_brief_added_long_lines(vault):
     short = f"- [ ] owed: Short one [due:: 2026-11-08] (since {TODAY})"
     write(vault, "wiki/work/Now.md", head + old + "\n")
     write(vault, "wiki/.staging/r1/wiki/work/Now.md", head + "\n".join([old, added, short]) + "\n")
-    assert now.fit_staged(vault, "r1") == 1
+    assert now.fit_staged(vault, "r1") == 2   # the long line is cut; both added lines are named the brief's
     lines = (vault / "wiki/.staging/r1/wiki/work/Now.md").read_text(encoding="utf-8").split("\n")
     assert lines[-4] == old
-    assert lines[-2] == short
+    assert lines[-2] == short.replace(" (since", " [via:: brief] (since")
     assert len(lines[-3]) <= now.MAX_LINE
-    assert lines[-3].endswith(f"e… [due:: 2026-11-08] (since {TODAY})")
+    assert lines[-3].endswith(f"e… [due:: 2026-11-08] [via:: brief] (since {TODAY})")
     assert now.fit_staged(vault, "missing-run") == 0
 
 
@@ -783,7 +783,7 @@ def test_fit_staged_keeps_the_fields_and_leaves_what_it_cannot_rebuild(vault):
     assert now.fit_staged(vault, "r2") == 1
     lines = (vault / "wiki/.staging/r2/wiki/work/Now.md").read_text(encoding="utf-8").split("\n")
     assert len(lines[-4]) == now.MAX_LINE
-    assert lines[-4].endswith("f… [rec:: ship it: done] [due:: 2026-11-08] "
+    assert lines[-4].endswith("f… [rec:: ship it: done] [due:: 2026-11-08] [via:: brief] "
                               f"(Pat Sample, since {TODAY}, https://github.com/acme/shop/pull/7)")
     assert lines[-3:-1] == [trailing, floor]
 
@@ -891,7 +891,7 @@ def test_fit_staged_redacts_and_cuts_added_lines(vault):
     assert lines[-3] == old
     assert KEY not in lines[-2]
     assert len(lines[-2]) <= now.MAX_LINE
-    assert lines[-2].endswith(f"e… (since {TODAY})")
+    assert lines[-2].endswith(f"e… [via:: brief] (since {TODAY})")
 
 
 @pytest.mark.parametrize("secret", [f"token: {KEY}", f"authorization: bearer {KEY}", f"password={KEY}", f"pwd={KEY}",
@@ -1018,3 +1018,15 @@ def test_list_json_has_via_and_plain_list_leaves_it_out(vault):
     out = cli(vault, "list").stdout
     assert "Reply to Blake" in out
     assert "[via::" not in out
+
+
+def test_fit_staged_tags_brief_lines_and_keeps_a_writer_already_there(vault):
+    head = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n---\n# Now\n\n## Needs you\n"
+    plain = f"- [ ] owed: New objective [due:: 2026-11-08] (since {TODAY})"
+    kept = f"- [ ] owed: Copied line [via:: session] (since {TODAY})"
+    write(vault, "wiki/work/Now.md", head)
+    write(vault, "wiki/.staging/r9/wiki/work/Now.md", head + "\n".join([plain, kept]) + "\n")
+    assert now.fit_staged(vault, "r9") == 1
+    lines = (vault / "wiki/.staging/r9/wiki/work/Now.md").read_text(encoding="utf-8").split("\n")
+    assert lines[-3] == f"- [ ] owed: New objective [due:: 2026-11-08] [via:: brief] (since {TODAY})"
+    assert lines[-2] == kept
