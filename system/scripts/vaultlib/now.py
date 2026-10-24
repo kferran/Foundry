@@ -60,6 +60,8 @@ def named_dates(statement: str) -> list:
 ISO_DATE = re.compile(r"(?<![\w-])(\d{4}-\d{2}-\d{2})(?=T\d{2}:\d{2}|(?![\w-]|\.\w))")
 SHORT_DAYS, LONG_DAYS = 3, 30
 OVERDUE_HEADINGS = ("**1 to 7 days over**", "**8 to 30 days over**", "**More than 30 days over**")
+BANDS = ("1-7", "8-30", "30+")   # the same groups, as now.py list --json names them (#375)
+NOTE = re.compile(r"^\s+- (\d{4}-\d{2}-\d{2}): (.*\S)\s*$")
 
 
 class CheckFailed(Exception):
@@ -497,6 +499,43 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
             "page_bytes": page_path(vault, partition).stat().st_size if page_path(vault, partition).is_file() else 0}
 
 
+def band(over: int):
+    """The overdue group of a line `over` days past its due (an index into OVERDUE_HEADINGS and BANDS); None when it is
+    not past."""
+    return None if over <= 0 else 0 if over <= 7 else 1 if over <= 30 else 2
+
+
+def list_data(vault, partitions, day: str) -> dict:
+    """now.py list --json (#375): each partition's open lines with their fields, clock and notes. An open line that does
+    not parse goes in "unparsed" as written, so every open line is in the output."""
+    out = {}
+    for partition in partitions:
+        lines, unparsed = [], []
+        body = frontmatter.parse(read(vault, partition)).body.splitlines()
+        for i, line in enumerate(body):
+            if not line.startswith("- [ ] "):
+                continue
+            m = parse(line)
+            if m is None:
+                unparsed.append(line.rstrip())
+                continue
+            statement, rec, due = fields(m.group("statement"))
+            over = (date.fromisoformat(day) - date.fromisoformat(due)).days if due else 0
+            group = band(over)
+            notes = []
+            for text in body[i + 1:_block_end(body, i)]:
+                note = NOTE.match(text)
+                notes.append({"date": note.group(1), "text": note.group(2)} if note
+                             else {"date": "", "text": text.strip().removeprefix("- ")})
+            kind = m.group("kind")
+            lines.append({"kind": kind, "section": (WAITING if kind == "waiting" else NEEDS)[3:], "statement": statement,
+                          "who": m.group("who") or "", "since": m.group("since"), "evidence": m.group("evidence") or "",
+                          "rec": rec, "due": due, "over": over if group is not None else None,
+                          "band": BANDS[group] if group is not None else None, "notes": notes, "raw": line.rstrip()})
+        out[partition] = {"lines": lines, "unparsed": unparsed}
+    return out
+
+
 def overdue(vault, day: str) -> str:
     """The brief's Overdue block (Now clock spec §7), read-only: the open lines of both pages whose due is before day,
     grouped by days over, oldest due first, at most MAX_OVERDUE lines (1 to 7 days over first) and a count of the
@@ -509,9 +548,9 @@ def overdue(vault, day: str) -> str:
             if not (due and is_date(due.group(1))):
                 clockless += 1
                 continue
-            over = (date.fromisoformat(day) - date.fromisoformat(due.group(1))).days
-            if over > 0:
-                groups[0 if over <= 7 else 1 if over <= 30 else 2].append((due.group(1), f"- {line.rstrip()[6:]}"))
+            group = band((date.fromisoformat(day) - date.fromisoformat(due.group(1))).days)
+            if group is not None:
+                groups[group].append((due.group(1), f"- {line.rstrip()[6:]}"))
     # One block per group and one for the count, joined by a blank line, so Markdown keeps each bold label on its own
     # line and the count out of the last bullet.
     # At most MAX_OVERDUE lines, the fewest days over first, then one count line (phase A follow-up).
