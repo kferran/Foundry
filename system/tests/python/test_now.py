@@ -1049,3 +1049,25 @@ def test_check_expires_untouched_machine_lines_only(vault, tmp_path):
     assert f"- [-] owed: Old mail [via:: mail] (since 2026-10-02) _(closed: expired {TODAY})_" in lines
     assert f"- [-] owed: Old watch [via:: watch] (since 2026-10-01) _(closed: expired {TODAY})_" in lines
     assert all(line in lines for line in stay)
+
+
+def test_tag_writers_dry_run_then_once(vault):
+    prepare(vault)
+    mail, slack = "https://mail.google.com/mail/#all/a1", "https://x.slack.com/archives/C1/p1"
+    lines = [f"- [ ] owed: Old mail (since 2026-10-01, {mail})", f"- [ ] owed: Old chat (since 2026-10-01, {slack})",
+             "- [ ] owed: A PR (since 2026-10-01, https://github.com/acme/shop/pull/7)", "- [ ] owed: Bare (since 2026-10-01)",
+             f"- [ ] owed: Hand  shaped (since 2026-10-01, {mail})"]
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\n---\n# Now\n\n## Needs you\n" + "\n".join(lines) + "\n")
+    before = page(vault)
+    zero = {"tagged": 0, "expiring": 0, "skipped": 0}
+    assert now.tag_writers(vault, TODAY, dry_run=True) == {"work": {"tagged": 2, "expiring": 2, "skipped": 1},
+                                                           "personal": zero}
+    assert page(vault) == before
+    now.tag_writers(vault, TODAY, dry_run=False)
+    assert f"- [ ] owed: Old mail [via:: mail] (since 2026-10-01, {mail})" in page(vault)
+    assert f"- [ ] owed: Old chat [via:: chat] (since 2026-10-01, {slack})" in page(vault)
+    assert lines[4] in page(vault)
+    assert now.tag_writers(vault, TODAY, dry_run=False)["work"]["tagged"] == 0
+    r = cli(vault, "tag-writers", "--dry-run")
+    assert r.returncode == 0, r.stderr
+    assert "tag-writers work: 0 tagged, 0 expire at the next check, 1 skipped" in r.stdout

@@ -526,6 +526,35 @@ def check(vault, today: str, alert, gh: str = "gh") -> int:
     return closed
 
 
+HOSTS = (("mail.google.com", "mail"), ("slack.com", "chat"))
+
+
+def tag_writers(vault, today: str, dry_run: bool) -> dict:
+    """Once, under run.lock (Now writer spec §3.4): each open line with no writer and a Gmail or Slack link as its
+    evidence is named mail or chat. A line not in now.py's form is counted as skipped and left alone. Returns
+    {partition: {"tagged", "expiring", "skipped"}}, "expiring" being the tagged lines the next check closes."""
+    out = {}
+    for partition in PARTITIONS:
+        lines, counts = read(vault, partition).split("\n"), {"tagged": 0, "expiring": 0, "skipped": 0}
+        for i, line in enumerate(lines):
+            m = LINE.match(line.rstrip()) if line.startswith("- [ ] ") else None
+            writer = next((w for host, w in HOSTS if m and host in (m.group("evidence") or "")), "")
+            if not writer or via(m.group("statement")):
+                continue
+            bare, rec, due = fields(m.group("statement"))
+            rest = (m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
+            if render(m.group("kind"), bare, *rest) != line.rstrip():
+                counts["skipped"] += 1
+                continue
+            lines[i] = render(m.group("kind"), bare, *rest, writer)
+            counts["tagged"] += 1
+            counts["expiring"] += expires(lines, i, today)
+        if counts["tagged"] and not dry_run:
+            write(vault, partition, "\n".join(lines))
+        out[partition] = counts
+    return out
+
+
 def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: str = "gh",
            on_fail=lambda line, reason: None) -> dict:
     """The lull review (#145), read-only: "closed" (open lines whose evidence shows them finished, each with its

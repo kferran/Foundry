@@ -24,7 +24,10 @@
                                   read-only: one JSON object, {"v": 1, "date", "partitions": {<p>: {"lines",
                                   "unparsed"}}}; each line's kind, section, statement, who, since, evidence, rec, due,
                                   days over and band (as of --date, today by default), notes and raw text (#375)
-  now.py check                    close lines on checked evidence, stamp hand ticks (the intake timer runs it)
+  now.py check                    close lines on checked evidence, expire a mail, chat or watch line ([via::])
+                                  nobody touched for 7 days, stamp hand ticks (the intake timer runs it)
+  now.py tag-writers [--dry-run]  once: name the writer of each untagged open line with a Gmail (mail) or Slack (chat)
+                                  link; --dry-run prints the counts and writes nothing
   now.py review --partition <p> [--stale-days N]
                                   read-only: lines closed by their evidence, open more than N days (14) with no
                                   evidence, duplicated, holding text or a [rec::]/[due::] field after the parenthesis
@@ -77,6 +80,7 @@ ls.add_argument("--partition", choices=now.PARTITIONS)
 ls.add_argument("--json", action="store_true")
 ls.add_argument("--date")
 sub.add_parser("check")
+sub.add_parser("tag-writers").add_argument("--dry-run", action="store_true")
 r = sub.add_parser("review")
 r.add_argument("--partition", required=True, choices=now.PARTITIONS)
 r.add_argument("--stale-days", type=int, default=now.STALE_DAYS)
@@ -160,6 +164,10 @@ try:
             print(f"archived: {now.archive(VAULT, args.partition, args.date)}")
         elif args.cmd == "check":
             print(f"closed: {now.check(VAULT, intake.today(), intake.alert)}")
+        elif args.cmd == "tag-writers":
+            for part, n in now.tag_writers(VAULT, intake.today(), args.dry_run).items():
+                print(f"tag-writers {part}: {n['tagged']} tagged, {n['expiring']} expire at the next check, "
+                      f"{n['skipped']} skipped")
         else:
             print(f"seeded: {now.seed(VAULT, default_partition(VAULT), args.date)}")
 except ValueError as exc:
