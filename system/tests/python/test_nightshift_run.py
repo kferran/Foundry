@@ -86,6 +86,23 @@ def test_add_refuses_unready(env):
     assert ni.items(vault) == []
 
 
+def test_list_json_has_every_item_with_nulls_and_text_is_unchanged(env, capsys):
+    vault, tmp = env
+    assert add(vault, "--at", "22:00") == 0
+    capsys.readouterr()
+    assert nr.main(["list", "--json"], vault, NOW) == 0
+    out = json.loads(capsys.readouterr().out)
+    (item,) = out["items"]
+    assert out["v"] == 1 and set(item) == {"id", "partition", "kind", "state", "start", "start_at", "queued_at",
+                                           "started_at", "finished_at", "repo", "base", "result", "reason"}
+    _, fm = only_item(vault)
+    assert item["id"] == fm["id"] and item["state"] == "queued" and item["repo"] == "template"
+    assert item["start"] == "at" and item["started_at"] is None and item["result"] is None
+    assert item["queued_at"] == fm["queued_at"] and "T" in item["start_at"]
+    assert nr.main(["list"], vault, NOW) == 0
+    assert capsys.readouterr().out.startswith(f"{fm['id']}  plan  queued  at  ")
+
+
 @pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
 def test_now_item_runs_verifies_pushes_and_reports(env):
     vault, tmp = env
