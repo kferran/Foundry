@@ -348,3 +348,17 @@ def test_chat_enabled_and_tool_follow_config(vault):
 def test_an_unreadable_config_gives_defaults(vault):
     (vault / "system" / "config.md").write_bytes(b"\xff\xfe")
     assert tr.config(vault) == {}
+
+
+def test_a_refused_line_is_dropped_with_one_alert_a_day_and_the_tick_goes_on(vault):
+    prepare(vault)
+    write(vault, "wiki/personal/concepts/diary.md", "---\ntype: concept\n---\n")
+    found = tr.extract(mail_stream([thread("a1"), thread("b2")], items=[item("a1"), item("b2")]), Q)
+    for i in found["items"]:   # extract's one_line keeps links out; record must still survive one
+        i["ask"] = "asks about [[diary]]"
+    assert tr.record(vault, "work", found, TODAY, "2026-10-09T09:10:00-06:00", 5_000) == []
+    assert [r["kind"] for r in tr.records(vault, TODAY)] == ["item", "item", "tick"]
+    alerts = (vault / f"system/logs/alerts_{TODAY}.md").read_text(encoding="utf-8").splitlines()
+    assert len(alerts) == 1
+    assert alerts[0].startswith("- 09:10:00 [triage] a Now line was refused (partition wall")
+    assert "diary" not in alerts[0].split("(partition wall")[0]

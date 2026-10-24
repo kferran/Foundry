@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import cli, convert as convertmod, extensions as extmod, frontmatter, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
+from . import alerts, cli, convert as convertmod, extensions as extmod, frontmatter, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
 from . import triage
 from .config import text
 
@@ -95,9 +95,7 @@ class Intake:
         return self.dt().strftime("%Y-%m-%d")
 
     def alert(self, message: str) -> None:
-        self.logs.mkdir(parents=True, exist_ok=True)
-        with open(self.logs / f"alerts_{self.today()}.md", "a", encoding="utf-8") as fh:
-            fh.write(f"- {self.dt().strftime('%H:%M:%S')} [intake] {message}\n")
+        alerts.alert(self.vault, self.today(), self.dt().strftime("%H:%M:%S"), "intake", message)
 
     def config(self, key: str, default: str) -> str:
         return text(self.vault, key, default)

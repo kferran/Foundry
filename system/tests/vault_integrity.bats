@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=15000
+CORE_CAP=15100
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -446,7 +446,7 @@ sealed_problems() {
 }
 
 # Task 10: core names no vendor or customer outside a shrinking allowlist (extensions spec §6; plan task 10).
-@test "core stays inside its budget: 14 schemas, 15,000 lines over scripts, hooks and commands (extensions spec §2.2, §5; F3 §3.5)" {
+@test "core stays inside its budget: 14 schemas, 15,100 lines over scripts, hooks and commands (extensions spec §2.2, §5; F3 §3.5)" {
   # Set once at the end of phase 4 (2026-10-16: 12,270 lines, 14 schemas). A feature that needs more moves code into an
   # extension, or raises the budget in its own pull request, with the reason.
   # 12,500 -> 12,750 (#222): parallel Work Orders (#229) and chat triage, which extends core inbox triage and would
@@ -467,6 +467,8 @@ sealed_problems() {
   # thread_ts lock, the posted ts read back and recorded for the capture) took core from 13,827 to 13,905 lines.
   # 15,000 over system/scripts, system/hooks and .claude/commands (owner, 2026-10-22; 14,906 at fd59bc5, 14,860 with F3): the cap
   # returns after its removal on 2026-10-21 (#323, #324 and #328 took scripts alone to 13,966). The #122 sweep lowers it.
+  # 15,000 -> 15,100 (factory F5 PR 1, owner to approve at merge): one Now check for every writer (redaction, cap, walls,
+  # the page's symlink test) and the shared once-a-day alert took core from 14,946 to 15,047 lines.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
@@ -479,11 +481,11 @@ sealed_problems() {
   d="$BATS_TEST_TMPDIR/cap"
   mkdir -p "$d/system/hooks" "$d/.claude/commands"
   git -C "$d" init -q
-  seq 15000 > "$d/system/hooks/big"
+  seq "$CORE_CAP" > "$d/system/hooks/big"
   echo x > "$d/.claude/commands/x.md"
   git -C "$d" add -A
   run core_problem "$d"
-  [ "$output" = "core is 15001 lines; the cap is 15000" ]
+  [ "$output" = "core is $((CORE_CAP + 1)) lines; the cap is $CORE_CAP" ]
   : > "$d/system/config.md"
   run core_problem "$d"
   [ -z "$output" ]

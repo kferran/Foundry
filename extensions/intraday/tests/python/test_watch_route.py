@@ -272,3 +272,14 @@ def test_capture_in_its_own_channel_keeps_every_message(vault):
     msgs = [{"ts": "1792429300.000100", "channel": "C0CAP", "sender": "Pat", "sender_id": "U0PAT", "text": "x",
              "link": "https://example.slack.com/archives/C0CAP/p1792429300000100?thread_ts=1792420000.000100&cid=C0CAP"}]
     assert capture.keep(vault, msgs) == msgs
+
+
+def test_a_refused_now_line_alerts_once_and_the_tick_goes_on(vault):
+    diary = vault / "wiki" / "personal" / "concepts" / "diary.md"
+    diary.parent.mkdir(parents=True, exist_ok=True)
+    diary.write_text("---\ntype: concept\n---\n")
+    items = [item(kind="deadline", what="Read [[diary]]", key="k1", link=LINK + "1"),
+             item(kind="deadline", what="Read [[diary]] again", key="k2", link=LINK + "2")]
+    assert run(vault, {"items": items}) == {"items": 2, "now": 0, "alerts": 0}
+    assert len(alerts(vault)) == 1
+    assert alerts(vault)[0].startswith("- 09:10:00 [intraday] a Now line was refused (partition wall")

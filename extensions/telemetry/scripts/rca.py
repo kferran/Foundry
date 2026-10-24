@@ -24,7 +24,7 @@ from pathlib import Path
 VAULT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(VAULT / "system" / "scripts"), str(Path(__file__).resolve().parent)]
 from telemetrylib import rca  # noqa: E402
-from vaultlib.api import Intake, messages, UsageError  # noqa: E402
+from vaultlib.api import alert, Intake, messages, UsageError  # noqa: E402
 
 FILED_LOCK_WAIT = 120   # seconds `filed` and `reopen` wait for run.lock (the manifest's budget sums it per filing)
 
@@ -33,6 +33,11 @@ def target(partition: str, stem: str) -> tuple:
     if partition not in ("work", "personal") or not rca.STEM.match(stem) or not rca.note_path(VAULT, partition, stem).is_file():
         raise rca.Fail(2, f"no RCA note wiki/{partition}/rca/{stem}.md")
     return partition, stem
+
+
+def refused(intake, exc) -> None:
+    alert(VAULT, intake.today(), intake.dt().strftime("%H:%M:%S"), "rca", f"a Now line was refused ({exc})",
+          key="a Now line was refused")
 
 
 def main(argv) -> int:
@@ -56,11 +61,18 @@ def main(argv) -> int:
         elif len(argv) == 5 and argv[1] == "reopen":
             intake = Intake(VAULT)
             with intake.lock("run.lock", timeout=FILED_LOCK_WAIT):
-                rca.reopen(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
+                try:
+                    rca.reopen(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
+                except ValueError as exc:   # the reason only, never the line (factory F5 spec §4.2)
+                    refused(intake, exc)
+                    raise rca.Fail(1, f"the Now check refused the reason ({exc})")
         elif len(argv) == 5 and argv[1] == "filed" and rca.KEY.match(argv[4]):
             intake = Intake(VAULT)
             with intake.lock("run.lock", timeout=FILED_LOCK_WAIT):
-                rca.filed(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
+                try:
+                    rca.filed(VAULT, *target(argv[2], argv[3]), argv[4], intake.today())
+                except ValueError as exc:   # the note holds the key; only the Now line's stamp is missing
+                    refused(intake, exc)
             for marker in ("key", "attempt"):  # a key written back, by rca_file.sh or by hand, ends the filing
                 (VAULT / "system" / "logs" / "rca" / f"{argv[2]}-{argv[3]}.{marker}").unlink(missing_ok=True)
         else:

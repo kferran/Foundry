@@ -5,7 +5,7 @@ State lives in system/logs/watch/: cursors.json, the calendar snapshot, the item
 from pathlib import Path
 
 from vaultlib.api import Fail, config, now as nowmod
-from vaultlib.api import append, load, records, save  # noqa: F401  (re-exported for the watch's modules)
+from vaultlib.api import alert, append, load, records, save  # noqa: F401  (re-exported for the watch's modules)
 
 STATE = Path("system") / "logs" / "watch"
 QUERIES = ("watch", "mpim", "own", "capture")
@@ -39,16 +39,3 @@ def capture_partition(vault) -> str:
     cfg = config(vault)
     value = str(cfg.get("capture_partition") or cfg.get("default_partition") or "personal")
     return value if value in nowmod.PARTITIONS else "personal"
-
-
-def alert(vault, day: str, clock: str, tag: str, text: str, key: str = "") -> bool:
-    """Append `- HH:MM:SS [tag] text` to the day's alerts file; with a key, at most once a day per key. True when
-    written."""
-    path = Path(vault) / "system" / "logs" / f"alerts_{day}.md"
-    line = f"- {clock} [{tag}] {text}\n"
-    if key and path.is_file() and f"[{tag}] {key}" in path.read_text(encoding="utf-8"):
-        return False
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "a", encoding="utf-8") as fh:
-        fh.write(line)
-    return True

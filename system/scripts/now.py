@@ -10,7 +10,8 @@
                                   the statement, else + 30); --due names a known deadline and can only move a line's
                                   date earlier (exit 2 if later). A repeat add may also set --rec or missing
                                   evidence, and writes nothing when nothing is new.
-                                  add and set refuse a line over 300 characters
+                                  add and set refuse a line over 300 characters; add, set and note redact
+                                  credential-shaped text and refuse a link across the partition wall
   now.py set --partition <p> --match "<text>" --statement "<new statement>"
                                   the one open line whose statement contains the text gets the new statement, keeping
                                   its kind, who, since, evidence, clock and notes (exit 2 on no match or several)
@@ -29,8 +30,8 @@
                                   read-only: open lines past their [due::] (before the date, today by default) in
                                   groups of 1 to 7, 8 to 30 and more than 30 days over, then the clockless count
   now.py seed YYYY-MM-DD         once: a missing default-partition page takes the previous brief's open objectives
-  now.py fit-staged <run_id>      a brief's staged Now pages: cut each added line over 300 characters (run_headless.sh
-                                  runs it under its own run.lock, before publish)
+  now.py fit-staged <run_id>      a brief's staged Now pages: redact each added line and cut it to 300 characters
+                                  (run_headless.sh runs it under its own run.lock, before publish)
 """
 import argparse
 import os
