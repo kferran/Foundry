@@ -10,6 +10,9 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## Changes
 
+## 2026-10-24
+- Added: `--json` on `now.py list`, `active_projects.py`, `nightshift.py list` and `nightshift.py report`, for the console extension's reads (#377). Each prints one object starting `"v": 1`; text output is unchanged, and `report --json` writes no report file. (#378)
+
 ## 2026-10-23
 - Changed: every write to a Now page (`now.py add`, `set` and `note`, inbox triage, the intraday watch, the RCA filer, a brief's new lines) redacts credential-shaped text, keeps the line to 300 characters and refuses a link across the partition wall; a symlinked Now page is refused. Triage, the watch and the RCA filer drop a refused line and raise one alert that day naming the reason, never the line. The publish gate checks a brief's added Now lines the same way, and the brief fixes them before publish. (#310)
 - Changed: a Slack notice posted with drift keeps its collected text and posting session in `system/logs/notify/drift/` (the latest one only), and the drift alert names that folder.
