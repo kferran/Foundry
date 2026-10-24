@@ -265,3 +265,9 @@ def test_a_codebase_file_never_competes_with_the_entity_of_the_same_name(vault):
     assert issues(idx, "ambiguous-link") == []
     assert query(idx, "SELECT target_raw, target_path FROM links WHERE src='wiki/work/concepts/Ref.md' ORDER BY target_raw") == [
         ("App", "wiki/work/entities/App.md"), ("system/codebases/app", "system/codebases/app.md")]
+
+
+def test_only_the_cross_partition_index_is_exempt_from_walls(vault):
+    # factory F5 spec §4.6: lint and the publish gate share one rule; `type: index` elsewhere is walled.
+    write(vault, "wiki/work/Hub.md", '---\ntype: index\n---\n[[Gardening]]\n')
+    assert issues(build(vault), "partition-wall") == [("wiki/work/Hub.md", "error", "partition-wall")]

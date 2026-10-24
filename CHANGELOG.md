@@ -10,6 +10,9 @@ What changed in The Foundry, newest first. A vault's morning update shows the ne
 
 ## Changes
 
+## 2026-10-24
+- Changed: the today file masks credentials in an item's link, as it does its text, and refuses a symlinked file. Interactive `/brief`, `/debrief` and `/rca` end with `system/scripts/lint_vault.sh`, as `/ingest` does. Lint walls every note but `wiki/Index.md`, as the publish gate does: a note of `type: index` elsewhere that links across partitions is now a lint error. (#310)
+
 ## 2026-10-23
 - Changed: every write to a Now page (`now.py add`, `set` and `note`, inbox triage, the intraday watch, the RCA filer, a brief's new lines) redacts credential-shaped text, keeps the line to 300 characters and refuses a link across the partition wall; a symlinked Now page is refused. Triage, the watch and the RCA filer drop a refused line and raise one alert that day naming the reason, never the line. The publish gate checks a brief's added Now lines the same way, and the brief fixes them before publish. (#310)
 - Changed: a Slack notice posted with drift keeps its collected text and posting session in `system/logs/notify/drift/` (the latest one only), and the drift alert names that folder.
