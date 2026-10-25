@@ -1,0 +1,17 @@
+[Unit]
+Description=The Foundry: console web app (Today screen, read-only, 127.0.0.1)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory={{VAULT_ROOT}}
+Environment="TZ={{TZ}}"
+Environment="PATH={{UNIT_PATH}}"
+Environment="FOUNDRY_VAULT={{VAULT_ROOT}}"
+Environment="NITRO_HOST=127.0.0.1"
+ExecStart="{{VAULT_ROOT}}/extensions/console/scripts/serve.sh"
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
