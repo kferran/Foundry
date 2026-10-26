@@ -55,8 +55,10 @@ def main(argv: list) -> int:
     elif cmd == "units" and len(args) == 1 and args[0] in ROLES:
         for name, d in loaded:
             for u in d.get("units") or []:
-                if args[0] in (u.get("roles") or []):
-                    out.append(f"{name}\t{u.get('name', '')}")
+                kind = extensions.unit_kind(u)
+                # A client runs only always-on units (console spec §8.2); check names a timer unit that lists it.
+                if args[0] in (u.get("roles") or []) and (args[0] != "client" or kind == "service"):
+                    out.append(f"{name}\t{u.get('name', '')}\t{kind}")
     elif cmd == "allow" and args and args[0] in ("--write", "--remove"):
         if args[0] == "--write" and len(args) == 1:
             done, err = extensions.write_allow(VAULT)

@@ -4,6 +4,8 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -545,14 +547,16 @@ def test_cli_review_prints_only_grouped_findings_and_exits_0(vault):
     assert cli(vault, "review", "--partition", "work").stdout == ""
     now.add(vault, "work", "owed", "Old one", "2020-01-01")
     now.add(vault, "work", "owed", "Same thing", "2020-01-01")
-    now.add(vault, "work", "waiting", "same  thing", TODAY)
+    # The CLI reads the real clock in the config's timezone: the fresh line is dated that day, so it never goes stale.
+    fresh = datetime.now(ZoneInfo("America/Denver")).date()
+    now.add(vault, "work", "waiting", "same  thing", fresh.isoformat())
     r = cli(vault, "review", "--partition", "work")
     assert r.returncode == 0, r.stderr
     assert r.stdout == ("## Stale: open more than 14 days with no evidence\n"
                         "- [ ] owed: Old one [due:: 2020-01-31] (since 2020-01-01)\n"
                         "- [ ] owed: Same thing [due:: 2020-01-31] (since 2020-01-01)\n"
                         "## Duplicates\n- [ ] owed: Same thing [due:: 2020-01-31] (since 2020-01-01)\n"
-                        "- [ ] waiting: same  thing [due:: 2026-11-08] (since 2026-10-09)\n")
+                        f"- [ ] waiting: same  thing [due:: {fresh + timedelta(days=30)}] (since {fresh})\n")
     assert cli(vault, "review", "--partition", "shared").returncode == 2
 
 
