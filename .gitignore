@@ -31,3 +31,7 @@ meetings/drop/**/Thumbs.db
 meetings/drop/**/desktop.ini
 system/telemetry.lock
 system/tests/golden/local/
+# The console builds outside the vault (build.sh); these cover a build run in place by hand.
+extensions/console/app/node_modules/
+extensions/console/app/.nuxt/
+extensions/console/app/.output/

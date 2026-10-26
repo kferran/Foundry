@@ -135,8 +135,30 @@ def test_rows_prints_smoke_sources_units_allow_as_tsv(ext):
     config(ext, "demo")
     assert run(ext, "smoke").stdout == "demo\t30\t0\textensions/demo/scripts/demo_check.sh\n"
     assert run(ext, "brief").stdout == "demo\n"
-    assert run(ext, "units", "server").stdout == "demo\tfoundry-demo\n"
+    assert run(ext, "units", "server").stdout == "demo\tfoundry-demo\ttimer\n"
     assert run(ext, "units", "client").stdout == ""
+
+
+def test_units_marks_an_always_on_unit_and_lists_only_those_for_a_client(ext):
+    """Console spec §8.2: `timer: false` installs the service alone, and is the only kind a client runs."""
+    manifest = ext / "extensions/demo/extension.md"
+    manifest.write_text(manifest.read_text().replace(
+        "units: [{name: foundry-demo, roles: [standalone, server]}]",
+        "units: [{name: foundry-demo, roles: [standalone, server, client]}, "
+        "{name: foundry-demo-web, roles: [server, client], timer: false}]"))
+    config(ext, "demo")
+    assert run(ext, "units", "server").stdout == "demo\tfoundry-demo\ttimer\ndemo\tfoundry-demo-web\tservice\n"
+    assert run(ext, "units", "client").stdout == "demo\tfoundry-demo-web\tservice\n"
+    assert extensions.check(ext) == ["demo: unit foundry-demo lists client, but a client runs only timer: false units; "
+                                     "it is not installed there"]
+
+
+def test_a_timer_that_is_not_a_boolean_is_a_reason(ext):
+    manifest = ext / "extensions/demo/extension.md"
+    manifest.write_text(manifest.read_text().replace("roles: [standalone, server]}", 'roles: [server], timer: "no"}'))
+    config(ext, "demo")
+    assert extensions.check(ext) == ["demo: unit foundry-demo: timer must be true or false; it is installed with its timer"]
+    assert run(ext, "units", "server").stdout == "demo\tfoundry-demo\ttimer\n"
     assert run(ext, "allow").stdout == "Bash(extensions/demo/scripts/demo_check.sh)\n"
     assert run(ext, "ignore").stdout == "raw/demo\n"
 
