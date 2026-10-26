@@ -1051,6 +1051,33 @@ def test_check_expires_untouched_machine_lines_only(vault, tmp_path):
     assert all(line in lines for line in stay)
 
 
+def test_expiry_review_findings(vault, tmp_path):
+    # Final review: text typed after the parenthesis is a touch; add's own decide-by date is no deadline; a date that
+    # is not a day leaves check running.
+    prepare(vault)
+    stay = ["- [ ] owed: Touched [via:: mail] (since 2026-10-01) called them back",
+            "- [ ] owed: Bad date [via:: mail] (since 2026-02-30)"]
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\n---\n# Now\n\n## Needs you\n" + "\n".join(stay) + "\n")
+    added = now.add(vault, "work", "owed", "Nobody named", "2026-10-01", via="mail")[1]
+    assert "[due:: 2026-10-31]" in added
+    assert now.check(vault, TODAY, lambda m: None, gh_stub(tmp_path, rc=1)) == 1
+    lines = page(vault).split("\n")
+    assert f"- [-]{added[5:]} _(closed: expired {TODAY})_" in lines
+    assert all(line in lines for line in stay)
+
+
+def test_tag_writers_skips_a_line_it_cannot_tag_whole(vault):
+    prepare(vault)
+    mail = "https://mail.google.com/mail/#all/a1"
+    long = f"- [ ] owed: {'w' * (now.MAX_LINE - 70)} (since 2026-10-01, {mail})"
+    typed = f"- [ ] owed: Typed after (since 2026-10-01, {mail}) and a note"
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\n---\n# Now\n\n## Needs you\n" + f"{long}\n{typed}\n")
+    assert len(long) <= now.MAX_LINE
+    assert now.tag_writers(vault, TODAY, dry_run=False)["work"] == {"tagged": 0, "expiring": 0, "skipped": 2}
+    assert long in page(vault)
+    assert typed in page(vault)
+
+
 def test_tag_writers_dry_run_then_once(vault):
     prepare(vault)
     mail, slack = "https://mail.google.com/mail/#all/a1", "https://x.slack.com/archives/C1/p1"

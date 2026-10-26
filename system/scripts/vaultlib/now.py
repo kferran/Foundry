@@ -493,11 +493,14 @@ FREE_NOTE = re.compile(r"^\s+- \d{4}-\d{2}-\d{2}: free: ")   # the watch's own n
 
 def expires(lines: list, i: int, today: str) -> bool:
     """lines[i] is a machine line nobody touched for EXPIRE_DAYS: no due today or later, and no note under it but
-    the watch's own free: note (Now writer spec §3.2)."""
-    m = parse(lines[i]) if lines[i].startswith("- [ ] ") else None
-    if m is None or via(m.group("statement")) not in MACHINE:
+    the watch's own free: note (Now writer spec §3.2). Text typed after the parenthesis is a touch, and add's own
+    decide-by date is no deadline."""
+    m = LINE.match(lines[i].rstrip()) if lines[i].startswith("- [ ] ") else None
+    if m is None or via(m.group("statement")) not in MACHINE or not is_date(m.group("since")):
         return False
-    due = fields(m.group("statement"))[2]
+    bare, _, due = fields(m.group("statement"))
+    if due == default_due(bare, m.group("since"), m.group("who") or ""):
+        due = ""
     return ((date.fromisoformat(today) - date.fromisoformat(m.group("since"))).days >= EXPIRE_DAYS
             and not (due and due >= today)
             and all(FREE_NOTE.match(note) for note in lines[i + 1:_block_end(lines, i)]))
@@ -531,22 +534,24 @@ HOSTS = (("mail.google.com", "mail"), ("slack.com", "chat"))
 
 def tag_writers(vault, today: str, dry_run: bool) -> dict:
     """Once, under run.lock (Now writer spec §3.4): each open line with no writer and a Gmail or Slack link as its
-    evidence is named mail or chat. A line not in now.py's form is counted as skipped and left alone. Returns
-    {partition: {"tagged", "expiring", "skipped"}}, "expiring" being the tagged lines the next check closes."""
+    evidence is named mail or chat. A line not in now.py's form, or one the field would put over MAX_LINE, is counted
+    as skipped and left alone. Returns {partition: {"tagged", "expiring", "skipped"}}, "expiring" being the tagged
+    lines the next check closes."""
     out = {}
     for partition in PARTITIONS:
         lines, counts = read(vault, partition).split("\n"), {"tagged": 0, "expiring": 0, "skipped": 0}
         for i, line in enumerate(lines):
-            m = LINE.match(line.rstrip()) if line.startswith("- [ ] ") else None
+            m = parse(line) if line.startswith("- [ ] ") else None
             writer = next((w for host, w in HOSTS if m and host in (m.group("evidence") or "")), "")
             if not writer or via(m.group("statement")):
                 continue
             bare, rec, due = fields(m.group("statement"))
             rest = (m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
-            if render(m.group("kind"), bare, *rest) != line.rstrip():
+            new = render(m.group("kind"), bare, *rest, writer)
+            if render(m.group("kind"), bare, *rest) != line.rstrip() or len(new) > MAX_LINE:
                 counts["skipped"] += 1
                 continue
-            lines[i] = render(m.group("kind"), bare, *rest, writer)
+            lines[i] = new
             counts["tagged"] += 1
             counts["expiring"] += expires(lines, i, today)
         if counts["tagged"] and not dry_run:
