@@ -14,7 +14,7 @@ Spec: `docs/superpowers/specs/2026-10-23-factory-f4-line-skills-design.md` §3.2
 - **The brief prompt's word cap** (`system/tests/prep.bats`: `.claude/commands/brief.md` plus every extension's `brief/section.md`, at most 2,500 words; none are left since F5, so a Source with a brief section raises the cap in its own pull request). The scaffold writes no `brief/section.md`, so it stays under the cap. The first feature's section prompt does not fit: the owner raises the cap or `brief.md` is trimmed first.
 - **The timing rule** (`conformance.bats`). One more brief Source at the default 300 s fits; the next one fails it in CI and needs its own unit, built by the feature that hits it.
 
-**Template or vault.** `system/config.md` exists only in a vault. There `--issue` is optional and no CHANGELOG line is written; in the template repository `--issue` is required.
+**Template or vault.** `system/config.md` exists only in a vault. There `--issue` is optional and no change file is written; in the template repository `--issue` is required.
 
 ## Steps
 
@@ -23,12 +23,12 @@ Spec: `docs/superpowers/specs/2026-10-23-factory-f4-line-skills-design.md` §3.2
    - The tool's full name: `mcp__<server>__<tool>`.
    - The server's name as `claude mcp list` prints it (`--server`).
    - The server's tool table: the name of a `lib_fetch.sh` table that holds the tool's bare name (`--tools <NAME>_TOOLS`; `grep -n '_TOOLS=(' system/scripts/lib_fetch.sh` lists the tables); for any other server, every tool of that server from this session's own tool list (`--server-tool <tool> …`, the tool included).
-   - A one-line description (`--description`), written as a plain phrase: it is the CHANGELOG line and the manifest's first line.
+   - A one-line description (`--description`), written as a plain phrase: it is the change line and the manifest's first line.
    - What credential to renew and how (`--credential`, `--renew`).
-   - The issue number (`--issue`, required in the template repository; a vault skips the CHANGELOG line).
+   - The issue number (`--issue`, required in the template repository; a vault skips the change file).
 2. **Run the script** from the repository root:
    `python3 .claude/skills/new-source/new_source.py <name> --tool <mcp__server__tool> --server "<server>" (--tools <table> | --server-tool <tool>…) --description "<one line>" --credential "<what>" --renew "<how>" [--issue <n>]`
-   It writes `extensions/<name>/` (manifest, fetch, checker, brief prep, bats tests) and, in the template, one `- Added: <description>. (#<issue>)` line under today's date in CHANGELOG.md. A trailing "." on the description is dropped.
+   It writes `extensions/<name>/` (manifest, fetch, checker, brief prep, bats tests) and, in the template, one `- Added: <description>. (#<issue>)` line in its change file, `changes/<today>-source-<name>.md`. A trailing "." on the description is dropped.
 3. **Run the suites**, one `system/scripts/test.sh` call each (it takes one target): `system/tests/conformance.bats`, `system/tests/python/test_source_rule.py`, `extensions/<name>/tests/<name>.bats`, and the brief prompt word check alone (the whole prep.bats takes minutes): `system/scripts/test.sh system/tests/prep.bats --filter "brief prompt is at most"`. All must be green before any feature code. When the task is the scaffold alone, stop here.
 4. **Write the feature.**
    - Probe the tool once in a throwaway directory under `.scratch/` and record what came back (FOUNDRY.md "Probe first").
@@ -48,4 +48,4 @@ One `new_source: <reason>` line on stderr. The reasons, in the order checked:
 - `--server`, `--description`, `--credential` or `--renew` is empty, or holds a quote, apostrophe, backslash, `$`, backtick or newline
 - `extensions/<name>` exists; the name is a core alert tag or another extension's alert tag; a `<name>_fetch.sh` exists in `system/scripts/` or an extension's `scripts/` (it would share that fetch's log and reasons); the name is a core smoke row
 - the tool's bare name is not in the `--tools` table; a `--server-tool` entry is not a tool name, or the bare name is not among them
-- `--issue` is missing in the template repository; CHANGELOG.md has no `## Changes` heading
+- `--issue` is missing in the template repository

@@ -20,7 +20,7 @@
 - Template rule: no real names, ticket keys or sites in fixtures or docs (`Blake Sample`, `Alpha`, `ABC-123`, `owner@example.com`).
 - bats ruling R1: no mid-test `!`, no `&&` assertion chains, no wall-clock assertions.
 - Core budget: C1.1 is the only core change. If it passes the `vault_integrity.bats` cap, raise the cap by the measured amount with the reason in the test's comment (owner approves at merge).
-- Each PR: CHANGELOG line ending `(#PR)`; `/foundry-review` before the PR; open as ready (FOUNDRY.md Development).
+- Each PR: a change file in `changes/` (FOUNDRY.md, Release notes); `/foundry-review` before the PR; open as ready (FOUNDRY.md Development).
 - Per-task suites: `system/scripts/test.sh system/tests/units.bats`, `system/scripts/test.sh system/tests/python/test_extensions.py`, `system/scripts/test.sh extensions/console/tests/test_today.py`, and in `extensions/console/app/`: `npx vitest run`, `npx nuxi build`.
 
 ## Review Focus
@@ -47,7 +47,7 @@
 
 - [ ] Step 1: failing tests: `install_units.sh --dry-run` on a fixture with a `timer: false` unit lists `foundry-demo-web.service` and no `.timer`, and enables the service; on `client` it lists only that unit; a `timer` unit listing `client` is not installed there; `extensions.py check` names a `timer: "yes"` entry; `--uninstall` removes the service.
 - [ ] Step 2: run them, see them fail. Implement. Run `system/scripts/test.sh system/tests/units.bats` and `system/scripts/test.sh system/tests/python/test_extensions.py`.
-- [ ] Step 3: FOUNDRY.md's extension manifest paragraph names `timer: false`; CHANGELOG line. Check the core cap. Commit; `/foundry-review`; PR.
+- [ ] Step 3: FOUNDRY.md's extension manifest paragraph names `timer: false`; change file. Check the core cap. Commit; `/foundry-review`; PR.
 
 ---
 
@@ -73,7 +73,7 @@
 - Matching (spec §8.4): `matches(project_name, statement) -> bool`, true for `[[Name]]` or the whole word, case-insensitive.
 
 - [ ] Step 1: failing tests: `test_today_has_every_part_for_each_partition`; `test_tiles_count_from_the_parts`; `test_project_card_counts_now_lines_and_prs_by_match`; `test_today_list_is_first_next_per_project_at_most_five`; `test_a_failing_source_adds_one_error_and_exit_stays_zero` (stub `now.py` exiting 1); `test_missing_prep_files_leave_calendar_and_actions_empty`; `test_partitions_never_mix`; `test_check_reports_ok_and_failed`; `test_imports_only_vaultlib_api` (the ban covers it; assert the file passes).
-- [ ] Step 2: run, see them fail, implement, run `system/scripts/test.sh extensions/console/tests/test_today.py` and `system/scripts/test.sh system/tests/python/test_extension_api.py`. CHANGELOG line. Commit; `/foundry-review`; PR.
+- [ ] Step 2: run, see them fail, implement, run `system/scripts/test.sh extensions/console/tests/test_today.py` and `system/scripts/test.sh system/tests/python/test_extension_api.py`. Change file. Commit; `/foundry-review`; PR.
 
 ---
 
@@ -104,7 +104,7 @@
 - Test: `extensions/console/app/tests/pages/*.test.ts` with fixture JSON from Task 3's test vault
 
 - [ ] Step 1: failing tests: the page renders every mockup section from the fixture; the Work tab shows only work lines and Personal only personal; the Overdue filter shows only lines with a `band`; stale flags and "Also active" hide when the keys are absent; `errors` show in the strip; the Refresh button refetches; the stamps print.
-- [ ] Step 2: run, see them fail, implement against the mockup's layout and colors (IBM Plex Sans and Mono, the mockup's tokens, wrap rules at phone width), run `npx vitest run` and `npx nuxi build`. CHANGELOG line. Commit; `/foundry-review`; PR.
+- [ ] Step 2: run, see them fail, implement against the mockup's layout and colors (IBM Plex Sans and Mono, the mockup's tokens, wrap rules at phone width), run `npx vitest run` and `npx nuxi build`. Change file. Commit; `/foundry-review`; PR.
 
 ---
 
@@ -118,6 +118,6 @@
 
 ### Task 8: docs
 
-**Files:** `FOUNDRY.md` (an Extensions entry for the console: what it shows, the keys, the build and unit, the Tailscale line, the security list), `CHANGELOG.md`, `docs/superpowers/roadmap.md` (the console row), the program plan's phase table.
+**Files:** `FOUNDRY.md` (an Extensions entry for the console: what it shows, the keys, the build and unit, the Tailscale line, the security list), a change file in `changes/`, `docs/superpowers/roadmap.md` (the console row), the program plan's phase table.
 
 - [ ] Write them; run `system/scripts/test.sh system/tests/conformance.bats` and `system/scripts/test.sh system/tests/commands.bats`. Commit; PR.

@@ -7,7 +7,7 @@ import pytest
 
 from helpers import REPO
 
-# The checks guard the template's changelog rule; a vault has no CHANGELOG lines to check.
+# The checks guard the template's change file rule; a vault has no change files to check.
 pytestmark = pytest.mark.skipif(
     (REPO / "system/config.md").exists(),
     reason="this checkout is a vault (system/config.md exists); the checks guard the template")
@@ -31,7 +31,7 @@ def write(root, files):
 def case(tmp_path, before, after, branch="feat/x", args=("--base", "master")):
     """Commit `before` on master, then `after` on a branch; run the script from the repository."""
     git(tmp_path, "init", "-q", "-b", "master")
-    write(tmp_path, {"CHANGELOG.md": "## Changes\n", **before})
+    write(tmp_path, {"changes/CHANGELOG.md": "## Changes\n", **before})
     git(tmp_path, "add", "-A")
     git(tmp_path, "commit", "-q", "-m", "base")
     git(tmp_path, "checkout", "-q", "-b", branch)
@@ -78,7 +78,7 @@ NEAR_MISSES = [
     ("skip-reason", {"system/tests/x.bats": '  skip "environment: no bwrap"\n'}, {}),
     ("skip-reason", {"system/tests/python/test_x.py": '@pytest.mark.skipif(c, reason="vault")\n'}, {}),
     ("changelog-label", {"docs/x.md": "words\n"}, {}),
-    ("changelog-label", {"system/scripts/x.sh": "echo hi\n", "CHANGELOG.md": "## Changes\n- Fixed: x. (#5)\n"}, {}),
+    ("changelog-label", {"system/scripts/x.sh": "echo hi\n", "changes/2026-10-01-x.md": "- Fixed: x. (#5)\n"}, {}),
     ("read-source-check", {"extensions/x/scripts/x.sh": 'fetch_check_arg "$@"\nconnector_run "$p" "$work"\n'}, {}),
     ("computed-session", {"system/scripts/x.sh": '"${CLAUDE_BIN:-claude}" -p "$prompt"\n'}, {}),
     ("computed-config", {"system/scripts/x.py": "from vaultlib.api import config\n"}, {}),
@@ -148,7 +148,7 @@ def test_a_vault_skips_the_changelog_half(tmp_path):
 
 
 def test_a_fix_branch_asks_for_a_label(tmp_path):
-    result = case(tmp_path, {}, {"system/scripts/x.sh": "echo hi\n", "CHANGELOG.md": "## Changes\n- Fixed: x. (#5)\n"},
+    result = case(tmp_path, {}, {"system/scripts/x.sh": "echo hi\n", "changes/2026-10-01-x.md": "- Fixed: x. (#5)\n"},
                   "fix/x")
     assert any(line.startswith("changelog-label:") and "defect:" in line for line in lines(result)), result.stdout
 
