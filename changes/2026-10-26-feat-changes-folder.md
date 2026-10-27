@@ -1,0 +1,1 @@
+- Changed: the root `CHANGELOG.md` is now `changes/CHANGELOG.md`, frozen, and each new change is its own file in `changes/`, so the template's pull requests stop conflicting. The brief's What changed reads the same; the morning update that brings this change shows none, and the next one shows them again. (#395)

@@ -29,7 +29,7 @@ It reads the lines the branch adds since its merge base with `--base` (default `
 | `alert-text` | C5, C7 | an alert or failure reason that interpolates a value other than an exit code, a count or a reason variable. Known exception: the watch's `[watch]` alert carries a meeting title or a channel snippet, which notify redacts before it posts (factory F5 spec §4.6) |
 | `sleep-race` | C6, C10 | `sleep` added in a test file, except a stub's `STUB_SLEEP=` knob |
 | `skip-reason` | C10 | a bats `skip` or a pytest skip with no reason |
-| `changelog-label` | C13, C12 | a vault-visible path changed with no `- … (#N)` line in `CHANGELOG.md` (skipped in a vault); any `fix/` branch |
+| `changelog-label` | C13, C12 | a vault-visible path changed with no `changes/` file adding a `- … (#N)` line (skipped in a vault); any `fix/` branch |
 | `read-source-check` | C4 | a new script that calls `connector_run` and accepts no `--check` |
 | `computed-session` | C4 | `-p` or `--print` passed to a command named by a variable, outside the three runners |
 | `computed-config` | part home | a `.py` line that builds a `config.md` path from parts, outside `vaultlib/config.py` |

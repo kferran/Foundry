@@ -125,8 +125,9 @@ def changelog_label(adds, paths):
     out = []
     root = git("rev-parse", "--show-toplevel").stdout.strip()
     if not os.path.exists(os.path.join(root, "system", "config.md")) and any(VISIBLE.match(p) for p in paths):
-        if not any(p == "CHANGELOG.md" and re.match(r"\s*-\s.*\(#\d+\)", t) for p, _, t in adds):
-            out.append("changelog-label: a vault-visible path changed and CHANGELOG.md gains no `- ... (#N)` line")
+        if not any(p.startswith("changes/") and p != "changes/CHANGELOG.md" and re.match(r"-\s.*\(#\d+", t)
+                   for p, _, t in adds):
+            out.append("changelog-label: a vault-visible path changed and no changes/ file adds a `- ... (#N)` line")
     if git("rev-parse", "--abbrev-ref", "HEAD").stdout.startswith("fix/"):
         out.append("changelog-label: fix branch: pass one `defect:<C1 to C14>` label to gh pr create --label")
     return out

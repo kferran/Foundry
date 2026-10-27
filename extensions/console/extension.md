@@ -25,7 +25,7 @@ budget:
 3. `console_port` if 3110 is taken.
 
 **Then run, in order:**
-1. `extensions/console/scripts/build.sh`: copies `extensions/console/app/` to `console_build_dir` (default `~/.cache/foundry-console`), outside the vault, and installs and builds it there. Run it again after a template update that changes `app/` (the CHANGELOG line says so), then `systemctl --user restart foundry-console`.
+1. `extensions/console/scripts/build.sh`: copies `extensions/console/app/` to `console_build_dir` (default `~/.cache/foundry-console`), outside the vault, and installs and builds it there. Run it again after a template update that changes `app/` (its change file says so), then `systemctl --user restart foundry-console`.
 2. `system/scripts/install_units.sh`: installs and starts `foundry-console.service`.
 3. On the server only, once: `tailscale serve --bg --https=443 http://127.0.0.1:<console_port>`. Nothing runs this for you.
 

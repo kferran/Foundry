@@ -67,10 +67,6 @@ core_problem() {
   grep -qxF '* text=auto eol=lf' .gitattributes
 }
 
-@test "CHANGELOG.md merges with the union driver, so two pull requests' lines both land (factory F0 §3.3, C13)" {
-  [ "$(git check-attr merge -- CHANGELOG.md)" = 'CHANGELOG.md: merge: union' ]
-}
-
 @test "the scratch folder ships, ignores everything else in it, and CLAUDE.md names it" {
   [ "$(git ls-files .scratch)" = ".scratch/.gitignore" ]
   git check-ignore -q .scratch/clone/README.md
@@ -535,9 +531,9 @@ sealed_problems() {
 @test "core names no vendor or customer outside its allowlist" {
   allow="$BATS_TEST_DIRNAME/core_clean.allow"
   want="$BATS_TEST_TMPDIR/hits.txt"
-  # Every tracked file outside docs/, CHANGELOG.md (history, like docs/), extensions/, system/tests/ and the loader.
+  # Every tracked file outside docs/, changes/CHANGELOG.md (history, like docs/), extensions/, system/tests/ and the loader.
   pattern='dtcc|sentry|kusto|azure|\bjira\b|atlassian|dtcclearning\.com|atlassian\.net|sentry\.io'
-  git ls-files -z -- . ':(exclude)docs' ':(exclude)CHANGELOG.md' ':(exclude)extensions' ':(exclude)system/tests' ':(exclude)system/scripts/extensions.py' \
+  git ls-files -z -- . ':(exclude)docs' ':(exclude)changes/CHANGELOG.md' ':(exclude)extensions' ':(exclude)system/tests' ':(exclude)system/scripts/extensions.py' \
     | xargs -0 grep -I -o -i -E "$pattern" /dev/null 2>/dev/null \
     | awk -F: '{ term = tolower($NF); sub(/:[^:]*$/, ""); print $0 ":" term }' | sort -u > "$want" || true
   # Extension words, in core code only (factory F2 spec §3.2): a tag, route, folder or note type an extension owns.

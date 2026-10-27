@@ -1,6 +1,5 @@
 """The new-source scaffold (factory F4 §3.2, §5): one command writes an extension Source that passes the line, the
 Source rule, the part homes, the timing rule, the loader and its own suite, with no other file edited."""
-import importlib.util
 import json
 import os
 import re
@@ -82,8 +81,9 @@ def test_a_scaffold_passes_the_line(tmp_path, case, name):
     before = timing(root)
     r = scaffold(root, *case, *TEXT, "--issue", "1", name=name)
     assert r.returncode == 0, r.stderr
-    assert changed(root) == {f"extensions/{name}", "CHANGELOG.md"}   # no hand wiring
-    assert LINE in (root / "CHANGELOG.md").read_text()
+    log = f"changes/{date.today().isoformat()}-source-{name}.md"
+    assert changed(root) == {f"extensions/{name}", log}   # no hand wiring
+    assert (root / log).read_text() == LINE + "\n"
     git(root, "add", "-A")
     assert source_problems(root) == []
     assert session_problems(root) == []
@@ -149,46 +149,12 @@ def test_another_extensions_tag_is_refused(tmp_path):
     assert not (root / "extensions/demo_src").exists()
 
 
-def test_a_vault_scaffold_adds_no_changelog_line(tmp_path):
+def test_a_vault_scaffold_adds_no_change_file(tmp_path):
     root = repo(tmp_path)
     shutil.copyfile(root / "system/config.example.md", root / "system/config.md")
-    before = (root / "CHANGELOG.md").read_text()
     r = scaffold(root, *GOOD[:-2])
     assert r.returncode == 0, r.stderr
-    assert (root / "CHANGELOG.md").read_text() == before
-
-
-def test_the_changelog_line_lands_under_today(tmp_path):
-    root = repo(tmp_path)
-    assert scaffold(root, *GOOD, name="demo_a").returncode == 0
-    assert scaffold(root, *swap(GOOD, "1", "2"), name="demo_b").returncode == 0
-    text = (root / "CHANGELOG.md").read_text()
-    today = date.today().isoformat()
-    assert text.count(f"\n## {today}\n") == 1
-    assert f"\n## Changes\n\n## {today}\n" in text
-    block = text.split(f"\n## {today}\n", 1)[1].split("\n\n", 1)[0].splitlines()
-    assert LINE in block
-    assert "- Added: Demo items in the morning brief. (#2)" in block
-
-
-def writer():
-    spec = importlib.util.spec_from_file_location("new_source", REPO / SCRIPT)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def test_the_changelog_writer_adds_or_reuses_todays_heading():
-    ns, today = writer(), date.today().isoformat()
-    text = "# Changelog\n\n## Changes\n\n## 2000-01-01\n- Fixed: old. (#9)\n"
-    assert ns.changelog(text, "- Added: a. (#1)") == (
-        f"# Changelog\n\n## Changes\n\n## {today}\n- Added: a. (#1)\n\n## 2000-01-01\n- Fixed: old. (#9)\n")
-    text = f"# Changelog\n\n## Changes\n\n## {today}\n- Added: a. (#1)\n\n## 2000-01-01\n"
-    assert ns.changelog(text, "- Added: b. (#2)") == (
-        f"# Changelog\n\n## Changes\n\n## {today}\n- Added: b. (#2)\n- Added: a. (#1)\n\n## 2000-01-01\n")
-    text = "# Changelog\n\n## Changes\n## 2000-01-01\n"   # no blank line after the heading
-    assert ns.changelog(text, "- Added: c. (#3)") == (
-        f"# Changelog\n\n## Changes\n## {today}\n- Added: c. (#3)\n\n## 2000-01-01\n")
+    assert changed(root) == {"extensions/demo_src"}   # system/config.md is ignored
 
 
 def test_a_second_call_is_named_by_its_tool(tmp_path):
@@ -200,19 +166,9 @@ def test_a_second_call_is_named_by_its_tool(tmp_path):
     assert (r.returncode, r.stderr) == (7, "demo_src_check: the session made 2 get_thread calls; the limit is 1\n")
 
 
-def test_a_changelog_with_no_changes_heading_writes_nothing(tmp_path):
-    root = repo(tmp_path)
-    (root / "CHANGELOG.md").write_text("# Changelog\n")
-    git(root, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false",
-        "commit", "-qam", "no heading")
-    r = scaffold(root, *GOOD)
-    assert r.returncode == 2
-    assert "new_source: CHANGELOG.md has no ## Changes heading" in r.stderr
-    assert git(root, "status", "--porcelain").stdout == ""
-
-
 def test_a_closing_period_is_not_doubled(tmp_path):
     root = repo(tmp_path)
     assert scaffold(root, *swap(GOOD, "Demo items in the morning brief", "Demo items.")).returncode == 0
-    assert "- Added: Demo items. (#1)" in (root / "CHANGELOG.md").read_text()
+    log = root / f"changes/{date.today().isoformat()}-source-demo_src.md"
+    assert log.read_text() == "- Added: Demo items. (#1)\n"
     assert "**Demo items.**" in (root / "extensions/demo_src/extension.md").read_text()
