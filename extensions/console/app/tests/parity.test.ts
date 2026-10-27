@@ -4,7 +4,6 @@
 // compares the page against that reference.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { mount } from '@vue/test-utils'
 import { expect, it } from 'vitest'
 import { renderToday } from './parity-render'
 
@@ -12,7 +11,7 @@ import { renderToday } from './parity-render'
 const REF = resolve(process.cwd(), 'tests/fixtures/today.render.txt')
 
 it('the Today screen renders the same headings and text as before the refactor', async () => {
-  const text = await renderToday(mount)
+  const text = await renderToday()
   if (process.env.RECORD === '1' || !existsSync(REF)) {
     writeFileSync(REF, text)
     return

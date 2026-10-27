@@ -2,7 +2,7 @@
 // Each widget renders from its slice of the fixture, and its empty state (refactor plan Task 5).
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import fixture from '../../tests/fixtures/today.json'
+import fixture from '../fixtures/today.json'
 import type { NowLine } from '@/entities/now-line'
 import type { Project } from '@/entities/project'
 import { CalendarCard } from '@/widgets/calendar'
