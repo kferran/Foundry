@@ -1,0 +1,1 @@
+- Fixed: a failure reason that already starts with its class (`other:`, `auth:` and the rest) is no longer classed twice, and the watch's `--check` line reads `-` for a session that wrote no result, never a blank. (#302)
