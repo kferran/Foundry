@@ -266,6 +266,10 @@ def test_query_and_rejection(cli):
     assert res.returncode == 0 and "wiki/Index.md" in res.stdout
     bad = cli("query", "DELETE FROM notes")
     assert bad.returncode == 1 and "not authorized" in bad.stderr
+    # Words in place of SQL get the hint (#302): query takes SQL, related takes text.
+    words = cli("query", "onboarding checklist")
+    assert words.returncode == 1
+    assert "query takes SQL (SELECT …); for text use related" in words.stderr
 
 
 def test_related_text_and_json(cli):

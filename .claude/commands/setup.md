@@ -5,7 +5,7 @@ description: Interactive onboarding — config interview, codebases, remotes, sy
 You are running setup for this Foundry vault. Every phase is idempotent: show what exists and edit it, never overwrite blindly. When the user gave answers up front (the setup prompt in `FOUNDRY.md`, Getting started), use them and ask only for what is missing; an answer still written as `<…>` is missing. Ask one question at a time, show the default, and wait for the answer. Scripts that are not allowlisted will ask the user for permission; that is intended. Run every script as `system/scripts/<name> …` from the vault root.
 
 ## 0. Role and preflight
-Read the current role with `system/scripts/vault_index.py field system/config.md machine_role` (no config, or an empty value, means `standalone`). Ask which role this machine has, showing the current role as the default:
+Read the current role with `system/scripts/vault_index.py field system/config.md machine_role` (no config yet, which makes it exit non-zero, or an empty value means `standalone`). Ask which role this machine has, showing the current role as the default:
 - `standalone`: this machine does everything (automation, coding sessions, Obsidian).
 - `server`: an always-on machine that runs the automation and the coding sessions. Other machines sync with it through the private `origin`.
 - `client`: a machine for reading and editing the vault in Obsidian. It runs no automation and syncs through git.

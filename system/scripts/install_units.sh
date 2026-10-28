@@ -239,6 +239,8 @@ rendered=("$work"/*.service "$work"/*.timer)
 out=""
 if (( ${#rendered[@]} )) && ! out="$(systemd-analyze --user verify "${rendered[@]}" 2>&1)"; then
   printf '%s\n' "$out" >&2
+  [[ -n "${XDG_RUNTIME_DIR:-}" ]] || die 1 "systemd-analyze --user verify failed: XDG_RUNTIME_DIR is unset, so this \
+shell has no user session; run it from a login session (or export XDG_RUNTIME_DIR=/run/user/$(id -u))"
   die 1 "systemd-analyze --user verify rejected the rendered units"
 fi
 [[ -z "$out" ]] || printf '%s\n' "$out" >&2
