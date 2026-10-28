@@ -152,6 +152,8 @@ def test_unique_true(vault):
 
 def test_orphans(vault):
     write(vault, "wiki/work/concepts/Lonely.md", concept("work", "Lonely"))
+    # The Now page is opened from the brief and the sidebar, never by a link: it is no orphan (#302).
+    write(vault, "wiki/work/Now.md", concept("work", "Now"))
     assert issues(build(vault), "orphan") == [("wiki/work/concepts/Lonely.md", "warning", "orphan")]
 
 
