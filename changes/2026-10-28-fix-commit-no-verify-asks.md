@@ -1,0 +1,1 @@
+- Changed: a Claude Code session asks you before it runs `git commit --no-verify` or `git commit -n`, which skip the pre-commit secret scan; `git commit -m` stays allowed. The scan's refusal now says that you make that call. (#298)

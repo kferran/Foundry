@@ -85,6 +85,16 @@ core_problem() {
   done
 }
 
+@test "a commit that skips the pre-commit secret scan asks first, though git commit -m is allowed (#298)" {
+  for rule in 'Bash(git commit *--no-verify*)' 'Bash(git commit -n*)' 'Bash(git commit * -n*)'; do
+    jq -e --arg r "$rule" '.permissions.ask | index($r)' .claude/settings.json >/dev/null
+  done
+  jq -e '.permissions.allow | index("Bash(git commit -m:*)")' .claude/settings.json >/dev/null
+  # The refusals no longer tell a session to skip the scan itself.
+  run grep -n 'or commit with --no-verify\|commit it by hand with --no-verify' .githooks/pre-commit system/scripts/vault_sync.sh
+  [ "$status" -eq 1 ]
+}
+
 @test "settings deny Read and Edit on wiki/<partition>/private/ (#166)" {
   jq -e '.permissions.deny | index("Read(/wiki/*/private/**)")' .claude/settings.json >/dev/null
   jq -e '.permissions.deny | index("Edit(/wiki/*/private/**)")' .claude/settings.json >/dev/null
