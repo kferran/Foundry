@@ -1,0 +1,2 @@
+- Changed: each Now line a machine writes names its writer in `[via:: …]` (`mail`, `chat`, `watch`, `brief`), and a `mail`, `chat` or `watch` line nobody touched closes itself as expired after 7 days (never before its own `due`; a note under it keeps it). The health scorecard's dismissed share is per writer. (#333)
+  - Action: run `system/scripts/now.py tag-writers --dry-run`, then `system/scripts/now.py tag-writers`, to name the writer of the lines already open; the next check expires the old untouched ones.

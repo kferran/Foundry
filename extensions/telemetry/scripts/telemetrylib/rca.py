@@ -180,7 +180,8 @@ def reopen(vault, partition: str, stem: str, reason: str, today: str) -> None:
             statement = nowmod.screen_fields(f"{bare}: not filed {today}, {why}")[0]
             try:
                 lines[i] = nowmod.screen_line(vault, partition, nowmod.render(
-                    m.group("kind"), statement, m.group("since"), m.group("who") or "", m.group("evidence"), rec, due),
+                    m.group("kind"), statement, m.group("since"), m.group("who") or "", m.group("evidence"), rec, due,
+                    nowmod.via(m.group("statement"))),
                     fit=True)
             except ValueError as exc:   # unticked as it stands, without the reason, so nothing retries the filing
                 lines[i], refused = f"- [ ] {nowmod.STAMP.sub('', line)[6:].rstrip()}", exc

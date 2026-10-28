@@ -79,13 +79,13 @@ The owner keeps a machine line by adding a note under it (`now.py note`, or an i
 
 FOUNDRY.md's Now paragraph states the rule and how to keep a line.
 
-### 3.4 Tagging the lines already open (owner, 2026-10-24)
-
-A one-time verb, `now.py tag-writers [--dry-run]`, under `run.lock`, gives each open line that has no `via` one from its evidence: a `mail.google.com` link becomes `mail`, a `slack.com` link `chat`. Any other line is left untagged. The watch's lines carry the same links, so they are tagged `mail` or `chat`, which expire the same way. `--dry-run` prints, per partition, how many lines it would tag and how many of those the next `check` would expire, and writes nothing. Without it, the verb writes the tags and prints the same counts. The owner runs it in the vault after the update. A line the owner wrote with a mail or Slack link is tagged too, and the dry-run shows the count before anything is written. An expired line goes to the archive, so nothing is lost. FOUNDRY.md and the CHANGELOG line name the verb.
-
 ### 3.3 Health reads the writer
 
 `dismissed()` (`health.py:206`) keys each closed line by its `via` when it has one. A line with none keeps today's evidence-host guess under a separate key, `guess:mail`, `guess:slack`, `guess:github`, `guess:other` or `guess:none`, so the writer keys start their own history and the trend check never compares a writer share with medians recorded under the old meaning. An expired line is a `[-]` drop, which `dismissed()` already counts. Its text names the keys (`mail 62%, watch 40%, guess:none 30%, …`). The thresholds are unchanged.
+
+### 3.4 Tagging the lines already open (owner, 2026-10-24)
+
+A one-time verb, `now.py tag-writers [--dry-run]`, under `run.lock`, gives each open line that has no `via` one from its evidence: a `mail.google.com` link becomes `mail`, a `slack.com` link `chat`. Any other line is left untagged. The watch's lines carry the same links, so they are tagged `mail` or `chat`, which expire the same way. `--dry-run` prints, per partition, how many lines it would tag and how many of those the next `check` would expire, and writes nothing. Without it, the verb writes the tags and prints the same counts. The owner runs it in the vault after the update. A line the owner wrote with a mail or Slack link is tagged too, and the dry-run shows the count before anything is written. An expired line goes to the archive, so nothing is lost. FOUNDRY.md and the CHANGELOG line name the verb.
 
 ## 4. Done when (a test per part)
 

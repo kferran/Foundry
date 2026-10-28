@@ -650,3 +650,7 @@ def test_a_staged_hard_link_is_refused(vault):
     report = publish.commit_run(vault, RID, now=LATER)
     assert "staged file is a hard link" in report_reasons(report)
     assert private.read_text() == before and not (vault / "wiki/work/concepts/Secret.md").exists()
+
+
+def test_the_gate_passes_an_added_brief_line_that_names_its_writer(vault):
+    assert brief_run(vault, [OLD_LONG, "- [ ] owed: New objective [via:: brief] (since 2026-10-01)"]) == []

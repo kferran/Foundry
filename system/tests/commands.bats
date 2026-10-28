@@ -1307,6 +1307,12 @@ change_problems() {
   grep -qF 'Evals are not gating' FOUNDRY.md
 }
 
+@test "FOUNDRY.md names the Now writer field, the expiry rule and tag-writers (#333)" {
+  grep -qF 'A machine writer names itself at the end of the line' FOUNDRY.md
+  grep -qF 'closes itself as `- [-] … _(closed: expired <date>)_`' FOUNDRY.md
+  grep -qF 'system/scripts/now.py tag-writers --dry-run' FOUNDRY.md
+}
+
 @test "interactive /rca, /brief and /debrief end with /ingest's lint step (factory F5 spec §4.5)" {
   for f in .claude/commands/brief.md .claude/commands/debrief.md extensions/telemetry/skills/rca/SKILL.md; do
     grep -qiF 'finish with `system/scripts/lint_vault.sh` and fix each error in the files you wrote' "$f"

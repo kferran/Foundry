@@ -149,8 +149,17 @@ def test_dismissed_share_per_evidence_host_with_five_closed(run, vault):
     lines += ["- [-] owed: Slack (since 2026-10-19, https://x.slack.com/archives/C1/p1) _(closed: ticked 2026-10-20)_"]
     archive(vault, "work", *lines)
     value, text, _, state = run("dismissed")
-    assert value == {"mail": 60}   # slack has 1 closed: below the 5 a host needs
-    assert state == "breach" and text == "mail 60%"
+    assert value == {"guess:mail": 60}   # slack has 1 closed: below the 5 a host needs
+    assert state == "breach" and text == "guess:mail 60%"
+
+
+def test_dismissed_share_is_keyed_by_writer(run, vault):
+    lines = [f"- [-] owed: Watch {i} [via:: watch] (since 2026-10-19) _(closed: expired 2026-10-2{i})_" for i in range(3)]
+    lines += [f"- [x] owed: Watch done {i} [via:: watch] (since 2026-10-19) _(closed: ticked 2026-10-2{i})_" for i in range(2)]
+    archive(vault, "work", *lines)
+    value, text, _, _ = run("dismissed")
+    assert value == {"watch": 60}
+    assert text == "watch 60%"
 
 
 def test_cost_sums_headless_runs_and_fetch_log_costs(run, vault, jsonl):
