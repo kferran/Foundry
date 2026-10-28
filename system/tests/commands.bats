@@ -1113,7 +1113,7 @@ self_edit_contract() {
   [[ "$sec" == *'Write no marker line'* ]]
   [[ "$sec" == *'Skip this step on a client'* ]]
   [[ "$sec" == *'when `remote_mode` is `keep`'* ]]
-  # README.md's merge=ours lives only in the update's own attributes file; CHANGELOG.md's merge=union is tracked.
+  # README.md's merge=ours lives only in the update's own attributes file.
   [ "$(git check-attr merge -- README.md)" = 'README.md: merge: unspecified' ]
   grep -qF 'the setup prompt in `FOUNDRY.md`, Getting started' .claude/commands/setup.md
   grep -qF '(FOUNDRY.md: Sync conflicts)' system/scripts/vault_sync.sh .claude/commands/backup.md
@@ -1239,34 +1239,44 @@ foundry_section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 }
   grep -qF 'With `slack_notify_thread: daily`' FOUNDRY.md
 }
 
-@test "CHANGELOG.md has What's next and dated changes with PR numbers (release notes spec §2.1)" {
-  grep -qx "## What's next" CHANGELOG.md
-  grep -qx '## Changes' CHANGELOG.md
-  grep -qE '^## [0-9]{4}-[0-9]{2}-[0-9]{2}$' CHANGELOG.md
-  grep -qE '^- .*\(#[0-9]+[^)]*\)$' CHANGELOG.md
+# change_problems <dir>: each line of a change file in <dir> that is neither `- … (#n)` nor `  - Action: …`, and
+# each change file with no `- … (#n)` line. <dir>/CHANGELOG.md is the frozen history and is not a change file.
+change_problems() {
+  local f
+  for f in "$1"/*.md; do
+    [[ "$f" == */CHANGELOG.md ]] && continue
+    grep -qE '^- .*\(#[0-9]+[^)]*\)$' "$f" || echo "$f: no change line"
+    grep -nvE '^- .*\(#[0-9]+[^)]*\)$|^  - Action: .' "$f" | sed "s|^|$f:|"
+  done
 }
 
-# changelog_dup_dates <file>: each date heading that appears more than once (a union merge can keep two).
-changelog_dup_dates() { grep -E '^## [0-9]{4}-[0-9]{2}-[0-9]{2}$' "$1" | sort | uniq -d; }
-
-@test "CHANGELOG.md holds each date heading once; a seeded duplicate is found (factory F0 §3.3, C13)" {
-  run changelog_dup_dates CHANGELOG.md
+@test "every change file holds only change lines with a number and Action lines; a seeded bad file is found (changes folder spec §3.5)" {
+  run change_problems changes
   [ -z "$output" ]
-  printf '## Changes\n\n## 2026-10-02\n- B (#2)\n\n## 2026-10-02\n- A (#1)\n\n## 2026-10-01\n- C (#3)\n' > "$BATS_TEST_TMPDIR/c.md"
-  run changelog_dup_dates "$BATS_TEST_TMPDIR/c.md"
-  [ "$output" = '## 2026-10-02' ]
+  mkdir "$BATS_TEST_TMPDIR/c"
+  printf -- '- Good (#1)\n  - Action: run it\n' > "$BATS_TEST_TMPDIR/c/2026-10-01-good.md"
+  printf -- '- No number\nstray text\n' > "$BATS_TEST_TMPDIR/c/2026-10-02-bad.md"
+  printf -- '## Changes\n' > "$BATS_TEST_TMPDIR/c/CHANGELOG.md"
+  run change_problems "$BATS_TEST_TMPDIR/c"
+  [ "$output" = "$(printf '%s\n' "$BATS_TEST_TMPDIR/c/2026-10-02-bad.md: no change line" "$BATS_TEST_TMPDIR/c/2026-10-02-bad.md:1:- No number" "$BATS_TEST_TMPDIR/c/2026-10-02-bad.md:2:stray text")" ]
 }
 
-@test "release notes: the brief prints What changed from updates.md; the manual has the changelog rule (release notes spec §2)" {
+@test "changes/CHANGELOG.md is frozen history, and no root CHANGELOG.md comes back (changes folder spec §3.2)" {
+  # A branch cut before the move carries its CHANGELOG edit here through git's rename detection: it fails this check.
+  [ "$(sha256sum changes/CHANGELOG.md | cut -d ' ' -f 1)" = 28b6caadf83ed72158747b8c371e869cada10655ab0cfe073e808cbf5fa8fb81 ]
+  [ ! -e CHANGELOG.md ]
+}
+
+@test "release notes: the brief prints What changed from updates.md; the manual has the change file rule (changes folder spec §3.4)" {
   f=.claude/commands/brief.md
   grep -qF 'system/logs/inputs/<date>/updates.md' "$f"
   grep -qF '**What changed**' "$f"
   grep -qF 'Omit What changed when `updates.md` is missing or empty.' "$f"
   grep -qF 'An absent `updates.md` means no template update merged today: never list it.' "$f"
-  grep -qF 'then `Full list: [[CHANGELOG]]`' "$f"   # resolves from briefings/ and briefings/archive/<YYYY-MM>/ (#361)
-  run grep -F '](CHANGELOG.md)' "$f"
+  grep -qF 'then `Full list: the changes/ folder`' "$f"
+  run grep -F 'CHANGELOG' "$f"
   [ "$status" -eq 1 ]
-  grep -qF 'A pull request that changes something a vault user would notice adds its line to `CHANGELOG.md`' FOUNDRY.md
+  grep -qF 'A pull request that changes something a vault user would notice adds one file, `changes/<YYYY-MM-DD>-<slug>.md`' FOUNDRY.md
 }
 
 @test "brief: reads each enabled extension's section prompt and data, and omits a section with no data" {
