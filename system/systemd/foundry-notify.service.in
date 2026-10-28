@@ -7,6 +7,7 @@ WorkingDirectory={{VAULT_ROOT}}
 Environment="TZ={{TZ}}"
 Environment="PATH={{UNIT_PATH}}"
 Environment="CLAUDE_BIN={{CLAUDE_BIN}}"
-# The server listing and one post session with its kill margin (Slack notices spec §3.2).
+# The server listing and one post session (two on a threaded day's first tick: the parent, then the notice; #293),
+# with the kill margin (Slack notices spec §3.2).
 TimeoutStartSec=5min
 ExecStart="{{VAULT_ROOT}}/system/scripts/notify.sh"
