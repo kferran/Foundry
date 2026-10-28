@@ -1,0 +1,1 @@
+- Fixed: a research Work Order publishes its findings under `run.lock`, as every other publish does, so a recovery running beside it can no longer quarantine the run or apply it twice; if the lock stays busy for 10 minutes the item fails and its findings are kept. (#298)
