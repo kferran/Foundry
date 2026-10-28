@@ -1,3 +1,4 @@
+import { createError, defineEventHandler, getHeader } from 'h3'
 import { refusal } from '../utils/auth'
 
 export default defineEventHandler((event) => {

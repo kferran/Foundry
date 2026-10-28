@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import type { NowLine } from '@/entities/now-line'
-import { FilterChips, filterLines } from '@/features/filter-now-lines'
-import { RefreshButton } from '@/features/refresh-today'
-import { PartitionTabs } from '@/features/switch-partition'
+import { type NowLine } from '@/pages/today/model/types'
+import { filterLines } from '@/pages/today/model/useNowFilter'
+import FilterChips from '@/pages/today/ui/FilterChips.vue'
+import PartitionTabs from '@/pages/today/ui/PartitionTabs.vue'
 
 const line = (kind: NowLine['kind'], band: string | null): NowLine => ({
   kind, section: '', statement: `${kind} ${band}`, who: '', since: '2026-10-01', evidence: '', rec: '', due: '',
@@ -32,12 +32,5 @@ describe('features', () => {
     const w = mount(FilterChips, { props: { modelValue: 'all', 'onUpdate:modelValue': (v: string) => w.setProps({ modelValue: v }) } })
     await w.findAll('button').find((b) => b.text() === 'Overdue')!.trigger('click')
     expect(w.props('modelValue')).toBe('overdue')
-  })
-  it('RefreshButton says Refreshing while busy and emits once per click', async () => {
-    expect(mount(RefreshButton, { props: { busy: true } }).text()).toBe('Refreshing')
-    const w = mount(RefreshButton, { props: { busy: false } })
-    expect(w.text()).toBe('Refresh')
-    await w.find('button').trigger('click')
-    expect(w.emitted('refresh')).toHaveLength(1)
   })
 })

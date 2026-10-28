@@ -2,9 +2,10 @@
 // The small row entities: meeting-action, calendar-event and source, through their public APIs.
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import { CalendarEventRow } from '@/entities/calendar-event'
-import { MeetingActionItem } from '@/entities/meeting-action'
-import { isHealthy, SourceRow } from '@/entities/source'
+import CalendarEventRow from '@/pages/today/ui/CalendarEventRow.vue'
+import MeetingActionItem from '@/pages/today/ui/MeetingActionItem.vue'
+import { isHealthy } from '@/pages/today/lib/health'
+import SourceRow from '@/pages/today/ui/SourceRow.vue'
 
 describe('row entities', () => {
   it('MeetingActionItem shows the action, its meeting and age', () => {

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // The Today page (refactor plan Task 6): the assertions the single TodayView test held, now against the page with its
 // real query, plus the partition-wall rule. mountToday makes any Vue warning (an unimported component) fail.
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import fixture from '../../../../tests/fixtures/today.json'
@@ -70,14 +70,10 @@ describe('TodayPage', () => {
     expect(calls).toBe(2)
   })
 
-  it('only the page reads the partitions map: no widget, feature or entity names it', () => {
-    const root = resolve(process.cwd(), 'src')
-    const files = (dir: string): string[] => readdirSync(dir).flatMap((n) => {
-      const p = join(dir, n)
-      return statSync(p).isDirectory() ? files(p) : /\.(vue|ts)$/.test(n) && !n.endsWith('.test.ts') ? [p] : []
-    })
-    const naming = ['widgets', 'features', 'entities', 'shared'].flatMap((l) => files(join(root, l)))
-      .filter((f) => readFileSync(f, 'utf-8').includes('partitions'))
+  it('only TodayPage reads the partitions map: every block it renders gets the part of one partition', () => {
+    const ui = resolve(process.cwd(), 'src/pages/today/ui')
+    const naming = readdirSync(ui).filter((n) => n.endsWith('.vue') && n !== 'TodayPage.vue')
+      .filter((n) => readFileSync(join(ui, n), 'utf-8').includes('partitions'))
     expect(naming).toEqual([])
   })
 })

@@ -1,3 +1,4 @@
+import { defineNitroPlugin } from 'nitropack/runtime'
 import { assertLocalHost } from '../utils/auth'
 
 // Refuse to start on anything but a loopback host (console C1 spec §6).
