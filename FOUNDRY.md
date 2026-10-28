@@ -283,6 +283,7 @@ The next server sync clears the marker, deletes the pending branch and starts a 
 The Foundry runs on Arch / Omarchy and on Debian. `system/scripts/check_deps.sh --role <role>` checks what that role needs and prints `pacman` or `apt` install hints:
 
 - `claude` (Claude Code), `git`, `jq`, `flock`, `timeout`
+- `gh` (GitHub CLI), signed in with `gh auth login`: the debrief lists your pull requests and reviews with it, and `/setup` downloads the Obsidian plugins with it. Without it the debrief's pull requests read unavailable.
 - `python3` 3.11 or newer, with PyYAML (`sudo pacman -S python-yaml`). Missing PyYAML blocks setup.
 - `sqlite3` built with FTS5
 - systemd user units (`systemctl --user`, `systemd-analyze`). If you want timers to run while you are logged out, enable lingering.

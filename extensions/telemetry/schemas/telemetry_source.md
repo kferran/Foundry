@@ -23,4 +23,4 @@ fields:
   covers: {kind: string}
 ---
 # Telemetry source
-One error source for a registered codebase (Plan 11 spec §2.1): a set of Sentry projects or one ADX database with a filter. Written by `/setup` phase 6a; gitignored except `example.md`. The linter checks the cross-field rules: only the fields of its `kind`, `name` equal to the file name, an existing `codebase`, and `covers` naming an enabled `sentry` source with the same `environment`.
+One error source for a registered codebase (Plan 11 spec §2.1): a set of Sentry projects or one ADX database with a filter. Written by `/setup` phase 6e and tracked. The linter checks the cross-field rules: only the fields of its `kind`, `name` equal to the file name, an existing `codebase`, and `covers` naming an enabled `sentry` source with the same `environment`.

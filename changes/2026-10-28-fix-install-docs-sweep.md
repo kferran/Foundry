@@ -1,0 +1,1 @@
+- Fixed: setup and docs details from a fresh install. FOUNDRY.md Requirements list `gh` and `gh auth login`; `vault_index.py query` says it takes SQL when given words; `install_units.sh` names an unset `XDG_RUNTIME_DIR` when unit verification fails for that reason; the codebase and telemetry-source examples no longer say their files are gitignored or written by phase 6a. (#302)

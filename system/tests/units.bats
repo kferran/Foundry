@@ -151,6 +151,15 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   [ ! -e "$UD" ]
 }
 
+@test "a failed verify with XDG_RUNTIME_DIR unset names the missing user session (#302)" {
+  printf '#!/bin/bash\necho "Failed to lookup RuntimeDirectory" >&2\nexit 1\n' > "$STUBS/systemd-analyze"
+  chmod +x "$STUBS/systemd-analyze"
+  XDG_RUNTIME_DIR="" run "$IU"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"XDG_RUNTIME_DIR is unset"* ]]
+  [ ! -e "$UD/foundry-brief.service" ]
+}
+
 @test "an invalid config is refused before anything is written" {
   sed -i 's/^brief_time: .*/brief_time: "6am"/' system/config.md
   run "$IU"

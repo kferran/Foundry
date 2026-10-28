@@ -228,7 +228,7 @@ def cmd_query(args, vault, sc):
     try:
         cols, rows, truncated = guard.run_query(idx.db_path, args.sql, limit=args.limit)
     except (sqlite3.DatabaseError, sqlite3.ProgrammingError) as exc:
-        print(f"query rejected: {exc}", file=sys.stderr)
+        print(f"query rejected: {exc}; query takes SQL (SELECT …); for text use related", file=sys.stderr)
         return EXIT_FAIL
     if args.json:
         print(json.dumps({"columns": cols, "rows": rows, "truncated": truncated}))
