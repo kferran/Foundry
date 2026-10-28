@@ -203,6 +203,8 @@ inbound_says() {
   run "$WF" --check
   [ "$status" -eq 7 ]
   [[ "${lines[-1]}" == "watch_fetch: slack: "*"unexpected tool: mcp__claude_ai_Slack__slack_read_channel" ]]
+  # A session that wrote no result counts as not run, never as a blank (#302).
+  [[ "${lines[-2]}" == "watch_fetch: - from Slack, "* ]]
 }
 
 @test "--check runs the sessions and writes nothing; a client and a tick outside workdays 08:00-18:00 run nothing" {

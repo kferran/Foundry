@@ -40,6 +40,7 @@ alert_once() {  # <key> <text>: "- HH:MM:SS [FETCH_TAG] <key> <text>", at most o
 fetch_reason() {  # <exit> <reason>: FETCH_REASON, led by its connector class (connector health spec §2)
   connector_classify "$1" "$2" "${work:-}"
   FETCH_REASON="${CONNECTOR_CLASS:+$CONNECTOR_CLASS: }$2"
+  [[ ! "$2" =~ ^(auth|timeout|connector|claude|other):\  ]] || FETCH_REASON="$2"   # a script's reason already classed
 }
 fail() {  # <exit> <reason>: log, alert an exit in FETCH_ALERTS once a day, print and exit
   fetch_reason "$1" "$2"
