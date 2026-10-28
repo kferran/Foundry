@@ -254,6 +254,11 @@ def screen_fields(statement: str, who: str = "", evidence: str = "", rec: str = 
     return redact_credentials(statement), redact_credentials(who), evidence, rec
 
 
+def refusal(exc: Exception) -> str:
+    """exc's reason fit for an alert: a partition wall names no note, since outside input chose its path (#386)."""
+    return "partition wall" if str(exc).startswith("partition wall") else str(exc)
+
+
 def screen_line(vault, partition: str, line: str, old: str = "", fit: bool = False) -> str:
     """line held to MAX_LINE and the partition walls. Over the cap and longer than old (a line written before the cap
     keeps its length): with fit an open line's bare statement is cut, keeping its fields and parenthesis, and a note

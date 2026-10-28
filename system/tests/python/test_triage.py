@@ -361,7 +361,7 @@ def test_a_refused_line_is_dropped_with_one_alert_a_day_and_the_tick_goes_on(vau
     alerts = (vault / f"system/logs/alerts_{TODAY}.md").read_text(encoding="utf-8").splitlines()
     assert len(alerts) == 1
     assert alerts[0].startswith("- 09:10:00 [triage] a Now line was refused (partition wall")
-    assert "diary" not in alerts[0].split("(partition wall")[0]
+    assert "diary" not in alerts[0]   # the wall alert never names the note (#386)
 
 
 def test_a_chat_record_names_chat_as_its_writer(vault):
