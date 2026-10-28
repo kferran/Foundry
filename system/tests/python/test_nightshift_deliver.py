@@ -332,6 +332,21 @@ def test_research_published(vault: Path, tmp_path):
     assert (vault / "wiki/work/concepts/A.md").is_file()
 
 
+def test_research_publishes_only_under_run_lock(vault: Path, tmp_path):
+    # #298: a concurrent publish.recover() expects its caller to hold run.lock; the research publish now holds it too.
+    import fcntl
+    findings = tmp_path / "A.md"
+    findings.write_text(concept("work", "Answer", "Found it.", provenance='["headless"]'))
+    (vault / "system").mkdir(exist_ok=True)
+    with open(vault / "system" / "run.lock", "a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        ok, detail = nd.publish_research(vault, {"output": "wiki/work/concepts/A.md", "partition": "work"}, findings,
+                                         lock_timeout=0)
+    assert (ok, detail) == (False, "run.lock busy: another run is publishing; the findings are kept for a retry")
+    assert not (vault / "wiki/work/concepts/A.md").exists()
+    assert not list((vault / "wiki" / ".staging").glob("*")) if (vault / "wiki" / ".staging").is_dir() else True
+
+
 MIXED = ('---\ntype: concept\ntags: ["research"]\ncompiled_at: 2026-10-08\npartition: work\nprovenance: ["headless"]\n'
          'sources: ["[[Alpha]]", "https://example.com/a", "[[Beta]]", "src/app/main.py"]\nstatus: draft\n---\n'
          '# Answer\n\nFound it.\n')

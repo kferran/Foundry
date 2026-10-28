@@ -12,6 +12,7 @@ from . import frontmatter
 from . import nightshift_check as nc
 from . import publish
 from . import schema
+from .intake import Intake
 
 CODE_PATHS = ["system/scripts", "system/schemas", "system/systemd", "system/hooks", "system/nightshift", ".claude",
               "CLAUDE.md"]
@@ -244,14 +245,19 @@ def move_outside_sources(text: str) -> str:
     return "---\n" + "\n".join(fm_lines) + "\n---\n" + "\n".join(body) + "\n"
 
 
-def publish_research(vault, fm: dict, findings: Path) -> tuple:
+def publish_research(vault, fm: dict, findings: Path, lock_timeout: float = 600) -> tuple:
+    """Publish the findings through the gate under run.lock, as every other publish runs (#298): a recover() running
+    beside it would quarantine the run or apply it twice. A lock held past lock_timeout keeps the findings."""
     run_id = f"{datetime.now().strftime('%Y%m%dT%H%M%S')}-nightshift-{secrets.token_hex(2)}"
     try:
-        publish.snapshot(vault, run_id, [fm["output"]])
-        dst = publish.staging_dir(vault, run_id) / fm["output"]
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_text(move_outside_sources(findings.read_text(encoding="utf-8")), encoding="utf-8")
-        report = publish.commit_run(vault, run_id)
+        with Intake(vault).lock("run.lock", timeout=lock_timeout):
+            publish.snapshot(vault, run_id, [fm["output"]])
+            dst = publish.staging_dir(vault, run_id) / fm["output"]
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(move_outside_sources(findings.read_text(encoding="utf-8")), encoding="utf-8")
+            report = publish.commit_run(vault, run_id)
+    except TimeoutError:
+        return False, "run.lock busy: another run is publishing; the findings are kept for a retry"
     except publish.PublishError as exc:
         return False, str(exc)
     if report.get("status") == "published":
