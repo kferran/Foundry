@@ -193,10 +193,16 @@ inbound_says() {
   [ "$(jq -r .watch system/logs/watch/cursors.json)" = 1800000000 ]
   [ -f "system/logs/watch/calendar-$TODAY.json" ]
   # The failure line keeps its keys on lib_fetch.sh's logline (F1 retrofit 3).
-  [ "$(jq -sc 'map(select(.step == "slack")) | .[-1] | [keys, .exit, .count]' system/logs/watch_fetch-*.jsonl)" = '[["count","exit","reason","step","time"],7,0]' ]
+  [ "$(jq -sc 'map(select(.step == "slack")) | .[-1] | [keys, .exit, .count]' system/logs/watch_fetch-*.jsonl)" = '[["count","exit","reason","step","tick","time"],7,0]' ]
+  # Every line of the tick carries its start, so the brief judges the whole tick (#302).
+  [ "$(jq -s 'map(select(.step != "tick") | .tick) | unique | length' system/logs/watch_fetch-*.jsonl)" = 1 ]
   [[ "$(jq -rs 'map(select(.step == "slack")) | .[-1].reason' system/logs/watch_fetch-*.jsonl)" == *"unexpected tool: mcp__claude_ai_Slack__slack_read_channel" ]]
   run "$WF"
   [ "$(grep -c '\[intraday\] The slack watch failed (exit 7):' "$ALERTS")" -eq 1 ]
+  # Under --check the first failure is the last line, which the smoke check reads as the reason (#302).
+  run "$WF" --check
+  [ "$status" -eq 7 ]
+  [[ "${lines[-1]}" == "watch_fetch: slack: "*"unexpected tool: mcp__claude_ai_Slack__slack_read_channel" ]]
 }
 
 @test "--check runs the sessions and writes nothing; a client and a tick outside workdays 08:00-18:00 run nothing" {
