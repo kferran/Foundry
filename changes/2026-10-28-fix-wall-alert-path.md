@@ -1,0 +1,1 @@
+- Fixed: when inbox triage, the intraday watch or the RCA filer has a Now line refused at a partition wall, the alert says `partition wall` and no longer names the note the line linked to, so the path never reaches Slack. (#386)

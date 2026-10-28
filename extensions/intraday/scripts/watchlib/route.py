@@ -113,7 +113,7 @@ def now_line(vault, partition: str, item: dict, day: str, events: list) -> tuple
             status, line = nowmod.add(vault, partition, kind, statement, day, "", item["link"], due=due, fit=True,
                                       via="watch")
         except ValueError as exc:
-            return "refused", str(exc)
+            return "refused", nowmod.refusal(exc)
     return ("added" if status == "added" else "exists"), line
 
 

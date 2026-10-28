@@ -283,6 +283,7 @@ def test_a_refused_now_line_alerts_once_and_the_tick_goes_on(vault):
     assert run(vault, {"items": items}) == {"items": 2, "now": 0, "alerts": 0}
     assert len(alerts(vault)) == 1
     assert alerts(vault)[0].startswith("- 09:10:00 [intraday] a Now line was refused (partition wall")
+    assert "diary" not in alerts(vault)[0]   # the wall alert never names the note (#386)
 
 
 def test_a_watch_line_names_the_watch_as_its_writer(vault):

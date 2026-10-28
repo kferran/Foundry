@@ -288,7 +288,7 @@ def record(vault, partition: str, found: dict, today: str, now_iso: str, now_epo
                                           via=writer)
             except ValueError as exc:   # still no valid line: record the item so the tick and the items after it go on
                 status, line = "refused", ""
-                alerts.alert(vault, today, now_iso[11:19], "triage", f"{REFUSED} ({exc})", key=REFUSED)
+                alerts.alert(vault, today, now_iso[11:19], "triage", f"{REFUSED} ({nowmod.refusal(exc)})", key=REFUSED)
         state.append(log, {"kind": "item", "thread_id": i["thread_id"], "date": i["date"], "line": line,
                            "time": now_iso, "source": source})
         known.add((i["thread_id"], i["date"]))
