@@ -5,14 +5,15 @@ from collections import Counter
 
 PRIVATE_OPEN = re.compile(r"<private>", re.IGNORECASE)
 PRIVATE_CLOSE = re.compile(r"</private>", re.IGNORECASE)
-PEM_BEGIN = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
-PEM_END = re.compile(r"-----END [A-Z0-9 ]*PRIVATE KEY-----")
+PEM_BEGIN = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----")   # BLOCK: a PGP key (#298)
+PEM_END = re.compile(r"-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----")
 PATTERNS = [
     ("aws_key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
     ("github_token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,})\b")),
     ("gitlab_token", re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}")),
     ("slack_token", re.compile(r"\bxox[abposr]-[A-Za-z0-9-]{10,}")),
     ("anthropic_key", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}")),
+    ("stripe_key", re.compile(r"\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}")),
     ("openai_key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}")),
     ("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
     # US Social Security number (#166): ASCII digits, not inside a longer hyphen chain, no 000, 666 or 9xx area,
@@ -22,7 +23,12 @@ PATTERNS = [
 ]
 # The guards skip a marker, with or without its brackets, and a cut's "…", so a second pass changes nothing (F5 §4.3).
 BEARER = re.compile(r"(?i)(authorization:\s*bearer\s+)(?!\[?REDACTED|…)\S+")
-ASSIGNMENT = re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key)(\s*[:=]\s*)(?!\[?REDACTED|…)(\S+)")
+# A key may sit inside a longer _-joined name (AWS_SECRET_ACCESS_KEY, DB_PASSWORD; #298). Any value after it is a
+# secret, a spoken "password: it" too (audit S6). A Now line (prose=True) redacts a value after ":" only when it looks
+# like one (a digit or a symbol, or 12+ characters), so "the password: reset flow" stays (#386).
+ASSIGNMENT = re.compile(r"(?i)(?<![a-z0-9])([a-z0-9_]*?(?:password|passwd|secret|token|api[_-]?key)[a-z0-9_]*)"
+                        r"(\s*[:=]\s*)(?!\[?REDACTED|…)(\S+)")
+SECRETISH = re.compile(r"[^A-Za-z]|^.{12,}$")
 BARE_BEARER = re.compile(r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/-]{16,}=*")
 USERINFO = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^/\s:@]+:)[^/\s@]+@")
 CONNECTION = re.compile(r"(?i)\b(pwd|accountkey|sharedaccesskey|sharedaccesssignature|sig|client_secret|access_token"
@@ -37,6 +43,14 @@ ENTROPY_BITS = 4.0
 def _entropy(s: str) -> float:
     counts = Counter(s)
     return -sum(c / len(s) * math.log2(c / len(s)) for c in counts.values())
+
+
+def _assignment(prose: bool):
+    def sub(match: re.Match) -> str:
+        if prose and ":" in match.group(2) and not SECRETISH.search(match.group(3).rstrip(".,;!?)")):
+            return match.group(0)
+        return f"{match.group(1)}{match.group(2)}[REDACTED:assignment]"
+    return sub
 
 
 def _high_entropy(match: re.Match) -> str:
@@ -97,7 +111,7 @@ def _scan_pem(text: str) -> tuple[str, int]:
     return "".join(result), count
 
 
-def redact(text: str, high_entropy: bool = True) -> tuple:
+def redact(text: str, high_entropy: bool = True, prose: bool = False) -> tuple:
     """Return (redacted_text, redaction_count). high_entropy=False skips the generic high-entropy guess."""
     count = 0
 
@@ -115,7 +129,10 @@ def redact(text: str, high_entropy: bool = True) -> tuple:
     for kind, pattern in PATTERNS:
         text = sub(pattern, f"[REDACTED:{kind}]", text)
     text = sub(BEARER, r"\1[REDACTED:bearer]", text)
-    text = sub(ASSIGNMENT, r"\1\2[REDACTED:assignment]", text)
+    text = sub(JSON_SECRET, r'\1"[REDACTED:json]"', text)
+    before = text.count("[REDACTED:assignment]")
+    text = ASSIGNMENT.sub(_assignment(prose), text)
+    count += text.count("[REDACTED:assignment]") - before
     if not high_entropy:
         return text, count
     before = text
@@ -124,12 +141,11 @@ def redact(text: str, high_entropy: bool = True) -> tuple:
     return text, count
 
 
-def redact_credentials(text: str) -> str:
+def redact_credentials(text: str, prose: bool = False) -> str:
     """Telemetry text (error monitoring spec §1): credential-shaped strings only. The named detectors plus bare bearer
     tokens, URL passwords, connection-string keys and JSON secret fields; no high-entropy guess, which also hits
     GUID-bearing URL paths and long type names."""
-    text, _ = redact(text, high_entropy=False)
+    text, _ = redact(text, high_entropy=False, prose=prose)
     text = BARE_BEARER.sub(r"\1[REDACTED:bearer]", text)
     text = USERINFO.sub(r"\1[REDACTED:userinfo]@", text)
-    text = CONNECTION.sub(r"\1\2[REDACTED:connection]", text)
-    return JSON_SECRET.sub(r'\1"[REDACTED:json]"', text)
+    return CONNECTION.sub(r"\1\2[REDACTED:connection]", text)

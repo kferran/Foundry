@@ -8,10 +8,13 @@ import os
 import re
 import subprocess
 from datetime import date, timedelta
+from functools import partial
 from pathlib import Path
 
 from . import briefings, frontmatter, index, links as linkmod, nightshift_item
-from .redact import redact_credentials
+from . import redact
+
+redact_credentials = partial(redact.redact_credentials, prose=True)   # a Now line is prose (#386)
 
 PARTITIONS = ("work", "personal")
 KINDS = ("owed", "waiting", "draft")
