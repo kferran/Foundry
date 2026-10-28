@@ -58,6 +58,7 @@ failed() {  # <step> <exit> <reason>: log, alert once a day, keep the first fail
   logline "$2" "$FETCH_REASON" "$(step "$1")"
   case "$2" in 1|2|3|4|6|7|127) (( check )) || alert_once "The $1 watch failed (exit $2):" "$FETCH_REASON" ;; esac
   echo "$FETCH_NAME: $1: $FETCH_REASON" >&2
+  [[ -n "${first_failure:-}" ]] || first_failure="$1: $FETCH_REASON"
   (( rc != 0 )) || rc="$2"
 }
 
@@ -73,6 +74,7 @@ if (( ! check )); then
 fi
 
 started="$(date +%s)"  # the tick's start, before its searches: the next tick searches from here
+FETCH_FIELDS="{\"count\": 0, \"tick\": $started}"   # each line names its tick, so the brief judges the whole tick
 owners="$(system/scripts/vault_index.py field system/config.md owner_names 2>/dev/null | paste -sd ',' - || true)"
 fetch_workdir  # each session's directory is under it: a stopped unit leaves nothing behind
 route=("$started")
@@ -196,6 +198,7 @@ if (( check )); then
   printf 'watch_fetch: %s from Slack, %s from sent mail, %s from incoming mail, %s events today\n' \
     "$(jq '.items | length' "$work/slack.json" 2>/dev/null || echo -)" "$(mcount mail)" "$(mcount inbound)" \
     "$(wc -l < "$work/today.tsv" 2>/dev/null || echo -)"
+  [[ -z "${first_failure:-}" ]] || echo "watch_fetch: $first_failure"   # last, where the smoke check reads its reason
   exit "$rc"
 fi
 wrc=0

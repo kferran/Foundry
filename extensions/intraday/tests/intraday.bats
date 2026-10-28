@@ -84,6 +84,25 @@ print(alerts.severity("- 09:00:00 [watch] Weekly huddle cancelled", ext), alerts
   [ ! -e "$SYSTEMD_USER_DIR/foundry-watch.timer" ]
 }
 
+@test "the Sources line judges the watch's whole last tick: a failed session before an ok calendar reads failed (#302)" {
+  mkdir -p system/logs
+  {
+    printf '{"time": "2026-09-30T09:00:00-06:00", "step": "slack", "exit": 7, "reason": "old failure", "count": 0, "tick": 1}\n'
+    printf '{"time": "2026-09-30T10:00:00-06:00", "step": "slack", "exit": 7, "reason": "auth: Slack login expired", "count": 0, "tick": 2}\n'
+    printf '{"time": "2026-09-30T10:01:00-06:00", "step": "calendar", "exit": 0, "reason": "", "count": 3, "tick": 2}\n'
+    printf '{"time": "2026-09-30T10:01:30-06:00", "step": "route", "exit": 0, "reason": "", "count": 0, "tick": 2}\n'
+  } > system/logs/watch_fetch-2026-09.jsonl
+  run system/scripts/brief_prep.sh 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qx 'watch	failed	auth: Slack login expired' system/logs/inputs/2026-10-01/sources.given
+  # A later clean tick reads ok: an earlier tick's failure is history.
+  printf '{"time": "2026-09-30T10:15:00-06:00", "step": "route", "exit": 0, "reason": "", "count": 0, "tick": 3}\n' >> system/logs/watch_fetch-2026-09.jsonl
+  rm -rf system/logs/inputs/2026-10-01
+  run system/scripts/brief_prep.sh 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -q '^watch	ok' system/logs/inputs/2026-10-01/sources.given
+}
+
 @test "a today file with its frontmatter lints clean in briefings/" {
   mkdir -p briefings
   printf -- '---\ntype: today\ndate: "2026-10-01"\n---\n- 09:00 **capture** 1 message\n' > briefings/2026-10-01.today.md
