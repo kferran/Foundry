@@ -1,0 +1,1 @@
+- Fixed: a Slack notice whose posting session added Slack markup (`<!channel>`, a mention, a link) is caught as a broken rule, and notices hold until you look, as they do for text nobody collected. (#298)

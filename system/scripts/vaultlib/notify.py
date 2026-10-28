@@ -313,6 +313,8 @@ def check(stream, tool: str, channel: str, message_text: str, lines: list, threa
             raise Fail(7, "the session posted to another channel or thread, or with other arguments")
         if len(str(args.get("message") or "")) > len(message_text) + EXTRA_TEXT:
             raise Fail(7, "the session posted text nobody collected")
+        if "<" in str(args.get("message") or "") and "<" not in message_text:   # collected text is _slack-escaped
+            raise Fail(7, "the session posted Slack markup nobody collected (a mention or a link)")
         n += 1
         return str(n)
 
