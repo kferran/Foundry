@@ -12,7 +12,7 @@ The Foreman starts work on its own, the way OpenAI's Dots do: each night it turn
 
 | Phase | What ships | Depends on | Spec and plan | State |
 |---|---|---|---|---|
-| D1 | Escalation ladder: a plan item blocked by `verify` or `no commits` retries on Sonnet with the error, then on Opus, then becomes a Needs-you line | none | to write | grilled |
+| D1 | Escalation ladder: a plan item blocked by `verify` or `no commits` retries on its own model with the error, then on Opus, then becomes a Needs-you line; it never steps down | none | to write | grilled |
 | D2 | CI watch: a new `checking` state between delivering and done; red CI goes into the D1 ladder | D1 | to write | grilled |
 | D3 | Foreman proposals: a nightly `propose` Work Order turns each `foundry:auto` issue into a plan on a proposal branch and a Now line; ticking it queues the Work Order | D1, D2; after the audit track's Work Order findings (#317 to #321) | to write | grilled |
 
@@ -52,7 +52,7 @@ Recommendations taken as answered unless a line says otherwise.
 
 22. **Validation:** worth building; the owner alone feels it; without it D3 would bring more blocked items; the smallest version is one retry with the error, then one on Opus; it ships before D3.
 23. **What escalates:** blocks for `verify` and `no commits`. Not `session` (the owner's questions), `protected` (a fence) or a failed `order_install` (the environment).
-24. **The ladder:** Sonnet with the error, then Opus, then the owner. Rungs count apart from the 3 start attempts; the Needs-you line names each rung tried and its last error.
+24. **The ladder:** the item's own model again with the error, then Opus, then the owner; it never steps down to a cheaper model (owner, 2026-10-29). An item queued on Opus gets one retry on Opus with the error, then goes to the owner. Rungs count apart from the 3 start attempts; the Needs-you line names each rung tried and its last error.
 25. **Session:** a fresh session in the kept clone with a handoff: the failing check's last 200 lines, `git diff` against base and the previous session's final message. No resume.
 26. **Opus's job:** it fixes the code itself; plan-then-hand-back waits for a measured need.
 27. **Budget:** half the item's budget per rung, the same turn limit; the 5-hour ceiling holds a rung as it holds a new start.
