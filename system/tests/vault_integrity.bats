@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=15340
+CORE_CAP=15350
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -120,6 +120,10 @@ core_problem() {
   [ "$(jq '[.permissions.deny[] | select(test("^[A-Za-z]+\\((?![/~])")) | capture("^(?<t>[A-Za-z]+)\\((\\./)?(?<p>.*)\\)$") | "\(.t)(//**/\(.p))"] - .permissions.deny | length' "$f")" = "0" ]
   [ "$(jq '.sandbox.enabled' "$f")" = "true" ]
   [ "$(jq '.sandbox.autoAllowBashIfSandboxed' "$f")" = "false" ]
+  # No network from Bash and no way out of the sandbox, as the Work Order profiles (#298): headless Bash runs only
+  # vault_index.py, which needs none.
+  [ "$(jq '.sandbox.allowUnsandboxedCommands' "$f")" = "false" ]
+  [ "$(jq -c '.sandbox.network' "$f")" = '{"strictAllowlist":true,"allowedDomains":[]}' ]
 }
 
 @test "headless runs cannot read the credentials and transcripts the Work Order profile fences off (audit S4)" {
@@ -143,7 +147,7 @@ core_problem() {
 }
 
 @test "interactive settings end with the routine-command rules a vault merges against, in order" {
-  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/triage_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(system/scripts/now.py review:*)","Bash(system/scripts/now.py overdue:*)","Bash(system/scripts/now.py --help)","Bash(system/scripts/extensions.py check)","Bash(system/scripts/extensions.py allow)","Bash(system/scripts/intake.py --quarantine)","Bash(systemctl --user status *)","Bash(systemctl --user is-active *)","Bash(systemctl --user is-enabled *)","Bash(journalctl --user *)"]'
+  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/triage_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(system/scripts/now.py review:*)","Bash(system/scripts/now.py overdue:*)","Bash(system/scripts/now.py --help)","Bash(system/scripts/extensions.py check)","Bash(system/scripts/extensions.py allow)","Bash(system/scripts/intake.py --quarantine)","Bash(systemctl --user status *)","Bash(systemctl --user is-active *)","Bash(systemctl --user is-enabled *)","Bash(journalctl --user *)","Bash(system/scripts/test.sh:*)","Bash(system/scripts/verify_setup.sh --require-suites)","Bash(python3 -m pytest:*)","Bash(bats:*)","Bash(shellcheck:*)","Bash(python3 .claude/skills/foundry-review/review_diff.py:*)","Bash(git checkout -b:*)","Bash(git switch -c:*)","Bash(git fetch origin:*)","Bash(git merge --no-edit origin/master)"]'
   run jq -c '.permissions.allow | .[index("Bash(system/scripts/vault_index.py recall:*)"):]' .claude/settings.json
   [ "$output" = "$want" ]
 }
@@ -491,7 +495,7 @@ sealed_problems() {
 }
 
 # Task 10: core names no vendor or customer outside a shrinking allowlist (extensions spec §6; plan task 10).
-@test "core stays inside its budget: 14 schemas, 15,340 lines over scripts, hooks and commands (extensions spec §2.2, §5; F3 §3.5)" {
+@test "core stays inside its budget: 14 schemas, 15,350 lines over scripts, hooks and commands (extensions spec §2.2, §5; F3 §3.5)" {
   # Set once at the end of phase 4 (2026-10-16: 12,270 lines, 14 schemas). A feature that needs more moves code into an
   # extension, or raises the budget in its own pull request, with the reason.
   # 12,500 -> 12,750 (#222): parallel Work Orders (#229) and chat triage, which extends core inbox triage and would
@@ -518,8 +522,10 @@ sealed_problems() {
   # list and report, the console extension's reads (#377), took core from 15,047 to 15,149 lines.
   # 15,200 -> 15,300 (#333, owner to approve at merge): the Now writer field, the 7-day expiry of untouched machine
   # lines and the one-time tag-writers verb took core from 15,150 to 15,240 lines.
-  # 15,300 -> 15,340 (#332, owner to approve at merge): the 2026-10-28 audit fixes took core to 15,297; a finished
-  # Work Order adds the owner's Now line (review and merge, answer, or fix), which took it to 15,330.
+  # 15,300 -> 15,320 (#299, owner to approve at merge): the 2026-10-28 audit fixes took core to 15,297; a brief drops a
+  # Now line it cannot screen, with an alert, in place of losing the whole brief, which took it to 15,306.
+  # 15,320 -> 15,350 (#332, owner to approve at merge): a finished Work Order adds the owner's Now line (review and
+  # merge, answer, or fix), which took core from 15,309 to 15,340.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"

@@ -1,0 +1,1 @@
+- Fixed: a Now line the brief adds that cannot be screened (not in `now.py`'s form, or over 300 characters with nothing to cut) is dropped with its notes and an `[intake]` alert naming the reason, so the brief still publishes; before, one such line rejected the whole brief. (#299)

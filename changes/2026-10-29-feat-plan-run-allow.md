@@ -1,0 +1,1 @@
+- Changed: an approved plan run in a Claude Code session no longer asks before it runs the tests (`test.sh`, `verify_setup.sh --require-suites`, `pytest`, `bats`, `shellcheck`), the `/foundry-review` script, a new branch, a fetch from `origin` or a merge of `origin/master` into the branch. Config changes, installs, force pushes, `git diff` and connector writes still ask. (#418)

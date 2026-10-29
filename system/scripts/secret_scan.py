@@ -15,8 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 ZERO = "0" * 40
-# .scratch/ is throwaway. The tree report also skips the template's system/tests/ and docs/superpowers/, which hold
-# the redaction tests' fake tokens by design; a staged file there is still scanned.
+# .scratch/ is throwaway. The tree report also skips the template's system/tests/, docs/superpowers/ and each
+# extension's tests/ (#302), which hold the redaction tests' fake tokens by design; a staged file there is still scanned.
 SKIP = (".scratch/",)
 TREE_SKIP = SKIP + ("system/tests/", "docs/superpowers/")
 
@@ -95,7 +95,8 @@ def tree() -> list:
     result = []
     for path in sorted({p for p in listing.decode("utf-8", "surrogateescape").split("\0") if p}):
         file = ROOT / path
-        if path.startswith(TREE_SKIP) or file.is_symlink() or not file.is_file():  # a link, a deleted file, a fifo
+        if path.startswith(TREE_SKIP) or path.split("/")[::2][:2] == ["extensions", "tests"] or file.is_symlink() \
+                or not file.is_file():  # an extension's tests/, a link, a deleted file, a fifo
             continue
         try:
             result.append((path, text(file.read_bytes()), Counter()))
