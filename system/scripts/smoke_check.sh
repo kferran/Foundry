@@ -116,7 +116,7 @@ connector() {
   fi
 }
 
-connector calendar "${SMOKE_CALENDAR_TIMEOUT:-210}" system/scripts/calendar_fetch.sh --check
+connector calendar "${SMOKE_CALENDAR_TIMEOUT:-240}" system/scripts/calendar_fetch.sh --check
 if [[ "$(config_get meetings_enabled false)" == true ]]; then
   connector meetings "${SMOKE_MEETINGS_TIMEOUT:-210}" system/scripts/meetings_fetch.sh --check
 else echo "meetings: off"; fi
@@ -143,6 +143,7 @@ each() {
   [[ -n "$items" ]] || { echo "$source: off"; return 0; }
   while IFS=$'\t' read -r item _; do
     [[ -n "$item" ]] || continue
+    fits "$source/$item" "$t" || continue
     if [[ "$conn" == 1 && -n "$held" ]]; then
       smoke_logline "$source/$item" 0 "held: $held"
       echo "$source/$item: held: $held"
@@ -156,6 +157,14 @@ each() {
     report "$source/$item" "$rc" "$r"
   done <<< "$items"
 }
+# fits <source> <timeout>: true while SMOKE_BUDGET (the unit's limit less the timer and unit rows after the
+# extensions) still holds the row's timeout; a row it cannot hold is skipped with one line, so more telemetry
+# sources never outgrow the unit (#299).
+fits() {
+  if [[ -z "${SMOKE_BUDGET:-}" ]] || (( SMOKE_BUDGET - SECONDS >= $2 )); then return 0; fi
+  echo "smoke: time left too short for $1; skipped"
+  return 1
+}
 # Extensions (extensions spec §3): each enabled extension's smoke entries, as source, timeout, connector flag,
 # command and, for a row checked per item, its list command. A loader failure is one failed source, never "no
 # extensions".
@@ -166,6 +175,7 @@ if (( erc != 0 )); then
 else
   while IFS=$'\t' read -r src t conn cmd list; do
     [[ -n "$src" ]] || continue
+    fits "$src" "$t" || continue
     read -ra words <<< "$cmd"
     if [[ -n "$list" ]]; then each "$src" "$t" "$conn" "$list" "${words[@]}"
     elif [[ "$conn" == 1 ]]; then connector "$src" "$t" "${words[@]}"

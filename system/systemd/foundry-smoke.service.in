@@ -7,9 +7,11 @@ WorkingDirectory={{VAULT_ROOT}}
 Environment="TZ={{TZ}}"
 Environment="PATH={{UNIT_PATH}}"
 Environment="CLAUDE_BIN={{CLAUDE_BIN}}"
-# The checks run one after another under the script's own timeouts: 210 + 210 + 360 + 360 s for the connectors,
-# 30 for the version, then each extension's smoke timeouts (120 per telemetry source) (spec §3.1).
-TimeoutStartSec=35min
+# The checks run one after another under the script's own timeouts: 240 + 210 + 360 + 360 s for the connectors,
+# 30 for the version, then each extension's smoke timeouts (120 per telemetry source) (spec §3.1). SMOKE_BUDGET is
+# the limit less 120 s for the timer and unit rows: an extension row it cannot hold is skipped (#299).
+TimeoutStartSec=55min
+Environment="SMOKE_BUDGET=3180"
 # A failed source is reported by its [smoke] alert, not as a failed unit.
 SuccessExitStatus=1
 ExecStart="{{VAULT_ROOT}}/system/scripts/smoke_check.sh"
