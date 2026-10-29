@@ -1,0 +1,1 @@
+- Changed: headless runs (ingest, brief, debrief) set the same sandbox keys as Work Orders: no network from Bash and no way to run a command outside the sandbox. The manual already said Bash there has no network; the settings now enforce it. (#298)
