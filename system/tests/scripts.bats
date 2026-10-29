@@ -290,10 +290,15 @@ TOKEN="AKIA""IOSFODNN7EXAMPLE"
   mkdir -p "$V/.scratch" "$V/system/tests"
   printf 'key %s\n' "$TOKEN" > "$V/.scratch/clone.txt"
   printf 'key %s\n' "$TOKEN" > "$V/system/tests/fixture.txt"
+  # An extension's tests hold fixtures too (#302); its scripts are scanned like any code.
+  mkdir -p "$V/extensions/demo/tests/python" "$V/extensions/demo/scripts"
+  printf 'key %s\n' "$TOKEN" > "$V/extensions/demo/tests/python/ext_fixture.txt"
+  printf 'key %s\n' "$TOKEN" > "$V/extensions/demo/scripts/ext_code.txt"
   printf '\0key %s\n' "$TOKEN" > "$V/blob.bin"
   run "$V/system/scripts/lint_vault.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"secret shape: untracked.txt:1: aws_key"* ]]
+  [[ "$output" == *"secret shape: extensions/demo/scripts/ext_code.txt:1: aws_key"* ]]
   [[ "$output" != *"$TOKEN"* ]]
   [[ "$output" != *"clone.txt"* ]]
   [[ "$output" != *"fixture.txt"* ]]

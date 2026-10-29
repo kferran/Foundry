@@ -777,19 +777,35 @@ def test_fit_staged_cuts_only_the_brief_added_long_lines(vault):
     assert now.fit_staged(vault, "missing-run") == 0
 
 
-def test_fit_staged_keeps_the_fields_and_leaves_what_it_cannot_rebuild(vault):
+def test_fit_staged_keeps_the_fields_and_drops_what_it_cannot_rebuild(vault):
+    # #299: a line screen() refuses is dropped with its notes and a reason, never left for the gate to reject the
+    # whole brief over.
     head = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n---\n# Now\n\n## Needs you\n"
     full = (f"- [ ] owed: {'f' * 250} [rec:: ship it: done] [due:: 2026-11-08] "
             f"(Pat Sample, since {TODAY}, https://github.com/acme/shop/pull/7)")
     trailing = f"- [ ] owed: {'t' * 200} (since {TODAY}) {'u' * 120}"
     floor = f"- [ ] owed: Decide vendor [rec:: {'r' * 280}] (since {TODAY})"
-    write(vault, "wiki/.staging/r2/wiki/work/Now.md", head + "\n".join([full, trailing, floor]) + "\n")
-    assert now.fit_staged(vault, "r2") == 1
+    note = f"  - {TODAY}: a note under the line"
+    write(vault, "wiki/.staging/r2/wiki/work/Now.md", head + "\n".join([full, trailing, note, floor]) + "\n")
+    dropped = []
+    assert now.fit_staged(vault, "r2", dropped) == 3
     lines = (vault / "wiki/.staging/r2/wiki/work/Now.md").read_text(encoding="utf-8").split("\n")
-    assert len(lines[-4]) == now.MAX_LINE
-    assert lines[-4].endswith("f… [rec:: ship it: done] [due:: 2026-11-08] [via:: brief] "
+    assert len(lines[-2]) == now.MAX_LINE
+    assert lines[-2].endswith("f… [rec:: ship it: done] [due:: 2026-11-08] [via:: brief] "
                               f"(Pat Sample, since {TODAY}, https://github.com/acme/shop/pull/7)")
-    assert lines[-3:-1] == [trailing, floor]
+    assert lines[-1] == ""
+    assert len(dropped) == 2 and all("t" * 20 not in d and "r" * 20 not in d for d in dropped)
+
+
+def test_cli_fit_staged_alerts_once_for_the_lines_it_dropped(vault):
+    head = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n---\n# Now\n\n## Needs you\n"
+    floor = f"- [ ] owed: Decide vendor [rec:: {'r' * 280}] (since {TODAY})"
+    write(vault, "wiki/.staging/20261009T050000-brief-abcd/wiki/work/Now.md", head + floor + "\n")
+    r = cli(vault, "fit-staged", "20261009T050000-brief-abcd")
+    assert r.returncode == 0, r.stderr
+    alerts = "".join(p.read_text(encoding="utf-8") for p in (vault / "system" / "logs").glob("alerts_*.md"))
+    assert alerts.count("[intake] the brief dropped 1 Now line(s) it added (") == 1
+    assert "r" * 20 not in alerts
 
 
 def test_a_long_line_written_before_the_cap_keeps_working(vault):

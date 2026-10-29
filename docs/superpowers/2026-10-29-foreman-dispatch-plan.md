@@ -18,7 +18,7 @@ The Foreman starts work on its own, the way OpenAI's Dots do: each night it turn
 
 ## 3. Order in the roadmap
 
-After the audit track's Work Order findings (#317 to #321), before the small fixes (Q5). #332 (a finished Work Order adds a Now line) folds into D3.
+After the audit track's Work Order findings (#317 to #321, its phase 3), before the small fixes (Q5). #332 (a finished Work Order adds a Now line) is built on its own in #413; D3 builds on it.
 
 ## Grill
 
@@ -30,7 +30,7 @@ Recommendations taken as answered unless a line says otherwise.
 2. **For whom:** the owner only; no one else starts work through the Foreman.
 3. **Without it:** acceptable for now, but it is the step between the vault knowing and the work being done that the goal sentence asks for.
 4. **Smallest version:** once a day, the Foreman drafts a plan per qualifying signal and adds a Now line with `[rec::]`; ticking the line queues the Work Order. No auto-queue and no continuous watcher until the drafts prove good enough.
-5. **Displaces:** placed after #317 to #321 so the fence gaps close first; #332 folds in.
+5. **Displaces:** placed after #317 to #321 so the fence gaps close first; #332 was to fold in, but #413 builds it first, and D3 builds on that.
 6. **Signals:** GitHub issues with the label, and `/rca` notes (narrowed to issues for v1 by Q10). Red default-branch CI waits for D2; triage and watch lines are too noisy; failed Work Orders belong to D1.
 7. **Plan writer:** one confined planning session per signal on Opus, sandboxed like a Work Order; its plan must pass the readiness check before any Now line appears. The Work Order then runs on Sonnet.
 8. **Codebases:** the template repository only; the work codebase follows #243's grill.

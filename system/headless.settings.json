@@ -12,7 +12,8 @@
     ]
   },
   "sandbox": {
-    "enabled": true, "autoAllowBashIfSandboxed": false,
+    "enabled": true, "autoAllowBashIfSandboxed": false, "allowUnsandboxedCommands": false,
+    "network": {"strictAllowlist": true, "allowedDomains": []},
     "filesystem": {"denyRead": [
       "~/.ssh", "~/.gnupg", "~/.config/foundry", "~/.config/gh", "~/.git-credentials", "~/.netrc", "~/.azure", "~/.aws",
       "~/.claude/projects", "~/.claude/.credentials.json", "~/.claude.json", "**/.env*"
