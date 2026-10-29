@@ -1,0 +1,1 @@
+- Fixed: `/lint` on a fresh vault no longer reports `secret shape:` errors for the fake keys in an extension's test fixtures (`extensions/<name>/tests/`), as it already skipped `system/tests/`; a commit that adds one is still scanned. (#302)
