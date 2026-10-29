@@ -2,6 +2,7 @@
 only the Now pages, project pages, Work Orders and prep files a test writes. today.py runs there as the app runs it.
 A unique module name: conftest.py re-exports the fixtures, and tests import the helpers from here."""
 import json
+from datetime import date, timedelta
 import shutil
 import subprocess
 import sys
@@ -75,3 +76,33 @@ def today_json(root: Path) -> dict:
     r = run(root, "--json")
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
+
+
+def today_vault(vault: Path, day: str) -> None:
+    """A vault holding every part the Today screen shows: two partitions, two projects, Now lines with
+    and without a band, two Work Orders, and today's prep files and alerts."""
+    past = (date.fromisoformat(day) - timedelta(days=4)).isoformat()
+    later = (date.fromisoformat(day) + timedelta(days=5)).isoformat()
+    now_page(vault, "work", [
+        f"- [ ] owed: Reply on the cap for [[Alpha]] [due:: {past}] (Blake Sample, since 2026-10-01, "
+        "https://github.com/acme/shop/pull/7)",
+        f"- [ ] waiting: Rollback owner for alpha cutover [due:: {later}] (Jordan Example, since 2026-10-02)",
+        "- [ ] owed: Unrelated chore (since 2026-10-03)",
+    ])
+    now_page(vault, "personal", ["- [ ] draft: Note to the garden club (since 2026-10-03)"])
+    active(vault, "work", "- [[Alpha]]: cutover plan\n- [[Beta]]\n")
+    project(vault, "work", "Alpha", "- [ ] Write the runbook\n- [ ] Confirm the owner\n")
+    project(vault, "work", "Beta", "Nothing open.\n")
+    order(vault, "2026-10-23-queued-one", "queued")
+    order(vault, "2026-10-22-done-one", "done")
+    prep = f"system/logs/inputs/{day}"
+    write(vault, f"{prep}/calendar.tsv", f"{day}\t09:30\t{day}\t10:00\tStandup\n")
+    write(vault, f"{prep}/actions.md", f"# Meeting actions for {day}\n\n## Yours\n"
+          "- [Blake Sample] Send the metrics ([[2026-10-21 Billing sync]], 2 days open)\n"
+          "- [Blake Sample] Plant the bulbs ([[2026-10-20 Garden]], 3 days open)\n\n## Waiting on\nNone.\n")
+    write(vault, "wiki/work/meetings/2026-10-21 Billing sync.md", "---\ntype: meeting\n---\n")
+    write(vault, "wiki/personal/meetings/2026-10-20 Garden.md", "---\ntype: meeting\n---\n")
+    write(vault, f"{prep}/sources.md", "- calendar: ok\n- triage: failed: auth: expired\n")
+    write(vault, f"{prep}/quarantine.md", "none\n")
+    write(vault, f"system/logs/alerts_{day}.md", "- 09:00 [smoke] one\n- 09:05 [sync] two\n")
+

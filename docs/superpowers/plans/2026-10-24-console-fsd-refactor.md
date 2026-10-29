@@ -105,3 +105,15 @@
 
 - [ ] Step 1: failing tests: the contract test with a key added to the fixture only; `runAdapter` refusing a name outside the list.
 - [ ] Step 2: implement; run every check: Vitest, Steiger, `nuxi build`, the console pytest suite, `system/scripts/test.sh system/tests/conformance.bats`. `/foundry-review`. Commit and push to #392.
+
+## As built
+
+Where the build left this plan, and why. ARCHITECTURE.md carries each rule.
+
+- **Source root `src/`, not `app/`** (`srcDir: 'src'`): Steiger read a root named `app/` as FSD's `app` layer. Paths above that say `app/<layer>` are `app/src/<layer>`. `tsconfig.json` repeats the `@` alias under `paths` so Steiger resolves it.
+- **Single-use slices fold into the page** (owner, "a, follow the rule", on Steiger's `insignificant-slice`): every entity, feature and widget had one importer, so all of Tasks 3 to 5 live in `src/pages/today/` (`ui/`, `model/`, `lib/`, `api/`). They become slices when a second page uses them (C3 Search). The `Today` type and `useTodayQuery` sit in the page too, since entities may not import each other. `RefreshButton` is an inline `Button` in `HeaderBar`.
+- **`server-state/`, not `providers/`**: Steiger's `segments-by-purpose`. The root component stays `src/app.vue`; an `app/index.ts` made Nuxt resolve the root to it.
+- **Explicit server imports**: `imports.autoImport: false` also turns off Nitro's, so server files import `h3` and `nitropack/runtime`.
+- **The missing-import guard is a test** (Review Focus 3): `nuxi build` passes with a missing component import. The page test mounts with a `warnHandler` that throws; seeding a missing `CalendarEventRow` import failed it.
+- **Tests outside `src/`**: block tests are in `tests/today/` and `tests/layers/`, so Steiger does not read them as slices; `tests/server.test.ts` split into `server/utils/auth.test.ts` and `run.test.ts`.
+- **The contract test** checks a list of objects through its first item and lets a list of strings be empty. Its vault helper, `today_vault`, moved to `console_today_fixtures.py` so both suites share it.

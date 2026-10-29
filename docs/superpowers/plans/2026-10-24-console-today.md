@@ -99,6 +99,8 @@
 
 ### Task 6: the Today page
 
+> Superseded on layout by `docs/superpowers/plans/2026-10-24-console-fsd-refactor.md` (#377 Q12): the page now lives in `app/src/pages/today/` under `extensions/console/ARCHITECTURE.md`. The behaviour below still holds.
+
 **Files:**
 - Create: `extensions/console/app/pages/index.vue` and components for the header, tiles, focus cards, Today list, calendar, meeting actions, Now table (its five filters are one computed list, so TanStack Vue Table is not needed, #377 Q10), Work Orders and Pipeline; `composables/useToday.ts` (TanStack Vue Query, `refetchInterval: 60000`, `refetchIntervalInBackground: false`)
 - Test: `extensions/console/app/tests/pages/*.test.ts` with fixture JSON from Task 3's test vault

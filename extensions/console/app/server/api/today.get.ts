@@ -1,9 +1,9 @@
 import { defineEventHandler, setResponseStatus } from 'h3'
-import { runToday } from '../utils/run'
+import { runAdapter } from '../utils/run'
 
-// Takes no query: the command's arguments are constants (console C1 spec §3).
+// Takes no query: the adapter's name and arguments are constants (ARCHITECTURE.md §3).
 export default defineEventHandler(async (event) => {
-  const result = await runToday(process.env.FOUNDRY_VAULT || '')
+  const result = await runAdapter(process.env.FOUNDRY_VAULT || '', 'today')
   setResponseStatus(event, result.status)
   return result.body
 })
