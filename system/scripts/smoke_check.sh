@@ -158,8 +158,8 @@ each() {
   done <<< "$items"
 }
 # fits <source> <timeout>: true while SMOKE_BUDGET (the unit's limit less the timer and unit rows after the
-# extensions) still holds the row's timeout; a row it cannot hold is skipped with one line, so more telemetry
-# sources never outgrow the unit (#299).
+# extensions) still holds the row's timeout; a row it cannot hold is skipped with one line, so more extension
+# rows never outgrow the unit (#299).
 fits() {
   if [[ -z "${SMOKE_BUDGET:-}" ]] || (( SMOKE_BUDGET - SECONDS >= $2 )); then return 0; fi
   echo "smoke: time left too short for $1; skipped"
