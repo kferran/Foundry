@@ -103,6 +103,20 @@ codebase() {  # <name> <path>
   grep -qxF -- '- calendar: ok' "$IN/sources.md"
 }
 
+@test "brief_prep: a PR the last debrief calls open is marked merged, and the status row joins sources.md (#353)" {
+  mkdir -p briefings
+  printf -- '---\ntype: debrief\ndate: "2026-09-30"\n---\n- PR https://github.com/o/r/pull/5 is open and needs a check\n' \
+    > briefings/2026-09-30.debrief.md
+  printf '%s\n' '#!/bin/bash' 'case "$*" in "api repos/o/r/issues/5") echo '"'"'{"state":"closed","closed_at":"2026-09-30T20:00:00Z","pull_request":{"merged_at":"2026-09-30T20:00:00Z"}}'"'"' ;; *) exit 1 ;; esac' \
+    > "$STUBS/gh"
+  chmod +x "$STUBS/gh"
+  calendar_says '{"status":"ok","reason":"","events":[]}'
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qF 'https://github.com/o/r/pull/5 (merged 2026-09-30 14:00) is open' "$IN/yesterday.md"
+  grep -qxF -- '- status: ok (1 checked, 1 closed)' "$IN/sources.md"
+}
+
 @test "brief_prep: the default date is today in the configured timezone" {
   run "$BP"
   [ "$status" -eq 0 ]
