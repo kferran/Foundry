@@ -120,6 +120,10 @@ core_problem() {
   [ "$(jq '[.permissions.deny[] | select(test("^[A-Za-z]+\\((?![/~])")) | capture("^(?<t>[A-Za-z]+)\\((\\./)?(?<p>.*)\\)$") | "\(.t)(//**/\(.p))"] - .permissions.deny | length' "$f")" = "0" ]
   [ "$(jq '.sandbox.enabled' "$f")" = "true" ]
   [ "$(jq '.sandbox.autoAllowBashIfSandboxed' "$f")" = "false" ]
+  # No network from Bash and no way out of the sandbox, as the Work Order profiles (#298): headless Bash runs only
+  # vault_index.py, which needs none.
+  [ "$(jq '.sandbox.allowUnsandboxedCommands' "$f")" = "false" ]
+  [ "$(jq -c '.sandbox.network' "$f")" = '{"strictAllowlist":true,"allowedDomains":[]}' ]
 }
 
 @test "headless runs cannot read the credentials and transcripts the Work Order profile fences off (audit S4)" {
