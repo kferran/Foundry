@@ -88,6 +88,12 @@ def test_a_bulleted_bold_outcome_reads_as_plain_text():
     assert tl.digest_entry(body) == ["Intraday is on.", "  - delivered: decision — intraday turned on — https://x"]
 
 
+def test_a_digest_with_no_outcome_says_so():
+    # #411: a session that stopped early must not read like one that finished.
+    assert tl.digest_entry("## Delivered\n- one thing\n") == ["session ended with no outcome", "  - delivered: one thing"]
+    assert tl.digest_entry("## Outcome\n\n## Delivered\n") == ["session ended with no outcome"]
+
+
 def test_a_credential_in_a_link_is_masked_and_a_symlinked_today_file_is_refused(vault, tmp_path):
     item(vault, "watch:k", link="https://x.example/r?access_token=hunter2hunter2")
     tl.write(vault, DAY, "09:00:00")
