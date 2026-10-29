@@ -12,7 +12,7 @@ SCRIPT = REPO / "system/scripts/status_refs.py"
 GH = """#!/bin/bash
 # a stub gh: `gh api repos/<o>/<r>/issues/<n>` answers from $GH_FIXTURES/<o>_<r>_<n>.json, sleeps on a .hang file
 f="$GH_FIXTURES/$(sed 's|^repos/||; s|/issues/|_|; s|/|_|' <<< "$2").json"
-[[ -e "${f%.json}.hang" ]] && sleep 5
+[[ -e "${f%.json}.hang" ]] && exec tail -f /dev/null   # hangs until the caller's timeout kills it
 [[ -e "$f" ]] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
 cat "$f"
 """
