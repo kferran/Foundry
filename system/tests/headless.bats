@@ -285,6 +285,19 @@ EOF
   wait
 }
 
+@test "ingest gives up on a busy run.lock with exit 6 and no alert; the intake tick retries it (#299)" {
+  mkdir -p system/logs
+  flock system/run.lock sleep 4 &
+  sleep 0.5
+  INGEST_LOCK_WAIT=1 run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 6 ]
+  [ "$(jq -r .exit "$LEDGER")" = "6" ]
+  run grep -c 'run.lock busy' system/logs/alerts_*.md
+  [ "$output" != 1 ]
+  [ -f raw/work/notes/d1.md ]
+  wait
+}
+
 @test "brief and debrief wait 1400 s for run.lock by default" {
   grep -qxF 'LOCK_WAIT="${HEADLESS_LOCK_WAIT:-1400}"' "$RH"
 }

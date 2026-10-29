@@ -52,7 +52,7 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   done
   run grep -l stub_claude "$UD"/*
   [ "$status" -eq 1 ]
-  grep -qx 'TimeoutStartSec=90min' "$UD/foundry-intake.service"
+  grep -qx 'TimeoutStartSec=130min' "$UD/foundry-intake.service"
   # The brief's worst case, two runs of prep and brief with brief_run.sh's wait between them (#299).
   grep -qx 'TimeoutStartSec=110min' "$UD/foundry-brief.service"
   grep -qx 'TimeoutStartSec=45min' "$UD/foundry-debrief.service"
@@ -280,7 +280,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   [ "$(grep '^Exec' "$UD/foundry-brief.service.d/foundry-sync.conf")" = "$(printf 'ExecStartPre=\nExecStartPre="%s/system/scripts/vault_sync.sh" --pre\nExecStartPost="%s/system/scripts/vault_sync.sh" --post' "$VP" "$VP")" ]
   grep -qxF "ExecStartPre=-\"$VP/system/scripts/debrief_prep.sh\"" "$UD/foundry-debrief.service.d/foundry-sync.conf"
   [ "$(grep -c '^ExecStartPre=' "$UD/foundry-intake.service.d/foundry-sync.conf")" -eq 2 ]
-  grep -qx 'TimeoutStartSec=105min' "$UD/foundry-intake.service.d/foundry-sync.conf"
+  grep -qx 'TimeoutStartSec=145min' "$UD/foundry-intake.service.d/foundry-sync.conf"
   grep -qx 'TimeoutStartSec=125min' "$UD/foundry-brief.service.d/foundry-sync.conf"
   grep -qx 'TimeoutStartSec=60min' "$UD/foundry-debrief.service.d/foundry-sync.conf"
   run "$IU"

@@ -113,7 +113,8 @@ fi
 
 exec 9>system/run.lock
 if [[ "$cmd" == ingest ]]; then
-  flock 9
+  # A short wait: the intake tick ends on exit 6 and its inputs stay for the next tick (#299, plan ruling 2).
+  flock -w "${INGEST_LOCK_WAIT:-60}" 9 || die 6 "run.lock busy"
 elif ! flock -w "$LOCK_WAIT" 9; then
   alert "$cmd skipped: run.lock busy for ${LOCK_WAIT}s"
   die 6 "run.lock busy"
