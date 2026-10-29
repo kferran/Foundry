@@ -53,7 +53,7 @@ def test_closed_and_merged_references_are_marked_in_local_time_and_open_ones_lef
     assert (d / "yesterday.md").read_text() == (
         "PR https://github.com/o/r/pull/296 (merged 2026-10-21 08:16) is open; issue https://github.com/o/r/issues/7 "
         "(closed 2026-10-20) waits; https://github.com/o/r/issues/8 too.\n")
-    assert r.stdout.strip() == "status: 3 checked, 2 closed, 0 unverified"
+    assert r.stdout.strip() == "- status: ok (3 checked, 2 closed)"
 
 
 def test_short_forms_orders_links_failures_and_repeats(prep):
@@ -75,7 +75,7 @@ def test_short_forms_orders_links_failures_and_repeats(prep):
         "- missing https://github.com/o/r/issues/404 (unverified: gh failed) and slow https://github.com/o/r/issues/9 "
         "(unverified: timeout)\n")
     assert (d / "people.md").read_text() == "- o/r#3 (closed 2026-10-20) was marked before\n"
-    assert r.stdout.strip() == "status: 5 checked, 3 closed, 2 unverified"
+    assert r.stdout.strip() == "- status: unverified: 2 of 5 references could not be checked (3 closed)"
 
 
 def test_a_bare_number_needs_exactly_one_repository_and_twenty_references_at_most(prep):
@@ -87,7 +87,7 @@ def test_a_bare_number_needs_exactly_one_repository_and_twenty_references_at_mos
     text = (d / "away.md").read_text()
     assert "PR #12 (unverified: ambiguous)" in text
     assert text.endswith("https://github.com/o/r/issues/120\n")   # the 21st is left as written
-    assert r.stdout.strip() == "status: 20 checked, 0 closed, 1 unverified"
+    assert r.stdout.strip() == "- status: unverified: 1 of 20 references could not be checked (0 closed)"
 
 
 def test_usage_error_exits_2(tmp_path):

@@ -1,0 +1,1 @@
+- Added: before the brief runs, its prep checks each GitHub pull request, issue and Work Order its inputs name and marks any that has merged, closed or finished, so the brief no longer calls it open; the Sources line shows `status: ok (N checked, M closed)`, or how many references could not be checked. (#353)

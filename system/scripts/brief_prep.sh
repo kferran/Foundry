@@ -104,6 +104,13 @@ if ! prep_write away.md system/scripts/away.py "$PREP_DATE" "${repos[@]}"; then
   : > "$PREP_DIR/away.md"
   prep_unavailable "away: away.py failed (see $PREP_DIR/prep_errors.log)"
 fi
+# Live status (#353): each pull request, issue and Work Order the inputs above name, marked in place when it is no
+# longer open; its row joins sources.md, so a check that could not run shows on the Sources line.
+timeout 30 system/scripts/nightshift.py list --json > "$PREP_DIR/orders.json" 2>> "$PREP_DIR/prep_errors.log" \
+  || echo '{"items": []}' > "$PREP_DIR/orders.json"
+if row="$(system/scripts/status_refs.py "$PREP_DIR" "$PREP_DIR/orders.json" "${repos[@]}" 2>> "$PREP_DIR/prep_errors.log")"
+then printf '%s\n' "$row" >> "$PREP_DIR/sources.md"
+else prep_unavailable "status: status_refs.py failed (see $PREP_DIR/prep_errors.log)"; fi
 
 # Briefings and debriefs dated before today move to briefings/archive/<YYYY-MM>/, after the Now seed and the
 # extension sections are written (now.py seed and a section's prep may read the archive too). The sync commit records

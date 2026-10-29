@@ -238,6 +238,9 @@ now.archive.work system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WA
 now.archive.personal system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}" system/scripts/now\.py archive --partition personal
 archive.lock system/scripts/brief_prep.sh flock -w "\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}"
 gh system/scripts/debrief_prep.sh \{GH_TIMEOUT:-([0-9]+)\}
+status.list system/scripts/brief_prep.sh timeout ([0-9]+) system/scripts/nightshift\.py list --json
+status.max system/scripts/status_refs.py ^MAX = ([0-9]+)$
+status.timeout system/scripts/status_refs.py "STATUS_TIMEOUT", "([0-9]+)"
 intake.lock system/scripts/vaultlib/intake.py self\.lock\("run\.lock", timeout=([1-9][0-9]*)\)
 intake.runs system/scripts/vaultlib/intake.py "INTAKE_MAX_RUNS", "([0-9]+)"
 meetings system/scripts/meetings_fetch.sh \{MEETINGS_TIMEOUT:-([0-9]+)\}
@@ -275,6 +278,8 @@ brief 1 - now.seed
 brief 1 - now.archive.work
 brief 1 - now.archive.personal
 brief 1 - archive.lock
+brief 1 - status.list  # the live status step (#353): the order list, then one gh call per reference
+brief status.max - status.timeout
 brief 1 - headless.lock  # run_headless.sh brief
 brief 1 grace.headless headless
 debrief 3 - gh  # debrief_prep.sh: three gh searches

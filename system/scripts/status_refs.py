@@ -6,8 +6,9 @@
 Reads the prep inputs the brief copies status from, checks up to MAX references in file order (one `gh api` call
 each under STATUS_TIMEOUT seconds, or the order list), and writes each non-open state right after its reference, in
 place: (merged 2026-10-21 08:16), (closed 2026-10-20), (done), (failed), (cancelled) or (unverified: <why>). An open
-reference stays as written. A bare #N resolves only when exactly one repository is given. Prints the Sources line's
-`status: N checked, M closed, K unverified`. Exit 0, or 2 on a usage error.
+reference stays as written. A bare #N resolves only when exactly one repository is given. Prints a sources.md row:
+`- status: ok (N checked, M closed)`, or `- status: unverified: K of N …` when a check failed. Exit 0, or 2 on a usage
+error.
 """
 import json
 import os
@@ -107,7 +108,10 @@ def main(argv: list) -> int:
                 at = end
         if at:
             path.write_text("".join(out) + text[at:], encoding="utf-8")
-    print(f"status: {counts['checked']} checked, {counts['closed']} closed, {counts['unverified']} unverified")
+    # A sources.md row (plan ruling 4): the brief's Sources line counts it ok, or copies it when a check failed.
+    c = counts
+    print(f"- status: ok ({c['checked']} checked, {c['closed']} closed)" if not c["unverified"] else
+          f"- status: unverified: {c['unverified']} of {c['checked']} references could not be checked ({c['closed']} closed)")
     return 0
 
 
