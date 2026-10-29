@@ -239,6 +239,16 @@ fetch_lib() {
   [ "$status" -eq 2 ]
 }
 
+@test "fetch_reason leads a reason with its class once: a reason that already has one keeps it (#302)" {
+  fetch_lib
+  fetch_reason 1 "calendar_fetch failed"
+  [ "$FETCH_REASON" = "other: calendar_fetch failed" ]
+  fetch_reason 1 "other: calendar_fetch failed"
+  [ "$FETCH_REASON" = "other: calendar_fetch failed" ]
+  fetch_reason 1 "auth: Google login expired"
+  [ "$FETCH_REASON" = "auth: Google login expired" ]
+}
+
 @test "fetch_workdir leaves no directory once its shell exits" {
   run bash -c 'source system/scripts/lib_fetch.sh; fetch_workdir; [[ -d "$work" ]] || exit 1; echo "$work"'
   [ "$status" -eq 0 ]

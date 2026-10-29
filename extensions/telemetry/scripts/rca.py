@@ -24,7 +24,7 @@ from pathlib import Path
 VAULT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(VAULT / "system" / "scripts"), str(Path(__file__).resolve().parent)]
 from telemetrylib import rca  # noqa: E402
-from vaultlib.api import alert, Intake, messages, UsageError  # noqa: E402
+from vaultlib.api import alert, Intake, messages, now, UsageError  # noqa: E402
 
 FILED_LOCK_WAIT = 120   # seconds `filed` and `reopen` wait for run.lock (the manifest's budget sums it per filing)
 
@@ -36,7 +36,7 @@ def target(partition: str, stem: str) -> tuple:
 
 
 def refused(intake, exc) -> None:
-    alert(VAULT, intake.today(), intake.dt().strftime("%H:%M:%S"), "rca", f"a Now line was refused ({exc})",
+    alert(VAULT, intake.today(), intake.dt().strftime("%H:%M:%S"), "rca", f"a Now line was refused ({now.refusal(exc)})",
           key="a Now line was refused")
 
 

@@ -5,7 +5,7 @@ Usage: python3 .claude/skills/new-source/new_source.py <name> --tool <mcp__serve
          (--tools <lib_fetch.sh table> | --server-tool <tool>…) --description "<one line>" --credential "<what>"
          --renew "<how>" [--issue <n>]
 Run from the repository root. Writes extensions/<name>/ and, in the template repository (no system/config.md), one
-`- Added: <description>. (#<issue>)` line under today's date in CHANGELOG.md.
+`- Added: <description>. (#<issue>)` line in its change file, changes/<today>-source-<name>.md.
 Exit: 0 written; 2 usage, with one `new_source: <reason>` line on stderr and nothing written.
 """
 import argparse
@@ -74,21 +74,6 @@ def check(root: Path, a, table: dict) -> None:
         raise Usage("--issue is required in the template repository")
 
 
-def changelog(text: str, line: str) -> str:
-    """text with line under today's heading in Changes, the heading added first when it is missing."""
-    lines, head = text.split("\n"), f"## {date.today().isoformat()}"
-    if head in lines:
-        lines.insert(lines.index(head) + 1, line)
-    else:
-        if "## Changes" not in lines:
-            raise Usage("CHANGELOG.md has no ## Changes heading")
-        at = lines.index("## Changes") + 1
-        while at < len(lines) and not lines[at].strip():
-            at += 1
-        lines[at:at] = [head, line, ""]
-    return "\n".join(lines)
-
-
 def main(argv: list) -> int:
     root = Path.cwd()
     if not (root / "system/scripts/lib_fetch.sh").is_file():
@@ -107,13 +92,11 @@ def main(argv: list) -> int:
     p.add_argument("--renew", required=True)
     p.add_argument("--issue", type=int)
     a = p.parse_args(argv)
-    a.description = a.description.rstrip(".")   # the CHANGELOG line and the manifest body add their own
+    a.description = a.description.rstrip(".")   # the change line and the manifest body add their own
     vault = (root / "system/config.md").exists()
-    log = root / "CHANGELOG.md"
+    log = root / "changes" / f"{date.today().isoformat()}-source-{a.name}.md"
     try:
         check(root, a, table)
-        line = f"- Added: {a.description}. (#{a.issue})"
-        new_log = None if vault else changelog(log.read_text(encoding="utf-8"), line)
     except Usage as u:
         print(f"new_source: {u}", file=sys.stderr)
         return 2
@@ -135,9 +118,10 @@ def main(argv: list) -> int:
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(fill(src.read_text(encoding="utf-8")), encoding="utf-8")
             shutil.copymode(src, out)
-    if new_log is not None:
-        log.write_text(new_log, encoding="utf-8")
-    print(f"new_source: wrote extensions/{a.name}/" + ("" if vault else " and a CHANGELOG.md line"))
+    if not vault:
+        log.parent.mkdir(exist_ok=True)
+        log.write_text(f"- Added: {a.description}. (#{a.issue})\n", encoding="utf-8")
+    print(f"new_source: wrote extensions/{a.name}/" + ("" if vault else f" and {log.relative_to(root)}"))
     return 0
 
 

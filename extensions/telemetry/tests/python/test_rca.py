@@ -308,3 +308,13 @@ def test_reopen_cuts_a_long_jira_reason_and_redacts_it(vault):
     assert len(reopened) <= now.MAX_LINE
     assert key not in reopened
     assert reopened.endswith(f"(since {TODAY}, rca:{stem})")
+
+
+def test_reopen_keeps_the_writer(vault):
+    prepare(vault)
+    note(vault)
+    now.add(vault, "work", "owed", "Review RCA draft: 2026-10-11-orders", TODAY, evidence="rca:2026-10-11-orders",
+            via="mail")
+    rca.reopen(vault, "work", "2026-10-11-orders", "403 Forbidden", TODAY)
+    reopened = next(l for l in now.read(vault, "work").split("\n") if "rca:2026-10-11-orders" in l)
+    assert now.via(reopened) == "mail"

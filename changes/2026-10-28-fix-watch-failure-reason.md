@@ -1,0 +1,1 @@
+- Fixed: the brief's Sources line reads the intraday watch as failed when any session in its last tick failed, and the smoke check names the watch's failure as its reason. Before, an ok calendar read after a failed Slack or mail session showed `watch: ok`. (#302)

@@ -8,15 +8,19 @@ import os
 import re
 import subprocess
 from datetime import date, timedelta
+from functools import partial
 from pathlib import Path
 
 from . import briefings, frontmatter, index, links as linkmod, nightshift_item
-from .redact import redact_credentials
+from . import redact
+
+redact_credentials = partial(redact.redact_credentials, prose=True)   # a Now line is prose (#386)
 
 PARTITIONS = ("work", "personal")
 KINDS = ("owed", "waiting", "draft")
 NEEDS, WAITING = "## Needs you", "## Waiting"
 STALE_DAYS = 14
+EXPIRE_DAYS = 7   # a machine line nobody touched closes itself after a week (Now writer spec §3.2)
 MAX_LINE = 300   # an open line written in full (phase A spec §3.5); history goes to notes under it
 MAX_OVERDUE = 10   # lines the brief's Overdue block prints
 PAGE_BYTES = 25 * 1024   # review limit (#211; phase A target)
@@ -38,7 +42,11 @@ SINCE = re.compile(r"\s*_\(open since (\d{4}-\d{2}-\d{2})(?:, \d+ days?)?\)_")
 # Dataview reads the key in any case and "::" with or without spaces, so a hand edit may write either.
 REC = re.compile(r"\[rec::\s*([^\[\]\n]*[^\[\]\s])\s*\]", re.IGNORECASE)
 DUE = re.compile(r"\[due::\s*(\d{4}-\d{2}-\d{2})\s*\]", re.IGNORECASE)
-FIELD_KEY = re.compile(r"\[(?:rec|due)::", re.IGNORECASE)
+# Who wrote a line (Now writer spec §3.1): no field means a session or the owner; mail, chat and watch are machines.
+VIA = re.compile(r"\s*\[via::\s*([A-Za-z]+)\s*\]", re.IGNORECASE)
+WRITERS = ("mail", "chat", "watch", "brief", "session")
+MACHINE = ("mail", "chat", "watch")
+FIELD_KEY = re.compile(r"\[(?:rec|due|via)::", re.IGNORECASE)
 MARKER = re.compile(r"\[(REDACTED:\w+|PRIVATE)\]")   # what redact_credentials writes in place of a secret
 # A line now.py wrote, with text appended after its parenthesis by hand (#211): it no longer parses.
 SCRIPT_META = re.compile(r"^- \[.\] (?:owed|waiting|draft): .*?\((?:[^(),]+, )?since \d{4}-\d{2}-\d{2}[^()]*\)(?=\s*\S)")
@@ -81,14 +89,27 @@ def fields(statement: str) -> tuple:
     """(bare statement, rec, due): the statement without its two fields, whitespace collapsed; "" for a missing field
     and for a due that is not a real date (a hand edit such as 2026-02-30)."""
     rec, due = REC.search(statement), DUE.search(statement)
-    bare = " ".join(DUE.sub("", REC.sub("", statement)).split())
+    bare = " ".join(VIA.sub("", DUE.sub("", REC.sub("", statement))).split())
     return bare, rec.group(1) if rec else "", due.group(1) if due and is_date(due.group(1)) else ""
 
 
+def via(statement: str) -> str:
+    """The line's writer, lower-cased; "" when the field is missing or names no writer."""
+    m = VIA.search(statement)
+    return m.group(1).lower() if m and m.group(1).lower() in WRITERS else ""
+
+
+_writer = via   # add() takes a via argument
+
+
+def strip_via(line: str) -> str:
+    return VIA.sub("", line)
+
+
 def render(kind: str, statement: str, since: str, who: str = "", evidence: str = "", rec: str = "",
-           due: str = "") -> str:
+           due: str = "", via: str = "") -> str:
     meta = (f"{who}, " if who else "") + f"since {since}" + (f", {evidence}" if evidence else "")
-    clock = (f" [rec:: {rec}]" if rec else "") + (f" [due:: {due}]" if due else "")
+    clock = (f" [rec:: {rec}]" if rec else "") + (f" [due:: {due}]" if due else "") + (f" [via:: {via}]" if via else "")
     return f"- [ ] {kind}: {statement}{clock} ({meta})"
 
 
@@ -236,6 +257,11 @@ def screen_fields(statement: str, who: str = "", evidence: str = "", rec: str = 
     return redact_credentials(statement), redact_credentials(who), evidence, rec
 
 
+def refusal(exc: Exception) -> str:
+    """exc's reason fit for an alert: a partition wall names no note, since outside input chose its path (#386)."""
+    return "partition wall" if str(exc).startswith("partition wall") else str(exc)
+
+
 def screen_line(vault, partition: str, line: str, old: str = "", fit: bool = False) -> str:
     """line held to MAX_LINE and the partition walls. Over the cap and longer than old (a line written before the cap
     keeps its length): with fit an open line's bare statement is cut, keeping its fields and parenthesis, and a note
@@ -245,7 +271,7 @@ def screen_line(vault, partition: str, line: str, old: str = "", fit: bool = Fal
         if m:
             bare, rec, due = fields(m.group("statement"))
             line = render(m.group("kind"), _cut(bare, len(line) - MAX_LINE), m.group("since"), m.group("who") or "",
-                          m.group("evidence") or "", rec, due)
+                          m.group("evidence") or "", rec, due, via(m.group("statement")))
         elif fit and line.startswith("  - "):
             line = line[:MAX_LINE - 1].rstrip() + "…"
         if len(line) > MAX_LINE:
@@ -267,7 +293,8 @@ def screen(vault, partition: str, line: str) -> str:
     m = LINE.match(line)
     if m:
         bare, rec, due = fields(m.group("statement"))
-        rest = (m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
+        writer = via(m.group("statement"))
+        rest = (m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due, writer)
         m = m if render(m.group("kind"), bare, *rest) == line else None
     if m is None:
         if len(line) > MAX_LINE:
@@ -276,8 +303,8 @@ def screen(vault, partition: str, line: str) -> str:
             raise ValueError("credential-shaped text in a Now line not in now.py's form")
         return line
     bare, who, evidence, rec = screen_fields(bare, m.group("who") or "", m.group("evidence") or "", rec)
-    return screen_line(vault, partition, render(m.group("kind"), bare, m.group("since"), who, evidence, rec, due),
-                       fit=True)
+    return screen_line(vault, partition, render(m.group("kind"), bare, m.group("since"), who, evidence, rec, due,
+                                                writer), fit=True)
 
 
 def is_date(text: str) -> bool:
@@ -298,14 +325,17 @@ def default_due(statement: str, since: str, who: str) -> str:
 
 
 def add(vault, partition: str, kind: str, statement: str, today: str, who: str = "", evidence: str = "",
-        rec: str = "", due: str = "", fit: bool = False) -> tuple:
+        rec: str = "", due: str = "", fit: bool = False, via: str = "") -> tuple:
     """("added"|"exists"|"tightened"|"updated", line). An open line with the same kind and bare statement is not
     added twice: a repeat add moves its clock earlier ("tightened"), sets or replaces rec and sets missing evidence
     ("updated"), writes nothing when nothing is new, and raises ValueError when it would move the clock later.
-    fit (machine writers: triage, the watch) cuts a statement that would put the line over MAX_LINE."""
+    fit (machine writers: triage, the watch) cuts a statement that would put the line over MAX_LINE. via names the
+    writer (Now writer spec §3.1); a repeat keeps the line's own."""
+    writer = via
     statement, who, evidence, rec = screen_fields(statement.strip(), who.strip(), evidence, rec.strip())
     validate(partition, kind, statement, who, evidence, rec, due)
-    over = len(render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who))) - MAX_LINE
+    over = len(render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who),
+                      writer)) - MAX_LINE
     if fit and over > 0:
         statement = _cut(statement, over)
     text = read(vault, partition) or new_page(vault, partition, today)
@@ -323,13 +353,14 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
         if (new_due, new_rec, new_evidence) == (old_due, old_rec, m.group("evidence") or ""):
             return "exists", existing
         line = screen_line(vault, partition, render(kind, bare, m.group("since"), m.group("who") or "", new_evidence,
-                                                    new_rec, new_due), existing, fit)
+                                                    new_rec, new_due, _writer(m.group("statement")) or writer),
+                           existing, fit)
         lines = text.split("\n")
         lines[[x.rstrip() for x in lines].index(existing.rstrip())] = line
         write(vault, partition, stamp("\n".join(lines), today))
         return "tightened" if new_due != old_due else "updated", line
     line = screen_line(vault, partition, render(kind, statement, today, who, evidence, rec,
-                                                due or default_due(statement, today, who)), fit=fit)
+                                                due or default_due(statement, today, who), writer), fit=fit)
     text = _insert(stamp(text, today), WAITING if kind == "waiting" else NEEDS, line)
     write(vault, partition, text)
     return "added", line
@@ -359,7 +390,7 @@ def fit_staged(vault, run_id: str) -> int:
             if not line.startswith("- [ ] ") or line in kept:
                 continue
             try:
-                new = screen(vault, partition, line)
+                new = screen(vault, partition, _brief(line))
             except ValueError:
                 continue
             if new != line:
@@ -367,6 +398,17 @@ def fit_staged(vault, run_id: str) -> int:
         if changed > before:
             path.write_text("\n".join(lines), encoding="utf-8")
     return changed
+
+
+def _brief(line: str) -> str:
+    """A line the brief added, named as the brief's (Now writer spec §3.1) when it is in now.py's form and names no
+    writer; any other line as it is."""
+    m = LINE.match(line)
+    if m is None or via(m.group("statement")):
+        return line
+    bare, rec, due = fields(m.group("statement"))
+    rest = (m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
+    return render(m.group("kind"), bare, *rest, "brief") if render(m.group("kind"), bare, *rest) == line else line
 
 
 def set_statement(vault, partition: str, match: str, statement: str, today: str) -> str:
@@ -377,7 +419,7 @@ def set_statement(vault, partition: str, match: str, statement: str, today: str)
     if not match:
         raise ValueError("--match needs text from the line's statement")
     if FIELD_KEY.search(statement):
-        raise ValueError("the new statement holds a [rec::] or [due::] field; set keeps the line's own")
+        raise ValueError("the new statement holds a [rec::], [due::] or [via::] field; set keeps the line's own")
     parsed = [(line, m) for line in open_lines(text) if (m := parse(line))]
     found = [(line, m) for line, m in parsed if match in fields(m.group("statement"))[0].lower()]
     if len(found) != 1:
@@ -454,26 +496,76 @@ def closures(vault, lines: list, gh: str = "gh", on_fail=lambda line, reason: No
     return found
 
 
-def check(vault, today: str, alert, gh: str = "gh") -> int:
-    """Close each open line whose evidence shows it is finished. Returns the lines closed.
+FREE_NOTE = re.compile(r"^\s+- \d{4}-\d{2}-\d{2}: free: ")   # the watch's own note, written with its line
 
-    The page is written only when a line closes, and from a fresh read, so a tick made while gh ran is kept.
-    The first failed pull-request check skips the others until the next tick."""
+
+def expires(lines: list, i: int, today: str) -> bool:
+    """lines[i] is a machine line nobody touched for EXPIRE_DAYS: no due today or later, and no note under it but
+    the watch's own free: note (Now writer spec §3.2). Text typed after the parenthesis is a touch, and add's own
+    decide-by date is no deadline."""
+    m = LINE.match(lines[i].rstrip()) if lines[i].startswith("- [ ] ") else None
+    if m is None or via(m.group("statement")) not in MACHINE or not is_date(m.group("since")):
+        return False
+    bare, _, due = fields(m.group("statement"))
+    if due == default_due(bare, m.group("since"), m.group("who") or ""):
+        due = ""
+    return ((date.fromisoformat(today) - date.fromisoformat(m.group("since"))).days >= EXPIRE_DAYS
+            and not (due and due >= today)
+            and all(FREE_NOTE.match(note) for note in lines[i + 1:_block_end(lines, i)]))
+
+
+def check(vault, today: str, alert, gh: str = "gh") -> int:
+    """Close each open line whose evidence shows it is finished, and expire each untouched machine line. Returns the
+    lines closed.
+
+    A page is written only when a line closes, and from a fresh read, so a tick made while gh ran is kept.
+    The first failed pull-request check skips the others until the next tick; expiry runs regardless."""
     closed = 0
     pages = {partition: open_lines(read(vault, partition)) for partition in PARTITIONS}
     found = closures(vault, [line for lines in pages.values() for line in lines], gh,
                      lambda line, reason: _failed(vault, today, line, reason, alert))
-    for partition, open_ in pages.items():
-        if not any(line.rstrip() in found for line in open_):
-            continue
-        lines = read(vault, partition).split("\n")
+    for partition in PARTITIONS:
+        lines, before = read(vault, partition).split("\n"), closed
         for i, line in enumerate(lines):
             key = line.rstrip()
             if key in found:
-                lines[i] = f"- [x]{key[5:]} _(closed: {found[key]} {today})_"
-                closed += 1
-        write(vault, partition, stamp("\n".join(lines), today))
+                lines[i], closed = f"- [x]{key[5:]} _(closed: {found[key]} {today})_", closed + 1
+            elif expires(lines, i, today):
+                lines[i], closed = f"- [-]{key[5:]} _(closed: expired {today})_", closed + 1
+        if closed > before:
+            write(vault, partition, stamp("\n".join(lines), today))
     return closed
+
+
+HOSTS = (("mail.google.com", "mail"), ("slack.com", "chat"))
+
+
+def tag_writers(vault, today: str, dry_run: bool) -> dict:
+    """Once, under run.lock (Now writer spec §3.4): each open line with no writer and a Gmail or Slack link as its
+    evidence is named mail or chat. A line not in now.py's form, or one the field would put over MAX_LINE, is counted
+    as skipped and left alone. Returns {partition: {"tagged", "expiring", "skipped"}}, "expiring" being the tagged
+    lines the next check closes."""
+    out = {}
+    for partition in PARTITIONS:
+        lines, counts = read(vault, partition).split("\n"), {"tagged": 0, "expiring": 0, "skipped": 0}
+        for i, line in enumerate(lines):
+            m = parse(line) if line.startswith("- [ ] ") else None
+            writer = next((w for host, w in HOSTS if m and host in (m.group("evidence") or "")), "")
+            if not writer or via(m.group("statement")):
+                continue
+            bare, rec, due = fields(m.group("statement"))
+            rest = (m.group("since"), m.group("who") or "", m.group("evidence") or "", rec, due)
+            new = render(m.group("kind"), bare, *rest, writer)
+            if render(m.group("kind"), bare, *rest) != line.rstrip() or len(new) > MAX_LINE:
+                counts["skipped"] += 1
+                continue
+            lines[i] = new
+            counts["tagged"] += 1
+            counts["expiring"] += expires(lines, i, today)
+        if counts["tagged"] and not dry_run:
+            write(vault, partition, "\n".join(lines))
+        out[partition] = counts
+    return out
 
 
 def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: str = "gh",
@@ -530,7 +622,8 @@ def list_data(vault, partitions, day: str) -> dict:
             kind = m.group("kind")
             lines.append({"kind": kind, "section": (WAITING if kind == "waiting" else NEEDS)[3:], "statement": statement,
                           "who": m.group("who") or "", "since": m.group("since"), "evidence": m.group("evidence") or "",
-                          "rec": rec, "due": due, "over": over if group is not None else None,
+                          "rec": rec, "due": due, "via": via(m.group("statement")),
+                          "over": over if group is not None else None,
                           "band": BANDS[group] if group is not None else None, "notes": notes, "raw": line.rstrip()})
         out[partition] = {"lines": lines, "unparsed": unparsed}
     return out

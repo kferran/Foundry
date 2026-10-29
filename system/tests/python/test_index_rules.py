@@ -152,6 +152,8 @@ def test_unique_true(vault):
 
 def test_orphans(vault):
     write(vault, "wiki/work/concepts/Lonely.md", concept("work", "Lonely"))
+    # The Now page is opened from the brief and the sidebar, never by a link: it is no orphan (#302).
+    write(vault, "wiki/work/Now.md", concept("work", "Now"))
     assert issues(build(vault), "orphan") == [("wiki/work/concepts/Lonely.md", "warning", "orphan")]
 
 
@@ -160,7 +162,18 @@ def test_a_note_at_the_vault_root_is_flagged_so_it_reaches_the_inbox(vault):
     write(vault, "Untitled.md", "a thought typed on the phone\n")
     for name in ("README.md", "README.local.md", "FOUNDRY.md", "CLAUDE.md", "CHANGELOG.md"):
         write(vault, name, "# doc\n")
-    assert issues(build(vault), "root-note") == [("Untitled.md", "warning", "root-note")]
+    assert issues(build(vault), "root-note") == [("CHANGELOG.md", "warning", "root-note"),
+                                                 ("Untitled.md", "warning", "root-note")]
+
+
+def test_a_past_brief_s_changelog_link_resolves_to_the_frozen_history(vault):
+    # Every brief before the changes folder ends What changed with [[CHANGELOG]] (changes folder spec §3.2).
+    write(vault, "changes/CHANGELOG.md", "# Changelog\n")
+    write(vault, "changes/2026-10-26-a.md", "- A (#1)\n")
+    write(vault, "briefings/archive/2026-10/2026-10-20.md", "### What changed\n- A (#1)\n\nFull list: [[CHANGELOG]]\n")
+    idx = build(vault)
+    assert issues(idx, "dead-link") == []
+    assert query(idx, "SELECT count(*) FROM notes WHERE path LIKE 'changes/%'") == [(0,)]
 
 
 def test_views_typed_with_defaults(vault):

@@ -1,0 +1,1 @@
+- Fixed: lint no longer warns that `wiki/<partition>/Now.md` has no other note linking to it. (#302)

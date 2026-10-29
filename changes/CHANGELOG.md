@@ -1,19 +1,15 @@
 # Changelog
 
-What changed in The Foundry, newest first. A vault's morning update shows the new lines in its brief under What changed.
-
-## What's next
-
-- Every model write to a Now page passes one check: redaction, the 300-character cap and the partition walls (#310).
-- Then FOUNDRY.md lists what the Foundry offers: features, extensions, commands and skills, and the factory line for builders (#331).
-- Details: [roadmap](docs/superpowers/roadmap.md).
+What changed in The Foundry up to 2026-10-26, newest first. This file is frozen: each later change is its own file in this folder (FOUNDRY.md, Release notes).
 
 ## Changes
 
 ## 2026-10-24
 - Added: the console's web app (#377, C1.3): the Today screen as drawn in the mockup, a Nuxt single-page app whose server answers `GET /api/today` (it runs `today.py --json`) and `GET /api/health` on `127.0.0.1` only, refuses any other host at start, and with `console_auth: tailscale` answers only `console_login`. It polls every 60 seconds while the tab is visible. After this update, run `extensions/console/scripts/build.sh`, then `systemctl --user restart foundry-console`. The client follows Feature-Sliced Design (`extensions/console/ARCHITECTURE.md`, #377 Q12) with Nuxt auto-imports off, and a `console` CI job runs Steiger, its tests and its build. (#392)
+- Changed: interactive sessions no longer ask before nine read-only commands: `now.py overdue` and `now.py --help`, `extensions.py check` and `allow` (without `--write`), `intake.py --quarantine`, `systemctl --user status`, `is-active` and `is-enabled`, and `journalctl --user`. (#393)
 - Added: the `console` extension's Python side (#377, C1.2): `today.py --json` gathers the Today screen (focus projects, Now lines with their bands, Work Orders, the morning's calendar and meeting actions, the pipeline) into one object by running the core `--json` commands, and `today.py --check` is its smoke row; `build.sh` builds the app outside the vault, `serve.sh` starts it on `127.0.0.1`, and `foundry-console` is an always-on unit. The web app itself ships next (C1.3), so nothing is served yet. (#391)
 - Added: an extension unit with `timer: false` is always on: `install_units.sh` installs and enables its `.service` alone, and a client installs it when its `roles` list `client` (the first units a client runs). `extensions.py units <role>` prints a third column, `timer` or `service`. For the console's web server (#377). (#389)
+- Changed: `/rca` no longer adds a "Review RCA draft" line to the Now page; its Ticket draft is for filing by hand. `/rca <note> --file` adds the line as before, and ticking it files the ticket. (#333)
 - Changed: FOUNDRY.md opens with **What the Foundry offers**: every feature with what turns it on, the unit that runs it, its smoke row and its output, and what each extension needs. **The factory line**, under Development, is the builders' entry point and ends with how to add a Source. A test fails when a command, skill, extension or unit ships without its row. (#331)
 - Changed: the today file masks credentials in an item's link, as it does its text, and refuses a symlinked file. Interactive `/brief`, `/debrief` and `/rca` end with `system/scripts/lint_vault.sh`, as `/ingest` does. Lint walls every note but `wiki/Index.md`, as the publish gate does: a note of `type: index` elsewhere that links across partitions is now a lint error. (#310)
 - Added: `--json` on `now.py list`, `active_projects.py`, `nightshift.py list` and `nightshift.py report`, for the console extension's reads (#377). Each prints one object starting `"v": 1`; text output is unchanged, and `report --json` writes no report file. (#378)

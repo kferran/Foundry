@@ -316,6 +316,10 @@ def test_a_broken_rule_is_exit_7_and_no_post_is_1_3_4_or_6():
                     (session(channel="C0OTHER"), 7),
                     (session(extra={"draft_id": "1"}), 7),
                     (session(message=MSG + "x" * 600), 7),
+                    # #298: the collected text has every < escaped, so a raw one is Slack markup the model added.
+                    (session(message=MSG + " <!channel>"), 7),
+                    (session(message=MSG + " <@U0PAT>"), 7),
+                    (session(message=MSG + " <https://x.example|y>"), 7),
                     (session(error=True), 6),
                     (limit, 4),
                     (session()[:2] + [{"type": "result", "is_error": False}], 1),

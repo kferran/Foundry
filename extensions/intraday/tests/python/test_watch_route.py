@@ -104,8 +104,8 @@ def test_each_kind_goes_where_the_spec_routes_it(vault):
                   link=LINK + "5", label="group DM")]
     assert run(vault, {"items": items}) == {"items": 5, "now": 3, "alerts": 1}
     page = nowmod.read(vault, "work")
-    assert f"- [ ] owed: QBR deck before next week's meeting (in #ops) [due:: 2026-10-26] (Pat Sample, since {DAY}, {LINK}1)" in page
-    assert re.search(r"- \[ \] waiting: UAT waits on your sign-off \(in #ops\) \[due:: [\d-]+\] \(QA team, since", page)
+    assert f"- [ ] owed: QBR deck before next week's meeting (in #ops) [due:: 2026-10-26] [via:: watch] (Pat Sample, since {DAY}, {LINK}1)" in page
+    assert re.search(r"- \[ \] waiting: UAT waits on your sign-off \(in #ops\) \[due:: [\d-]+\] \[via:: watch\] \(QA team, since", page)
     assert "owed: Add Sam to the partner meeting (in group DM)" in page
     assert "Moving to the new node pool" not in page
     assert [r["now"] for r in ledger(vault)] == ["added", "added", "", "", "added"]
@@ -283,3 +283,9 @@ def test_a_refused_now_line_alerts_once_and_the_tick_goes_on(vault):
     assert run(vault, {"items": items}) == {"items": 2, "now": 0, "alerts": 0}
     assert len(alerts(vault)) == 1
     assert alerts(vault)[0].startswith("- 09:10:00 [intraday] a Now line was refused (partition wall")
+    assert "diary" not in alerts(vault)[0]   # the wall alert never names the note (#386)
+
+
+def test_a_watch_line_names_the_watch_as_its_writer(vault):
+    run(vault, {"items": [item(kind="deadline", what="Ship the deck", by="2026-10-26", key="v1", link=LINK + "9")]})
+    assert "[via:: watch]" in nowmod.read(vault, "work")

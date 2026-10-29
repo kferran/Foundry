@@ -4,6 +4,8 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -545,14 +547,16 @@ def test_cli_review_prints_only_grouped_findings_and_exits_0(vault):
     assert cli(vault, "review", "--partition", "work").stdout == ""
     now.add(vault, "work", "owed", "Old one", "2020-01-01")
     now.add(vault, "work", "owed", "Same thing", "2020-01-01")
-    now.add(vault, "work", "waiting", "same  thing", TODAY)
+    # The CLI reads the real clock in the config's timezone: the fresh line is dated that day, so it never goes stale.
+    fresh = datetime.now(ZoneInfo("America/Denver")).date()
+    now.add(vault, "work", "waiting", "same  thing", fresh.isoformat())
     r = cli(vault, "review", "--partition", "work")
     assert r.returncode == 0, r.stderr
     assert r.stdout == ("## Stale: open more than 14 days with no evidence\n"
                         "- [ ] owed: Old one [due:: 2020-01-31] (since 2020-01-01)\n"
                         "- [ ] owed: Same thing [due:: 2020-01-31] (since 2020-01-01)\n"
                         "## Duplicates\n- [ ] owed: Same thing [due:: 2020-01-31] (since 2020-01-01)\n"
-                        "- [ ] waiting: same  thing [due:: 2026-11-08] (since 2026-10-09)\n")
+                        f"- [ ] waiting: same  thing [due:: {fresh + timedelta(days=30)}] (since {fresh})\n")
     assert cli(vault, "review", "--partition", "shared").returncode == 2
 
 
@@ -764,12 +768,12 @@ def test_fit_staged_cuts_only_the_brief_added_long_lines(vault):
     short = f"- [ ] owed: Short one [due:: 2026-11-08] (since {TODAY})"
     write(vault, "wiki/work/Now.md", head + old + "\n")
     write(vault, "wiki/.staging/r1/wiki/work/Now.md", head + "\n".join([old, added, short]) + "\n")
-    assert now.fit_staged(vault, "r1") == 1
+    assert now.fit_staged(vault, "r1") == 2   # the long line is cut; both added lines are named the brief's
     lines = (vault / "wiki/.staging/r1/wiki/work/Now.md").read_text(encoding="utf-8").split("\n")
     assert lines[-4] == old
-    assert lines[-2] == short
+    assert lines[-2] == short.replace(" (since", " [via:: brief] (since")
     assert len(lines[-3]) <= now.MAX_LINE
-    assert lines[-3].endswith(f"e… [due:: 2026-11-08] (since {TODAY})")
+    assert lines[-3].endswith(f"e… [due:: 2026-11-08] [via:: brief] (since {TODAY})")
     assert now.fit_staged(vault, "missing-run") == 0
 
 
@@ -783,7 +787,7 @@ def test_fit_staged_keeps_the_fields_and_leaves_what_it_cannot_rebuild(vault):
     assert now.fit_staged(vault, "r2") == 1
     lines = (vault / "wiki/.staging/r2/wiki/work/Now.md").read_text(encoding="utf-8").split("\n")
     assert len(lines[-4]) == now.MAX_LINE
-    assert lines[-4].endswith("f… [rec:: ship it: done] [due:: 2026-11-08] "
+    assert lines[-4].endswith("f… [rec:: ship it: done] [due:: 2026-11-08] [via:: brief] "
                               f"(Pat Sample, since {TODAY}, https://github.com/acme/shop/pull/7)")
     assert lines[-3:-1] == [trailing, floor]
 
@@ -891,7 +895,7 @@ def test_fit_staged_redacts_and_cuts_added_lines(vault):
     assert lines[-3] == old
     assert KEY not in lines[-2]
     assert len(lines[-2]) <= now.MAX_LINE
-    assert lines[-2].endswith(f"e… (since {TODAY})")
+    assert lines[-2].endswith(f"e… [via:: brief] (since {TODAY})")
 
 
 @pytest.mark.parametrize("secret", [f"token: {KEY}", f"authorization: bearer {KEY}", f"password={KEY}", f"pwd={KEY}",
@@ -931,7 +935,7 @@ def test_list_json_parses_fields_and_notes(vault):
     assert line == {
         "kind": "owed", "section": "Needs you", "statement": "Reply on the cap", "who": "Blake Sample",
         "since": "2026-10-01", "evidence": "https://github.com/acme/shop/pull/7", "rec": "3: shorter queue",
-        "due": "2026-10-08", "over": 1, "band": "1-7",
+        "due": "2026-10-08", "via": "", "over": 1, "band": "1-7",
         "notes": [{"date": "2026-10-02", "text": "asked for metrics"}, {"date": "", "text": "free text note"}],
         "raw": "- [ ] owed: Reply on the cap [rec:: 3: shorter queue] [due:: 2026-10-08] "
                "(Blake Sample, since 2026-10-01, https://github.com/acme/shop/pull/7)",
@@ -978,3 +982,123 @@ def test_list_without_json_is_unchanged(vault):
     json_page(vault, ["- [ ] owed: One (since 2026-10-01)", "  - 2026-10-02: a note", "- [ ] waiting: Two (Sam, since 2026-10-01)"])
     assert cli(vault, "list").stdout == "## work\n- [ ] owed: One (since 2026-10-01)\n- [ ] waiting: Two (Sam, since 2026-10-01)\n"
     assert cli(vault, "list", "--date", "bad", "--json").returncode == 2
+
+
+def test_add_writes_the_writer_and_a_repeat_keeps_it(vault):
+    prepare(vault)
+    assert "[via::" not in now.add(vault, "work", "owed", "Send the deck", TODAY)[1]
+    status, line = now.add(vault, "work", "owed", "Reply to Blake", TODAY, via="mail")
+    assert status == "added"
+    assert line.endswith(f"[via:: mail] (since {TODAY})")
+    assert now.add(vault, "work", "owed", "Reply to Blake", TODAY) == ("exists", line)
+
+
+def test_set_hands_the_line_to_the_session(vault):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Reply to Blake", TODAY, via="mail")
+    assert now.via(now.set_statement(vault, "work", "blake", "Reply to Blake today", TODAY)) == ""
+
+
+def test_the_writer_survives_every_re_render(vault):
+    prepare(vault)
+    line = now.add(vault, "work", "owed", "w" * 320, TODAY, via="watch", fit=True)[1]
+    assert "[via:: watch]" in line
+    assert len(line) <= now.MAX_LINE
+    chat = now.render("owed", "Answer the thread", "2026-10-01", via="chat")
+    assert now.screen(vault, "work", chat) == chat
+    assert now.fields("x [via:: mail]") == ("x", "", "")
+    assert now.via("x [VIA::  Mail ]") == "mail"
+    assert now.via("x [via:: robot]") == ""
+    with pytest.raises(ValueError):
+        now.add(vault, "work", "owed", "Sneak [via:: mail] in", TODAY)
+
+
+def test_list_json_has_via_and_plain_list_leaves_it_out(vault):
+    prepare(vault)
+    now.add(vault, "work", "owed", "Reply to Blake", TODAY, via="mail")
+    now.add(vault, "work", "owed", "Send the deck", TODAY)
+    lines = now.list_data(vault, ["work"], TODAY)["work"]["lines"]
+    assert [l["via"] for l in lines] == ["mail", ""]
+    out = cli(vault, "list").stdout
+    assert "Reply to Blake" in out
+    assert "[via::" not in out
+
+
+def test_fit_staged_tags_brief_lines_and_keeps_a_writer_already_there(vault):
+    head = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n---\n# Now\n\n## Needs you\n"
+    plain = f"- [ ] owed: New objective [due:: 2026-11-08] (since {TODAY})"
+    kept = f"- [ ] owed: Copied line [via:: session] (since {TODAY})"
+    write(vault, "wiki/work/Now.md", head)
+    write(vault, "wiki/.staging/r9/wiki/work/Now.md", head + "\n".join([plain, kept]) + "\n")
+    assert now.fit_staged(vault, "r9") == 1
+    lines = (vault / "wiki/.staging/r9/wiki/work/Now.md").read_text(encoding="utf-8").split("\n")
+    assert lines[-3] == f"- [ ] owed: New objective [due:: 2026-11-08] [via:: brief] (since {TODAY})"
+    assert lines[-2] == kept
+
+
+def test_check_expires_untouched_machine_lines_only(vault, tmp_path):
+    prepare(vault)
+    expire = ["- [ ] owed: Old mail [via:: mail] (since 2026-10-02)",
+              "- [ ] owed: Old watch [via:: watch] (since 2026-10-01)", "  - 2026-10-01: free: Mon 10:00"]
+    stay = ["- [ ] owed: Six days [via:: mail] (since 2026-10-03)",
+            "- [ ] owed: Dated chat [due:: 2026-10-09] [via:: chat] (since 2026-10-01)",
+            "- [ ] owed: Called [via:: mail] (since 2026-10-01)", "  - 2026-10-05: called them",
+            "- [ ] owed: Mine [via:: session] (since 2026-09-01)",
+            "- [ ] owed: Old untagged (since 2026-09-01)",
+            "- [ ] owed: A PR (since 2026-09-01, https://github.com/acme/shop/pull/7)"]
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\n---\n# Now\n\n## Needs you\n" + "\n".join(expire + stay) + "\n")
+    # gh fails, which skips the pull-request checks; expiry still runs and still writes the page
+    assert now.check(vault, TODAY, lambda m: None, gh_stub(tmp_path, rc=1)) == 2
+    lines = page(vault).split("\n")
+    assert f"- [-] owed: Old mail [via:: mail] (since 2026-10-02) _(closed: expired {TODAY})_" in lines
+    assert f"- [-] owed: Old watch [via:: watch] (since 2026-10-01) _(closed: expired {TODAY})_" in lines
+    assert all(line in lines for line in stay)
+
+
+def test_expiry_review_findings(vault, tmp_path):
+    # Final review: text typed after the parenthesis is a touch; add's own decide-by date is no deadline; a date that
+    # is not a day leaves check running.
+    prepare(vault)
+    stay = ["- [ ] owed: Touched [via:: mail] (since 2026-10-01) called them back",
+            "- [ ] owed: Bad date [via:: mail] (since 2026-02-30)"]
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\n---\n# Now\n\n## Needs you\n" + "\n".join(stay) + "\n")
+    added = now.add(vault, "work", "owed", "Nobody named", "2026-10-01", via="mail")[1]
+    assert "[due:: 2026-10-31]" in added
+    assert now.check(vault, TODAY, lambda m: None, gh_stub(tmp_path, rc=1)) == 1
+    lines = page(vault).split("\n")
+    assert f"- [-]{added[5:]} _(closed: expired {TODAY})_" in lines
+    assert all(line in lines for line in stay)
+
+
+def test_tag_writers_skips_a_line_it_cannot_tag_whole(vault):
+    prepare(vault)
+    mail = "https://mail.google.com/mail/#all/a1"
+    long = f"- [ ] owed: {'w' * (now.MAX_LINE - 70)} (since 2026-10-01, {mail})"
+    typed = f"- [ ] owed: Typed after (since 2026-10-01, {mail}) and a note"
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\n---\n# Now\n\n## Needs you\n" + f"{long}\n{typed}\n")
+    assert len(long) <= now.MAX_LINE
+    assert now.tag_writers(vault, TODAY, dry_run=False)["work"] == {"tagged": 0, "expiring": 0, "skipped": 2}
+    assert long in page(vault)
+    assert typed in page(vault)
+
+
+def test_tag_writers_dry_run_then_once(vault):
+    prepare(vault)
+    mail, slack = "https://mail.google.com/mail/#all/a1", "https://x.slack.com/archives/C1/p1"
+    lines = [f"- [ ] owed: Old mail (since 2026-10-01, {mail})", f"- [ ] owed: Old chat (since 2026-10-01, {slack})",
+             "- [ ] owed: A PR (since 2026-10-01, https://github.com/acme/shop/pull/7)", "- [ ] owed: Bare (since 2026-10-01)",
+             f"- [ ] owed: Hand  shaped (since 2026-10-01, {mail})"]
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\n---\n# Now\n\n## Needs you\n" + "\n".join(lines) + "\n")
+    before = page(vault)
+    zero = {"tagged": 0, "expiring": 0, "skipped": 0}
+    assert now.tag_writers(vault, TODAY, dry_run=True) == {"work": {"tagged": 2, "expiring": 2, "skipped": 1},
+                                                           "personal": zero}
+    assert page(vault) == before
+    now.tag_writers(vault, TODAY, dry_run=False)
+    assert f"- [ ] owed: Old mail [via:: mail] (since 2026-10-01, {mail})" in page(vault)
+    assert f"- [ ] owed: Old chat [via:: chat] (since 2026-10-01, {slack})" in page(vault)
+    assert lines[4] in page(vault)
+    assert now.tag_writers(vault, TODAY, dry_run=False)["work"]["tagged"] == 0
+    r = cli(vault, "tag-writers", "--dry-run")
+    assert r.returncode == 0, r.stderr
+    assert "tag-writers work: 0 tagged, 0 expire at the next check, 1 skipped" in r.stdout

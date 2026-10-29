@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=15200
+CORE_CAP=15300
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -67,10 +67,6 @@ core_problem() {
   grep -qxF '* text=auto eol=lf' .gitattributes
 }
 
-@test "CHANGELOG.md merges with the union driver, so two pull requests' lines both land (factory F0 §3.3, C13)" {
-  [ "$(git check-attr merge -- CHANGELOG.md)" = 'CHANGELOG.md: merge: union' ]
-}
-
 @test "the scratch folder ships, ignores everything else in it, and CLAUDE.md names it" {
   [ "$(git ls-files .scratch)" = ".scratch/.gitignore" ]
   git check-ignore -q .scratch/clone/README.md
@@ -87,6 +83,16 @@ core_problem() {
       jq -e --arg r "$rule" '.permissions.deny | index($r)' "$f" >/dev/null
     done
   done
+}
+
+@test "a commit that skips the pre-commit secret scan asks first, though git commit -m is allowed (#298)" {
+  for rule in 'Bash(git commit *--no-verify*)' 'Bash(git commit -n*)' 'Bash(git commit * -n*)'; do
+    jq -e --arg r "$rule" '.permissions.ask | index($r)' .claude/settings.json >/dev/null
+  done
+  jq -e '.permissions.allow | index("Bash(git commit -m:*)")' .claude/settings.json >/dev/null
+  # The refusals no longer tell a session to skip the scan itself.
+  run grep -n 'or commit with --no-verify\|commit it by hand with --no-verify' .githooks/pre-commit system/scripts/vault_sync.sh
+  [ "$status" -eq 1 ]
 }
 
 @test "settings deny Read and Edit on wiki/<partition>/private/ (#166)" {
@@ -137,7 +143,7 @@ core_problem() {
 }
 
 @test "interactive settings end with the routine-command rules a vault merges against, in order" {
-  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/triage_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(system/scripts/now.py review:*)"]'
+  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/triage_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(system/scripts/now.py review:*)","Bash(system/scripts/now.py overdue:*)","Bash(system/scripts/now.py --help)","Bash(system/scripts/extensions.py check)","Bash(system/scripts/extensions.py allow)","Bash(system/scripts/intake.py --quarantine)","Bash(systemctl --user status *)","Bash(systemctl --user is-active *)","Bash(systemctl --user is-enabled *)","Bash(journalctl --user *)"]'
   run jq -c '.permissions.allow | .[index("Bash(system/scripts/vault_index.py recall:*)"):]' .claude/settings.json
   [ "$output" = "$want" ]
 }
@@ -485,7 +491,7 @@ sealed_problems() {
 }
 
 # Task 10: core names no vendor or customer outside a shrinking allowlist (extensions spec §6; plan task 10).
-@test "core stays inside its budget: 14 schemas, 15,200 lines over scripts, hooks and commands (extensions spec §2.2, §5; F3 §3.5)" {
+@test "core stays inside its budget: 14 schemas, 15,300 lines over scripts, hooks and commands (extensions spec §2.2, §5; F3 §3.5)" {
   # Set once at the end of phase 4 (2026-10-16: 12,270 lines, 14 schemas). A feature that needs more moves code into an
   # extension, or raises the budget in its own pull request, with the reason.
   # 12,500 -> 12,750 (#222): parallel Work Orders (#229) and chat triage, which extends core inbox triage and would
@@ -510,6 +516,8 @@ sealed_problems() {
   # the page's symlink test) and the shared once-a-day alert took core from 14,946 to 15,047 lines.
   # 15,100 -> 15,200 (#375, owner to approve at merge): --json on now.py list, active_projects.py and the nightshift
   # list and report, the console extension's reads (#377), took core from 15,047 to 15,149 lines.
+  # 15,200 -> 15,300 (#333, owner to approve at merge): the Now writer field, the 7-day expiry of untouched machine
+  # lines and the one-time tag-writers verb took core from 15,150 to 15,240 lines.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
@@ -535,9 +543,9 @@ sealed_problems() {
 @test "core names no vendor or customer outside its allowlist" {
   allow="$BATS_TEST_DIRNAME/core_clean.allow"
   want="$BATS_TEST_TMPDIR/hits.txt"
-  # Every tracked file outside docs/, CHANGELOG.md (history, like docs/), extensions/, system/tests/ and the loader.
+  # Every tracked file outside docs/, changes/CHANGELOG.md (history, like docs/), extensions/, system/tests/ and the loader.
   pattern='dtcc|sentry|kusto|azure|\bjira\b|atlassian|dtcclearning\.com|atlassian\.net|sentry\.io'
-  git ls-files -z -- . ':(exclude)docs' ':(exclude)CHANGELOG.md' ':(exclude)extensions' ':(exclude)system/tests' ':(exclude)system/scripts/extensions.py' \
+  git ls-files -z -- . ':(exclude)docs' ':(exclude)changes/CHANGELOG.md' ':(exclude)extensions' ':(exclude)system/tests' ':(exclude)system/scripts/extensions.py' \
     | xargs -0 grep -I -o -i -E "$pattern" /dev/null 2>/dev/null \
     | awk -F: '{ term = tolower($NF); sub(/:[^:]*$/, ""); print $0 ":" term }' | sort -u > "$want" || true
   # Extension words, in core code only (factory F2 spec §3.2): a tag, route, folder or note type an extension owns.

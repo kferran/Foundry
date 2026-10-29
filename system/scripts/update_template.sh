@@ -142,23 +142,21 @@ after_merge() {
 
 update_extensions
 
-# What changed (release notes spec §2.4): the change and Action lines this merge added under CHANGELOG.md's
-# ## Changes, appended to today's updates.md for the next brief. What's next is never a change. A vault's first
-# changelog gives only its newest dated section, so its history does not flood one brief.
-changelog_added() {
-  if g cat-file -e HEAD^1:CHANGELOG.md 2>/dev/null; then
-    g diff --no-color -U100000 HEAD^1 HEAD -- CHANGELOG.md \
-      | awk '/^[ +]## Changes$/ { on = 1; next } on && /^\+(- |  - Action: )/ { print substr($0, 2) }'
-  elif g cat-file -e HEAD:CHANGELOG.md 2>/dev/null; then
-    g show HEAD:CHANGELOG.md | awk '/^## Changes$/ { on = 1; next }
-      on && /^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/ { if (++n > 1) exit; next }
-      on && n == 1 && /^(- |  - Action: )/ { print }'
-  fi
+# What changed (changes folder spec §3.3): the change and Action lines of each changes/ file this merge added, in
+# name order, appended to today's updates.md for the next brief. changes/CHANGELOG.md is frozen history, and a
+# vault's first changes/ folder is history too, so neither floods a brief.
+changes_added() {
+  g cat-file -e HEAD^1:changes 2>/dev/null || return 0
+  local f
+  while IFS= read -r f; do
+    [[ "$f" == changes/*.md && "$f" != changes/CHANGELOG.md ]] || continue
+    g show "HEAD:$f" | grep -E '^(- |  - Action: )' || true
+  done < <(g diff --name-only --diff-filter=A HEAD^1 HEAD -- changes/ | sort)
 }
 notes="system/logs/inputs/$(date +%F)/updates.md"
 notes_suffix=""
 if [[ "$(g rev-parse HEAD)" != "$pre_merge" ]]; then
-  added="$(changelog_added || true)"
+  added="$(changes_added || true)"
   mkdir -p "$(dirname "$notes")" || true
   touch "$notes" || true
   if [[ -n "$added" ]] && printf '%s\n' "$added" >> "$notes"; then notes_suffix="; notes in today's brief"; fi

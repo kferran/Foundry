@@ -7,11 +7,12 @@ def ex(body):
     return [(l.target, l.kind, l.line) for l in found], tags
 
 
-def test_root_changelog_resolves_by_name_from_any_depth():
-    # The brief links [[CHANGELOG]], which must hold after the brief moves to briefings/archive/<YYYY-MM>/ (#361).
-    r = links.Resolver({"CHANGELOG.md", "briefings/2026-10-01.md", "briefings/archive/2026-09/2026-09-01.md"})
+def test_the_frozen_changelog_resolves_by_name_from_any_depth():
+    # Past briefs link [[CHANGELOG]], which must hold from briefings/archive/<YYYY-MM>/ (#361) and after the file
+    # moved to changes/ (changes folder spec §3.2).
+    r = links.Resolver({"changes/CHANGELOG.md", "briefings/2026-10-01.md", "briefings/archive/2026-09/2026-09-01.md"})
     for src in ("briefings/2026-10-01.md", "briefings/archive/2026-09/2026-09-01.md"):
-        assert r.resolve("CHANGELOG", src, "wiki", lambda c: c) == ("CHANGELOG.md", False)
+        assert r.resolve("CHANGELOG", src, "wiki", lambda c: c) == ("changes/CHANGELOG.md", False)
 
 
 def test_wikilink_forms():

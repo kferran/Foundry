@@ -7,6 +7,8 @@ import pytest
 from helpers import REPO
 from vaultlib.redact import redact, redact_credentials
 
+STRIPE = "sk_" + "live_" + "Fake0" * 5   # built at run time: a literal key trips the host's push protection
+
 
 @pytest.mark.parametrize("secret, kind", [
     ("-----BEGIN OPENSSH PRIVATE KEY-----\nabc\ndef\n-----END OPENSSH PRIVATE KEY-----", "pem"),
@@ -182,3 +184,44 @@ def test_redact_credentials_keeps_identifiers_and_prose():
     text = (f"Ticket 3f2b8a1e-9c4d-4e1f-8a2b-1c3d4e5f6a7b for A1-23B4C-D-56 in {LONG_NAME} at {GUID_PATH}; "
             'the bearer of bad news {"tokenCount":"5"}')
     assert redact_credentials(text) == text
+
+
+@pytest.mark.parametrize("text, secret, marker", [
+    # Audit #298 and #301 S8: shapes redact() passed with 0 redactions.
+    ("AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI7K7MDENG", "wJalrXUtnFEMI7K7MDENG", "AWS_SECRET_ACCESS_KEY=[REDACTED:assignment]"),
+    ("DB_PASSWORD=hunter2", "hunter2", "DB_PASSWORD=[REDACTED:assignment]"),
+    ("SLACK_BOT_TOKEN: abc123def", "abc123def", "SLACK_BOT_TOKEN: [REDACTED:assignment]"),
+    ('{"user":"a","password":"opensesame"}', "opensesame", '"password":"[REDACTED:json]"'),
+    ("-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBF\n-----END PGP PRIVATE KEY BLOCK-----", "lQOYBF", "[REDACTED:pem]"),
+    ("key " + STRIPE, STRIPE[8:], "[REDACTED:stripe_key]"),
+])
+def test_redact_catches_the_audit_shapes(text, secret, marker):
+    out, count = redact(text)
+    assert secret not in out and marker in out and count >= 1
+
+
+@pytest.mark.parametrize("text", [
+    # #386: after a colon, prose stays; only a value that looks like a secret is redacted.
+    "Ask Pat about the password: reset flow",
+    "the token: expired again",
+    "secret: sauce",
+])
+def test_a_colon_followed_by_ordinary_words_is_kept_in_prose_only(text):
+    assert redact(text, prose=True) == (text, 0)
+    assert redact_credentials(text, prose=True) == text
+    # Everywhere else a spoken "password: it" is still a secret (audit S6).
+    assert "[REDACTED:assignment]" in redact(text)[0]
+    # In prose too, a value that looks like a secret goes.
+    assert redact("the password: hunter2", prose=True) == ("the password: [REDACTED:assignment]", 1)
+
+
+def test_a_now_line_keeps_prose_after_a_colon():
+    from vaultlib import now
+    assert now.screen_fields("Ask Pat about the password: reset flow")[0] == "Ask Pat about the password: reset flow"
+
+
+def test_the_secret_scan_shapes_hold_the_new_keys():
+    # secret_scan.py scans with PATTERNS and PEM_BEGIN, so the pre-commit hook sees what redact() sees.
+    from vaultlib.redact import PATTERNS, PEM_BEGIN
+    assert any(p.search("k = " + STRIPE) for _, p in PATTERNS)
+    assert PEM_BEGIN.search("-----BEGIN PGP PRIVATE KEY BLOCK-----")

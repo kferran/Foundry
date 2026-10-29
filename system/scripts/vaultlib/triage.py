@@ -270,7 +270,7 @@ REFUSED = "a Now line was refused"   # an alert names the reason, never the line
 def record(vault, partition: str, found: dict, today: str, now_iso: str, now_epoch: int, source: str = "mail") -> list:
     """Add a Now line for each item whose (thread, latest message) is new to its source, then record the tick (held
     when found["hold"]: the next tick reads the same window). The caller holds run.lock. Returns the lines added."""
-    log = _logs(vault, today)[1]
+    log, writer = _logs(vault, today)[1], "chat" if source == "chat" else "mail"
     known = {(r.get("thread_id"), r.get("date")) for r in records(vault, today)
              if r.get("kind") == "item" and r.get("source", "mail") == source}
     added, mine, prev = [], {t for t, _ in known}, (date.fromisoformat(today).replace(day=1) - timedelta(days=1)).isoformat()
@@ -280,13 +280,15 @@ def record(vault, partition: str, found: dict, today: str, now_iso: str, now_epo
             continue   # seen, or another source's line (the intraday watch's) already holds the thread
         statement = f"{i['who']}: {i['ask'].rstrip('.')}." + (f" Next: {i['next_step']}" if i.get("next_step") else "")
         try:
-            status, line = nowmod.add(vault, partition, "owed", statement, today, i["sender"], i["link"], fit=True)
+            status, line = nowmod.add(vault, partition, "owed", statement, today, i["sender"], i["link"], fit=True,
+                                      via=writer)
         except ValueError:  # a link or sender the Now line cannot hold: keep the item, drop the metadata
             try:
-                status, line = nowmod.add(vault, partition, "owed", f"{statement} ({i['link']})", today, fit=True)
+                status, line = nowmod.add(vault, partition, "owed", f"{statement} ({i['link']})", today, fit=True,
+                                          via=writer)
             except ValueError as exc:   # still no valid line: record the item so the tick and the items after it go on
                 status, line = "refused", ""
-                alerts.alert(vault, today, now_iso[11:19], "triage", f"{REFUSED} ({exc})", key=REFUSED)
+                alerts.alert(vault, today, now_iso[11:19], "triage", f"{REFUSED} ({nowmod.refusal(exc)})", key=REFUSED)
         state.append(log, {"kind": "item", "thread_id": i["thread_id"], "date": i["date"], "line": line,
                            "time": now_iso, "source": source})
         known.add((i["thread_id"], i["date"]))

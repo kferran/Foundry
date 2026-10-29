@@ -18,7 +18,7 @@ from . import extensions as extmod, frontmatter, links as linkmod, schema as sch
 INDEX_VERSION = "2"   # 2: tag issues (#158), so a rebuild lints notes whose bytes did not change
 PRUNE = {".git", ".obsidian"}
 NOT_INDEXED = ("system/logs/", "system/quarantine/", "system/jobs/", "system/templates/",
-               "system/tests/", "docs/", "raw/inbox/", "raw/archive/", "raw/meetings/", "meetings/drop/",
+               "system/tests/", "docs/", "changes/", "raw/inbox/", "raw/archive/", "raw/meetings/", "meetings/drop/",
                "extensions/")  # code and manifests, never notes: walk() prunes it, and staged lint skips it too
 # Walked but never indexed: reachable by explicit path, never by bare [[Name]].
 NAME_EXCLUDED = ("system/tests/", "system/templates/", "system/schemas/", "system/agents/", "docs/",
@@ -61,7 +61,7 @@ def cited(vault) -> dict:
     return out
 SKIP_FILES = ("system/index.db", "system/index.lock")
 PRIVATE = re.compile(r"^wiki/[^/]+/private/")  # read-denied (#166): never walked, staged, published or opened
-ROOT_DOCS = {"README.md", "README.local.md", "FOUNDRY.md", "CLAUDE.md", "CHANGELOG.md"}   # the only Markdown files the root holds
+ROOT_DOCS = {"README.md", "README.local.md", "FOUNDRY.md", "CLAUDE.md"}   # the only Markdown files the root holds
 TABLES = ("files", "notes", "fields", "links", "tags", "issues", "notes_fts")
 ISSUE_ROWS = "SELECT path, line, severity, code, message FROM issues ORDER BY severity, path, line"
 
@@ -461,7 +461,8 @@ class Index:
         self._extension_issues(conn, add)
         for (path,) in conn.execute(
                 "SELECT n.path FROM notes n WHERE n.path LIKE 'wiki/%' AND n.active=1 "
-                "AND coalesce(n.type,'') != 'index' AND n.path NOT LIKE 'wiki/%/now-archive/%' AND NOT EXISTS "
+                "AND coalesce(n.type,'') != 'index' AND n.path NOT LIKE 'wiki/%/now-archive/%' "
+                "AND n.path NOT GLOB 'wiki/[^/]*/Now.md' AND NOT EXISTS "   # opened from the brief, never linked
                 "(SELECT 1 FROM links l WHERE l.target_path=n.path AND l.src != n.path)").fetchall():
             add(path, 1, "warning", "orphan", "no other note links here")
         for (path,) in conn.execute("SELECT path FROM notes WHERE path NOT LIKE '%/%' AND path LIKE '%.md'").fetchall():
