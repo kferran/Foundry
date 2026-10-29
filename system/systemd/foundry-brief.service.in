@@ -7,6 +7,6 @@ WorkingDirectory={{VAULT_ROOT}}
 Environment="TZ={{TZ}}"
 Environment="PATH={{UNIT_PATH}}"
 Environment="CLAUDE_BIN={{CLAUDE_BIN}}"
-TimeoutStartSec=60min
-ExecStartPre=-"{{VAULT_ROOT}}/system/scripts/brief_prep.sh"
-ExecStart="{{VAULT_ROOT}}/system/scripts/run_headless.sh" brief
+# Two runs of prep and brief with brief_run.sh's wait between them: a rejected brief runs once more (#299).
+TimeoutStartSec=110min
+ExecStart="{{VAULT_ROOT}}/system/scripts/brief_run.sh"

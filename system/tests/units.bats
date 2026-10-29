@@ -53,11 +53,12 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   run grep -l stub_claude "$UD"/*
   [ "$status" -eq 1 ]
   grep -qx 'TimeoutStartSec=90min' "$UD/foundry-intake.service"
-  # The brief's worst case (prep fetches, the lock wait, a 15-minute session, publish) is about 47 minutes (audit C6).
-  grep -qx 'TimeoutStartSec=60min' "$UD/foundry-brief.service"
+  # The brief's worst case, two runs of prep and brief with brief_run.sh's wait between them (#299).
+  grep -qx 'TimeoutStartSec=110min' "$UD/foundry-brief.service"
   grep -qx 'TimeoutStartSec=45min' "$UD/foundry-debrief.service"
-  grep -qxF "ExecStartPre=-\"$VP/system/scripts/brief_prep.sh\"" "$UD/foundry-brief.service"
-  grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/foundry-brief.service"
+  run grep -c '^ExecStartPre=' "$UD/foundry-brief.service"   # brief_run.sh runs the prep itself (#299)
+  [ "$output" = 0 ]
+  grep -qxF "ExecStart=\"$VP/system/scripts/brief_run.sh\"" "$UD/foundry-brief.service"
   grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" debrief" "$UD/foundry-debrief.service"
   grep -qxF "ExecStart=\"$VP/system/scripts/intake_daemon.sh\"" "$UD/foundry-intake.service"
 }
@@ -132,14 +133,14 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   [ "$status" -eq 0 ]
   grep -qx 'changed foundry-brief.service' <<< "$output"
   [ "$(head -n 1 "$UD/foundry-brief.service")" = "# Managed by vault: $VP" ]
-  grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/foundry-brief.service"
+  grep -qxF "ExecStart=\"$VP/system/scripts/brief_run.sh\"" "$UD/foundry-brief.service"
 }
 
 @test "a vault path with spaces renders quoted paths that systemd accepts" {
   move_vault "$BATS_TEST_TMPDIR/my vault"
   run "$IU"
   [ "$status" -eq 0 ]
-  grep -qxF "ExecStart=\"$VP/system/scripts/run_headless.sh\" brief" "$UD/foundry-brief.service"
+  grep -qxF "ExecStart=\"$VP/system/scripts/brief_run.sh\"" "$UD/foundry-brief.service"
   grep -qxF "WorkingDirectory=$VP" "$UD/foundry-brief.service"
 }
 
@@ -276,11 +277,11 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
     [ "$(head -n 1 "$d")" = "# Managed by vault: $VP" ]
     grep -qx "new foundry-$s.service.d/foundry-sync.conf" <<< "$output"
   done
-  [ "$(grep '^Exec' "$UD/foundry-brief.service.d/foundry-sync.conf")" = "$(printf 'ExecStartPre=\nExecStartPre="%s/system/scripts/vault_sync.sh" --pre\nExecStartPre=-"%s/system/scripts/brief_prep.sh"\nExecStartPost="%s/system/scripts/vault_sync.sh" --post' "$VP" "$VP" "$VP")" ]
+  [ "$(grep '^Exec' "$UD/foundry-brief.service.d/foundry-sync.conf")" = "$(printf 'ExecStartPre=\nExecStartPre="%s/system/scripts/vault_sync.sh" --pre\nExecStartPost="%s/system/scripts/vault_sync.sh" --post' "$VP" "$VP")" ]
   grep -qxF "ExecStartPre=-\"$VP/system/scripts/debrief_prep.sh\"" "$UD/foundry-debrief.service.d/foundry-sync.conf"
   [ "$(grep -c '^ExecStartPre=' "$UD/foundry-intake.service.d/foundry-sync.conf")" -eq 2 ]
   grep -qx 'TimeoutStartSec=105min' "$UD/foundry-intake.service.d/foundry-sync.conf"
-  grep -qx 'TimeoutStartSec=75min' "$UD/foundry-brief.service.d/foundry-sync.conf"
+  grep -qx 'TimeoutStartSec=125min' "$UD/foundry-brief.service.d/foundry-sync.conf"
   grep -qx 'TimeoutStartSec=60min' "$UD/foundry-debrief.service.d/foundry-sync.conf"
   run "$IU"
   grep -qx 'unchanged foundry-brief.service.d/foundry-sync.conf' <<< "$output"

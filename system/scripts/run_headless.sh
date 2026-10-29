@@ -204,7 +204,11 @@ if (( rc == 0 )); then
   set -e
   if (( prc != 0 )); then
     rc=5
-    alert "$cmd $run_id: publish rejected or empty (system/logs/runs/$run_id/publish.json)"
+    if [[ "$cmd" == brief && "${BRIEF_RETRY_PENDING:-}" == 1 ]]; then   # brief_run.sh runs it once more (#299)
+      echo "$cmd $run_id: publish rejected or empty; brief_run.sh retries once" >> "$LOG"
+    else
+      alert "$cmd $run_id: publish rejected or empty (system/logs/runs/$run_id/publish.json)"
+    fi
   elif [[ -n "$held" ]]; then
     alert "$cmd $run_id: published $held (changed during the run; staged copies in system/quarantine/$run_id/staged/)"
   fi
