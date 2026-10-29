@@ -149,7 +149,7 @@ TOKEN="AKIA""IOSFODNN7EXAMPLE"
   [ "$status" -ne 0 ]
   [[ "$output" == *"secret shape: notes.txt:2: aws_key"* ]]
   [[ "$output" == *"secret shape: docs/superpowers/pasted.md:1: aws_key"* ]]
-  [ "${lines[0]}" = "pre-commit: a staged file adds a secret shape; remove it, or commit with --no-verify if it is not a secret" ]
+  [ "${lines[0]}" = "pre-commit: a staged file adds a secret shape; remove it, or, if it is not a secret, ask the owner to commit it with --no-verify" ]
   [[ "$output" != *"$TOKEN"* ]]
   run git -C "$V" rev-parse -q --verify HEAD
   [ "$status" -ne 0 ]

@@ -71,6 +71,9 @@
       "Read(~/.config/gcalcli/**)", "Read(//**/.env)", "Read(//**/.env.*)",
       "Read(/wiki/*/private/**)", "Edit(/wiki/*/private/**)",
       "Read(/.scratch/**/wiki/*/private/**)", "Edit(/.scratch/**/wiki/*/private/**)"
+    ],
+    "ask": [
+      "Bash(git commit *--no-verify*)", "Bash(git commit -n*)", "Bash(git commit * -n*)"
     ]
   }
 }

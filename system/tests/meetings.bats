@@ -436,7 +436,7 @@ token = [REDACTED:assignment]'
   git add leak.txt
   hook_commit meetings/drop/work/call.txt 'token = hunter2\n'
   [ "$status" -eq 1 ]
-  [ "${lines[0]}" = "pre-commit: a staged file adds a secret shape; remove it, or commit with --no-verify if it is not a secret" ]
+  [ "${lines[0]}" = "pre-commit: a staged file adds a secret shape; remove it, or, if it is not a secret, ask the owner to commit it with --no-verify" ]
   [ "${lines[1]}" = "secret shape: leak.txt:1: aws_key" ]
   [ "${lines[2]}" = "pre-commit: redacted 1 in meetings/drop/work/call.txt" ]
 }

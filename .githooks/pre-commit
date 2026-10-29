@@ -66,7 +66,7 @@ rm -f "$tmp" "$err"
 rc=0
 scan="$(python3 "$root/system/scripts/secret_scan.py" --staged)" || rc=$?
 if (( rc == 1 )); then
-  echo "pre-commit: a staged file adds a secret shape; remove it, or commit with --no-verify if it is not a secret" >&2
+  echo "pre-commit: a staged file adds a secret shape; remove it, or, if it is not a secret, ask the owner to commit it with --no-verify" >&2
 elif (( rc != 0 )); then
   echo "pre-commit: the secret scan could not run, so nothing was committed" >&2
 fi

@@ -129,7 +129,7 @@ while IFS= read -r line; do
   [[ -n "$line" ]] || continue
   path_key="${line%:*:*}:"
   grep -qsF "left out of the sync commit: $path_key" "$LOGS/alerts_$(date +%F).md" \
-    || alert "left out of the sync commit: $line; remove it, or commit it by hand with --no-verify if it is not a secret"
+    || alert "left out of the sync commit: $line; remove it, or, if it is not a secret, the owner commits it by hand with --no-verify"
 done <<< "$GIT_SYNC_SECRETS"
 for attempt in 1 2; do
   net fetch -q --prune origin || fail fetch "git fetch origin failed"
