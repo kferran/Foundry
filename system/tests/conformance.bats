@@ -240,6 +240,9 @@ now.archive.work system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WA
 now.archive.personal system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}" system/scripts/now\.py archive --partition personal
 archive.lock system/scripts/brief_prep.sh flock -w "\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}"
 gh system/scripts/debrief_prep.sh \{GH_TIMEOUT:-([0-9]+)\}
+status.list system/scripts/brief_prep.sh timeout ([0-9]+) system/scripts/nightshift\.py list --json
+status.max system/scripts/status_refs.py ^MAX = ([0-9]+)$
+status.timeout system/scripts/status_refs.py "STATUS_TIMEOUT", "([0-9]+)"
 intake.lock system/scripts/vaultlib/intake.py self\.lock\("run\.lock", timeout=([1-9][0-9]*)\)
 intake.runs system/scripts/vaultlib/intake.py "INTAKE_MAX_RUNS", "([0-9]+)"
 meetings system/scripts/meetings_fetch.sh \{MEETINGS_TIMEOUT:-([0-9]+)\}
@@ -276,6 +279,9 @@ brief 2 - now.seed
 brief 2 - now.archive.work
 brief 2 - now.archive.personal
 brief 2 - archive.lock
+brief 2 - status.list  # the live status step (#353): the order list, then one gh call per reference, per run
+brief status.max - status.timeout
+brief status.max - status.timeout  # the prep of the second run (#299)
 brief 2 - headless.lock  # run_headless.sh brief, twice when the first is rejected
 brief 2 grace.headless headless
 brief 1 - brief.retry

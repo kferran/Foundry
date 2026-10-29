@@ -645,6 +645,7 @@ self_edit_contract() {
   f=.claude/commands/brief.md
   grep -qF '`system/logs/inputs/<date>/yesterday.md`' "$f"
   grep -qF '**🌅 Morning Alignment → Where yesterday landed:**' "$f"
+  grep -qF 'is reported that way, never as open; keep any (unverified …) mark.' "$f"   # the prep's status marks (#353)
   grep -qF 'three to five `- ` lines drawn from the debrief' "$f"
   grep -qF 'leaving out what Blockers and From Now already print' "$f"
   grep -qF 'print `No debrief input.`' "$f"

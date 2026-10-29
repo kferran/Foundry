@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=15380
+CORE_CAP=15510
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -495,7 +495,7 @@ sealed_problems() {
 }
 
 # Task 10: core names no vendor or customer outside a shrinking allowlist (extensions spec §6; plan task 10).
-@test "core stays inside its budget: 14 schemas, 15,380 lines over scripts, hooks and commands (extensions spec §2.2, §5; F3 §3.5)" {
+@test "core stays inside its budget: 14 schemas, 15,510 lines over scripts, hooks and commands (extensions spec §2.2, §5; F3 §3.5)" {
   # Set once at the end of phase 4 (2026-10-16: 12,270 lines, 14 schemas). A feature that needs more moves code into an
   # extension, or raises the budget in its own pull request, with the reason.
   # 12,500 -> 12,750 (#222): parallel Work Orders (#229) and chat triage, which extends core inbox triage and would
@@ -526,8 +526,10 @@ sealed_problems() {
   # Now line it cannot screen, with an alert, in place of losing the whole brief, which took it to 15,306.
   # 15,320 -> 15,350 (#332, owner to approve at merge): a finished Work Order adds the owner's Now line (review and
   # merge, answer, or fix), which took core from 15,309 to 15,340.
-  # 15,350 -> 15,380 (#299, owner to approve at merge): brief_run.sh retries a rejected brief once, the smoke check's
-  # budget skips rows it cannot hold, and ingest's lock wait ends the tick, which took core from 15,340 to 15,377.
+  # 15,350 -> 15,470 (#353, owner to approve at merge): status_refs.py, the brief prep's check of each pull request,
+  # issue and Work Order its inputs name, took core from 15,340 to 15,466.
+  # 15,470 -> 15,510 (#299, owner to approve at merge): brief_run.sh retries a rejected brief once, the smoke check's
+  # budget skips rows it cannot hold, and ingest's lock wait ends the tick, which took core from 15,466 to 15,503.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
