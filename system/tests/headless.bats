@@ -287,15 +287,15 @@ EOF
 
 @test "ingest gives up on a busy run.lock with exit 6 and no alert; the intake tick retries it (#299)" {
   mkdir -p system/logs
-  flock system/run.lock sleep 4 &
-  sleep 0.5
-  INGEST_LOCK_WAIT=1 run "$RH" ingest raw/work/notes/d1.md
+  exec 8> system/run.lock   # the test's own shell holds the lock: no background process to race
+  flock 8
+  INGEST_LOCK_WAIT=0 run "$RH" ingest raw/work/notes/d1.md
+  exec 8>&-
   [ "$status" -eq 6 ]
   [ "$(jq -r .exit "$LEDGER")" = "6" ]
   run grep -c 'run.lock busy' system/logs/alerts_*.md
   [ "$output" != 1 ]
   [ -f raw/work/notes/d1.md ]
-  wait
 }
 
 @test "brief and debrief wait 1400 s for run.lock by default" {
