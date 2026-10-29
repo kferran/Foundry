@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=15300
+CORE_CAP=15340
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -491,7 +491,7 @@ sealed_problems() {
 }
 
 # Task 10: core names no vendor or customer outside a shrinking allowlist (extensions spec §6; plan task 10).
-@test "core stays inside its budget: 14 schemas, 15,300 lines over scripts, hooks and commands (extensions spec §2.2, §5; F3 §3.5)" {
+@test "core stays inside its budget: 14 schemas, 15,340 lines over scripts, hooks and commands (extensions spec §2.2, §5; F3 §3.5)" {
   # Set once at the end of phase 4 (2026-10-16: 12,270 lines, 14 schemas). A feature that needs more moves code into an
   # extension, or raises the budget in its own pull request, with the reason.
   # 12,500 -> 12,750 (#222): parallel Work Orders (#229) and chat triage, which extends core inbox triage and would
@@ -518,6 +518,8 @@ sealed_problems() {
   # list and report, the console extension's reads (#377), took core from 15,047 to 15,149 lines.
   # 15,200 -> 15,300 (#333, owner to approve at merge): the Now writer field, the 7-day expiry of untouched machine
   # lines and the one-time tag-writers verb took core from 15,150 to 15,240 lines.
+  # 15,300 -> 15,340 (#332, owner to approve at merge): the 2026-10-28 audit fixes took core to 15,297; a finished
+  # Work Order adds the owner's Now line (review and merge, answer, or fix), which took it to 15,330.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
