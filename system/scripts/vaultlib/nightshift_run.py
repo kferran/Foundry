@@ -22,6 +22,8 @@ from . import nightshift_item as ni
 from . import nightshift_report as rep
 from . import nightshift_sched as ns
 from . import nightshift_session as ss
+from . import now as nowmod
+from .intake import Intake
 
 LOCK = "system/nightshift.lock"
 POLL = 30            # seconds between session checks
@@ -569,8 +571,37 @@ def _finish(ctx: Ctx, path: Path, fm: dict, idir: Path, cwd, out: dict) -> int:
               finished_at=finished if final else None)
     if final:
         _report_outcome(ctx, fm, out, finished)
+        _now_line(ctx, fm, out)
     ctx.log({"item": fm["id"], "state": out["state"], "reason": out.get("reason", "")})
     return 0 if out["state"] in ("done", "cancelled", "delivering") else 1
+
+
+def _owed(fm: dict, out: dict):
+    """(statement, evidence) of the Now line a final outcome leaves the owner (#332), or None when it needs nothing.
+    The statement is the report's Needs-you line, so the brief, which adds those too, sees it open and skips it. Only
+    a GitHub pull request is evidence the Now check reads; a failed order's id is already closed, so its line carries
+    none, or the next check would tick it at once."""
+    if not out.get("needs") or (out["state"] == "done" and fm["kind"] != "plan"):
+        return None
+    statement = f"{out['needs'][0]} ({fm['id']})"
+    if out["state"] == "done":
+        return statement, out.get("result") if nowmod.PR_URL.match(out.get("result") or "") else ""
+    return (statement, fm["id"] if out["state"] == "blocked" else "") if out["state"] in ("blocked", "failed") else None
+
+
+def _now_line(ctx: Ctx, fm: dict, out: dict) -> None:
+    """Add the owed line under run.lock; a busy lock or a refused line is one alert, never a failed order."""
+    owed = _owed(fm, out)
+    if owed is None:
+        return
+    try:
+        with Intake(ctx.vault).lock("run.lock", timeout=60):
+            nowmod.add(ctx.vault, fm.get("partition") or "work", "owed", owed[0], ctx.local.date().isoformat(),
+                       evidence=owed[1], fit=True)
+    except (TimeoutError, ValueError, OSError) as exc:   # TimeoutError is an OSError: the busy lock
+        why = nowmod.refusal(exc) if isinstance(exc, ValueError) else "run.lock busy" \
+            if isinstance(exc, TimeoutError) else f"{exc.__class__.__name__}: {exc.strerror or exc}"
+        ctx.alert(f"now/{fm['id']}", f"{fm['id']}: its Now line was not added ({why})")
 
 
 def _report_outcome(ctx: Ctx, fm: dict, out: dict, finished: str) -> None:

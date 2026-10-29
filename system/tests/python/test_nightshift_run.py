@@ -1187,3 +1187,39 @@ def test_delivery_after_a_repo_edit_pushes_to_the_recorded_repo(env, monkeypatch
     edited = ni.update(path, repo="shop", pr_base="main")
     assert nr._deliver(ctx, edited, idir)["state"] == "done"
     assert urls == [str(tmp / "remote.git")] * 2 and bases == ["master"]
+
+
+NOW_PAGE = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n---\n# Now\n\n## Needs you\n"
+
+
+def test_a_finished_order_leaves_the_owner_one_owed_line(env):
+    # #332: done with a GitHub PR -> review and merge, closed by the PR; blocked -> answer, closed by the order;
+    # failed -> fix, with no evidence (its id is already closed); research done and cancelled -> nothing.
+    vault, tmp = env
+    write(vault, "wiki/work/Now.md", NOW_PAGE)
+    ctx = nr.Ctx(vault, NOW)
+    plan, research = {"id": "2026-10-07-a", "kind": "plan", "partition": "work"}, {"id": "2026-10-07-r", "kind": "research"}
+    done = {"state": "done", "result": "https://github.com/o/r/pull/1", "needs": ["Review and merge: https://github.com/o/r/pull/1"]}
+    nr._now_line(ctx, plan, done)
+    nr._now_line(ctx, plan, done)   # a rerun adds no second line
+    nr._now_line(ctx, {**plan, "id": "2026-10-07-b"}, {"state": "blocked", "needs": ["Answer: which base?"]})
+    nr._now_line(ctx, {**plan, "id": "2026-10-07-c"}, {"state": "failed", "needs": ["Deliver it by hand"]})
+    nr._now_line(ctx, research, {"state": "done", "result": "[[Findings]]", "needs": []})
+    nr._now_line(ctx, plan, {"state": "cancelled", "needs": []})
+    page = (vault / "wiki/work/Now.md").read_text(encoding="utf-8")
+    owed = [l for l in page.split("\n") if l.startswith("- [ ] owed: ")]
+    assert len(owed) == 3
+    assert "owed: Review and merge: https://github.com/o/r/pull/1 (2026-10-07-a)" in owed[0] and owed[0].endswith(", https://github.com/o/r/pull/1)")
+    assert "owed: Answer: which base? (2026-10-07-b)" in owed[1] and owed[1].endswith(", 2026-10-07-b)")
+    assert "owed: Deliver it by hand (2026-10-07-c) " in owed[2] and owed[2].endswith("(since 2026-10-06)")
+
+
+def test_a_now_line_that_cannot_be_added_is_an_alert_and_the_order_stands(env):
+    vault, tmp = env
+    write(vault, "wiki/work/Now.md", NOW_PAGE)
+    write(vault, "wiki/personal/concepts/diary.md", "---\ntype: concept\n---\n")
+    ctx = nr.Ctx(vault, NOW)
+    fm = {"id": "2026-10-07-d", "kind": "plan", "partition": "work"}
+    nr._now_line(ctx, fm, {"state": "failed", "needs": ["see [[diary]]"]})   # a link across the wall is refused
+    alerts = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
+    assert "2026-10-07-d: its Now line was not added (partition wall)" in alerts
