@@ -19,7 +19,7 @@
 - The client still reads only `/api/today`; the server still runs only `today.py --json` with constant arguments; the Python side is unchanged except one new test.
 - Template rule: fixtures use `Alpha`, `Beta`, `Blake Sample`, `ABC-123`, `owner@example.com`.
 - Per-task check, in `extensions/console/app/`: `npx vitest run`, `npx steiger ./app`, `npx nuxi build`. In the vault root: `system/scripts/test.sh extensions/console/tests/python`.
-- CHANGELOG line ending `(#392)`; `/foundry-review` before pushing.
+- A change file in `changes/` ending `(#392)` (written as a CHANGELOG line before #395 moved the log); `/foundry-review` before pushing.
 
 ## Review Focus
 
