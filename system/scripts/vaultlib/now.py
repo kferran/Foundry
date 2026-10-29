@@ -374,27 +374,33 @@ def _cut(statement: str, over: int) -> str:
     return statement[:end].rstrip() + "…"
 
 
-def fit_staged(vault, run_id: str) -> int:
+def fit_staged(vault, run_id: str, dropped: list = None) -> int:
     """A brief's staged Now pages: each open line the run added becomes screen()'s fixed form (redacted and cut), so
-    the publish gate only verifies (factory F5 spec §4.3). A line the live page already holds, and one screen()
-    refuses, are left for the gate. Returns the lines changed."""
+    the publish gate only verifies (factory F5 spec §4.3). A line screen() refuses is dropped with its notes and its
+    reason appended to dropped, so one bad line never costs the brief (#299). A line the live page already holds is
+    left as it is. Returns the lines changed or dropped."""
     changed = 0
     for partition in PARTITIONS:
         path = Path(vault) / "wiki" / ".staging" / run_id / "wiki" / partition / "Now.md"
         if not path.is_file():
             continue
         kept = {line.rstrip() for line in read(vault, partition).split("\n")}
-        lines, before = path.read_text(encoding="utf-8").split("\n"), changed
-        for i, line in enumerate(lines):
-            line = line.rstrip()
+        lines, before, i = path.read_text(encoding="utf-8").split("\n"), changed, 0
+        while i < len(lines):
+            line = lines[i].rstrip()
+            i += 1
             if not line.startswith("- [ ] ") or line in kept:
                 continue
             try:
                 new = screen(vault, partition, _brief(line))
-            except ValueError:
+            except ValueError as exc:
+                del lines[i - 1:_block_end(lines, i - 1)]
+                i, changed = i - 1, changed + 1
+                if dropped is not None:
+                    dropped.append(refusal(exc))
                 continue
             if new != line:
-                lines[i], changed = new, changed + 1
+                lines[i - 1], changed = new, changed + 1
         if changed > before:
             path.write_text("\n".join(lines), encoding="utf-8")
     return changed

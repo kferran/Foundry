@@ -95,7 +95,10 @@ if args.cmd == "fit-staged":  # the caller holds run.lock
     except PublishError as exc:
         print(f"now.py: {exc}", file=sys.stderr)
         sys.exit(2)
-    print(f"fit: {now.fit_staged(VAULT, args.run_id)}")
+    dropped = []
+    print(f"fit: {now.fit_staged(VAULT, args.run_id, dropped)}")
+    if dropped:   # the brief published without them, so the owner hears why (#299)
+        Intake(VAULT).alert(f"the brief dropped {len(dropped)} Now line(s) it added ({'; '.join(dropped)})")
     sys.exit(0)
 intake = Intake(VAULT)
 if args.cmd == "overdue":  # read-only, so no run.lock
