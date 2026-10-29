@@ -63,7 +63,17 @@
       "Bash(systemctl --user status *)",
       "Bash(systemctl --user is-active *)",
       "Bash(systemctl --user is-enabled *)",
-      "Bash(journalctl --user *)"
+      "Bash(journalctl --user *)",
+      "Bash(system/scripts/test.sh:*)",
+      "Bash(system/scripts/verify_setup.sh --require-suites)",
+      "Bash(python3 -m pytest:*)",
+      "Bash(bats:*)",
+      "Bash(shellcheck:*)",
+      "Bash(python3 .claude/skills/foundry-review/review_diff.py:*)",
+      "Bash(git checkout -b:*)",
+      "Bash(git switch -c:*)",
+      "Bash(git fetch origin:*)",
+      "Bash(git merge --no-edit origin/master)"
     ],
     "deny": [
       "Read(~/.ssh/**)", "Read(~/.gnupg/**)",
