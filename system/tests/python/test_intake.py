@@ -159,6 +159,21 @@ def test_daily_cap_leaves_inputs_and_stops(iv, monkeypatch):
     assert (iv / "raw/inbox/a.md").exists() and (iv / "raw/inbox/b.md").exists()
 
 
+def test_a_busy_run_lock_ends_the_tick_with_inputs_kept_and_no_retry_alert(iv, monkeypatch):
+    # #299: ingest's run.lock wait is bounded; exit 6 (busy) ends the tick like the cap, and the next tick retries.
+    write(iv, "raw/inbox/a.md", "a")
+    write(iv, "raw/inbox/b.md", "b")
+    write(iv, "raw/work/notes/d1.md", "---\ntype: session_digest\npartition: work\n---\none\n")
+    write(iv, "raw/work/notes/d2.md", "---\ntype: session_digest\npartition: work\n---\ntwo\n")
+    monkeypatch.setenv("STUB_RC", "6")
+    Intake(iv, now=later()).run()
+    assert len(calls(iv)) == 1
+    assert (iv / "raw/inbox/a.md").exists() and (iv / "raw/inbox/b.md").exists()
+    assert (iv / "raw/work/notes/d1.md").exists() and (iv / "raw/work/notes/d2.md").exists()
+    alerts = "".join(p.read_text() for p in (iv / "system/logs").glob("alerts_*.md"))
+    assert "will retry" not in alerts and "one at a time" not in alerts
+
+
 def usage_reading(vault, five_hour, hours_ago=0.0):
     from datetime import timedelta, timezone
     at = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()

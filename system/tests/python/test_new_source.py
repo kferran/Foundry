@@ -89,8 +89,8 @@ def test_a_scaffold_passes_the_line(tmp_path, case, name):
     assert session_problems(root) == []
     assert smoke_name_problems(root) == []
     after = timing(root)
-    overrun = [line for line in after if re.match(r"brief: \d+ s of waits against", line) and line not in before]
-    print("brief overrun tolerated:", overrun)   # §5 item 3: left to the next feature's own CI run
+    overrun = [line for line in after if re.match(r"(brief|smoke): \d+ s of waits against", line) and line not in before]
+    print("brief or smoke overrun tolerated:", overrun)   # §5 item 3: left to the next feature's own CI run; smoke skips rows past SMOKE_BUDGET (#299)
     assert [line for line in after if line not in overrun] == before
     r = bats(root, "--filter", "shared part|pipeline", "system/tests/conformance.bats")
     assert r.returncode == 0, r.stdout

@@ -428,6 +428,17 @@ EOF
   [ "$(jq -r 'select(.source == "demo") | .exit' "$LOG")" = "0" ]
 }
 
+@test "an extension row the smoke budget cannot hold is skipped with its line; the units row still runs (#299)" {
+  need_user_systemd
+  use_extension demo
+  SMOKE_BUDGET=1 run "$SC"
+  grep -qx 'smoke: time left too short for demo; skipped' <<< "$output"
+  run grep -c '^demo: ok' <<< "$output"
+  [ "$output" = 0 ]
+  SMOKE_BUDGET=1 run "$SC"
+  grep -qE '^units: ' <<< "$output"
+}
+
 @test "an expired credential from a manifest names it and its renewal" {
   need_user_systemd
   use_extension demo

@@ -285,6 +285,19 @@ EOF
   wait
 }
 
+@test "ingest gives up on a busy run.lock with exit 6 and no alert; the intake tick retries it (#299)" {
+  mkdir -p system/logs
+  exec 8> system/run.lock   # the test's own shell holds the lock: no background process to race
+  flock 8
+  INGEST_LOCK_WAIT=0 run "$RH" ingest raw/work/notes/d1.md
+  exec 8>&-
+  [ "$status" -eq 6 ]
+  [ "$(jq -r .exit "$LEDGER")" = "6" ]
+  run grep -c 'run.lock busy' system/logs/alerts_*.md
+  [ "$output" != 1 ]
+  [ -f raw/work/notes/d1.md ]
+}
+
 @test "brief and debrief wait 1400 s for run.lock by default" {
   grep -qxF 'LOCK_WAIT="${HEADLESS_LOCK_WAIT:-1400}"' "$RH"
 }
@@ -400,4 +413,55 @@ EOF
   grep -qx 'raw/work/notes/d1.md' "$STUB_ARGS"
   grep -qx 'raw/work/notes/two words.md' "$STUB_ARGS"
   grep -qE '[0-9]{8}T[0-9]{6}-ingest-[0-9a-f]{4}$' "$STUB_ARGS"
+}
+
+
+# brief_stubs <exit…>: brief_prep.sh and run_headless.sh stubs; each run_headless call takes the next exit in turn and
+# records the BRIEF_RETRY_PENDING it saw (#299).
+brief_stubs() {
+  printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/exits"
+  printf '#!/bin/bash\necho prep >> "%s/calls"\n' "$BATS_TEST_TMPDIR" > system/scripts/brief_prep.sh
+  printf '#!/bin/bash\necho "brief ${BRIEF_RETRY_PENDING:-0}" >> "%s/calls"\nexit "$(sed -n "$(grep -c "^brief" "%s/calls")p" "%s/exits")"\n' \
+    "$BATS_TEST_TMPDIR" "$BATS_TEST_TMPDIR" "$BATS_TEST_TMPDIR" > system/scripts/run_headless.sh
+  chmod +x system/scripts/brief_prep.sh system/scripts/run_headless.sh
+  export BRIEF_RETRY_WAIT=0
+}
+
+@test "brief_run: a rejected brief runs once more, its prep first, and publishes with no alert (#299)" {
+  brief_stubs 5 0
+  run system/scripts/brief_run.sh
+  [ "$status" -eq 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/calls")" = "$(printf '%s\n' prep 'brief 1' prep 'brief 0')" ]
+  run grep -c 'rejected twice' system/logs/alerts_*.md
+  [ "$output" != 1 ]
+}
+
+@test "brief_run: a brief rejected twice raises one alert and runs no third time (#299)" {
+  brief_stubs 5 5 0
+  run system/scripts/brief_run.sh
+  [ "$status" -eq 5 ]
+  [ "$(grep -c '^brief' "$BATS_TEST_TMPDIR/calls")" -eq 2 ]
+  [ "$(cat system/logs/alerts_*.md | grep -c '\[intake\] the brief was rejected twice')" -eq 1 ]
+}
+
+@test "brief_run: a brief that exits 4 or 1 is not retried (#299)" {
+  brief_stubs 4 0
+  run system/scripts/brief_run.sh
+  [ "$status" -eq 4 ]
+  [ "$(grep -c '^brief' "$BATS_TEST_TMPDIR/calls")" -eq 1 ]
+  rm "$BATS_TEST_TMPDIR/calls"
+  brief_stubs 1 0
+  run system/scripts/brief_run.sh
+  [ "$status" -eq 1 ]
+  [ "$(grep -c '^brief' "$BATS_TEST_TMPDIR/calls")" -eq 1 ]
+}
+
+@test "run_headless: a rejected brief with a retry pending raises no alert; without one it does (#299)" {
+  BRIEF_RETRY_PENDING=1 STUB_MODE=nothing run "$RH" brief
+  [ "$status" -eq 5 ]
+  run grep -c 'rejected or empty' system/logs/alerts_*.md
+  [ "$output" != 1 ]
+  STUB_MODE=nothing run "$RH" brief
+  [ "$status" -eq 5 ]
+  [ "$(cat system/logs/alerts_*.md | grep -c 'rejected or empty')" -eq 1 ]
 }

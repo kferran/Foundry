@@ -113,7 +113,8 @@ fi
 
 exec 9>system/run.lock
 if [[ "$cmd" == ingest ]]; then
-  flock 9
+  # A short wait: the intake tick ends on exit 6 and its inputs stay for the next tick (#299, plan ruling 2).
+  flock -w "${INGEST_LOCK_WAIT:-60}" 9 || die 6 "run.lock busy"
 elif ! flock -w "$LOCK_WAIT" 9; then
   alert "$cmd skipped: run.lock busy for ${LOCK_WAIT}s"
   die 6 "run.lock busy"
@@ -204,7 +205,11 @@ if (( rc == 0 )); then
   set -e
   if (( prc != 0 )); then
     rc=5
-    alert "$cmd $run_id: publish rejected or empty (system/logs/runs/$run_id/publish.json)"
+    if [[ "$cmd" == brief && "${BRIEF_RETRY_PENDING:-}" == 1 ]]; then   # brief_run.sh runs it once more (#299)
+      echo "$cmd $run_id: publish rejected or empty; brief_run.sh retries once" >> "$LOG"
+    else
+      alert "$cmd $run_id: publish rejected or empty (system/logs/runs/$run_id/publish.json)"
+    fi
   elif [[ -n "$held" ]]; then
     alert "$cmd $run_id: published $held (changed during the run; staged copies in system/quarantine/$run_id/staged/)"
   fi

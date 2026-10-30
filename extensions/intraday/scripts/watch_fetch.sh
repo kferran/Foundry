@@ -137,8 +137,8 @@ if [[ "$mq" != "{}" ]]; then
   # Pages of 10 threads: claude hands the model a result over 25,000 tokens only as a "saved to a file" note (no
   # threads, no nextPageToken), and 50 minimal-view threads with their cc lists passed that (#289). Two searches of up
   # to 6 pages (watchlib/check.py MAIL_PAGES): 480 s keeps the tick (Slack 420 + mail 480 + calendar 3 x 190 + route
-  # 120 = 1,590 s, 1,640 s with each session's 10 s kill grace) inside the unit's 29 minutes, and --check (1,090 s)
-  # inside its 1,140 s smoke timeout.
+  # 120 = 1,590 s, 1,815 s with each session's kill grace and the five server listings) inside the unit's 31
+  # minutes, and --check (1,225 s) inside its 1,230 s smoke timeout (#299).
   fetch_others "${GMAIL_TOOLS[@]}"
   CONNECTOR_TIMEOUT="${WATCH_MAIL_TIMEOUT:-480}" CONNECTOR_TURNS=24
   searches="$(jq -r 'to_entries[] | "- \(.key): \(.value | tojson)"' <<< "$mq")"
