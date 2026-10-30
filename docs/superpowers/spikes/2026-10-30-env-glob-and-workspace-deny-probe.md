@@ -42,8 +42,8 @@ The same setup with `--tools Read` (and `Read,Bash` for the last case). Permissi
 
 ## Upstream report (draft, for the owner to file)
 
-> **Title:** Warn when a sandbox `denyRead` entry or a `Read()` deny rule starts with a wildcard on Linux
+> **Title:** Warn when a sandbox `denyRead` entry starts with a wildcard on Linux
 >
-> On Linux, a `sandbox.filesystem.denyRead` entry such as `**/.env*` or `/**/.env`, and a permission rule such as `Read(//**/.env)`, mask nothing: the docs say wildcards work only after the first directory name. The settings load without a word, so a user who wrote the rule believes `.env` files are hidden from the session. An anchored form (`~/**/.env`) works. Could settings loading print a warning for an entry whose first segment is a wildcard, as it does for other invalid settings?
+> On Linux, a `sandbox.filesystem.denyRead` entry such as `**/.env*` or `/**/.env` masks nothing for sandboxed commands: the docs say wildcards work only after the first directory name. The settings load without a word, so a user who wrote the rule believes `.env` files are hidden from the session. An anchored form (`~/**/.env`) works. Could settings loading print a warning for an entry whose first segment is a wildcard, as it does for other invalid settings?
 >
 > Seen on Claude Code 2.1.311, Linux (bubblewrap).

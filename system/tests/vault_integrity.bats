@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=15510
+CORE_CAP=15590
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -538,6 +538,9 @@ sealed_problems() {
   # issue and Work Order its inputs name, took core from 15,340 to 15,466.
   # 15,470 -> 15,510 (#299, owner to approve at merge): brief_run.sh retries a rejected brief once, the smoke check's
   # budget skips rows it cannot hold, and ingest's lock wait ends the tick, which took core from 15,466 to 15,503.
+  # 15,510 -> 15,590 (#318, #319, #320, #326, Work Order confinement PR A, owner to approve at merge): runner state
+  # under order_workspace with a one-time move, the DNS check at add and at session start, the .env globs outside home
+  # and the workspace fence took core to 15,582.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
