@@ -22,6 +22,8 @@
 - **Ruling 1, the retry is a wrapper, not `Restart=`** (spec §3.1 named systemd's restart): with `Restart=on-failure`, a timeout kill restarts too, so only a start limit bounds a hung brief; a one-day limit would also refuse the owner's manual rerun until `systemctl --user reset-failed`; and the server's drop-in replaces `ExecStartPre`. A wrapper retries exactly once, on exit 5 only, holds no lock while the prep runs, and gives each run its own process and ledger line. Cost if wrong: the wrapper is one more script in core.
 - **Ruling 2, ingest waits 60 s for `run.lock`, not `HEADLESS_LOCK_WAIT`** (spec §3.2): 1,400 s × 5 runs would add 7,000 s to an intake tick; a busy lock already ends the tick, and the inputs wait 5 minutes for the next one. Cost if wrong: an ingest behind a long brief starts one tick later.
 
+- **Ruling 3, the scaffold test tolerates a smoke overrun the way it tolerates the brief's** (found by CI after the plan): on master the smoke unit's known-overrun line hid the 360 s a scaffolded source adds; with smoke now at 3,150 of 3,300 s, `test_new_source.py::test_a_scaffold_passes_the_line` sees `smoke: 3510 s of waits against a 3300 s limit`. A new source's smoke row past `SMOKE_BUDGET` is skipped at run time with one line, so the overrun is left to that source's own CI run, as the brief's is (§5 item 3): one regex in the test, no limit raised. Cost if wrong: the next source PR has to raise the smoke limit or add a known-overrun line.
+
 ## Review Focus
 
 1. A brief rejected twice: one "rejected twice" alert, and the second run's own rejection alert; no third run.
