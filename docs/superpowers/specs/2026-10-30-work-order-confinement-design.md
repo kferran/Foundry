@@ -3,7 +3,7 @@
 **Date:** 2026-10-30
 **Status:** draft, for the owner's review
 **Grill:** 2026-10-29/30, two rounds, every recommendation approved (§7). Source: in-flight plan `docs/superpowers/2026-10-28-in-flight-plan.md` phase 3; issues #317, #318, #319, #320, #321, #326, and #301 S9.
-**Builder check:** 2026-10-30, seven questions and five wrong claims; settled as my calls in §7 except two for the owner (§8)
+**Builder check:** 2026-10-30, seven questions and five wrong claims; settled as my calls in §7 except two the owner answered (round 3)
 **Blueprint:** none: changes to the Work Order runner, its CLI, the publish gate and intake; no new feature shape.
 **Lane:** feature, three pull requests (§6). Each touches a safety surface (the Work Order runner, the publish gate, `.claude/settings.json`), so the owner merges each.
 
@@ -35,6 +35,21 @@ A Work Order session runs unattended with Bash (sandboxed) and, for research, We
 - `.claude/settings.json` gets an `ask` list with `Bash(system/scripts/nightshift.py research:*)` and `Bash(system/scripts/nightshift.py requeue:*)` (§3.6). An ask rule prompts in auto mode too. Per the grill, the owner adds these lines in the PR; the build leaves them out and the PR body names them.
 - `/order`, the Foreman persona, the research Workcell and FOUNDRY.md switch from `add --kind research` to `research`.
 
+### 3.1a Only the CLI writes what steers the runner (#317, round 3)
+
+An interactive session could otherwise write a queue note in `raw/<p>/nightshift/` with sandboxed Bash and no prompt, and skip the ask rules. The same holds for codebase notes (`order_hosts`, `order_install`, `path`) and the session profiles. So `.claude/settings.json` closes three paths: `raw/*/nightshift/`, `system/codebases/` and `system/nightshift/`.
+
+- **Bash:** the sandbox denies writes there (`sandbox.filesystem.denyWrite`).
+- **Edit and Write:** ask rules there.
+- **The CLI:** `system/scripts/nightshift.py` goes in `sandbox.excludedCommands`, so it runs outside the sandbox and goes through its allow rules (`add`, `check`, `cancel`, `report`, `list`) and ask rules (`research`, `requeue`). A `python3 system/scripts/nightshift.py …` form stays sandboxed, so its writes are refused.
+
+The build probes three things before relying on them:
+- that an excluded command still goes through the permission rules, in auto mode too;
+- which path form the sandbox's `denyWrite` honours on Linux (#326 found a `**` glob masks nothing in `denyRead`; the relative `wiki/*/private/**` form works, #314);
+- every interactive path that legitimately writes there (`/order`, `/setup` registering a codebase, `/backup`'s sync pulling a client's queue note). Each runs outside the sandbox under its existing allow rule, or prompts. The plan lists them.
+
+The owner adds the settings lines in the PR, as in §3.1. FOUNDRY.md's "a note written into the folder without `/order add` runs" (`FOUNDRY.md:122`) now says that a note you write yourself still runs, and a session cannot write one without the CLI.
+
 ### 3.2 Hosts that resolve inside the network (#318)
 
 A new `nightshift_check.resolve_problems(hosts)` resolves a research order's `hosts` with `socket.getaddrinfo` and returns `host <h> resolves to <a>, an internal address` when any address is not global (`ipaddress.ip_address(a)`: `not is_global or is_multicast`). It is not part of `screen()`, which runs no network and runs on every pass of the tick loop (`nightshift_check.py:158-159`). `research` calls it at add and refuses the order on a problem or on a name that does not resolve. The runner calls it once per order just before the session starts: an internal address fails the order with its Needs-you line; a name that does not resolve leaves the order queued for the next tick with one log line (my call: a DNS outage should not fail an approved order). The codebase's `order_hosts` are owner config and are not resolved (they may be wildcards such as `*.npmjs.org`, or an internal registry on purpose). Known ceiling: DNS can change between the check and the fetch.
@@ -59,7 +74,7 @@ Runner state that the runner reads back moves to `<order_workspace>/state/`: `it
 
 ### 3.6 `requeue` (#321)
 
-`nightshift.py requeue <id>` sets a `blocked` or `failed` order back to `queued`, records the base's current commit as `base_sha` (plan orders), and clears what the runner counts for a fresh order. Any other state is refused with its state named. It prompts through the ask rule (§3.1). The three Needs-you messages that say "queue {id} again" (`nightshift_run.py:630, 637, 647`) name `requeue <id>` instead.
+`nightshift.py requeue <id>` sets a `blocked` or `failed` order back to `queued`, records the base's current commit as `base_sha` (plan orders), and starts the order fresh (round 3). It removes the clone `nightshift-<id>` and `nightshift-<id>-verify`, moves `state/items/<id>/` aside to `state/items/<id>.<n>/` (`n` counts up from 1) so the failed run stays on record, and clears `attempts` and `session_id`. A failed run's partial commits are lost. Any other state is refused with its state named. It prompts through the ask rule (§3.1). The three Needs-you messages that say "queue {id} again" (`nightshift_run.py:630, 637, 647`) name `requeue <id>` instead.
 
 ### 3.7 Stale claims wait for a tick (#301 S9)
 
@@ -78,7 +93,8 @@ Each test fails before its change.
 - **§3.3:** a session's settings list a seeded `.env` under a fake home and under a codebase outside it, a pruned `node_modules/.env` is absent, a sibling `nightshift-*` folder made after the tick started, `nightshift-runner.git` and `state/` are denied, its own folder is not; a walk past its cap, or a path with `(`, starts no session and alerts once.
 - **§3.4:** state is written under `state/`; an old `system/logs/nightshift/items/` is moved on the first tick; the daily report stays in the vault; triage reads usage from `state/`.
 - **§3.5:** a base moved after add blocks the order with the line; an unmoved base runs; a note without `base_sha` runs.
-- **§3.6:** `requeue` on a blocked order queues it with the new `base_sha`; on a `done` order it is refused.
+- **§3.1a:** in a sandboxed session, a Bash write to a queue note, a codebase note and a session profile is refused; `nightshift.py add` still writes its note (a live probe, in the acceptance run).
+- **§3.6:** `requeue` on a blocked order queues it with the new `base_sha`; on a failed order it removes the clone and moves `items/<id>/` to `items/<id>.1/`; on a `done` order it is refused.
 - **§3.7:** a research delivery writes `held/` and the Now line; `[x]` releases it to `notes/`; `[-]` archives it; a failed line add is retried; a `shared` order's line lands on `work`; the gate refuses a run that ticks the line.
 
 ## 5. Docs
@@ -88,7 +104,7 @@ FOUNDRY.md's Security model and Work Orders sections: the literal deny list, the
 ## 6. Delivery
 
 1. **PR A, runner confinement:** §3.2, §3.3, §3.4, and the upstream report.
-2. **PR B, the CLI:** §3.1, §3.5, §3.6. The owner adds the two ask lines before merging.
+2. **PR B, the CLI:** §3.1, §3.1a, §3.5, §3.6. The owner adds the settings lines (the ask rules, the write denies and the excluded command) before merging.
 3. **PR C, stale claims:** §3.7.
 
 Each raises the core cap with its measured count, recorded beside the cap. A live acceptance run in a throwaway clone runs one research and one plan order after PR A and PR B.
@@ -120,7 +136,8 @@ My calls: an unresolvable host at session start leaves the order queued; `nights
 
 Builder check (2026-10-30), settled as my calls: the DNS check is its own step at add and at session start, outside `screen()`, and skips owner-set `order_hosts` (round 1 named research hosts); the sibling deny is rebuilt at each session start, after a probe for a workspace-wide deny; the `.env` walk also covers codebases and the workspace outside home, and an unrepresentable path fails closed; `notify.py` and `intake.held()` read state through the helper; the `template` base pins through the `template_remote` URL; `[x]` releases and `[-]` archives, and runner lines never expire, which replaces round 2's "archived on expiry" (no runner line can expire); a failed line add is retried; a `shared` order's line goes on `work`; research orders stay unpinned at add; a lagging server clone blocks an order, named as a ceiling.
 
-## 8. Open for the owner
 
-1. **Vault files that steer the runner.** An interactive session can write a queue note in `raw/<p>/nightshift/` with sandboxed Bash and no prompt, and FOUNDRY.md says such a note runs. That skips the §3.1 and §3.6 ask rules. Codebase notes (`order_hosts`, `order_install`) and the session profiles in `system/nightshift/` are open the same way.
-2. **What `requeue` resets.** A blocked or failed order may still have its clone, `before.json` and `elapsed`.
+Round 3 (from the builder check, approved 2026-10-30):
+
+1. Close the vault paths that steer the runner: queue notes, codebase notes and session profiles are written only through the CLI or with a prompt (§3.1a).
+2. `requeue` starts fresh: the clone goes, the failed run's `items/<id>/` is kept aside (§3.6).
