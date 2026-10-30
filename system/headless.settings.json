@@ -4,7 +4,7 @@
     "deny": [
       "Read(~/.ssh/**)", "Read(~/.gnupg/**)",
       "Read(~/.claude/.credentials.json)", "Read(~/.claude.json)", "Read(~/.claude/settings*.json)",
-      "Read(~/.config/gcalcli/**)", "Read(//**/.env)", "Read(//**/.env.*)",
+      "Read(~/.config/gcalcli/**)", "Read(~/**/.env)", "Read(~/**/.env.*)",
       "Read(~/.config/foundry/**)", "Read(~/.config/gh/**)", "Read(~/.git-credentials)", "Read(~/.netrc)",
       "Read(~/.azure/**)", "Read(~/.aws/**)", "Read(~/.claude/projects/**)",
       "Read(wiki/*/private/**)", "Edit(wiki/*/private/**)",
@@ -16,7 +16,7 @@
     "network": {"strictAllowlist": true, "allowedDomains": []},
     "filesystem": {"denyRead": [
       "~/.ssh", "~/.gnupg", "~/.config/foundry", "~/.config/gh", "~/.git-credentials", "~/.netrc", "~/.azure", "~/.aws",
-      "~/.claude/projects", "~/.claude/.credentials.json", "~/.claude.json", "**/.env*"
+      "~/.claude/projects", "~/.claude/.credentials.json", "~/.claude.json", "~/**/.env", "~/**/.env.*"
     ]}
   }
 }

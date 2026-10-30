@@ -322,11 +322,18 @@ def _deny(ctx: Ctx, fm: dict) -> list:
     out = [str(ctx.vault)]
     # A plan item works in its own codebase; a research item reads code/, so even its own checkout stays denied.
     own = nc.source(ctx.vault, fm.get("repo")) if fm.get("kind") == "plan" and fm.get("repo") != "template" else None
+    roots = [ctx.workspace]   # .env files where the profiles' ~/** globs do not reach (confinement spec §3.3, #326)
     for p in sorted((ctx.vault / "system" / "codebases").glob("*.md")):
         cb = nc.codebase(ctx.vault, p.stem) or {}
         path = Path(str(cb.get("path") or "")).expanduser()
         if cb.get("path") and path != own:
             out.append(str(path))
+        if cb.get("path"):
+            roots.append(path)
+    home = Path.home().resolve()
+    for r in dict.fromkeys(Path(os.path.abspath(r)) for r in roots):
+        if not r.resolve().is_relative_to(home):
+            out += [f"{r}/**/.env", f"{r}/**/.env.*"]
     return out
 
 
@@ -375,7 +382,7 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
     hosts = list(nc.setting(cb, "order_hosts", "nightshift_hosts") or [])
     web = list(fm.get("hosts") or []) if kind == "research" else []
     settings = idir / "settings.json"
-    settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm), cwd=cwd)))
+    settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm), cwd=cwd, fence=ctx.workspace)))
     plugins = [p for p in [ss.superpowers_dir()] if p] + [Path(str(p)).expanduser() for p in nc.setting(cb, "order_plugins", "nightshift_plugins") or []]
     code = nc.git(cwd / "code", "log", "-1", "--format=%h (%cs)").stdout.strip() if kind == "research" and fm.get("repo") else ""
     prompt = (ss.plan_prompt(fm) if kind == "plan" else

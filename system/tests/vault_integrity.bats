@@ -79,10 +79,17 @@ core_problem() {
   for f in .claude/settings.json system/headless.settings.json; do
     jq empty "$f"
     [ "$(jq '.permissions.blockReadsOutsideWorkingDirectories' "$f")" = "true" ]
-    for rule in 'Read(~/.ssh/**)' 'Read(~/.gnupg/**)' 'Read(~/.claude/.credentials.json)' 'Read(~/.claude.json)' 'Read(~/.claude/settings*.json)' 'Read(~/.config/gcalcli/**)' 'Read(//**/.env)' 'Read(//**/.env.*)'; do
+    for rule in 'Read(~/.ssh/**)' 'Read(~/.gnupg/**)' 'Read(~/.claude/.credentials.json)' 'Read(~/.claude.json)' 'Read(~/.claude/settings*.json)' 'Read(~/.config/gcalcli/**)'; do
       jq -e --arg r "$rule" '.permissions.deny | index($r)' "$f" >/dev/null
     done
   done
+  # .env (#326): a deny whose first segment is a wildcard masks nothing on Linux, so headless runs anchor at ~/**.
+  # The interactive file is the owner's to change.
+  jq -e '.permissions.deny | index("Read(//**/.env)")' .claude/settings.json >/dev/null
+  for rule in 'Read(~/**/.env)' 'Read(~/**/.env.*)'; do
+    jq -e --arg r "$rule" '.permissions.deny | index($r)' system/headless.settings.json >/dev/null
+  done
+  [ "$(jq '[.permissions.deny[] | select(startswith("Read(//**/.env"))] | length' system/headless.settings.json)" = 0 ]
 }
 
 @test "a commit that skips the pre-commit secret scan asks first, though git commit -m is allowed (#298)" {
@@ -132,9 +139,10 @@ core_problem() {
     jq -e --arg r "Read($p)" '.permissions.deny | index($r)' "$f" > /dev/null
   done
   for p in '~/.ssh' '~/.gnupg' '~/.config/foundry' '~/.config/gh' '~/.git-credentials' '~/.netrc' '~/.azure' '~/.aws' \
-      '~/.claude/projects' '~/.claude/.credentials.json' '~/.claude.json' '**/.env*'; do
+      '~/.claude/projects' '~/.claude/.credentials.json' '~/.claude.json' '~/**/.env' '~/**/.env.*'; do
     jq -e --arg p "$p" '.sandbox.filesystem.denyRead | index($p)' "$f" > /dev/null
   done
+  [ "$(jq '[.sandbox.filesystem.denyRead[] | select(startswith("**") or startswith("/**"))] | length' "$f")" = 0 ]
 }
 
 @test "interactive settings allow only staging-free vault edits and read-only index commands" {

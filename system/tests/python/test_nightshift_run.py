@@ -1306,3 +1306,29 @@ def test_order_hosts_are_not_resolved(env, monkeypatch, tmp_path):
     nr.main(["tick"], vault, NOW)
     _, fm = only_item(vault)
     assert (rep.item_dir(vault, fm["id"]) / "settings.json").is_file()   # the session started
+
+
+def test_deny_adds_env_globs_outside_home(env, monkeypatch, tmp_path):
+    # §3.3 (#326): the ~/** globs cover what lies under home; a codebase or workspace elsewhere gets its own pair
+    vault, tmp = env
+    from test_nightshift_check import registered
+    clone = registered(vault, tmp_path / "cb")
+    fm = {"id": "2026-10-08-q", "kind": "research", "partition": "work"}
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    deny = nr._deny(nr.Ctx(vault, NOW), fm)
+    for root in (clone, tmp / "ws"):
+        assert f"{root}/**/.env" in deny
+        assert f"{root}/**/.env.*" in deny
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert not [d for d in nr._deny(nr.Ctx(vault, NOW), fm) if d.endswith(".env") or d.endswith(".env.*")]
+
+
+def test_a_session_profile_fences_its_workspace(env):
+    # §3.3 (#319): the runner passes the workspace as the fence, so siblings, nightshift-runner.git and state/ are denied
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    nr.main(["tick"], vault, NOW)
+    _, fm = only_item(vault)
+    fs = json.loads((rep.item_dir(vault, fm["id"]) / "settings.json").read_text())["sandbox"]["filesystem"]
+    assert str(tmp / "ws") in fs["denyRead"]
+    assert str(tmp / "ws" / f"nightshift-{fm['id']}") in fs["allowRead"]
