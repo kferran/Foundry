@@ -83,7 +83,7 @@ def test_a_workspace_inside_the_vault_is_not_ready(vault_repo, tmp_path):
     assert "order_workspace is inside the vault" in nc.check(vault_repo, plan_fm(tasks="1-2"), "")
     cfg.write_text(head + f'order_workspace: "{tmp_path / "ws"}"\n---\n')
     assert "order_workspace is inside the vault" not in nc.check(vault_repo, plan_fm(tasks="1-2"), "")
-    assert nc.workspace({}) == Path("~/code/worktrees").expanduser()
+    assert nc.workspace({}) == Path(nc.DEFAULT_WORKSPACE).expanduser()   # ~/code/worktrees outside tests (conftest)
 
 
 def test_template_base_must_be_on_the_template_remote(vault_repo):

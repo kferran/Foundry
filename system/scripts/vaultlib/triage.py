@@ -10,7 +10,7 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from . import alerts, nightshift_sched as ns
+from . import alerts, nightshift_report as rep, nightshift_sched as ns
 from . import now as nowmod
 from . import state
 # _structured and _text_json stay importable for the intraday watch until its retrofit (F1 spec §3.6).
@@ -31,7 +31,6 @@ PAGE_SIZE = 10  # triage_fetch.sh asks for it
 OVERLAP_SECONDS = 300
 FIRST_LOOKBACK_SECONDS = 2 * 3600
 TEXT_MAX = 160
-HEALTH_DIR = "system/logs/nightshift"
 SENDER = re.compile(r"[A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 WATCH_WINDOW = "newer_than:2d"
 
@@ -110,7 +109,7 @@ def hold(vault, now) -> str:
         ceiling = float(config(vault).get("order_max_five_hour", 0.6))
     except (TypeError, ValueError):
         ceiling = 0.6
-    files = sorted((Path(vault) / HEALTH_DIR).glob("health-*.json"))
+    files = sorted(rep.state_dir(vault).glob("health-*.json"))
     try:
         health = json.loads(files[-1].read_text(encoding="utf-8")) if files else {}
     except (OSError, json.JSONDecodeError):

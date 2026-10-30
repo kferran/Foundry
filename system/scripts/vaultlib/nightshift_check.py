@@ -37,9 +37,12 @@ def setting(d: dict, new: str, old: str):
     return d[new] if new in d else d.get(old)
 
 
+DEFAULT_WORKSPACE = "~/code/worktrees"
+
+
 def workspace(cfg: dict) -> Path:
-    """order_workspace (old name nightshift_workspace), expanded; the default is ~/code/worktrees."""
-    return Path(str(setting(cfg, "order_workspace", "nightshift_workspace") or "~/code/worktrees")).expanduser()
+    """order_workspace (old name nightshift_workspace), expanded; the default is DEFAULT_WORKSPACE."""
+    return Path(str(setting(cfg, "order_workspace", "nightshift_workspace") or DEFAULT_WORKSPACE)).expanduser()
 
 
 def workspace_inside_vault(vault, ws) -> bool:

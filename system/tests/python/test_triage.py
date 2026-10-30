@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from helpers import REPO, call, stream, write
-from vaultlib import now, triage as tr
+from vaultlib import nightshift_report as rep, now, triage as tr
 
 TODAY = "2026-10-09"
 Q = "in:inbox after:1000 " + tr.EXCLUDE
@@ -170,8 +170,10 @@ def test_a_link_the_now_line_cannot_hold_keeps_the_item(vault):
 
 def test_hold_reads_the_newest_usage_reading(vault):
     stamp = datetime(2026, 10, 9, 12, tzinfo=timezone.utc)
-    write(vault, "system/logs/nightshift/health-2026-10-09.json",
-          json.dumps({"usage5": 0.8, "usage5_at": (stamp - timedelta(hours=1)).isoformat()}))
+    reading = json.dumps({"usage5": 0.8, "usage5_at": (stamp - timedelta(hours=1)).isoformat()})
+    write(vault, "system/logs/nightshift/health-2026-10-09.json", reading)   # the old place holds nothing (spec §3.4)
+    assert tr.hold(vault, stamp) == ""
+    write(rep.state_dir(vault), "health-2026-10-09.json", reading)
     assert "80%" in tr.hold(vault, stamp)
     assert tr.hold(vault, stamp + timedelta(hours=5)) == ""
 

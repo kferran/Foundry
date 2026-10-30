@@ -107,7 +107,7 @@ class Ctx:
 
     def alert(self, key: str, msg: str) -> None:
         day = self.local.date().isoformat()
-        seen = self.vault / rep.DIR / "alerts.json"
+        seen = rep.state_dir(self.vault) / "alerts.json"
         with SHARED:
             data = json.loads(seen.read_text()) if seen.is_file() else {}
             if data.get(key) == day:
@@ -116,6 +116,7 @@ class Ctx:
             seen.parent.mkdir(parents=True, exist_ok=True)
             seen.write_text(json.dumps(data))
             path = self.vault / "system" / "logs" / f"alerts_{day}.md"
+            path.parent.mkdir(parents=True, exist_ok=True)
             with open(path, "a", encoding="utf-8") as f:
                 f.write(f"- {self.local.strftime('%H:%M:%S')} [orders] {msg}\n")
 
@@ -772,7 +773,7 @@ class _Pool:
 
 def _day_health(ctx: Ctx, entries) -> tuple:
     """The day's checks on its first tick, and this tick's stamp. Returns (health, Held line it cleared)."""
-    hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+    hfile = rep.state_dir(ctx.vault) / f"health-{ctx.date}.json"
     try:
         h = json.loads(hfile.read_text()) if hfile.is_file() else {}
     except (OSError, ValueError):
@@ -780,7 +781,7 @@ def _day_health(ctx: Ctx, entries) -> tuple:
     # The day's checks run on its first tick. A usage reading run_headless.sh recorded can create the file
     # first (usage ceiling spec), so the test is the sandbox key, not the file; that newer reading is kept.
     if "sandbox" not in h:
-        prev = ctx.vault / rep.DIR / f"health-{(date.fromisoformat(ctx.date) - timedelta(days=1)).isoformat()}.json"
+        prev = rep.state_dir(ctx.vault) / f"health-{(date.fromisoformat(ctx.date) - timedelta(days=1)).isoformat()}.json"
         try:   # the last 5-hour reading outlives the report day, so the ceiling holds right after the brief too
             old = json.loads(prev.read_text()) if prev.is_file() else {}
         except (OSError, ValueError):
@@ -811,7 +812,7 @@ def _claim(ctx: Ctx, fm: dict) -> bool:
 
 def _set_held(ctx: Ctx, held: str) -> None:
     """Write the Held line ("" clears it) when it changed; the brief and the debrief copy the report, so it is in it."""
-    hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+    hfile = rep.state_dir(ctx.vault) / f"health-{ctx.date}.json"
     with SHARED:
         h = json.loads(hfile.read_text()) if hfile.is_file() else {}
         if (h.get("held") or "") == held:
@@ -831,6 +832,9 @@ def tick(ctx: Ctx) -> int:
     """Up to MAX_PARALLEL items at once (parallel orders spec §3). Delivering items first, then running ones resume,
     then queued and waiting items in pick order; each finish refills its slot until nothing runs or can start.
     Each pass reads the clock again: a tick lives for hours, and due times, the window and the ceiling move with it."""
+    moved = rep.migrate_state(ctx.vault)   # once, after the update that moved state out of the vault (#320)
+    if moved:
+        ctx.log({"state": "moved", "to": str(rep.state_dir(ctx.vault)), "names": moved})
     entries, refused = _screen(ctx)
     if refused:
         return 2
@@ -873,7 +877,7 @@ def tick(ctx: Ctx) -> int:
                         continue
                     if chosen[1].get("state") == "queued":
                         # The 5-hour ceiling holds only a new start, read afresh: a finished worker may have raised it.
-                        hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+                        hfile = rep.state_dir(ctx.vault) / f"health-{ctx.date}.json"
                         with SHARED:
                             fresh = json.loads(hfile.read_text()) if hfile.is_file() else day[0]
                         held = ns.five_hour_hold(fresh, now, ctx.max_five_hour)

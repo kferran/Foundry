@@ -26,7 +26,7 @@ def missing(want, have, at="") -> list:
 
 def outcome(vault: Path, day: str) -> None:
     """One Work Order that ran today, so the report's items list is not empty."""
-    write(vault, "system/logs/nightshift/items/2026-10-22-done-one/outcome.json", json.dumps({
+    write(vault.parent / "ws", "state/items/2026-10-22-done-one/outcome.json", json.dumps({
         "id": "2026-10-22-done-one", "kind": "plan", "state": "done", "result": "https://github.com/acme/shop/pull/9",
         "reason": "", "started_at": f"{day}T01:00:00-06:00", "finished_at": f"{day}T02:00:00-06:00",
         "report_date": day, "needs": [], "notes": "4 tasks"}))
