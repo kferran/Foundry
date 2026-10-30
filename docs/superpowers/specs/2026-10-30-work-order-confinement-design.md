@@ -23,7 +23,7 @@ A Work Order session runs unattended with Bash (sandboxed) and, for research, We
 
 - **Goals:** a session cannot read `.env` files, other orders' folders or runner state; nothing the owner did not approve sends data to a new host; a resolved internal address is refused; nothing a session or an interactive session writes in the vault steers the runner; a plan runs on the commit the owner queued; web-sourced stale claims reach ingest only after the owner ticks them.
 - **Non-goals:** a host allowlist in config (wait until research orders are frequent); signing template updates (#301 S1, documented in #426); per-partition read denies for headless runs (#301 S10, accepted in #426); defending against DNS that changes between the check and the fetch.
-- **Anti-goals:** a prompt on plan orders; a tick that runs sessions after a failed `.env` walk; a stale-claims line a headless run can tick.
+- **Anti-goals:** a prompt on plan orders; a stale-claims line a headless run can tick.
 
 ## 3. Design
 
@@ -54,12 +54,14 @@ The owner adds the settings lines in the PR, as in §3.1. FOUNDRY.md's "a note w
 
 A new `nightshift_check.resolve_problems(hosts)` resolves a research order's `hosts` with `socket.getaddrinfo` and returns `host <h> resolves to <a>, an internal address` when any address is not global (`ipaddress.ip_address(a)`: `not is_global or is_multicast`). It is not part of `screen()`, which runs no network and runs on every pass of the tick loop (`nightshift_check.py:158-159`). `research` calls it at add and refuses the order on a problem or on a name that does not resolve. The runner calls it once per order just before the session starts: an internal address fails the order with its Needs-you line; a name that does not resolve leaves the order queued for the next tick with one log line (my call: a DNS outage should not fail an approved order). The codebase's `order_hosts` are owner config and are not resolved (they may be wildcards such as `*.npmjs.org`, or an internal registry on purpose). Known ceiling: DNS can change between the check and the fetch.
 
-### 3.3 Literal deny paths (#326, #319)
+### 3.3 What a session cannot read (#326, #319)
 
-- **`.env` files, once per tick** before any session starts: an `os.walk` of the home directory, of every registered codebase's `path` and of `order_workspace` (each once, when outside home), not following symlinks, pruning directories named `node_modules`, `.cache`, `.git`, `.venv`, `venv` and `__pycache__`, collecting files named `.env` or `.env.*`. The walk has a 120 s cap. If it hits the cap or raises, the tick starts no session and raises one `[orders]` alert a day: `could not list .env files: <reason>; no Work Order ran`. A path holding `(`, `)` or `*`, which a `Read(//…)` rule cannot carry (`nightshift_session.py:49-50`), is handled the same way, with the path named.
-- **Other orders, at each session start:** a tick runs for hours and refills its slots, so a list fixed at tick start would miss folders made later. The builder first probes whether a session profile can deny `order_workspace` as a whole and allow the session's own folder inside it (the sandbox supports an allow-within-deny for reads; whether settings expose it is unverified). If it can, that is the rule. If not, the list is every entry in `order_workspace` named `nightshift-*` except the session's own `nightshift-<id>`, plus `nightshift-runner.git` and `state/` (§3.4), each created first if missing, with every queued order's folder created before the list is built. Ceiling of the fallback: an order queued after a session started is not in its list.
+The probe `docs/superpowers/spikes/2026-10-30-env-glob-and-workspace-deny-probe.md` showed two things. The sandbox honours an anchored glob such as `~/**/.env`, and applies it to each command. And `allowRead` re-opens one folder inside a `denyRead` folder.
 
-`_deny` adds these literal paths to what it returns, so `ss.profile` puts them in `denyRead` and mirrors them as `Read(//…)` rules, as it does for the vault today. The `/**/.env` globs stay. An upstream report on the glob goes to the Claude Code repository, worded without vault details.
+- **`.env` files (#326):** in all three profiles (`system/headless.settings.json`, `system/nightshift/plan.settings.json`, `system/nightshift/research.settings.json`), `**/.env*` is replaced by `~/**/.env` and `~/**/.env.*`. A Work Order session also gets `<path>/**/.env` and `<path>/**/.env.*` for every registered codebase `path` and for `order_workspace` that lies outside the home directory. Each glob is mirrored as a `Read(…)` deny rule. A `.env` created after the session starts is covered too. The probe tested Bash only, so the build first probes the Read tool against the mirrored rule.
+- **Other orders (#319):** a Work Order session denies `order_workspace` as a whole and allows its own `nightshift-<id>` back with `allowRead`. That covers the other orders' folders (including those made after the session started), `nightshift-runner.git` and `state/` (§3.4). The Read tool gets the same pair as a `Read(//<order_workspace>/**)` deny with the own folder kept readable. If permission rules cannot express that exception, the session folder's own `Read(./**)` allow decides, and the build records which form holds.
+
+`_deny` returns these entries with the vault and the other codebases, and `ss.profile` writes them. An upstream report on the `**/.env*` form goes to the Claude Code repository, worded without vault details. The docs say a leading `**` matches nothing on Linux, so the report asks for a warning when settings load, not a fix.
 
 ### 3.4 Runner state outside the vault (#320)
 
@@ -90,7 +92,7 @@ Each test fails before its change.
 
 - **§3.1:** `add --kind research` and an abbreviated flag are refused; `research` writes the note `add` wrote before; a docs test that `/order` and the Workcell name `research`.
 - **§3.2:** a host resolving to `127.0.0.1`, `10.0.0.1`, `169.254.169.254` and `::1` is refused at add (stub resolver) and fails the order at session start; an unresolvable host is refused at add and leaves the order queued at session start; a codebase's `order_hosts` are not resolved.
-- **§3.3:** a session's settings list a seeded `.env` under a fake home and under a codebase outside it, a pruned `node_modules/.env` is absent, a sibling `nightshift-*` folder made after the tick started, `nightshift-runner.git` and `state/` are denied, its own folder is not; a walk past its cap, or a path with `(`, starts no session and alerts once.
+- **§3.3:** the three profiles carry `~/**/.env` and `~/**/.env.*` and no `**/.env*`; a Work Order session's settings add the globs for a codebase outside home, deny `order_workspace` and allow only its own folder back; a live probe in the acceptance run reads a seeded `.env` and a sibling order's file from Bash and from the Read tool, and both are refused.
 - **§3.4:** state is written under `state/`; an old `system/logs/nightshift/items/` is moved on the first tick; the daily report stays in the vault; triage reads usage from `state/`.
 - **§3.5:** a base moved after add blocks the order with the line; an unmoved base runs; a note without `base_sha` runs.
 - **§3.1a:** in a sandboxed session, a Bash write to a queue note, a codebase note and a session profile is refused; `nightshift.py add` still writes its note (a live probe, in the acceptance run).
@@ -141,3 +143,7 @@ Round 3 (from the builder check, approved 2026-10-30):
 
 1. Close the vault paths that steer the runner: queue notes, codebase notes and session profiles are written only through the CLI or with a prompt (§3.1a).
 2. `requeue` starts fresh: the clone goes, the failed run's `items/<id>/` is kept aside (§3.6).
+
+Round 4 (from the probe, approved 2026-10-30):
+
+1. Anchored globs (`~/**/.env`, `~/**/.env.*`, and the same under codebases and the workspace outside home) replace the per-tick walk in all three profiles. They supersede round 2 Q3 and the walk calls above (its 120 s cap, the walk outside home, failing closed on a path with `(`). The sibling deny is the workspace-wide deny with `allowRead`, which the probe confirmed (§3.3).
