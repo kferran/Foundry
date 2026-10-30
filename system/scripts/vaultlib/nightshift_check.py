@@ -1,6 +1,8 @@
 """Lookups and readiness checks for Nightshift items (Nightshift spec §3.1)."""
+import ipaddress
 import os
 import re
+import socket
 import subprocess
 import tempfile
 from datetime import datetime
@@ -187,6 +189,26 @@ def screen(vault, fm: dict, body: str, path=None) -> list:
     else:
         errs.append("kind must be plan or research")
     return errs
+
+
+def resolve_problems(hosts) -> tuple:
+    """(internal, unresolved) for a research order's hosts (confinement spec §3.2, #318): a name that resolves to an
+    address that is not global, or is multicast, is internal; a name with no address does not resolve. Run at add
+    and before a session starts, never in screen(), which runs no network. Ceiling: DNS can change after the check."""
+    internal, unresolved = [], []
+    for h in hosts:
+        try:
+            addrs = sorted({str(ai[4][0]) for ai in socket.getaddrinfo(str(h), None)})
+        except (socket.gaierror, UnicodeError):
+            unresolved.append(f"host {h} does not resolve")
+            continue
+        for a in addrs:
+            ip = ipaddress.ip_address(a.split("%")[0])   # a scoped IPv6 address carries %<zone>
+            ip = getattr(ip, "ipv4_mapped", None) or ip
+            if not ip.is_global or ip.is_multicast:
+                internal.append(f"host {h} resolves to {a}, an internal address")
+                break
+    return internal, unresolved
 
 
 def check(vault, fm: dict, body: str, path=None) -> list:

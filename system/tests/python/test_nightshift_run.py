@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from helpers import REPO, write
-from test_nightshift_check import PLAN
+from test_nightshift_check import PLAN, resolver
 from vaultlib import nightshift_item as ni
 from vaultlib import nightshift_report as rep
 from vaultlib import nightshift_run as nr
@@ -54,6 +54,7 @@ def env(vault: Path, tmp_path: Path, monkeypatch):
     (bin_dir / "gh").chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     monkeypatch.setattr(nr, "health", lambda vault, now, entries: {"claude": "ok", "sandbox": "ok", "usage7": 0.4})
+    resolver(monkeypatch, {"docs.example.com": ["93.184.216.34"]})   # research hosts resolve to a public address (§3.2)
     return vault, tmp_path
 
 
@@ -1255,3 +1256,53 @@ def test_a_now_line_that_cannot_be_added_is_an_alert_and_the_order_stands(env):
     nr._now_line(ctx, fm, {"state": "failed", "needs": ["see [[diary]]"]})   # a link across the wall is refused
     alerts = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
     assert "2026-10-07-d: its Now line was not added (partition wall)" in alerts
+
+
+@pytest.mark.parametrize("host, why", [("docs.example.com", "resolves to 10.0.0.1, an internal address"),
+                                       ("gone.example.com", "does not resolve")])
+def test_add_refuses_internal_and_unresolvable_research_hosts(env, monkeypatch, capsys, host, why):
+    # confinement spec §3.2 (#318): checked at add, before a note is written
+    vault, tmp = env
+    brief = tmp / "brief.md"
+    brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
+    resolver(monkeypatch, {"docs.example.com": ["10.0.0.1"]})
+    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+                    "--output", "wiki/work/concepts/Answer.md", "--host", host, "--now"], vault, NOW) == 2
+    assert f"not ready: host {host} {why}" in capsys.readouterr().out
+    assert ni.items(vault) == []
+
+
+def test_session_start_fails_internal_host(env, monkeypatch):
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    resolver(monkeypatch, {"docs.example.com": ["10.0.0.1"]})   # the name moved to an internal address after add
+    assert nr.main(["tick"], vault, NOW) == 1
+    now, _ = ni.load(path)
+    assert (now["state"], now["reason"]) == ("failed", "host")
+    out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
+    assert out["needs"][0].startswith("host docs.example.com resolves to 10.0.0.1, an internal address")
+    assert not (rep.item_dir(vault, fm["id"]) / "settings.json").exists()   # no session ran
+
+
+def test_session_start_leaves_unresolvable_queued(env, monkeypatch):
+    # a DNS outage never fails an approved order: it waits for the next tick (§3.2, my call in the spec's Grill)
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    resolver(monkeypatch, {})
+    assert nr.main(["tick"], vault, NOW) == 0
+    now, _ = ni.load(path)
+    assert now["state"] == "queued"
+    assert not now.get("attempts")
+    assert not (rep.item_dir(vault, fm["id"]) / "settings.json").exists()
+    ledger = (vault / "system/logs" / f"nightshift-{NOW:%Y-%m}.jsonl").read_text()
+    assert '"reason": "host does not resolve"' in ledger
+
+
+def test_order_hosts_are_not_resolved(env, monkeypatch, tmp_path):
+    # owner config may name wildcards or an internal registry on purpose (§3.2)
+    vault, tmp = env
+    codebase_item(vault, tmp_path, ["true"], order_hosts=["*.npmjs.org"])
+    monkeypatch.setattr(nr.nc.socket, "getaddrinfo", lambda *a, **k: pytest.fail("resolved an order_hosts entry"))
+    nr.main(["tick"], vault, NOW)
+    _, fm = only_item(vault)
+    assert (rep.item_dir(vault, fm["id"]) / "settings.json").is_file()   # the session started

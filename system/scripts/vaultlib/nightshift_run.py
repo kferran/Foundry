@@ -621,6 +621,14 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     if fm.get("state") == "delivering":
         return _finish(ctx, path, fm, idir, None, _deliver(ctx, fm, idir))
     _stop_stale(idir)
+    if fm["kind"] == "research":   # before the attempt counts: a DNS outage leaves the order as it was (§3.2)
+        internal, unresolved = nc.resolve_problems(fm.get("hosts") or [])
+        if internal:
+            return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "host", "needs": [
+                f"{internal[0]}: remove the host, then queue {fm['id']} again"]})
+        if unresolved:
+            ctx.log({"item": fm["id"], "state": fm.get("state"), "reason": "host does not resolve"})
+            return 0
     resume = fm.get("state") in ("waiting_reset", "running")
     attempts = int(fm.get("attempts") or 0) + 1
     started = fm.get("started_at") or ctx.clock_now().isoformat()   # read now: a slot can free hours into the tick
@@ -918,6 +926,8 @@ def _add(ctx: Ctx, a) -> int:
         body = Path(a.brief_file).read_text(encoding="utf-8") if a.brief_file else ""
     fm = {k: v for k, v in fm.items() if v not in (None, "", [])} | ({"verify": a.verify} if a.kind == "plan" else {})
     errs = nc.check(ctx.vault, fm, body)
+    if not errs and a.kind == "research":   # owner-set order_hosts are config and are not resolved (§3.2)
+        errs = [e for problems in nc.resolve_problems(fm.get("hosts") or []) for e in problems]
     if errs:
         for e in errs:
             print(f"not ready: {e}")

@@ -306,3 +306,27 @@ def test_an_unreadable_config_gives_defaults_and_refuses_a_template_order(vault_
     (vault_repo / "system" / "config.md").write_bytes(b"\xff\xfe")
     assert nc.config(vault_repo) == {}
     assert nc.check(vault_repo, plan_fm(tasks="1-2"), "") == ["config has no template_remote"]
+
+
+def resolver(monkeypatch, table):
+    """socket.getaddrinfo answering from table: host -> addresses, or None for a name that does not resolve."""
+    def fake(host, port, *a, **k):
+        if table.get(host) is None:
+            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+        return [(socket.AF_INET6 if ":" in a_ else socket.AF_INET, socket.SOCK_STREAM, 6, "", (a_, 0)) for a_ in table[host]]
+    monkeypatch.setattr(nc.socket, "getaddrinfo", fake)
+
+
+@pytest.mark.parametrize("addr", ["127.0.0.1", "10.0.0.1", "169.254.169.254", "::1", "::ffff:127.0.0.1", "224.0.0.1"])
+def test_internal_addresses_are_refused(monkeypatch, addr):
+    # confinement spec §3.2 (#318): the name passes the HOST rule; the address it resolves to does not
+    resolver(monkeypatch, {"docs.example.com": ["93.184.216.34"], "evil.example.com": ["93.184.216.34", addr]})
+    assert nc.resolve_problems(["docs.example.com"]) == ([], [])
+    internal, unresolved = nc.resolve_problems(["docs.example.com", "evil.example.com"])
+    assert internal == [f"host evil.example.com resolves to {addr}, an internal address"]
+    assert unresolved == []
+
+
+def test_unresolvable_host(monkeypatch):
+    resolver(monkeypatch, {})
+    assert nc.resolve_problems(["gone.example.com"]) == ([], ["host gone.example.com does not resolve"])
