@@ -2,8 +2,8 @@
 
 **Date:** 2026-10-30
 **Status:** draft, for the owner's review
-**Grill:** 2026-10-29/30, two rounds, every recommendation approved (§7). Source: in-flight plan `docs/superpowers/2026-10-28-in-flight-plan.md` phase 3; issues #317, #318, #319, #320, #321, #326, and #301 S9.
-**Builder check:** 2026-10-30, seven questions and five wrong claims; settled as my calls in §7 except two the owner answered (round 3)
+**Grill:** 2026-10-29/30, four rounds, every recommendation approved (see `## Grill` below). Source: in-flight plan `docs/superpowers/2026-10-28-in-flight-plan.md` phase 3; issues #317, #318, #319, #320, #321, #326, and #301 S9.
+**Builder check:** 2026-10-30, seven questions and five wrong claims; settled as my calls in `## Grill` except two the owner answered (round 3)
 **Blueprint:** none: changes to the Work Order runner, its CLI, the publish gate and intake; no new feature shape.
 **Lane:** feature, three pull requests (§6). Each touches a safety surface (the Work Order runner, the publish gate, `.claude/settings.json`), so the owner merges each.
 
@@ -111,7 +111,7 @@ FOUNDRY.md's Security model and Work Orders sections: the literal deny list, the
 
 Each raises the core cap with its measured count, recorded beside the cap. A live acceptance run in a throwaway clone runs one research and one plan order after PR A and PR B.
 
-## 7. Grill
+## Grill
 
 Round 1 (2026-10-29, approved 2026-10-30):
 
