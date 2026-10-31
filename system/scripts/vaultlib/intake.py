@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import alerts, cli, convert as convertmod, extensions as extmod, frontmatter, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
+from . import alerts, cli, convert as convertmod, extensions as extmod, frontmatter, held as heldmod, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
 from . import triage
 from .config import text
 
@@ -286,10 +286,11 @@ class Intake:
 
     # -- the Now page (Now page spec §3.4) -------------------------------
     def check_now(self) -> None:
-        """Close Now lines on checked evidence; a busy run.lock skips this tick."""
+        """Close Now lines on checked evidence, then release or archive held stale claims; a busy run.lock skips this tick."""
         try:
             with self.lock("run.lock", timeout=0):
                 nowmod.check(self.vault, self.today(), self.alert)
+                heldmod.step(self.vault, self.today(), self.alert)   # held stale claims follow their line (§3.7)
         except TimeoutError:
             pass
 
