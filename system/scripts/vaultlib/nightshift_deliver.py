@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import frontmatter
 from . import nightshift_check as nc
+from . import held
 from . import publish
 from . import schema
 from .intake import Intake
@@ -262,9 +263,15 @@ def publish_research(vault, fm: dict, findings: Path, lock_timeout: float = 600)
         return False, str(exc)
     if report.get("status") == "published":
         try:
-            stale_claims_input(vault, fm, findings.read_text(encoding="utf-8"))
+            got = stale_claims_input(vault, fm, findings.read_text(encoding="utf-8"))
         except OSError as exc:  # the findings are published: the item is done either way
-            return True, f"{fm['output']} (its stale claims did not reach ingest: {exc.__class__.__name__}: {exc})"
+            return True, f"{fm['output']} (its stale claims were not held: {exc.__class__.__name__}: {exc})"
+        if got:
+            try:
+                with Intake(vault).lock("run.lock", timeout=60):
+                    held.add_line(vault, *got, datetime.now().astimezone().date().isoformat())
+            except (TimeoutError, ValueError, OSError) as exc:   # intake's Now step adds it on a later tick
+                return True, f"{fm['output']} (its stale claims are held without a Now line yet: {exc})"
         return True, fm["output"]
     return False, f"publish gate: {report.get('status')}: {report.get('problems') or report.get('conflicts')}"
 
@@ -273,7 +280,9 @@ STALE = "## Stale claims"
 
 
 def stale_claims_input(vault, fm: dict, text: str):
-    """Hand a findings note's Stale claims to ingest as a one-section session digest (#85); None when there are none."""
+    """Hold a findings note's Stale claims as a one-section session digest in raw/<p>/held/ (#85; confinement spec
+    §3.7: ingest takes it only after the owner ticks its Now line). (path, number of claims), or None when there are none
+    or this Work Order's file already exists."""
     body = frontmatter.parse(text).body.split("\n")
     if STALE not in body:
         return None
@@ -284,10 +293,10 @@ def stale_claims_input(vault, fm: dict, text: str):
         return None
     name = f"{fm['id']}.stale-claims"
     raw = Path(vault) / "raw" / fm["partition"]
-    for folder in (raw / "notes", raw / "archive", Path(vault) / "system" / "quarantine" / "poisoned"):
+    for folder in (raw / "held", raw / "notes", raw / "archive", Path(vault) / "system" / "quarantine" / "poisoned"):
         if folder.is_dir() and any(p.name.startswith(name) for p in folder.iterdir()):
-            return None  # a second delivery of the same Work Order: ingest already has it
-    path = raw / "notes" / f"{name}.md"
+            return None  # a second delivery of the same Work Order: it is held, released or compiled already
+    path = raw / "held" / f"{name}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.tmp")
     # provenance headless: the bullets come from a session that read untrusted sources (ingest patches only).
@@ -296,4 +305,4 @@ def stale_claims_input(vault, fm: dict, text: str):
                    f'work_order: "{fm["id"]}"\nprovenance: ["headless"]\n---\n{STALE}\n' + "\n".join(bullets) + "\n",
                    encoding="utf-8")
     os.replace(tmp, path)
-    return path
+    return path, len(bullets)
