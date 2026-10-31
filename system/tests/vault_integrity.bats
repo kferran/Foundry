@@ -92,6 +92,16 @@ core_problem() {
   done
 }
 
+@test "a research order, a requeue and a tool write to what steers the runner ask first (#317, #321)" {
+  for rule in 'Bash(system/scripts/nightshift.py research:*)' 'Bash(system/scripts/nightshift.py requeue:*)' \
+      'Edit(/raw/*/nightshift/**)' 'Write(/raw/*/nightshift/**)' 'Edit(/system/codebases/**)' 'Write(/system/codebases/**)' \
+      'Edit(/system/nightshift/**)' 'Write(/system/nightshift/**)'; do
+    jq -e --arg r "$rule" '.permissions.ask | index($r)' .claude/settings.json >/dev/null
+  done
+  # The sandbox cannot let only the CLI through (probe 2026-10-31): no excluded command and no write deny for it.
+  [ "$(jq '.sandbox.excludedCommands // [] | length' .claude/settings.json)" = 0 ]
+}
+
 @test "a commit that skips the pre-commit secret scan asks first, though git commit -m is allowed (#298)" {
   for rule in 'Bash(git commit *--no-verify*)' 'Bash(git commit -n*)' 'Bash(git commit * -n*)'; do
     jq -e --arg r "$rule" '.permissions.ask | index($r)' .claude/settings.json >/dev/null

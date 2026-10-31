@@ -42,6 +42,7 @@ Interactive writers of the three paths, and how each still works:
 - **Ruling 1, `requeue` clears more than attempts and session_id** (§3.6): it also drops `reason`, `result`, `started_at`, `finished_at` and `reset_at`, so the 7-day clean-up and the report do not treat the fresh order as finished. Cost if wrong: one field kept that should have been.
 - **Ruling 2, `requeue` takes no runner lock**: it touches only blocked and failed orders, which no tick starts, like `cancel`. Cost if wrong: a tick that screens the note mid-write reads the old state once.
 - **Ruling 3, the probes change two spec details**: `denyWrite` lists five literal folders (the spec's three paths, with one per partition), and `vault_sync.sh` joins `excludedCommands`, from the spec's list of interactive writers.
+- **Ruling 4 (owner, 2026-10-31), §3.1a ships as ask rules only.** The final review and probe 4 showed that an excluded command runs whatever a sandboxed session wrote under its name (the script, its imports, a copy reached with `cd`). So the `denyWrite` and `excludedCommands` lines above are dropped. The ask rules (research, requeue, and Edit/Write on the three paths) go into `.claude/settings.json` in this PR. A new issue closes the Bash path in the runner. This supersedes Ruling 3.
 
 ## Review Focus
 
