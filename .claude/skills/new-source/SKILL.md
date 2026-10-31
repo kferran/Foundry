@@ -12,7 +12,7 @@ Spec: `docs/superpowers/specs/2026-10-23-factory-f4-line-skills-design.md` §3.2
 
 **The brief's room.** The Source runs inside the brief, which has two limits:
 - **The brief prompt's word cap** (`system/tests/prep.bats`: `.claude/commands/brief.md` plus every extension's `brief/section.md`, at most 2,500 words; none are left since F5, so a Source with a brief section raises the cap in its own pull request). The scaffold writes no `brief/section.md`, so it stays under the cap. The first feature's section prompt does not fit: the owner raises the cap or `brief.md` is trimmed first.
-- **The timing rule** (`conformance.bats`). One more brief Source at the default 300 s fits; the next one fails it in CI and needs its own unit, built by the feature that hits it.
+- **The timing rule** (`conformance.bats`). No brief Source at the default 300 s fits: the brief's waits are within 35 s of its limit (6,565 of 6,600 s on 2026-10-31; the test prints `# brief: <sum> s of <limit> s`). A Source that runs inside the brief fails it in CI and needs its own unit or a raised brief limit, built in the feature's own pull request.
 
 **Template or vault.** `system/config.md` exists only in a vault. There `--issue` is optional and no change file is written; in the template repository `--issue` is required.
 

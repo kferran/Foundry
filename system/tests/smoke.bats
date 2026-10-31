@@ -265,6 +265,7 @@ EOF
 }
 
 @test "an older vault's claude_version file is taken over, so a change since its last health check is reported" {
+  need_user_systemd
   mkdir -p system/logs
   printf '0.9.0 (Claude Code)\n' > system/logs/claude_version
   run "$SC"

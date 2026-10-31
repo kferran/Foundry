@@ -498,6 +498,7 @@ Done."
 }
 
 @test "brief_prep: an unreadable debrief is an unavailable input and the prep still exits 0 (#179)" {
+  need_non_root
   mkdir -p briefings
   printf -- '---\ntype: debrief\n---\n# Evening Debrief\n' > briefings/2026-09-30.debrief.md
   chmod 000 briefings/2026-09-30.debrief.md
