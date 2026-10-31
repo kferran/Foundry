@@ -915,7 +915,7 @@ self_edit_contract() {
   [ ! -e .claude/skills/nightshift ]
   f=.claude/skills/order/SKILL.md
   grep -qx 'name: order' "$f"
-  grep -qF '/order add|ask|list|cancel|status' "$f"
+  grep -qF '/order add|ask|list|cancel|requeue|status' "$f"
   grep -qF 'system/scripts/nightshift.py add --kind plan' "$f"
   grep -qF 'Work Order' "$f"
   grep -qF '`wiki/<partition>/concepts/`' "$f"   # the research output rule the tick screens again (#298)
@@ -923,7 +923,7 @@ self_edit_contract() {
   grep -qF -- '- `raw/<partition>/nightshift/`: Work Order queue notes' CLAUDE.md
   run grep -nE '(^|[`( ])/nightshift' "$f" CLAUDE.md README.md FOUNDRY.md
   [ "$status" -eq 1 ]
-  grep -qF '| `/order add\|ask\|list\|cancel\|status` |' FOUNDRY.md
+  grep -qF '| `/order add\|ask\|list\|cancel\|requeue\|status` |' FOUNDRY.md
   grep -qF '.claude/skills/order/' FOUNDRY.md
   for k in run_window order_workspace nightshift_window nightshift_workspace; do grep -qF "\`$k\`" FOUNDRY.md; done
   for k in run_window order_workspace nightshift_window nightshift_workspace; do grep -q "^  $k:" system/schemas/config.md; done

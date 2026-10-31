@@ -431,3 +431,16 @@ def test_an_unreadable_config_gives_defaults(tmp_path):
     (tmp_path / "system").mkdir()
     (tmp_path / "system" / "config.md").write_bytes(b"\xff\xfe")
     assert notify.config(tmp_path) == {}
+
+
+def test_a_requeued_work_order_is_sent_again(vault):
+    # review of PR B: the fresh run after a requeue has the same id; its outcome carries run 2 and gets its own notice
+    prepare(vault)
+    write(rep.state_dir(vault), "items/2026-10-12-x/outcome.json",
+          json.dumps({"id": "2026-10-12-x", "state": "blocked", "result": "", "needs": ["the base moved"]}))
+    got, cursor = lines(vault)
+    notify.commit(vault, cursor)
+    (rep.state_dir(vault) / "items/2026-10-12-x").rename(rep.state_dir(vault) / "items/2026-10-12-x.1")
+    write(rep.state_dir(vault), "items/2026-10-12-x/outcome.json",
+          json.dumps({"id": "2026-10-12-x", "run": 2, "state": "done", "result": "https://github.com/owner/repo/pull/8", "needs": []}))
+    assert lines(vault)[0] == ["Work Order 2026-10-12-x done: https://github.com/owner/repo/pull/8"]

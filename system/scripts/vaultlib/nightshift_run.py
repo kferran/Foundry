@@ -48,39 +48,51 @@ NO_START = ("the self-test session did not start (an expired login; a login held
 SELFTEST_TRIES = 3
 
 
+def _date_arg(text: str) -> str:
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+            return date.fromisoformat(text).isoformat()
+    except ValueError:
+        pass
+    raise argparse.ArgumentTypeError(f"not a YYYY-MM-DD date: {text!r}")
+
+
 def _parser():
-    p = argparse.ArgumentParser(prog="nightshift.py")
+    # No abbreviations (confinement spec §3.1): an ask or allow rule matches the subcommand and flags as typed.
+    p = argparse.ArgumentParser(prog="nightshift.py", allow_abbrev=False)
     sub = p.add_subparsers(dest="cmd")
-    sub.add_parser("tick")
-    sub.add_parser("record-usage").add_argument("stream")
-    a = sub.add_parser("add")
+    cmd = lambda name: sub.add_parser(name, allow_abbrev=False)
+    cmd("tick")
+    cmd("record-usage").add_argument("stream")
+    a, r = cmd("add"), cmd("research")   # research is its own subcommand so it can have its own ask rule (#317)
     a.add_argument("--kind", choices=["plan", "research"], required=True)
-    a.add_argument("--title", required=True)
-    a.add_argument("--partition", required=True)
-    a.add_argument("--repo")
-    a.add_argument("--base")
+    for s in (a, r):
+        s.add_argument("--title", required=True)
+        s.add_argument("--partition", required=True)
+        s.add_argument("--repo")
+        s.add_argument("--base")
+        g = s.add_mutually_exclusive_group()
+        g.add_argument("--now", action="store_true")
+        g.add_argument("--at", metavar="HH:MM")
+        g.add_argument("--window", action="store_true")
+        s.add_argument("--budget")
+        s.add_argument("--model", default="sonnet")
     a.add_argument("--pr-base", default="master")
     a.add_argument("--plan")
     a.add_argument("--tasks")
     a.add_argument("--verify", action="append", default=[])
-    a.add_argument("--brief-file")
-    a.add_argument("--output")
-    a.add_argument("--host", action="append", default=[])
-    g = a.add_mutually_exclusive_group()
-    g.add_argument("--now", action="store_true")
-    g.add_argument("--at", metavar="HH:MM")
-    g.add_argument("--window", action="store_true")
-    a.add_argument("--budget")
-    a.add_argument("--model", default="sonnet")
-    c = sub.add_parser("check")
-    c.add_argument("note")
-    sub.add_parser("list").add_argument("--json", action="store_true")
-    x = sub.add_parser("cancel")
-    x.add_argument("id")
-    r = sub.add_parser("report")
-    r.add_argument("date", nargs="?")
-    r.add_argument("--json", action="store_true")
-    sub.add_parser("selftest")
+    for s in (r, a):   # add parses them so an old `add --kind research …` gets its refusal, not a usage error
+        s.add_argument("--brief-file")
+        s.add_argument("--output")
+        s.add_argument("--host", action="append", default=[])
+    cmd("check").add_argument("note")
+    cmd("list").add_argument("--json", action="store_true")
+    cmd("cancel").add_argument("id")
+    cmd("requeue").add_argument("id")   # behind its own ask rule (§3.6)
+    rp = cmd("report")
+    rp.add_argument("date", nargs="?", type=_date_arg)   # report:* is allowed: the date must never become a path
+    rp.add_argument("--json", action="store_true")
+    cmd("selftest")
     return p
 
 
@@ -231,13 +243,42 @@ class CloneError(RuntimeError):
     """A template item's base could not be fetched from the template remote."""
 
 
+class BaseMoved(Exception):
+    """The plan's base resolves to another commit than the one recorded when the owner queued it (#321)."""
+
+
+def _base_sha(ctx: Ctx, fm: dict) -> str:
+    """The commit a plan order's base names now: in its codebase, or on template_remote for `template`; "" when it
+    cannot be read."""
+    if fm.get("repo") == "template":
+        url = str(nc.config(ctx.vault).get("template_remote") or "")
+        if not url or url.startswith("-"):
+            return ""
+        opts, env = nc.remote_git(url)
+        try:
+            r = subprocess.run(["git", *opts, "ls-remote", url, f"refs/heads/{fm['base']}"], capture_output=True,
+                               text=True, env=env, timeout=120)
+        except subprocess.TimeoutExpired:
+            return ""
+        return r.stdout.split()[0] if r.returncode == 0 and r.stdout.split() else ""
+    src = nc.source(ctx.vault, fm.get("repo"))
+    return nc.git(src, "rev-parse", "--verify", "--quiet", f"{fm['base']}^{{commit}}").stdout.strip() if src else ""
+
+
 def _clone(ctx: Ctx, fm: dict) -> Path:
     clone = ctx.workspace / f"nightshift-{fm['id']}"
     template = fm["repo"] == "template"
     if clone.exists():
         if not template or nc.git(clone, "rev-parse", "--verify", "--quiet", "refs/remotes/base").returncode == 0:
-            return clone
+            return clone   # a reused clone is not checked again (§3.5)
         shutil.rmtree(clone)   # half-built by a killed tick: start again
+
+    def pinned(got: str) -> None:
+        """The commit the clone starts from must be the one the owner queued (§3.5); a note without one runs as before."""
+        if fm.get("base_sha") and got != fm["base_sha"]:
+            shutil.rmtree(clone, ignore_errors=True)
+            raise BaseMoved(f"the base {fm['base']} moved since {fm['id']} was queued ({fm['base_sha'][:7]} → "
+                            f"{got[:7]}); read the plan at the new base, then run nightshift.py requeue {fm['id']}")
     ctx.workspace.mkdir(parents=True, exist_ok=True)
     branch = f"order/{fm['id']}"
     if template:
@@ -252,10 +293,12 @@ def _clone(ctx: Ctx, fm: dict) -> Path:
             shutil.rmtree(clone, ignore_errors=True)   # the next tick starts from an empty workspace again
             why = (f.stderr.strip().splitlines() or ["no error text"])[-1]
             raise CloneError(f"fetch {fm['base']} from {nc.shown(url)}: {why}")
+        pinned(nc.git(clone, "rev-parse", "refs/remotes/base").stdout.strip())   # what was fetched, not a second read
         subprocess.run(["git", "-C", str(clone), "checkout", "-q", "-b", branch, "refs/remotes/base"], check=True)
     else:
         src = nc.source(ctx.vault, fm["repo"])
         sha = nc.git(src, "rev-parse", f"{fm['base']}^{{commit}}").stdout.strip()
+        pinned(sha)
         subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", str(src), str(clone)], check=True)
         subprocess.run(["git", "-C", str(clone), "checkout", "-q", "-b", branch, sha], check=True)
     with open(clone / ".git" / "info" / "exclude", "a") as f:
@@ -620,7 +663,8 @@ def _report_outcome(ctx: Ctx, fm: dict, out: dict, finished: str) -> None:
                                       "reason": out.get("reason", ""), "started_at": fm.get("started_at") or ctx.clock_now().isoformat(),
                                       "finished_at": finished, "report_date": ctx.date,
                                       "needs": out.get("needs", []), "notes": out.get("notes", ""),
-                                      "output": fm.get("output") or ""})  # a notice links it (#157)
+                                      "output": fm.get("output") or "",  # a notice links it (#157)
+                                      **({"run": int(fm["run"])} if fm.get("run") else {})})   # a requeued run is its own notice
         rep.write(ctx.vault, ctx.date)
 
 
@@ -634,7 +678,7 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
         internal, unresolved = nc.resolve_problems(fm.get("hosts") or [])
         if internal:
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "host", "needs": [
-                f"{internal[0]}: remove the host, then queue {fm['id']} again"]})
+                f"{internal[0]}: queue the brief again with nightshift.py research, without that host"]})
         if unresolved:
             ctx.log({"item": fm["id"], "state": fm.get("state"), "reason": "host does not resolve"})
             return 0
@@ -645,14 +689,16 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     fm = {**fm, "started_at": started}   # the outcome and the report carry the same stamp
     if nc.workspace_inside_vault(ctx.vault, ctx.workspace):   # the session's profile denies the vault root
         return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "workspace", "needs": [
-            f"Move order_workspace outside the vault ({ctx.workspace} is inside it), then queue {fm['id']} again"]})
+            f"Move order_workspace outside the vault ({ctx.workspace} is inside it), then run nightshift.py requeue {fm['id']}"]})
     before = {}
     if fm["kind"] == "plan":
         try:
             cwd = _clone(ctx, fm)
+        except BaseMoved as exc:
+            return _finish(ctx, path, fm, idir, None, {"state": "blocked", "reason": "base moved", "needs": [str(exc)]})
         except CloneError as exc:   # ends now, with a report row and a Needs-you line, and frees the queue
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
-                f"Push {fm['base']} to the template remote, then queue {fm['id']} again ({exc})"]})
+                f"Push {fm['base']} to the template remote, then run nightshift.py requeue {fm['id']} ({exc})"]})
         before = _before(ctx, fm, idir)
         gone = nc.toolchain_errors(fm["repo"], nc.codebase(ctx.vault, fm["repo"]) or {})
         if gone:   # a directory that passed readiness is gone: block now, before the session spends its budget
@@ -662,7 +708,7 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
             cwd = _research_dir(ctx, fm)
         except CloneError as exc:
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
-                f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then queue {fm['id']} again ({exc})"]})
+                f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then run nightshift.py requeue {fm['id']} ({exc})"]})
     run = _run_session(ctx, path, fm, body, cwd, idir, resume)
     with SHARED:
         rep.record_usage(ctx.vault, ctx.date, run.get("usage") or {}, ctx.clock_now().isoformat())
@@ -918,25 +964,28 @@ def tick(ctx: Ctx) -> int:
     return pool.rc
 
 
-def _add(ctx: Ctx, a) -> int:
+def _add(ctx: Ctx, a, kind: str) -> int:
     item_id = ni.new_id(a.title, ctx.local)
-    fm = {"type": "nightshift_item", "id": item_id, "partition": a.partition, "kind": a.kind, "state": "queued",
+    fm = {"type": "nightshift_item", "id": item_id, "partition": a.partition, "kind": kind, "state": "queued",
           "queued_at": ctx.local.isoformat(), "start": "at" if a.at else ("window" if a.window else "now"),
-          "budget": a.budget or ("4h" if a.kind == "plan" else "1h"), "model": a.model}
+          "budget": a.budget or ("4h" if kind == "plan" else "1h"), "model": a.model}
     if a.at:
         hh, mm = (int(x) for x in a.at.split(":"))
         start = ctx.local.replace(hour=hh, minute=mm, second=0, microsecond=0)
         fm["start_at"] = (start if start > ctx.local else start + timedelta(days=1)).isoformat()
-    if a.kind == "plan":
+    if kind == "plan":
         fm.update(repo=a.repo, base=a.base, pr_base=a.pr_base, plan=a.plan, tasks=a.tasks, verify=a.verify)
         body = ""
     else:
         fm.update(output=a.output, hosts=a.host, repo=a.repo, base=a.base)
         body = Path(a.brief_file).read_text(encoding="utf-8") if a.brief_file else ""
-    fm = {k: v for k, v in fm.items() if v not in (None, "", [])} | ({"verify": a.verify} if a.kind == "plan" else {})
+    fm = {k: v for k, v in fm.items() if v not in (None, "", [])} | ({"verify": a.verify} if kind == "plan" else {})
     errs = nc.check(ctx.vault, fm, body)
-    if not errs and a.kind == "research":   # owner-set order_hosts are config and are not resolved (§3.2)
+    if not errs and kind == "research":   # owner-set order_hosts are config and are not resolved (§3.2)
         errs = [e for problems in nc.resolve_problems(fm.get("hosts") or []) for e in problems]
+    if not errs and kind == "plan":   # the commit the owner approves; the first clone checks it (§3.5)
+        fm["base_sha"] = _base_sha(ctx, fm)
+        errs = [] if fm["base_sha"] else [f"cannot read the commit {fm.get('base')} names; try again"]
     if errs:
         for e in errs:
             print(f"not ready: {e}")
@@ -950,6 +999,42 @@ def _add(ctx: Ctx, a) -> int:
     return 0
 
 
+def _requeue(ctx: Ctx, item_id: str) -> int:
+    """Start a blocked or failed order fresh (confinement spec §3.6): its clones go, its items folder is kept aside as
+    items/<id>.<n>/, and a plan order records its base's commit again, which the owner approves by running this.
+    ponytail: no runner lock, like cancel; no tick starts a blocked or failed order."""
+    hits = [(p, fm) for p, fm, _ in ni.items(ctx.vault) if fm.get("id") == item_id]
+    if not hits:
+        print(f"no item {item_id}")
+        return 2
+    path, fm = hits[0]
+    if nc.identifiers(fm):   # the id names the folders removed and moved below
+        print(f"not requeued: {item_id}: {'; '.join(nc.identifiers(fm))}")
+        return 2
+    if fm.get("state") not in ("blocked", "failed"):
+        print(f"not requeued: {item_id} is {fm.get('state')}; only a blocked or failed order can be requeued")
+        return 2
+    if fm.get("reason") == "delivery":   # its branch may be pushed already: a fresh run's push would be refused
+        print(f"not requeued: {item_id} failed in delivery; deliver it by hand as its Needs-you line says")
+        return 2
+    sha = _base_sha(ctx, fm) if fm.get("kind") == "plan" else ""
+    if fm.get("kind") == "plan" and not sha:
+        print(f"not requeued: cannot read the commit {fm.get('base')} names; try again")
+        return 2
+    for d in (ctx.workspace / f"nightshift-{item_id}", ctx.workspace / f"nightshift-{item_id}-verify"):
+        shutil.rmtree(d, ignore_errors=True)
+    idir = rep.item_dir(ctx.vault, item_id)
+    if idir.exists():
+        n = 1
+        while idir.with_name(f"{item_id}.{n}").exists():
+            n += 1
+        idir.rename(idir.with_name(f"{item_id}.{n}"))
+    ni.update(path, state="queued", attempts=None, session_id=None, reason=None, result=None, started_at=None,
+              finished_at=None, reset_at=None, run=str(int(fm.get("run") or 1) + 1), **({"base_sha": sha} if sha else {}))
+    print(f"requeued {item_id}" + (f" at {sha[:7]}" if sha else ""))
+    return 0
+
+
 def main(argv: list, vault: Path, now: datetime | None = None) -> int:
     vault, now = Path(vault), now or datetime.now(timezone.utc)
     try:
@@ -958,8 +1043,11 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
         return 0 if exc.code == 0 else 2
     ctx = Ctx(vault, now)
     cmd = a.cmd or "tick"
-    if cmd == "add":
-        return _add(ctx, a)
+    if cmd == "add" and a.kind == "research":
+        print("not ready: use nightshift.py research for a research order")
+        return 2
+    if cmd in ("add", "research"):
+        return _add(ctx, a, "plan" if cmd == "add" else "research")
     if cmd == "check":
         fm, body = ni.load(a.note)
         errs = nc.check(vault, fm, body, Path(a.note).resolve())
@@ -975,6 +1063,8 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
         for p, fm, _ in ni.items(vault):
             print(f"{fm.get('id')}  {fm.get('kind')}  {fm.get('state')}  {fm.get('start')}  {fm.get('result') or fm.get('reason') or ''}")
         return 0
+    if cmd == "requeue":
+        return _requeue(ctx, a.id)
     if cmd == "cancel":
         hits = [p for p, fm, _ in ni.items(vault) if fm.get("id") == a.id]
         if not hits:

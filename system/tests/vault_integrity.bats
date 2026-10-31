@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=15590
+CORE_CAP=15690
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -90,6 +90,16 @@ core_problem() {
   for rule in 'Read(~/**/.env)' 'Read(~/**/.env.*)' 'Read(//**/.env)' 'Read(//**/.env.*)'; do
     jq -e --arg r "$rule" '.permissions.deny | index($r)' system/headless.settings.json >/dev/null
   done
+}
+
+@test "a research order, a requeue and a tool write to what steers the runner ask first (#317, #321)" {
+  for rule in 'Bash(system/scripts/nightshift.py research:*)' 'Bash(system/scripts/nightshift.py requeue:*)' \
+      'Edit(/raw/*/nightshift/**)' 'Write(/raw/*/nightshift/**)' 'Edit(/system/codebases/**)' 'Write(/system/codebases/**)' \
+      'Edit(/system/nightshift/**)' 'Write(/system/nightshift/**)'; do
+    jq -e --arg r "$rule" '.permissions.ask | index($r)' .claude/settings.json >/dev/null
+  done
+  # The sandbox cannot let only the CLI through (probe 2026-10-31): no excluded command and no write deny for it.
+  [ "$(jq '.sandbox.excludedCommands // [] | length' .claude/settings.json)" = 0 ]
 }
 
 @test "a commit that skips the pre-commit secret scan asks first, though git commit -m is allowed (#298)" {
@@ -541,6 +551,8 @@ sealed_problems() {
   # 15,510 -> 15,590 (#318, #319, #320, #326, Work Order confinement PR A, owner to approve at merge): runner state
   # under order_workspace with a one-time move, the DNS check at add and at session start, the .env globs outside home
   # and the workspace fence took core to 15,582.
+  # 15,590 -> 15,690 (#317, #321, Work Order confinement PR B, owner to approve at merge): the research subcommand,
+  # base_sha at add with its check at the first clone, requeue and its review fixes took core to 15,680.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
