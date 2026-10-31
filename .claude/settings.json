@@ -77,7 +77,9 @@
       "Bash(system/scripts/calendar_fetch.sh)",
       "Bash(system/scripts/calendar_fetch.sh --check)",
       "Bash(system/scripts/extensions.py smoke)",
-      "Bash(system/scripts/nightshift.py list --json)"
+      "Bash(system/scripts/nightshift.py list --json)",
+      "Bash(system/scripts/discover_codebases.sh:*)",
+      "Bash(system/scripts/inspect_codebase.sh:*)"
     ],
     "deny": [
       "Read(~/.ssh/**)", "Read(~/.gnupg/**)",
