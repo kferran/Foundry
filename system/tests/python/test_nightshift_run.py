@@ -626,7 +626,7 @@ def test_research_runs_on_a_context_copy_and_publishes(env, monkeypatch, tmp_pat
     stub(tmp, STREAM=str(tmp_path / "r.jsonl"))
     brief = tmp_path / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
-    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
                     "--output", "wiki/work/concepts/Answer.md", "--now"], vault, NOW) == 0
     assert nr.main(["tick"], vault, NOW) == 0
     assert only_item(vault)[1]["state"] == "done"
@@ -648,7 +648,7 @@ def test_an_item_finishes_after_it_starts(env, tmp_path):
     stub(tmp, STREAM=str(tmp_path / "r.jsonl"))
     brief = tmp_path / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
-    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
                     "--output", "wiki/work/concepts/Answer.md", "--now"], vault, NOW) == 0
     assert nr.main(["tick"], vault, NOW) == 0
     fm = only_item(vault)[1]
@@ -841,7 +841,7 @@ def test_a_research_session_on_the_same_codebase_keeps_its_own_path(env, monkeyp
     stub(tmp, WRITE=str(empty), SHELL=f'echo "$PATH" > {tmp_path}/path.txt')
     brief = tmp_path / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nCode.\n## Done when\nAnswered.\n## Output\nA note.\n")
-    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
                     "--output", "wiki/work/concepts/Answer.md", "--repo", "shop", "--now"], vault, NOW) == 0
     nr.main(["tick"], vault, NOW)
     assert (tmp_path / "path.txt").read_text().strip() == os.environ["PATH"]   # the service PATH, unchanged
@@ -994,7 +994,7 @@ def run_research_with_denials(env, tmp_path, writes_text, denied):
     stub(tmp, WRITE=str(writes), STREAM=str(stream), SHELL=f'sed "s#@W@#$PWD#g" "{tpl}" > "{stream}"')
     brief = tmp_path / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
-    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
                     "--output", "wiki/work/concepts/Answer.md", "--now"], vault, NOW) == 0
     nr.main(["tick"], vault, NOW)
     fm = only_item(vault)[1]
@@ -1029,7 +1029,7 @@ def test_research_result_json_denied_names_it(env, tmp_path):
 def add_research(vault, tmp, *extra):
     brief = tmp / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
-    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
                     "--output", "wiki/work/concepts/Answer.md", "--host", "docs.example.com", "--now", *extra],
                    vault, NOW) == 0
     return only_item(vault)
@@ -1266,7 +1266,7 @@ def test_add_refuses_internal_and_unresolvable_research_hosts(env, monkeypatch, 
     brief = tmp / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
     resolver(monkeypatch, {"docs.example.com": ["10.0.0.1"]})
-    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
                     "--output", "wiki/work/concepts/Answer.md", "--host", host, "--now"], vault, NOW) == 2
     assert f"not ready: host {host} {why}" in capsys.readouterr().out
     assert ni.items(vault) == []
@@ -1361,3 +1361,49 @@ def test_env_globs_name_a_symlinked_root_in_both_forms(env, monkeypatch, tmp_pat
     for root in (tmp_path / "ws-link", tmp_path / "real-ws"):
         assert f"{root}/**/.env" in deny
         assert f"{root}/**/.env.*" in deny
+
+
+def brief_file(tmp):
+    brief = tmp / "brief.md"
+    brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
+    return brief
+
+
+RESEARCH = ["--title", "q", "--partition", "work", "--output", "wiki/work/concepts/Answer.md", "--host", "docs.example.com", "--now"]
+
+
+def test_add_refuses_research(env, capsys):
+    # confinement spec §3.1 (#317): a research order is its own subcommand, behind its own ask rule
+    vault, tmp = env
+    assert nr.main(["add", "--kind", "research", "--brief-file", str(brief_file(tmp)), *RESEARCH], vault, NOW) == 2
+    assert "use nightshift.py research for a research order" in capsys.readouterr().out
+    assert ni.items(vault) == []
+
+
+def test_research_writes_the_note_add_wrote(env):
+    vault, tmp = env
+    assert nr.main(["research", "--brief-file", str(brief_file(tmp)), *RESEARCH], vault, NOW) == 0
+    path, fm = only_item(vault)
+    assert {k: fm[k] for k in ("kind", "partition", "output", "hosts", "start", "budget", "model", "state")} == {
+        "kind": "research", "partition": "work", "output": "wiki/work/concepts/Answer.md", "hosts": ["docs.example.com"],
+        "start": "now", "budget": "1h", "model": "sonnet", "state": "queued"}
+    assert ni.load(path)[1].startswith("## Question")
+
+
+@pytest.mark.parametrize("flag", ["--tit", "--partit"])
+def test_abbreviated_flags_are_refused(env, flag):
+    # §3.1: an ask rule matches the typed prefix, so a flag must be spelled out; complete arguments otherwise
+    vault, tmp = env
+    full = {"--tit": "--title", "--partit": "--partition"}[flag]
+    plan = ["add", "--kind", "plan", "--title", "dtcc watcher", "--partition", "work", "--repo", "template", "--base",
+            "feat/x", "--plan", "docs/p.md", "--tasks", "1-2", "--verify", "true"]
+    research = ["research", "--brief-file", str(brief_file(tmp)), *RESEARCH]
+    for argv in (plan, research):
+        assert nr.main([flag if a == full else a for a in argv], vault, NOW) == 2
+    assert ni.items(vault) == []
+
+
+def test_the_order_skill_queues_research_with_its_own_subcommand():
+    text = (REPO / ".claude/skills/order/SKILL.md").read_text()
+    assert "nightshift.py research --title" in text
+    assert "--kind research" not in text

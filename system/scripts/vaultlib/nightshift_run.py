@@ -49,38 +49,40 @@ SELFTEST_TRIES = 3
 
 
 def _parser():
-    p = argparse.ArgumentParser(prog="nightshift.py")
+    # No abbreviations (confinement spec §3.1): an ask or allow rule matches the subcommand and flags as typed.
+    p = argparse.ArgumentParser(prog="nightshift.py", allow_abbrev=False)
     sub = p.add_subparsers(dest="cmd")
-    sub.add_parser("tick")
-    sub.add_parser("record-usage").add_argument("stream")
-    a = sub.add_parser("add")
+    cmd = lambda name: sub.add_parser(name, allow_abbrev=False)
+    cmd("tick")
+    cmd("record-usage").add_argument("stream")
+    a, r = cmd("add"), cmd("research")   # research is its own subcommand so it can have its own ask rule (#317)
     a.add_argument("--kind", choices=["plan", "research"], required=True)
-    a.add_argument("--title", required=True)
-    a.add_argument("--partition", required=True)
-    a.add_argument("--repo")
-    a.add_argument("--base")
+    for s in (a, r):
+        s.add_argument("--title", required=True)
+        s.add_argument("--partition", required=True)
+        s.add_argument("--repo")
+        s.add_argument("--base")
+        g = s.add_mutually_exclusive_group()
+        g.add_argument("--now", action="store_true")
+        g.add_argument("--at", metavar="HH:MM")
+        g.add_argument("--window", action="store_true")
+        s.add_argument("--budget")
+        s.add_argument("--model", default="sonnet")
     a.add_argument("--pr-base", default="master")
     a.add_argument("--plan")
     a.add_argument("--tasks")
     a.add_argument("--verify", action="append", default=[])
-    a.add_argument("--brief-file")
-    a.add_argument("--output")
-    a.add_argument("--host", action="append", default=[])
-    g = a.add_mutually_exclusive_group()
-    g.add_argument("--now", action="store_true")
-    g.add_argument("--at", metavar="HH:MM")
-    g.add_argument("--window", action="store_true")
-    a.add_argument("--budget")
-    a.add_argument("--model", default="sonnet")
-    c = sub.add_parser("check")
-    c.add_argument("note")
-    sub.add_parser("list").add_argument("--json", action="store_true")
-    x = sub.add_parser("cancel")
-    x.add_argument("id")
-    r = sub.add_parser("report")
-    r.add_argument("date", nargs="?")
-    r.add_argument("--json", action="store_true")
-    sub.add_parser("selftest")
+    for s in (r, a):   # add parses them so an old `add --kind research …` gets its refusal, not a usage error
+        s.add_argument("--brief-file")
+        s.add_argument("--output")
+        s.add_argument("--host", action="append", default=[])
+    cmd("check").add_argument("note")
+    cmd("list").add_argument("--json", action="store_true")
+    cmd("cancel").add_argument("id")
+    rp = cmd("report")
+    rp.add_argument("date", nargs="?")
+    rp.add_argument("--json", action="store_true")
+    cmd("selftest")
     return p
 
 
@@ -918,24 +920,24 @@ def tick(ctx: Ctx) -> int:
     return pool.rc
 
 
-def _add(ctx: Ctx, a) -> int:
+def _add(ctx: Ctx, a, kind: str) -> int:
     item_id = ni.new_id(a.title, ctx.local)
-    fm = {"type": "nightshift_item", "id": item_id, "partition": a.partition, "kind": a.kind, "state": "queued",
+    fm = {"type": "nightshift_item", "id": item_id, "partition": a.partition, "kind": kind, "state": "queued",
           "queued_at": ctx.local.isoformat(), "start": "at" if a.at else ("window" if a.window else "now"),
-          "budget": a.budget or ("4h" if a.kind == "plan" else "1h"), "model": a.model}
+          "budget": a.budget or ("4h" if kind == "plan" else "1h"), "model": a.model}
     if a.at:
         hh, mm = (int(x) for x in a.at.split(":"))
         start = ctx.local.replace(hour=hh, minute=mm, second=0, microsecond=0)
         fm["start_at"] = (start if start > ctx.local else start + timedelta(days=1)).isoformat()
-    if a.kind == "plan":
+    if kind == "plan":
         fm.update(repo=a.repo, base=a.base, pr_base=a.pr_base, plan=a.plan, tasks=a.tasks, verify=a.verify)
         body = ""
     else:
         fm.update(output=a.output, hosts=a.host, repo=a.repo, base=a.base)
         body = Path(a.brief_file).read_text(encoding="utf-8") if a.brief_file else ""
-    fm = {k: v for k, v in fm.items() if v not in (None, "", [])} | ({"verify": a.verify} if a.kind == "plan" else {})
+    fm = {k: v for k, v in fm.items() if v not in (None, "", [])} | ({"verify": a.verify} if kind == "plan" else {})
     errs = nc.check(ctx.vault, fm, body)
-    if not errs and a.kind == "research":   # owner-set order_hosts are config and are not resolved (§3.2)
+    if not errs and kind == "research":   # owner-set order_hosts are config and are not resolved (§3.2)
         errs = [e for problems in nc.resolve_problems(fm.get("hosts") or []) for e in problems]
     if errs:
         for e in errs:
@@ -958,8 +960,11 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
         return 0 if exc.code == 0 else 2
     ctx = Ctx(vault, now)
     cmd = a.cmd or "tick"
-    if cmd == "add":
-        return _add(ctx, a)
+    if cmd == "add" and a.kind == "research":
+        print("not ready: use nightshift.py research for a research order")
+        return 2
+    if cmd in ("add", "research"):
+        return _add(ctx, a, "plan" if cmd == "add" else "research")
     if cmd == "check":
         fm, body = ni.load(a.note)
         errs = nc.check(vault, fm, body, Path(a.note).resolve())
