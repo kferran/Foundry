@@ -10,7 +10,8 @@ Which way of adding meaning-based retrieval to the Foundry's index fits its cons
 
 ## Scope
 
-- Options to compare, at least: embeddings stored in SQLite (`sqlite-vec` or a plain table with cosine in Python) computed by a local model (a small sentence-transformers or GGUF model through a local runtime) or by an API at index time only; Khoj as a sidecar with its Obsidian plugin; Basic Memory's approach (Markdown as source, SQLite index, MCP server); keeping lexical search and improving it (synonym expansion from `aliases`, better `related` ranking).
+- Options to compare, at least: embeddings stored in SQLite (`sqlite-vec` or a plain table with cosine in Python) computed by a local model (a small sentence-transformers or GGUF model through a local runtime) or by an API at index time only; Khoj as a sidecar with its Obsidian plugin; Basic Memory's approach (Markdown as source, SQLite index, MCP server); keeping lexical search and improving it (synonym expansion from `aliases`, better `related` ranking); claude-mem (`github.com/thedotmack/claude-mem`: SQLite FTS5 plus Chroma, an observer model that compresses tool activity, and MCP recall in three steps (`search`, then `timeline`, then `get_observations`)), judged as a source of patterns and not as a dependency (added 2026-10-31, owner; its patterns are #438 and #439).
+- For claude-mem, also answer: whether its three-step recall over the existing FTS5 index (#439) gets most of the gain without embeddings, and which of its parts would break a Foundry rule (data leaving the machine, one store across partitions, hooks firing in headless runs).
 - For each: what runs where (index time vs. query time, network or not), the dependency it adds, how partition walls are kept, what `related` would return differently, and the cost in disk, time and setup steps.
 - Sources: the Foundry's `vaultlib/index.py` and `retrieve.py` (read `template` at the default branch under `code/`), the projects' own documentation, and no more than five web pages per option.
 - Web hosts: `github.com`, `docs.khoj.dev`, `pypi.org`, `sqlite.org`, `huggingface.co`.
@@ -30,7 +31,7 @@ No recall injection is built until shadow recall (recall computed and logged for
 ## Queue line (for the Foreman session)
 
 ```
-system/scripts/nightshift.py add --kind research --title "Semantic recall options for the index" --partition shared \
+system/scripts/nightshift.py research --title "Semantic recall options for the index" --partition shared \
   --brief-file docs/superpowers/specs/2026-10-11-semantic-recall-research-brief.md \
   --output wiki/shared/summaries/SemanticRecallOptions.md \
   --host github.com --host docs.khoj.dev --host pypi.org --host sqlite.org --host huggingface.co \
