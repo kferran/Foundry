@@ -233,13 +233,39 @@ class CloneError(RuntimeError):
     """A template item's base could not be fetched from the template remote."""
 
 
+class BaseMoved(Exception):
+    """The plan's base resolves to another commit than the one recorded when the owner queued it (#321)."""
+
+
+def _base_sha(ctx: Ctx, fm: dict) -> str:
+    """The commit a plan order's base names now: in its codebase, or on template_remote for `template`; "" when it
+    cannot be read."""
+    if fm.get("repo") == "template":
+        url = str(nc.config(ctx.vault).get("template_remote") or "")
+        if not url or url.startswith("-"):
+            return ""
+        opts, env = nc.remote_git(url)
+        try:
+            r = subprocess.run(["git", *opts, "ls-remote", url, f"refs/heads/{fm['base']}"], capture_output=True,
+                               text=True, env=env, timeout=120)
+        except subprocess.TimeoutExpired:
+            return ""
+        return r.stdout.split()[0] if r.returncode == 0 and r.stdout.split() else ""
+    src = nc.source(ctx.vault, fm.get("repo"))
+    return nc.git(src, "rev-parse", "--verify", "--quiet", f"{fm['base']}^{{commit}}").stdout.strip() if src else ""
+
+
 def _clone(ctx: Ctx, fm: dict) -> Path:
     clone = ctx.workspace / f"nightshift-{fm['id']}"
     template = fm["repo"] == "template"
     if clone.exists():
         if not template or nc.git(clone, "rev-parse", "--verify", "--quiet", "refs/remotes/base").returncode == 0:
-            return clone
+            return clone   # a reused clone is not checked again (§3.5)
         shutil.rmtree(clone)   # half-built by a killed tick: start again
+    if fm.get("base_sha") and (now := _base_sha(ctx, fm)) and now != fm["base_sha"]:
+        # An unreadable base ("") goes on to the fetch below, which fails with its own reason.
+        raise BaseMoved(f"the base {fm['base']} moved since {fm['id']} was queued ({fm['base_sha'][:7]} → {now[:7]}); "
+                        f"read the plan at the new base, then run nightshift.py requeue {fm['id']}")
     ctx.workspace.mkdir(parents=True, exist_ok=True)
     branch = f"order/{fm['id']}"
     if template:
@@ -652,6 +678,8 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     if fm["kind"] == "plan":
         try:
             cwd = _clone(ctx, fm)
+        except BaseMoved as exc:
+            return _finish(ctx, path, fm, idir, None, {"state": "blocked", "reason": "base moved", "needs": [str(exc)]})
         except CloneError as exc:   # ends now, with a report row and a Needs-you line, and frees the queue
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
                 f"Push {fm['base']} to the template remote, then queue {fm['id']} again ({exc})"]})
@@ -939,6 +967,8 @@ def _add(ctx: Ctx, a, kind: str) -> int:
     errs = nc.check(ctx.vault, fm, body)
     if not errs and kind == "research":   # owner-set order_hosts are config and are not resolved (§3.2)
         errs = [e for problems in nc.resolve_problems(fm.get("hosts") or []) for e in problems]
+    if not errs and kind == "plan" and (sha := _base_sha(ctx, fm)):
+        fm["base_sha"] = sha   # the commit the owner approved; the first clone checks it (§3.5)
     if errs:
         for e in errs:
             print(f"not ready: {e}")

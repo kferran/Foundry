@@ -1407,3 +1407,59 @@ def test_the_order_skill_queues_research_with_its_own_subcommand():
     text = (REPO / ".claude/skills/order/SKILL.md").read_text()
     assert "nightshift.py research --title" in text
     assert "--kind research" not in text
+
+
+def move_remote_base(tmp, branch="feat/x"):
+    """Push one more commit to the template remote's branch; returns the new commit."""
+    w = tmp / f"mover-{len(list(tmp.glob('mover-*')))}"
+    git(tmp, "clone", "-q", "-b", branch, str(tmp / "remote.git"), str(w))
+    git(w, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-q", "--allow-empty", "-m", "moved")
+    git(w, "push", "-q", "origin", branch)
+    return git(w, "rev-parse", "HEAD").strip()
+
+
+def test_add_records_base_sha(env, tmp_path):
+    # confinement spec §3.5 (#321): the commit the owner approved is the one the plan runs on
+    vault, tmp = env
+    assert add(vault, "--at", "22:00") == 0
+    assert only_item(vault)[1]["base_sha"] == git(tmp / "remote.git", "rev-parse", "feat/x").strip()
+    path, _ = only_item(vault)
+    path.unlink()
+    codebase_item(vault, tmp_path, ["true"])
+    from test_nightshift_check import registered  # noqa: F401  (the clone codebase_item made)
+    assert only_item(vault)[1]["base_sha"] == git(tmp_path / "cb" / "shop", "rev-parse", "main").strip()
+
+
+def test_a_moved_base_blocks_the_order(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    new = move_remote_base(tmp)
+    assert nr.main(["tick"], vault, NOW) == 1
+    now, _ = ni.load(path)
+    assert (now["state"], now["reason"]) == ("blocked", "base moved")
+    out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
+    assert out["needs"][0] == (f"the base feat/x moved since {fm['id']} was queued ({fm['base_sha'][:7]} → {new[:7]}); "
+                               f"read the plan at the new base, then run nightshift.py requeue {fm['id']}")
+    assert not (tmp / "ws" / f"nightshift-{fm['id']}").exists()
+
+
+def test_a_note_without_base_sha_runs(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ni.update(path, base_sha=None)   # queued before this change
+    move_remote_base(tmp)
+    nr.main(["tick"], vault, NOW)
+    assert (rep.item_dir(vault, fm["id"]) / "settings.json").is_file()   # the session started
+
+
+def test_a_reused_clone_is_not_checked_again(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    nr._clone(nr.Ctx(vault, NOW), fm)   # attempt 1 made the clone
+    move_remote_base(tmp)
+    nr.main(["tick"], vault, NOW)
+    assert ni.load(path)[0].get("reason") != "base moved"
+    assert (rep.item_dir(vault, fm["id"]) / "settings.json").is_file()
