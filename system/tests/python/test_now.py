@@ -127,11 +127,11 @@ def test_add_writes_the_default_clock(vault):
 
 
 def test_only_a_named_date_within_30_days_gives_the_short_clock():
-    # #166 clock spec §4, review ruling: a date gives since + 3 only when it falls within 30 days of since (a DTCC
+    # #166 clock spec §4, review ruling: a date gives since + 3 only when it falls within 30 days of since (a clearing-house
     # deadline months out keeps since + 30); a date inside a URL or a path does not count; a date with a time does.
     short, long = "2026-10-18", "2026-11-14"
-    for statement, want in (("DTCC: Release notes ([[dtcc-r]]) — Production 2026-10-25 (a1)", short),
-                            ("DTCC: Release notes ([[dtcc-r]]) — Production 2027-01-13 (a1)", long),
+    for statement, want in (("clearing-house: Release notes ([[clearinghouse-r]]) — Production 2026-10-25 (a1)", short),
+                            ("clearing-house: Release notes ([[clearinghouse-r]]) — Production 2027-01-13 (a1)", long),
                             ("Follow up on 2026-10-01", long), ("Due 2026-11-14", short), ("on 2026-10-20.", short),
                             ("Call at 2026-10-20T09:00", short), ("See https://x.example/blog/2026-10-20/post", long),
                             ("Read briefings/2026-10-20.md", long), ("Open 2026-10-20.md", long),
@@ -481,22 +481,22 @@ def test_a_reopened_line_loses_its_stamp():
 
 def test_seed_turns_wikilinks_into_plain_text(vault):
     prepare(vault)
-    write(vault, "briefings/2026-10-08.md", "### 1. Objectives\n- [ ] DTCC: Change ([[dtcc-c1|C1]]) and [[Plan]]\n### 2.\n")
+    write(vault, "briefings/2026-10-08.md", "### 1. Objectives\n- [ ] clearing-house: Change ([[clearinghouse-c1|C1]]) and [[Plan]]\n### 2.\n")
     now.seed(vault, "work", TODAY)
-    assert now.open_lines(page(vault)) == ["- [ ] owed: DTCC: Change (C1) and Plan (since 2026-10-08)"]
+    assert now.open_lines(page(vault)) == ["- [ ] owed: clearing-house: Change (C1) and Plan (since 2026-10-08)"]
 
 
 def test_seed_takes_the_previous_briefs_open_objectives_once(vault):
     prepare(vault)
     write(vault, "briefings/archive/2026-10/2026-10-07.md",
           "---\ntype: briefing\n---\n### 1. Active Objectives\n- [ ] **Ask** about the 409 _(open since 2026-10-01, 6 days)_\n"
-          "- [ ] **stale** **Old** thing _(open since 2026-09-20)_\n- [x] **Done**\n- [ ] DTCC: Change ([[c1]])\n"
+          "- [ ] **stale** **Old** thing _(open since 2026-09-20)_\n- [x] **Done**\n- [ ] clearing-house: Change ([[c1]])\n"
           "### 2. Unavailable Sources\n- [ ] not an objective\n")
     assert now.seed(vault, "work", "2026-10-09") == 3
     assert now.open_lines(page(vault)) == [
         "- [ ] owed: **Ask** about the 409 (since 2026-10-01)",
         "- [ ] owed: **Old** thing (since 2026-09-20)",
-        "- [ ] owed: DTCC: Change (c1) (since 2026-10-07)"]
+        "- [ ] owed: clearing-house: Change (c1) (since 2026-10-07)"]
     assert now.seed(vault, "work", "2026-10-09") == 0
 
 

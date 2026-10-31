@@ -96,7 +96,7 @@ In `setup.bats`, remove `hyprctl` from the stub list and every expectation; rena
 ```
 
 - [ ] **Step 2: Run** `system/scripts/test.sh system/tests/units.bats`. Expected: both FAIL (05:30 rendered).
-- [ ] **Step 3: Implement.** In `install_units.sh` after `dtcc_time`:
+- [ ] **Step 3: Implement.** In `install_units.sh` after `clearinghouse_time`:
 
 ```bash
 t=$(( (10#$bh * 60 + 10#$bm + 1395) % 1440 ))

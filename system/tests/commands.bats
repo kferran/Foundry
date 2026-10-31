@@ -1264,7 +1264,8 @@ change_problems() {
 
 @test "changes/CHANGELOG.md is frozen history, and no root CHANGELOG.md comes back (changes folder spec §3.2)" {
   # A branch cut before the move carries its CHANGELOG edit here through git's rename detection: it fails this check.
-  [ "$(sha256sum changes/CHANGELOG.md | cut -d ' ' -f 1)" = 28b6caadf83ed72158747b8c371e869cada10655ab0cfe073e808cbf5fa8fb81 ]
+  # Re-pinned once, 2026-10-31: employer and clearing-house names scrubbed from the history page (#429).
+  [ "$(sha256sum changes/CHANGELOG.md | cut -d ' ' -f 1)" = 7bee31dd8544c5d83697bb88bb9584acba151bf6c672a464ba157fa693f87b7d ]
   [ ! -e CHANGELOG.md ]
 }
 

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Severity table (spec §2), verbatim: now = foreman, orders, sync, update, rca, intake, triage (as a count); brief = commit_runs, smoke, calendar, meetings, handoffs, telemetry, dtcc, memory; never = notify. Untagged or unknown tag = brief.
+- Severity table (spec §2), verbatim: now = foreman, orders, sync, update, rca, intake, triage (as a count); brief = commit_runs, smoke, calendar, meetings, handoffs, telemetry, clearinghouse, memory; never = notify. Untagged or unknown tag = brief.
 - The once-a-day dedupe and the 200-character cut stay.
 - Settings change (one allow rule): feature lane, live acceptance before merge.
 - bats ruling R1; template rule (no names, hosts, user paths).
@@ -58,7 +58,7 @@ TAGS = {
     "meetings": ("the meetings fetch", "brief"),
     "handoffs": ("the Jira handoffs fetch", "brief"),
     "telemetry": ("the telemetry fetch", "brief"),
-    "dtcc": ("the DTCC watcher", "brief"),
+    "clearinghouse": ("the clearing-house watcher", "brief"),
     "memory": ("the memory hooks", "brief"),
     "notify": ("the notifier itself", "never"),
 }

@@ -439,7 +439,7 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
 }
 
 @test "a unit template's {{PRE_BRIEF_TIME}} is 30 minutes before the brief (extensions spec §3)" {
-  run grep -c 'DTCC_TIME' "$REPO/system/scripts/install_units.sh"
+  run grep -c 'clearing-house_TIME' "$REPO/system/scripts/install_units.sh"
   [ "$output" = 0 ]
   use_extension demo
   run "$IU"

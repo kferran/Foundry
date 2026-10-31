@@ -81,7 +81,7 @@ NOW = datetime(2026, 10, 6, 21, 0, tzinfo=timezone.utc)
 
 
 def plan_fm(**extra):
-    fm = {"type": "nightshift_item", "id": "2026-10-06-dtcc-watcher", "partition": "work", "kind": "plan",
+    fm = {"type": "nightshift_item", "id": "2026-10-06-clearinghouse-watcher", "partition": "work", "kind": "plan",
           "state": "queued", "queued_at": NOW.isoformat(), "start": "window", "budget": "4h", "model": "sonnet",
           "repo": "template", "base": "feat/x", "pr_base": "master", "plan": "docs/p.md", "tasks": "1-8",
           "verify": ["python3 -m pytest -q"]}
@@ -90,14 +90,14 @@ def plan_fm(**extra):
 
 
 def test_ids_and_budgets():
-    assert ni.new_id("DTCC watcher (phase 1)", NOW) == "2026-10-06-dtcc-watcher-phase-1"
+    assert ni.new_id("clearing-house watcher (phase 1)", NOW) == "2026-10-06-clearinghouse-watcher-phase-1"
     assert ni.budget_seconds("4h") == 14400 and ni.budget_seconds("90m") == 5400
     with pytest.raises(ValueError):
         ni.budget_seconds("4 hours")
 
 
 def test_render_validates_and_round_trips(vault: Path):
-    path = ni.note_path(vault, "work", "2026-10-06-dtcc-watcher")
+    path = ni.note_path(vault, "work", "2026-10-06-clearinghouse-watcher")
     ni.save(path, plan_fm(), "free note\n")
     schemas = schema.load_schemas(vault)
     rel = path.relative_to(vault).as_posix()
@@ -407,7 +407,7 @@ def test_plan_errors(vault_repo):
 
 
 def test_research_brief(vault_repo):
-    fm = plan_fm(kind="research", output="wiki/work/concepts/Answer.md", hosts=["www.dtcc.com"])
+    fm = plan_fm(kind="research", output="wiki/work/concepts/Answer.md", hosts=["www.clearinghouse.example"])
     assert nc.check(vault_repo, fm, BRIEF) == []
     assert any("## Done when" in e for e in nc.check(vault_repo, fm, BRIEF.replace("## Done when", "## Done")))
     assert any("output" in e for e in nc.check(vault_repo, {**fm, "output": "wiki/personal/x.md"}, BRIEF))
@@ -787,14 +787,14 @@ FX = REPO / "system" / "tests" / "fixtures" / "nightshift"
 
 def test_profiles_are_locked_down(vault: Path):
     for kind in ("plan", "research"):
-        p = ss.profile(REPO, kind, ["registry.npmjs.org"], ["www.dtcc.com"] if kind == "research" else [])
+        p = ss.profile(REPO, kind, ["registry.npmjs.org"], ["www.clearinghouse.example"] if kind == "research" else [])
         sb = p["sandbox"]
         assert sb["enabled"] is True and sb["allowUnsandboxedCommands"] is False
         assert sb["network"]["strictAllowlist"] is True and "registry.npmjs.org" in sb["network"]["allowedDomains"]
         assert all(not d.startswith("~") for d in sb["filesystem"]["denyRead"])
         assert any(d.endswith("/.ssh") for d in sb["filesystem"]["denyRead"])
         assert p["disableAllHooks"] is True
-    assert "WebFetch(domain:www.dtcc.com)" in ss.profile(REPO, "research", [], ["www.dtcc.com"])["permissions"]["allow"]
+    assert "WebFetch(domain:www.clearinghouse.example)" in ss.profile(REPO, "research", [], ["www.clearinghouse.example"])["permissions"]["allow"]
 
 
 def test_command_line():
@@ -1456,7 +1456,7 @@ def env(vault: Path, tmp_path: Path, monkeypatch):
 
 
 def add(vault, *extra):
-    return nr.main(["add", "--kind", "plan", "--title", "dtcc watcher", "--partition", "work", "--repo", "template",
+    return nr.main(["add", "--kind", "plan", "--title", "clearinghouse watcher", "--partition", "work", "--repo", "template",
                     "--base", "feat/x", "--plan", "docs/p.md", "--tasks", "1-2", "--verify", "test -f done.txt", *extra],
                    vault, NOW)
 
@@ -2249,15 +2249,15 @@ https://claude.ai/code/session_01UN5uVRJuDkUDmqcXGSx4XM"
 - [ ] **Step 2:** Set `nightshift_workspace: "~/code/worktrees"` in `system/config.md` (machine-local). For any Bitbucket codebase, set `nightshift_pr: "bitbucket-link"` and its `nightshift_hosts` in its `system/codebases/<name>.md`, and commit that file.
 - [ ] **Step 3:** `system/scripts/nightshift.py selftest` → `sandbox ok`.
 - [ ] **Step 4:** One research item `--now` with a one-paragraph brief whose output is a scratch note; watch it reach `done`, then retire the note (`status: deprecated`).
-- [ ] **Step 5:** Queue the first real job, the DTCC watcher plan, after the user's yes:
+- [ ] **Step 5:** Queue the first real job, the clearing-house watcher plan, after the user's yes:
 
 ```bash
-system/scripts/nightshift.py add --kind plan --title "DTCC change watcher" --partition work --repo template \
-  --base feat/dtcc-watch --pr-base master --plan docs/superpowers/plans/2026-10-06-dtcc-change-watcher.md \
+system/scripts/nightshift.py add --kind plan --title "clearing-house change watcher" --partition work --repo template \
+  --base feat/clearinghouse-watch --pr-base master --plan docs/superpowers/plans/2026-10-06-clearinghouse-change-watcher.md \
   --tasks 1-8 --verify "python3 -m pytest system/tests/python -q" \
-  --verify "bats system/tests/dtcc_watch.bats system/tests/prep.bats system/tests/nightshift.bats"
+  --verify "bats system/tests/clearinghouse_watch.bats system/tests/prep.bats system/tests/nightshift.bats"
 ```
 
-`verify` lists the suites the DTCC plan touches, not all of `system/tests`: a pre-existing failure elsewhere on the template (such as the known `headless.bats` regression) would otherwise block delivery of unrelated work.
+`verify` lists the suites the clearing-house plan touches, not all of `system/tests`: a pre-existing failure elsewhere on the template (such as the known `headless.bats` regression) would otherwise block delivery of unrelated work.
 
-The DTCC plan's Task 8 pushes and opens its own PR; the runner skips that step (prompt contract) and opens the PR itself.
+The clearing-house plan's Task 8 pushes and opens its own PR; the runner skips that step (prompt contract) and opens the PR itself.

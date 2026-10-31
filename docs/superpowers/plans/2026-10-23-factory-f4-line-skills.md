@@ -14,7 +14,7 @@
 
 - Issue #309 stays open (`connector-probe`, `live-acceptance` come later). PR bodies say "Part of #309". Merge nothing and enable no auto-merge.
 - Template stays generic: no hostnames, user paths, remote URLs, account IDs, or employer, client, codebase or people names, in the skills, the scaffold template and its test seeds too.
-- Core-clean (`vault_integrity.bats`): every tracked file outside `docs/`, `CHANGELOG.md`, `extensions/` and `system/tests/` must not match `dtcc|sentry|kusto|azure|\bjira\b|atlassian`. That covers both `SKILL.md`s, `new_source.py`, `review_diff.py`, the whole template folder and FOUNDRY.md. Say "the handoffs extension's server table", never the vendor.
+- Core-clean (`vault_integrity.bats`): every tracked file outside `docs/`, `CHANGELOG.md`, `extensions/` and `system/tests/` must not match `clearinghouse|sentry|kusto|azure|\bjira\b|atlassian`. That covers both `SKILL.md`s, `new_source.py`, `review_diff.py`, the whole template folder and FOUNDRY.md. Say "the handoffs extension's server table", never the vendor.
 - Retired names (`vault_integrity.bats` `OLD`): no `fleet`, `crew`, `task_id`, `chief of staff` and the rest in `.claude/`.
 - Scripts are stdlib Python plus `vaultlib` (put `<repo>/system/scripts` on `sys.path`); no new dependency. Run as `python3 .claude/skills/<skill>/<script>`.
 - Name rule: `[a-z][a-z_]*`, no digits (lib_connector.sh's reason-prefix strip and vaultlib/alerts.py's tag line read names as `[a-z_]+`). The checker is `<name>_check.py`, the fetch `<name>_fetch.sh`, the suite `tests/<name>.bats`, the timeout `<NAME>_TIMEOUT` (default 300), `FETCH_TAG=<name>`, `FETCH_NAME=<name>_fetch`.

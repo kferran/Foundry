@@ -1,14 +1,14 @@
 # The Foundry for a busy CTO: completeness and feature assessment
 
 **Date:** 2026-10-17
-**Read:** the template at `31edc92` (master, 2026-10-17) (roadmap, next-phase plan of 2026-10-15, specs, plans, `system/`, `extensions/`, `.claude/`), open issues and PRs on `kferran/foundry`, and the live vault snapshot in `porchos/` (last sync 2026-10-15, so live figures are two days old).
+**Read:** the template at `31edc92` (master, 2026-10-17) (roadmap, next-phase plan of 2026-10-15, specs, plans, `system/`, `extensions/`, `.claude/`), open issues and PRs on `kferran/foundry`, and the live vault snapshot in `vault/` (last sync 2026-10-15, so live figures are two days old).
 **Builds on:** `docs/reviews/2026-10-11-system-assessment.md` (comparison set and scorecard) and `docs/superpowers/2026-10-15-next-phase-plan.md`. This note does not repeat their market comparison.
 
 ## 1. Verdict
 
 - **Roadmap:** the build is far ahead of the plan. Every numbered plan except 5, 7 and Foreman v2 is complete, and 10-15/10-16 shipped most of next-phase phase 1, half of phase 2, all three extension moves, chat triage and parallel Work Orders. The roadmap and several spec status lines now lag the code.
 - **Simplification program:** step 3 is done and core has a pinned budget (13,200 script lines, 14 schemas). Step 4 is behind: `CLAUDE.md`, schemas and the brief prompt are above target, and the live brief and Now page grew after the targets were set.
-- **As a CTO's agent team:** strong on engineering operations (production errors, RCA, Work Orders to PRs, handoffs, DTCC) and on safety. Weak on the parts of the job that are about people and time: no org model or 1:1 prep, no capture channel, no intraday update, no delegation tracking beyond Jira, and a brief too long to read in the five minutes a CTO has.
+- **As a CTO's agent team:** strong on engineering operations (production errors, RCA, Work Orders to PRs, handoffs, clearing-house) and on safety. Weak on the parts of the job that are about people and time: no org model or 1:1 prep, no capture channel, no intraday update, no delegation tracking beyond Jira, and a brief too long to read in the five minutes a CTO has.
 
 ## 2. Roadmap completeness
 
@@ -16,7 +16,7 @@
 |---|---|---|
 | Plans 0–4b, 6, 8a–e, 9, 10, 11a, 11b | Complete | Plans, outcomes and acceptance files present |
 | Nightshift, Foreman v1 (Work Orders) | Complete | `nightshift.py`, `/order` skill |
-| DTCC phase 1, Active Projects, Notes to wiki, preference notes | Complete | Code and roadmap rows |
+| clearing-house phase 1, Active Projects, Notes to wiki, preference notes | Complete | Code and roadmap rows |
 | Now page phase 1, Now clock, recall ranking | Complete | `now.py overdue/set/review`, commits 10-15 (#211) |
 | Inbox triage (Gmail) and chat triage (Slack, #222) | Complete | `triage.py`: each tick searches mail and every Slack channel the owner is in; tickets phase not started |
 | Parallel Work Orders (#229), release notes in the brief, While you were away | Complete | Commits on 10-16 |
@@ -28,7 +28,7 @@
 | Telemetry escalation (item 11, #171) | Built; dependency half held (#217) | `telemetry_store.py`, `brief/prep.sh` |
 | Yesterday in the brief (#179) | Built | `yesterday.md` prep |
 | CLAUDE.md prune (120-line step) | Built 10-15; roadmap says "owner's review" | `CLAUDE.md` is 77 lines |
-| Simplify step 3: extensions | **Complete** (roadmap row still says in progress) | `extensions/handoffs`, `extensions/telemetry`; DTCC moved to a vault-only `extensions/dtcc/` (`9e3d45c`); core budget test (`f2a99d7`) |
+| Simplify step 3: extensions | **Complete** (roadmap row still says in progress) | `extensions/handoffs`, `extensions/telemetry`; clearing-house moved to a vault-only `extensions/clearinghouse/` (`9e3d45c`); core budget test (`f2a99d7`) |
 | Phase 2: brief caps, size test, word count in CI | **Not built** | No caps in prep, no 8 KB fixture test |
 | Ingest evals (#218) | **Not built** | No `system/logs/evals/`, no `evals.bats` |
 | Simplify step 4 remainder | Not started | `brief.md` 2,478 words (1,682 on 10-11) |
@@ -59,7 +59,7 @@ What a CTO's support team does, against what The Foundry has today.
 
 | Job | Foundry today | Rating |
 |---|---|---|
-| Morning brief | Calendar, Now, alerts, telemetry, handoffs, DTCC, Active Projects, yesterday | Rich content, unreadable size |
+| Morning brief | Calendar, Now, alerts, telemetry, handoffs, clearing-house, Active Projects, yesterday | Rich content, unreadable size |
 | Reach the CTO | Slack notices for brief, debrief, failures, `now` alerts, incidents | Good (one-way) |
 | Capture from the CTO on the go | None (Slack captures not built; Notes block only at 05:00) | **Gap** |
 | Mail | Gmail triage: threads that need a reply become `owed` lines | Partial (no waiting-on, no drafts) |
@@ -70,7 +70,7 @@ What a CTO's support team does, against what The Foundry has today.
 | Delegation and follow-up | Now page `waiting` lines; Jira handoffs untouched 7 days | Partial (nothing for asks made in Slack, mail or meetings outside Jira) |
 | Decision log | `decisions` file for system decisions; no CTO decision register | **Gap** |
 | Strategy, OKRs, roadmap health | Active Projects lists; no OKR or portfolio roll-up (#112) | **Gap** |
-| Engineering health | Sentry/ADX errors, escalation, RCA to Jira, DTCC changes | Strong |
+| Engineering health | Sentry/ADX errors, escalation, RCA to Jira, clearing-house changes | Strong |
 | Delivery (PRs, releases, DORA-style signals) | Debrief lists your PRs and reviews from `gh`; main work codebase is on Bitbucket and not covered | Partial |
 | Coding agents | Work Orders: plan to PR unattended, verified, usage ceiling | Strong on GitHub repos; none on the Bitbucket codebase |
 | Research | Research Workcell, research Work Orders to findings notes | Good, unused for the two queued briefs |
@@ -85,7 +85,7 @@ Three Workcells (`coding`, `maintenance`, `research`) under the Foreman, dispatc
 
 ## 4. Recommendations, in order
 
-1. **Ship phase 2's caps and the 8 KB brief test** before the DTCC move. The brief and Now page are the main interface and both grew 10% in the last snapshot. Cap "Waiting on" (5 people), handoffs (90-day cutoff) and Active Projects (3 actions); run `now.py review` closures; enforce the 300-character Now line.
+1. **Ship phase 2's caps and the 8 KB brief test** before the clearing-house move. The brief and Now page are the main interface and both grew 10% in the last snapshot. Cap "Waiting on" (5 people), handoffs (90-day cutoff) and Active Projects (3 actions); run `now.py review` closures; enforce the 300-character Now line.
 2. **Update the roadmap rows that lag the code** (step 3, Tagging, CLAUDE.md prune, chat triage) and the connector health, quarantine and tag spec status lines.
 3. **Queue the two research Work Orders now.** They cost no attended time and phase 5 waits on the chat-gateway findings.
 4. **Build ingest evals (#218)** before #257 adds four new input formats to intake.

@@ -5,7 +5,7 @@
 
 ## 1. Problem and decisions
 
-Interactive sessions in a vault stop for permission on read-only status commands they run often: the gate, the Nightshift queue list, the telemetry and DTCC checks and the timer list. Sessions also chain shell commands, loop in the shell and redirect output, which defeats allow rules (a rule matches the literal command) and draws prompts. The owner's vault fixed both locally (vault commits d349b98 and ec89abd in `the owner's vault repository`): seven read-only allow rules in `.claude/settings.json` and a **Bash** line in `CLAUDE.md`. Both are generic, so they belong in the template, byte for byte, so the vault's next `update_template.sh` merge is clean.
+Interactive sessions in a vault stop for permission on read-only status commands they run often: the gate, the Nightshift queue list, the telemetry and clearing-house checks and the timer list. Sessions also chain shell commands, loop in the shell and redirect output, which defeats allow rules (a rule matches the literal command) and draws prompts. The owner's vault fixed both locally (vault commits d349b98 and ec89abd in `the owner's vault repository`): seven read-only allow rules in `.claude/settings.json` and a **Bash** line in `CLAUDE.md`. Both are generic, so they belong in the template, byte for byte, so the vault's next `update_template.sh` merge is clean.
 
 | Topic | Decision |
 |---|---|
@@ -25,7 +25,7 @@ The end of `permissions.allow` becomes:
       "Bash(system/scripts/nightshift.py list)",
       "Bash(system/scripts/telemetry_fetch.py --list)",
       "Bash(system/scripts/telemetry_fetch.py --check *)",
-      "Bash(system/scripts/dtcc_watch.py --check)",
+      "Bash(system/scripts/clearinghouse_watch.py --check)",
       "Bash(systemctl --user list-timers *)"
     ],
 ```
@@ -34,7 +34,7 @@ What each allows:
 - `verify_setup.sh`, with or without `--health`: runs the test suites and, with `--health`, the advisory live-state checks. It writes only test temp files under `.scratch/tmp`.
 - `nightshift.py list`: prints the queue.
 - `telemetry_fetch.py --list`: prints the configured sources. `--check <name>` tests one source with a read-only query (Sentry or ADX); the plan confirms what, if anything, it writes.
-- `dtcc_watch.py --check`: validates the map and its paths; no fetch.
+- `clearinghouse_watch.py --check`: validates the map and its paths; no fetch.
 - `systemctl --user list-timers <args>`: lists the user's timers.
 
 Rules without `*` match only that exact command. These apply to interactive sessions only; headless runs ignore project settings.

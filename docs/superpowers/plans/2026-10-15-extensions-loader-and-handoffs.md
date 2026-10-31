@@ -221,7 +221,7 @@ Tests: `smoke.bats`, `test_sources.py`.
   - `smoke_check.sh`: read `extensions.py smoke` into an array, then run `connector` or `check` for each entry, by its connector flag.
   - `sources.py`:
     - `CREDENTIALS` gets each enabled manifest's `sources` rows at call time.
-    - `report()` adds each enabled extension's source names before `dtcc`.
+    - `report()` adds each enabled extension's source names before `clearinghouse`.
     - A listed-but-missing extension reads `failed: other: extensions/<name>/ is missing`.
     - An extension that is not listed is not shown.
 - [ ] **Step 4: Run green.**
@@ -306,8 +306,8 @@ Tests:
 **Files:** Test `system/tests/vault_integrity.bats`.
 
 - [ ] **Step 1: Write the test.** `core names no vendor or customer outside its allowlist`. It greps every tracked file outside `docs/`, `extensions/`, `system/tests/` and `system/scripts/extensions.py` for:
-  - `dtcc`, `sentry`, `kusto`, `azure`, `\bjira\b`, `atlassian`, `gemini`, `google drive`, `slack`;
-  - the domains `dtcc.com`, `dtcclearning.com`, `atlassian.net` and `sentry.io`.
+  - `clearinghouse`, `sentry`, `kusto`, `azure`, `\bjira\b`, `atlassian`, `gemini`, `google drive`, `slack`;
+  - the domains `clearinghouse.example`, `learning.clearinghouse.example`, `atlassian.net` and `sentry.io`.
 
   Each hit must be in the test's own `ALLOW` list of `file:term` pairs. The list starts at today's hits, generated once by the plan executor and pasted in. Each move deletes its lines. Phase 4 is done when the list is empty.
 - [ ] **Step 2:** It passes on PR A, since the list equals today's hits. Then add one stray `jira` to a core file locally and see it fail. Revert that.
@@ -423,7 +423,7 @@ Tests:
 ## After this plan
 
 The next moves reuse the mechanism, one plan each (narrowed by the owner 2026-10-16, spec §7):
-1. DTCC (its map file becomes the switch's migration rule)
+1. clearing-house (its map file becomes the switch's migration rule)
 2. telemetry and RCA (`requires: [handoffs]`; `/rca` becomes a skill)
 
 Meetings, inbox triage, Slack notices and sync stay in core. The line budget test is set when the last move lands.
