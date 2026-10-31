@@ -73,12 +73,16 @@
       "Bash(git checkout -b:*)",
       "Bash(git switch -c:*)",
       "Bash(git fetch origin:*)",
-      "Bash(git merge --no-edit origin/master)"
+      "Bash(git merge --no-edit origin/master)",
+      "Bash(system/scripts/calendar_fetch.sh)",
+      "Bash(system/scripts/calendar_fetch.sh --check)",
+      "Bash(system/scripts/extensions.py smoke)",
+      "Bash(system/scripts/nightshift.py list --json)"
     ],
     "deny": [
       "Read(~/.ssh/**)", "Read(~/.gnupg/**)",
       "Read(~/.claude/.credentials.json)", "Read(~/.claude.json)", "Read(~/.claude/settings*.json)",
-      "Read(~/.config/gcalcli/**)", "Read(//**/.env)", "Read(//**/.env.*)",
+      "Read(~/.config/gcalcli/**)", "Read(//**/.env)", "Read(//**/.env.*)", "Read(~/**/.env)", "Read(~/**/.env.*)",
       "Read(/wiki/*/private/**)", "Edit(/wiki/*/private/**)",
       "Read(/.scratch/**/wiki/*/private/**)", "Edit(/.scratch/**/wiki/*/private/**)"
     ],
