@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The roadmap moves to `docs/superpowers/roadmap.md` and covers the work since Plan 11 and the agreed order; the README summarizes status, links to the roadmap, and documents the Nightshift, the DTCC watcher and Active Projects.
+**Goal:** The roadmap moves to `docs/superpowers/roadmap.md` and covers the work since Plan 11 and the agreed order; the README summarizes status, links to the roadmap, and documents the Nightshift, the clearing-house watcher and Active Projects.
 
 **Architecture:** Documentation plus one test. The roadmap is the one detailed status table; the README keeps a short summary and links to it. A new bats test checks that every relative link in the README names a tracked file, so a moved file cannot leave a dead README link.
 
@@ -190,7 +190,7 @@ Replace with:
 ````text
 | **12. minutes plugin** | Separate public repo `kferran/minutes`, spec `docs/superpowers/specs/2026-10-06-minutes-design.md` there | The parts of Plan 11 not tied to the vault, as a Claude Code plugin with two skills: `meeting-notes` (Gemini Docs and `.vtt`/`.srt`/`.txt`/`.md` transcripts to a meeting note and a transcript note, with the safety cleaning; Python 3.9 standard library) and `confined-fetch` (one locked-down `claude -p` session allowed one MCP tool, its structured result on stdout; bash 3.2 and jq 1.6). Built in its own repo under this repo's process. Then a small plan here vendors both skills into `.claude/skills/` at a pinned tag with a checksum test, as for `humanizer`; the Foundry's own meeting code stays as it is | In progress in its own session in the `minutes` repository: spec rev 2 after an independent review and a re-review (approve with changes); rev 3, the owner's review and the plan next |
 | **The Nightshift** | `2026-10-06-nightshift-design.md` | Unattended runs of refined work: an approved plan (or a task range of one) ends in a pull request, a written research brief ends in a findings note. A deterministic runner on a 15-minute timer owns the queue, windows, budgets, verification, push and the morning report; each item runs in a fresh, confined `claude -p` session with no credential | Complete (2026-10-07): `2026-10-06-nightshift.md`; PRs #49, #50, #52 |
-| **DTCC change watcher, phase 1** | `2026-10-06-dtcc-change-watcher-design.md` | A daily, model-free fetch of DTCC I&RS pages, notices and the API catalog; one `dtcc_change` note per change, tied to the codebase paths it touches; a carried-forward checkbox block in the brief. Phase 2 (a model impact assessment) is later | Complete (2026-10-07): `2026-10-06-dtcc-change-watcher.md`; PR #51 |
+| **clearing-house change watcher, phase 1** | `2026-10-06-clearinghouse-change-watcher-design.md` | A daily, model-free fetch of clearing-house member pages, notices and the API catalog; one `clearinghouse_change` note per change, tied to the codebase paths it touches; a carried-forward checkbox block in the brief. Phase 2 (a model impact assessment) is later | Complete (2026-10-07): `2026-10-06-clearinghouse-change-watcher.md`; PR #51 |
 | **Briefing notes and archive** | No spec or plan (shipped from an in-chat design) | A 📝 Notes section the brief never edits; each brief moves earlier days to `briefings/archive/<YYYY-MM>/` | Complete (2026-10-07): PR #53; minors #54–#57 |
 | **Active Projects in the brief** | `2026-10-07-active-projects-design.md` | Optional `wiki/<partition>/ActiveProjects.md` lists; the brief shows each active project's next open actions and the decisions waiting, read by a script from the project page | Complete (2026-10-07): `2026-10-07-active-projects.md`; PR #66, issue #65 |
 | **Fixes from live use** | Issues the live vault logs on this repository | Small fixes found by running the real vault. Merged: #32, #34, #36, #45, #50, #58, #60. In review: the Nightshift pull requests opened 2026-10-08 (template issue fixes, telemetry identifiers). Next: fewer prompts (seven read-only allow rules in `.claude/settings.json` and the `CLAUDE.md` Bash line, byte for byte as in the vault); the Nightshift source fix (a `template` item resolves to the development clone or the remote, not the vault); the `/ingest` preference gap (design spec §6.21: digest Corrections never become `preference` notes) | Ongoing |
@@ -221,7 +221,7 @@ Write `.scratch/msg-2.txt`:
 ```text
 docs(roadmap): the work since Plan 11 and the agreed order
 
-Rows for the Nightshift, the DTCC watcher, the briefing archive, Active
+Rows for the Nightshift, the clearing-house watcher, the briefing archive, Active
 Projects, the fixes from live use, RCA-to-Jira, require-plan (parked)
 and the reorganization (#62); Sub-project 2 absorbs the Nightshift; a
 "Next, in order" list; the plan-numbering note moves here from the
@@ -298,7 +298,7 @@ Replace with:
 - Error telemetry from Sentry and Azure Data Explorer
 - Meetings: Gemini notes and dropped transcripts become meeting notes, tracked actions and searchable transcripts
 - The Nightshift: queued plans and research briefs run unattended overnight
-- DTCC change watcher (phase 1)
+- clearing-house change watcher (phase 1)
 - Active Projects in the brief, and an archive of past briefings
 
 **Next:** fewer permission prompts, a Nightshift fix, RCA-to-Jira (phase 1), preference notes from `/ingest`, then the Foreman orchestrator (Sub-project 2). Preferences (Plan 5) and style lint (Plan 7) wait for a few weeks of real use.
@@ -316,7 +316,7 @@ Edit 3 in `README.md`. Find:
 Replace with:
 
 ````text
-| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, a DTCC changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Earlier days' briefings and debriefs move to `briefings/archive/<YYYY-MM>/` |
+| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, a clearing-house changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Earlier days' briefings and debriefs move to `briefings/archive/<YYYY-MM>/` |
 ````
 
 Edit 4 in `README.md`. Find:
@@ -330,7 +330,7 @@ Replace with:
 ````text
 | `/backup` | Runs the gating suites (lint only on a client), commits each headless run on its own, then commits and pushes the rest according to `remote_mode` (through `vault_sync.sh` in `private`) |
 | `/nightshift add\|ask\|list\|cancel\|status` | Queues an approved plan (or a task range of one) or a research brief for an unattended run; lists, cancels and reports on queued items |
-| `/dtcc-watch [check\|status\|accept]` | Runs the DTCC change watcher by hand, checks its map, reports recent changes, or accepts held changes as the new baseline |
+| `/clearinghouse-watch [check\|status\|accept]` | Runs the clearing-house change watcher by hand, checks its map, reports recent changes, or accepts held changes as the new baseline |
 ````
 
 Edit 5 in `README.md`. Find:
@@ -346,7 +346,7 @@ Replace with:
 
 **The Nightshift.** `/nightshift` queues refined work for an unattended run: an approved plan, or a task range of one, or a research brief written with you. Queuing is your approval, and a readiness check refuses items that are not refined enough. `foundry-nightshift.timer` ticks every 15 minutes on a standalone machine or a server (never a client) and runs one due item at a time: in the nightly window (`nightshift_window`, default `22:00-05:00`, waiting while you are active), at a set time, or now. A plan item runs in a private clone under `nightshift_workspace`, is verified, pushed to a branch and ends in a pull request; it never merges or deploys. A research item reads its sources and writes one findings note. Each item runs in a fresh, confined `claude -p` session that holds no credential. The morning report, `system/logs/nightshift/<date>.md`, starts with a health banner, then "Needs you" (decisions only), which the brief carries forward. Queue notes live in `raw/<partition>/nightshift/`, tracked in your vault so an item queued on a client reaches the server.
 
-**DTCC change watcher.** It is for a codebase that integrates with DTCC Insurance & Retirement Services. `foundry-dtcc-watch.timer` runs `dtcc_watch.py` daily, 30 minutes before the brief. No model runs. It reads DTCC's public product pages, release dates, Important Notices and API catalog, and writes one `dtcc_change` note per change to `wiki/<partition>/changes/` with the codebase paths it touches. The brief lists each change as a checkbox that carries forward until you tick it. The watcher does nothing until your vault has `system/dtcc/map.yaml` (start from `system/dtcc/map.example.yaml`).
+**clearing-house change watcher.** It is for a codebase that integrates with a clearing house's member services. `foundry-clearinghouse-watch.timer` runs `clearinghouse_watch.py` daily, 30 minutes before the brief. No model runs. It reads the clearing house's public product pages, release dates, Important Notices and API catalog, and writes one `clearinghouse_change` note per change to `wiki/<partition>/changes/` with the codebase paths it touches. The brief lists each change as a checkbox that carries forward until you tick it. The watcher does nothing until your vault has `system/clearinghouse/map.yaml` (start from `system/clearinghouse/map.example.yaml`).
 
 **Active Projects.** An optional `wiki/<partition>/ActiveProjects.md` lists your project pages in priority order under `## Active`. Each morning, `active_projects.py` reads those pages, and the brief shows each project's next 3 open checkboxes and the open items under its "Decisions…" heading, as plain bullets. You tick items on the project page, so nothing is tracked twice.
 ````
@@ -362,7 +362,7 @@ Replace with:
 ````text
 .claude/skills/humanizer/     vendored humanizer v3.0.0 (MIT): /humanizer, headless self-edit
 .claude/skills/nightshift/    /nightshift: queue plans and research briefs for unattended runs
-.claude/skills/dtcc-watch/    /dtcc-watch: the DTCC change watcher by hand
+.claude/skills/clearinghouse-watch/    /clearinghouse-watch: the clearing-house change watcher by hand
 ````
 
 Edit 7 in `README.md`. Find:
@@ -375,7 +375,7 @@ Replace with:
 
 ````text
   telemetry/example.md        example error source (real sources are gitignored)
-  dtcc/map.example.yaml       example DTCC watch map (your map.yaml is tracked in your vault)
+  clearinghouse/map.example.yaml       example clearing-house watch map (your map.yaml is tracked in your vault)
   nightshift/                 session profiles for Nightshift plan and research runs
 ````
 
@@ -390,8 +390,8 @@ Replace with:
 
 ````text
                               vault_sync.sh, commit_runs.py, calendar_fetch.sh, meetings_fetch.sh, telemetry_fetch.py,
-                              nightshift.py, dtcc_watch.py, active_projects.py, ...
-  systemd/                    foundry-{intake,brief,debrief,focus,sync,telemetry,meetings,nightshift,dtcc-watch} unit templates (*.in)
+                              nightshift.py, clearinghouse_watch.py, active_projects.py, ...
+  systemd/                    foundry-{intake,brief,debrief,focus,sync,telemetry,meetings,nightshift,clearinghouse-watch} unit templates (*.in)
 ````
 
 Edit 9 in `README.md`. Find:
@@ -404,7 +404,7 @@ Replace with:
 
 ````text
 - Optional: the Azure CLI (`az`, logged in) for ADX error sources, and a read-only Sentry token for Sentry sources. Without them those sources stay off.
-- Optional: `pdftotext` (`poppler` on Arch, `poppler-utils` on Debian) for the DTCC change watcher, which reads the header of each notice's PDF.
+- Optional: `pdftotext` (`poppler` on Arch, `poppler-utils` on Debian) for the clearing-house change watcher, which reads the header of each notice's PDF.
 ````
 
 
@@ -427,7 +427,7 @@ docs(readme): status summary and the newer features
 
 The status table becomes a short "works today / next" summary that
 links to the roadmap. Daily use, the feature notes, the repository
-layout and Requirements cover the Nightshift, the DTCC watcher and
+layout and Requirements cover the Nightshift, the clearing-house watcher and
 Active Projects. The banner says the vault runs on a server and a
 client.
 ```

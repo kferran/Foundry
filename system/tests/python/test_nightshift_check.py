@@ -194,7 +194,7 @@ def test_research_may_name_a_repository_and_commit(vault_repo, tmp_path):
 
 
 def test_research_brief(vault_repo):
-    fm = plan_fm(kind="research", output="wiki/work/concepts/Answer.md", hosts=["www.dtcc.com"])
+    fm = plan_fm(kind="research", output="wiki/work/concepts/Answer.md", hosts=["www.clearinghouse.example"])
     assert nc.check(vault_repo, fm, BRIEF) == []
     assert any("## Done when" in e for e in nc.check(vault_repo, fm, BRIEF.replace("## Done when", "## Done")))
     assert any("output" in e for e in nc.check(vault_repo, {**fm, "output": "wiki/personal/x.md"}, BRIEF))

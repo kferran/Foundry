@@ -10,7 +10,7 @@ Five small issues from live use and the PR #53 review, in two files and their te
 
 | Issue | Problem | Decision |
 |---|---|---|
-| #59 | `/setup` phase 6b re-runs `install_units.sh` with no dry run and no yes, so re-running setup can install telemetry, Nightshift or DTCC units the user never approved. | Phase 6b follows phase 6a: `install_units.sh --dry-run`, show the units that would change, install on an explicit yes, report the `new`/`changed`/`unchanged`/`removed` lines. |
+| #59 | `/setup` phase 6b re-runs `install_units.sh` with no dry run and no yes, so re-running setup can install telemetry, Nightshift or clearing-house units the user never approved. | Phase 6b follows phase 6a: `install_units.sh --dry-run`, show the units that would change, install on an explicit yes, report the `new`/`changed`/`unchanged`/`removed` lines. |
 | #55 | When `briefings/archive/<YYYY-MM>/<name>` already exists, the brief says only `<name> not archived (<dest> exists)`, every day, with no way out. | The line says what to do: `briefings: <name> not archived (<dest> exists; merge the two copies, then delete briefings/<name>)`. Editing the archived copy from `/brief` (the issue's alternative) is out of scope. |
 | #56 | The archive's failure path (a move that fails) has no test, and the archive tests can fail when they straddle local midnight. | A test for the failure path; the date-sensitive tests skip when the date changes during the run. |
 | #54 | The first brief after an update that adds the archive moves every past briefing, and the next sync lints them all; nothing warns the user. | One README bullet under "Updating and uninstalling": run `system/scripts/lint_vault.sh` before such an update. |

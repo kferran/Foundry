@@ -13,7 +13,7 @@
 | Measure | 2026-10-11 | Target | Today |
 |---|---|---|---|
 | Lines under `system/` (no tests) | 11,097 | ~5,500 core | 13,331 |
-| Owner-specific lines (DTCC, telemetry, Jira, meetings) | ~3,170 | 0 in core | ~3,700 (~5,950 with sync and Work Orders) |
+| Owner-specific lines (clearing-house, telemetry, Jira, meetings) | ~3,170 | 0 in core | ~3,700 (~5,950 with sync and Work Orders) |
 | Required packages | 13 | 8 | 11 |
 | Setup decisions | ~25 | 3–5 | 5–7 |
 | Units on by default (standalone) | 7 | 3 | 4 (intake, brief, debrief, smoke) |
@@ -21,13 +21,13 @@
 | `CLAUDE.md` | 87 lines | ~45 | 88 |
 | Headless brief prompt | ~6,000 words | <2,000 | ~6,270 (`brief.md` 1,682 + humanizer 4,589), ~8,000 with `CLAUDE.md` |
 
-**Drafted and not built:** ingest evals (#28), alert tags and note tags (#158), DTCC sources (#140), telemetry escalation (#171, spec merged in #186), the Now clock (spec merged in #187), Slack captures, the `CLAUDE.md` prune.
+**Drafted and not built:** ingest evals (#28), alert tags and note tags (#158), clearing-house sources (#140), telemetry escalation (#171, spec merged in #186), the Now clock (spec merged in #187), Slack captures, the `CLAUDE.md` prune.
 
 **Open PRs:** #184 (smoke liveness and unit drift; touches `install_units.sh` and `update_template.sh`, so the owner merges it) and #130 (the audit document, draft).
 
 ## 2. What the live vault shows
 
-The live vault runs almost every feature: Work Orders, meetings, triage, preferences (since 10-14), the unattended update, Slack notices, handoffs, RCA filing, DTCC, five telemetry sources, and a server plus a client. The personal partition is empty.
+The live vault runs almost every feature: Work Orders, meetings, triage, preferences (since 10-14), the unattended update, Slack notices, handoffs, RCA filing, clearing-house, five telemetry sources, and a server plus a client. The personal partition is empty.
 
 | # | Finding | Evidence |
 |---|---|---|
@@ -114,7 +114,7 @@ The roadmap puts this before step 3 because step 3 moves ingest's neighbours and
 ### Phase 4: simplify step 3, extensions
 
 **Grilled 2026-10-15.** Decisions and the contract are in `specs/2026-10-15-extensions-design.md`. In short:
-- Three vendor-specific extensions move to tracked `extensions/<name>/` folders in the template: Jira handoffs, DTCC (vault-only, in the owner's vault), and telemetry with RCA (owner, 2026-10-16, spec §7 and §8). Meetings, inbox triage, Slack notices, two-machine sync and Work Orders stay in core.
+- Three vendor-specific extensions move to tracked `extensions/<name>/` folders in the template: Jira handoffs, clearing-house (vault-only, in the owner's vault), and telemetry with RCA (owner, 2026-10-16, spec §7 and §8). Meetings, inbox triage, Slack notices, two-machine sync and Work Orders stay in core.
 - Jira handoffs move first. The loader merged as #226.
 - One `extensions:` list turns them on.
 - The "done when" below is revised there: no vendor names in core (the core-clean test), 14 schemas or fewer, a line budget set after the three moves.
@@ -122,7 +122,7 @@ The roadmap puts this before step 3 because step 3 moves ingest's neighbours and
 The questions the grill answered:
 
 - The `extensions/<name>/` contract: units, scripts, schemas, a brief section file (from phase 2), skills, and an alert tag.
-- Order: DTCC (to a private repository), telemetry, Jira handoffs, meetings, then sync. Work Orders stay in core, off by default. Meetings carries the most core code: about 250 lines of meeting import inside `vaultlib/intake.py` and the `telemetry_source` lint rules inside `index.py`.
+- Order: clearing-house (to a private repository), telemetry, Jira handoffs, meetings, then sync. Work Orders stay in core, off by default. Meetings carries the most core code: about 250 lines of meeting import inside `vaultlib/intake.py` and the `telemetry_source` lint rules inside `index.py`.
 - **Alert tags (#158)** land with the first extension, since each extension declares its tags. Note tags wait.
 - What leaves without a home: the `workcell` and `plan_gate` schemas, the Agent Health metrics and the Fail-Fast Loop Breaker rule, which no script feeds (L7). Either a script writes `system/logs/metrics/` or the rule and its debrief section go.
 - The #62 leftovers (the `vault/` move, Nightshift file renames): in or out.

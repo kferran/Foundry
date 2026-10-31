@@ -428,13 +428,13 @@ FOUNDRY.md                    this manual
 Edit 3 in `FOUNDRY.md`. Find:
 
 ````text
-- **Tracked in your vault, never in the template.** `system/codebases/*.md`, `system/telemetry/*.md`, `system/dtcc/map.yaml` and `raw/<partition>/nightshift/*.md` (Work Order queue notes): your vault's own configuration and queue, committed to your private repository so a client's changes reach the server. The template ships only the `example` files. Credentials stay outside the vault (`~/.config/foundry/`, the Azure CLI).
+- **Tracked in your vault, never in the template.** `system/codebases/*.md`, `system/telemetry/*.md`, `system/clearinghouse/map.yaml` and `raw/<partition>/nightshift/*.md` (Work Order queue notes): your vault's own configuration and queue, committed to your private repository so a client's changes reach the server. The template ships only the `example` files. Credentials stay outside the vault (`~/.config/foundry/`, the Azure CLI).
 ````
 
 Replace with:
 
 ````text
-- **Tracked in your vault, never in the template.** Your vault's `README.md` (the template ships only its landing page), `system/codebases/*.md`, `system/telemetry/*.md`, `system/dtcc/map.yaml` and `raw/<partition>/nightshift/*.md` (Work Order queue notes): your vault's own configuration and queue, committed to your private repository so a client's changes reach the server. The template ships only the `example` files. Credentials stay outside the vault (`~/.config/foundry/`, the Azure CLI).
+- **Tracked in your vault, never in the template.** Your vault's `README.md` (the template ships only its landing page), `system/codebases/*.md`, `system/telemetry/*.md`, `system/clearinghouse/map.yaml` and `raw/<partition>/nightshift/*.md` (Work Order queue notes): your vault's own configuration and queue, committed to your private repository so a client's changes reach the server. The template ships only the `example` files. Credentials stay outside the vault (`~/.config/foundry/`, the Azure CLI).
 ````
 
 Edit 4 in `FOUNDRY.md`. Find:

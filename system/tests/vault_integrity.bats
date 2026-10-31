@@ -579,7 +579,7 @@ sealed_problems() {
   allow="$BATS_TEST_DIRNAME/core_clean.allow"
   want="$BATS_TEST_TMPDIR/hits.txt"
   # Every tracked file outside docs/, changes/CHANGELOG.md (history, like docs/), extensions/, system/tests/ and the loader.
-  pattern='dtcc|sentry|kusto|azure|\bjira\b|atlassian|dtcclearning\.com|atlassian\.net|sentry\.io'
+  pattern='clearinghouse|sentry|kusto|azure|\bjira\b|atlassian|clearinghouselearning\.com|atlassian\.net|sentry\.io'
   git ls-files -z -- . ':(exclude)docs' ':(exclude)changes/CHANGELOG.md' ':(exclude)extensions' ':(exclude)system/tests' ':(exclude)system/scripts/extensions.py' \
     | xargs -0 grep -I -o -i -E "$pattern" /dev/null 2>/dev/null \
     | awk -F: '{ term = tolower($NF); sub(/:[^:]*$/, ""); print $0 ":" term }' | sort -u > "$want" || true

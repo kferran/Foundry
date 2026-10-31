@@ -270,13 +270,13 @@ Replace with:
 Edit 1 in `README.md`. Find:
 
 ````text
-| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, a DTCC changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Earlier days' briefings and debriefs move to `briefings/archive/<YYYY-MM>/` |
+| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, a clearing-house changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Earlier days' briefings and debriefs move to `briefings/archive/<YYYY-MM>/` |
 ````
 
 Replace with:
 
 ````text
-| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, a DTCC changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Briefings and debriefs from before yesterday move to `briefings/archive/<YYYY-MM>/` |
+| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, a clearing-house changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Briefings and debriefs from before yesterday move to `briefings/archive/<YYYY-MM>/` |
 ````
 
 Edit 2 in `README.md`. Find:

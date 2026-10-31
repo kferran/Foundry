@@ -70,7 +70,7 @@ def stub(tmp, **settings):
 
 
 def add(vault, *extra):
-    return nr.main(["add", "--kind", "plan", "--title", "dtcc watcher", "--partition", "work", "--repo", "template",
+    return nr.main(["add", "--kind", "plan", "--title", "clearinghouse watcher", "--partition", "work", "--repo", "template",
                     "--base", "feat/x", "--plan", "docs/p.md", "--tasks", "1-2", "--verify", "test -f done.txt", *extra],
                    vault, NOW)
 
@@ -1395,7 +1395,7 @@ def test_abbreviated_flags_are_refused(env, flag):
     # §3.1: an ask rule matches the typed prefix, so a flag must be spelled out; complete arguments otherwise
     vault, tmp = env
     full = {"--tit": "--title", "--partit": "--partition"}[flag]
-    plan = ["add", "--kind", "plan", "--title", "dtcc watcher", "--partition", "work", "--repo", "template", "--base",
+    plan = ["add", "--kind", "plan", "--title", "clearinghouse watcher", "--partition", "work", "--repo", "template", "--base",
             "feat/x", "--plan", "docs/p.md", "--tasks", "1-2", "--verify", "true"]
     research = ["research", "--brief-file", str(brief_file(tmp)), *RESEARCH]
     for argv in (plan, research):

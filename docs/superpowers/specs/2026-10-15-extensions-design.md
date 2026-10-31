@@ -1,7 +1,7 @@
 # Extensions: vendor features out of core, into tracked extension folders
 
 **Date:** 2026-10-15
-**Status:** Approved (owner, 2026-10-15), with the review decisions in §6. Scope narrowed (owner, 2026-10-16, §7): only the vendor-specific features move. Home changed (owner, 2026-10-16, §8): extensions are tracked folders in the template, with no separate repository. The loader (#226) and the Jira handoffs move (#232) are merged; telemetry with RCA moves next (§9), and DTCC moves into the owner's vault.
+**Status:** Approved (owner, 2026-10-15), with the review decisions in §6. Scope narrowed (owner, 2026-10-16, §7): only the vendor-specific features move. Home changed (owner, 2026-10-16, §8): extensions are tracked folders in the template, with no separate repository. The loader (#226) and the Jira handoffs move (#232) are merged; telemetry with RCA moves next (§9), and clearing-house moves into the owner's vault.
 **Plan:** phase 4 of `docs/superpowers/2026-10-15-next-phase-plan.md`; simplification step 3 of `2026-10-11-simplification-review.md` §4. Overlaps #62 (closed out below).
 
 ## 1. Facts (master after #209)
@@ -17,7 +17,7 @@ There are 19 schemas.
 | Feature | Code | Tests | Schemas | Units | Claude-facing | Config keys |
 |---|---|---|---|---|---|---|
 | Jira handoffs | 231 | 235 | none | none (runs in `brief_prep.sh`) | none | `handoffs_site`, `handoffs_projects` |
-| DTCC watcher | 811 | 540 | `dtcc_change` | dtcc-watch | skill `dtcc-watch` | none (on when `system/dtcc/map.yaml` exists) |
+| clearing-house watcher | 811 | 540 | `clearinghouse_change` | clearinghouse-watch | skill `clearinghouse-watch` | none (on when `system/clearinghouse/map.yaml` exists) |
 | Telemetry and RCA | 1,355 (with `http.py`) | 1,628 | `production_error`, `telemetry_source`, `rca` | telemetry | command `/rca` | `rca_*` |
 | Meetings | 1,063, plus 256 in `vaultlib/intake.py` | 1,673 | `meeting`, `meeting_input`, `meeting_transcript` | meetings | none | `meetings_enabled`, `meetings_partition`, `owner_names` |
 | Inbox triage | 401 | 280 | none | triage | none | `triage_*` |
@@ -33,7 +33,7 @@ Core special-cases these features in about 20 shared files:
 - `brief.md`, `debrief.md`, `setup.md`
 - `FOUNDRY.md`, `CLAUDE.md`
 
-Owner-specific names in core include `dtcc.com`, `atlassian.net` and `sentry.io`, the Sentry and ADX lint rules in `index.py`, and Gemini in `intake.py`.
+Owner-specific names in core include `clearinghouse.example`, `atlassian.net` and `sentry.io`, the Sentry and ADX lint rules in `index.py`, and Gemini in `intake.py`.
 
 **Cross-feature coupling:**
 - The usage ceiling lives in `vaultlib/triage.py` and reads Work Orders' usage record. Intake, the smoke check and the meetings fetch call it.
@@ -42,28 +42,28 @@ Owner-specific names in core include `dtcc.com`, `atlassian.net` and `sentry.io`
 ## 2. Decisions (owner, 2026-10-15)
 
 1. **What moves (narrowed 2026-10-16, §7):** three extensions, the vendor-specific features.
-   - Jira handoffs, DTCC, and telemetry with RCA.
+   - Jira handoffs, clearing-house, and telemetry with RCA.
    - Meetings, inbox triage, Slack notices and two-machine sync stay in core, with their own switches.
    - Work Orders stay in core, off by default.
 2. **Target (revised 2026-10-16).** Phase 4 is done when:
-   - no DTCC, Sentry, ADX, Kusto, Azure, Jira or Atlassian name or domain is left in core, enforced by the core-clean test;
-   - there are 14 schemas or fewer (`dtcc_change`, `production_error`, `telemetry_source`, `rca` and `plan_gate` leave);
+   - no clearing-house, Sentry, ADX, Kusto, Azure, Jira or Atlassian name or domain is left in core, enforced by the core-clean test;
+   - there are 14 schemas or fewer (`clearinghouse_change`, `production_error`, `telemetry_source`, `rca` and `plan_gate` leave);
    - the gate is green with no extensions and with every extension on.
    - The core line budget is set at 12,500 lines (12,270 measured on 2026-10-16, after the three moves), pinned with the 14-schema cap by a vault_integrity test. The 8,800-line target assumed all seven moves. Raised to 12,750 by #222 (parallel Work Orders and chat triage brought core to 12,606), and to 12,800 by #254 (skipping non-UTF-8 file names in the index). Raised to 13,200 for the 2026-10-17 #166 and #122 builds (#257: inbox document conversion), and to 13,250 by #259 (the write-cap ratchet).
 3. **Home (changed 2026-10-16, §8): tracked folders `extensions/<name>/` in the template.**
    - The template ships every extension, each off until it is listed in `extensions:`.
    - The template update brings them with the normal merge. There is no clone, no pin and no `extensions_remote`.
-   - DTCC is a vault-only extension: `extensions/dtcc/`, tracked only in the owner's vault repository.
+   - clearing-house is a vault-only extension: `extensions/clearinghouse/`, tracked only in the owner's vault repository.
 4. **Packaging: skills plus a Foundry manifest.**
    - An extension's Claude-facing parts are skills in its `skills/` folder, linked into `.claude/skills/` while the extension is on. `/rca` becomes a skill.
    - What Claude Code cannot load is declared in `extension.md`, which Foundry's loader reads: units, scripts, schemas, the brief section, the smoke check, sources, config keys, dependencies and allow rules.
-5. **Switch: one `extensions:` list** in `system/config.md`, for example `extensions: ["handoffs", "dtcc"]`.
-   - It replaces DTCC's "map file exists" rule and the handoffs and telemetry on-rules.
+5. **Switch: one `extensions:` list** in `system/config.md`, for example `extensions: ["handoffs", "clearinghouse"]`.
+   - It replaces the clearing house's "map file exists" rule and the handoffs and telemetry on-rules.
    - Core features keep their own switches (`meetings_enabled`, `triage_enabled`, `slack_notify_channel`, `machine_role`).
    - The update migrates the old keys once.
    - Each extension keeps its own settings keys, declared in its manifest and validated against its own schema fragment.
 6. **First move: Jira handoffs.** It is the smallest, has no units, and touches every mechanism point except units (brief prep, brief section, smoke check, sources, setup, config). The rest follow in this order:
-   1. DTCC
+   1. clearing-house
    2. telemetry and RCA
 7. **Leftovers:**
    - Delete the debrief's **Agent Health** section, the metrics template and the coding Workcell's instruction to write `system/logs/metrics/`, since nothing writes that folder.
@@ -121,28 +121,28 @@ Every shared file reads the loader in place of its per-feature `if` blocks:
 
 ## 4. Migration and the owner's vault
 
-- `update_template.sh` (and `/setup`) turns a non-empty `handoffs_projects` and an existing telemetry source into `extensions:` entries, once. DTCC is vault-only, so the template carries no rule for it: its cutover lists `dtcc` by hand (DTCC plan, task 4).
+- `update_template.sh` (and `/setup`) turns a non-empty `handoffs_projects` and an existing telemetry source into `extensions:` entries, once. clearing-house is vault-only, so the template carries no rule for it: its cutover lists `clearinghouse` by hand (clearing-house plan, task 4).
   - It then runs `extensions.py check`. A listed extension with no folder is reported (`[extensions] <name> …`) and skipped. Nothing fails.
-- Each move is one PR to the template: it deletes the code from core and adds it under `extensions/<name>/` with its tests. The update brings both halves together, so the owner's features keep running across the move. DTCC's move lands in the owner's vault instead (§8).
+- Each move is one PR to the template: it deletes the code from core and adds it under `extensions/<name>/` with its tests. The update brings both halves together, so the owner's features keep running across the move. the clearing house's move lands in the owner's vault instead (§8).
 - A live acceptance run follows each move that changes brief, debrief or ingest text or the settings.
 
 ## 5. Tests
 
 - **Core alone:** the gate runs with no extension listed (it runs only the suites of listed extensions), and every core suite passes with no feature skipped for being absent.
 - **Everything on:** CI enables every tracked extension and runs the core gate plus each extension's `tests/`. With no extension tracked it prints one skip line.
-- **Core is clean:** a bats test fails when a core file (outside `extensions.py` and the docs) names DTCC, Sentry, ADX, Kusto, Azure, Jira or Atlassian, or one of their domains. Slack, Gemini and Google Drive stay in core with the features that use them (§7). It extends the owner-leak test.
+- **Core is clean:** a bats test fails when a core file (outside `extensions.py` and the docs) names clearing-house, Sentry, ADX, Kusto, Azure, Jira or Atlassian, or one of their domains. Slack, Gemini and Google Drive stay in core with the features that use them (§7). It extends the owner-leak test.
 - **Loader:** a manifest with a missing `requires`, an unknown key, or a listed extension with no folder is reported by `extensions.py check`.
 - **Line budget:** a test counts core script lines and fails above the budget, set once at the end of phase 4.
 
 ## 6. Review decisions (owner, 2026-10-15)
 
 1. **Allow rules:** `/setup` writes each enabled extension's `allow` rules from its manifest into `.claude/settings.json` and removes the rules of an extension that is turned off. Every rule stays specific; there is no generic `extensions/*` rule.
-2. **Visibility (superseded 2026-10-16, §8):** extensions are public in the template, apart from the vault-only DTCC.
+2. **Visibility (superseded 2026-10-16, §8):** extensions are public in the template, apart from the vault-only clearing-house.
 3. **Sequencing with phases 2 and 3:** phase 2 (brief section files) is not built. The first move builds the section-file mechanism for its own section only; phase 2 then moves the remaining core sections onto it.
 
 ## 7. Scope decision (owner, 2026-10-16)
 
-Only the vendor-specific features move: Jira handoffs, DTCC, and telemetry with RCA. Meetings, inbox triage, Slack notices, two-machine sync and Work Orders stay in core.
+Only the vendor-specific features move: Jira handoffs, clearing-house, and telemetry with RCA. Meetings, inbox triage, Slack notices, two-machine sync and Work Orders stay in core.
 
 Why: the extensions repository is private, so a feature that moves is gone from the template for anyone who clones it. The four generic features are what a new vault most needs. The part of the design that pays is the core-clean test: vendor and owner names leave core and stay out. Each move costs a pair of PRs that merge together and a live acceptance run, and the loader (#226) already serves the three moves.
 
@@ -160,7 +160,7 @@ Why: every problem the separate repository caused on 2026-10-16 came from the sp
 
 What changes:
 - `.gitignore` no longer excludes `extensions/`. `extensions_remote` is gone, and so are the clone and pull in `update_template.sh` and `/setup` phase 6e. The update re-links skills and runs `extensions.py check` after each merge.
-- DTCC moves into the owner's vault as a vault-only extension, so no DTCC name ships in the template. The template merge never touches a folder the template does not have.
+- clearing-house moves into the owner's vault as a vault-only extension, so no clearing-house name ships in the template. The template merge never touches a folder the template does not have.
 - With the template shipping extensions, the §7 reason for keeping meetings, inbox triage, Slack notices and sync in core is gone. They stay in core anyway: moving them mostly shrinks a line count, and any of them can move later as one PR.
 
 ## 9. The telemetry move (2026-10-16)

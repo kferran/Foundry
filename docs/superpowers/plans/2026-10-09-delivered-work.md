@@ -1173,14 +1173,14 @@ Replace with:
 Edit 1 in `README.md`. Find:
 
 ````text
-| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, a DTCC changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Briefings and debriefs from before yesterday move to `briefings/archive/<YYYY-MM>/` |
+| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, a clearing-house changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Briefings and debriefs from before yesterday move to `briefings/archive/<YYYY-MM>/` |
 | `/debrief [date]` | The Foreman writes `briefings/<date>.debrief.md` (embedded in the briefing): commits per repo, digest outcomes, headless runs, alerts, focus and agent health |
 ````
 
 Replace with:
 
 ````text
-| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, 🧾 Handoffs to chase when handoffs are set up, a DTCC changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Briefings and debriefs from before yesterday move to `briefings/archive/<YYYY-MM>/` |
+| `/brief [date]` | The Foreman writes `briefings/<date>.md`: calendar commitments, 3–5 objectives tied to your superpowers and handed to a capability, 🎯 Active Projects, 🧾 Handoffs to chase when handoffs are set up, a clearing-house changes block when the watcher is set up, and a friction matrix. A 📝 Notes section holds your own notes for the day; `/brief` never edits it. Briefings and debriefs from before yesterday move to `briefings/archive/<YYYY-MM>/` |
 | `/debrief [date]` | The Foreman writes `briefings/<date>.debrief.md` (embedded in the briefing): commits per repo, digest outcomes, headless runs, alerts, focus, agent health and what you delivered today |
 ````
 

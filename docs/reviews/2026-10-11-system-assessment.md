@@ -1,7 +1,7 @@
 # The Foundry as an engineering leader's chief of staff: an assessment
 
 **Date:** 2026-10-11
-**Reviewed:** the template repository at commit `6535249` (the manual `FOUNDRY.md`, `CLAUDE.md`, the design spec and roadmap under `docs/superpowers/`, the commands in `.claude/commands/`, the `order` and `dtcc-watch` skills, the Foreman and Workcell personas, `system/scripts/` and `system/hooks/`, the schemas and templates, and the test suites). Updated at `9884b25` for inbox triage (#109).
+**Reviewed:** the template repository at commit `6535249` (the manual `FOUNDRY.md`, `CLAUDE.md`, the design spec and roadmap under `docs/superpowers/`, the commands in `.claude/commands/`, the `order` and `clearinghouse-watch` skills, the Foreman and Workcell personas, `system/scripts/` and `system/hooks/`, the schemas and templates, and the test suites). Updated at `9884b25` for inbox triage (#109).
 
 **Scope: template, not a live vault.** This repository is the template a live vault is cloned from and updated through `update_template.sh`. Everything below is about the machinery a vault inherits (commands, scripts, hooks, schemas, prompts, rules), and nothing here measures a vault's compiled wiki, its entity notes, its run ledger or how its briefs read. Where a finding says "nothing seeds X" or "no feature uses Y", it is a statement about template code; a vault may hold that content by hand, and the finding still stands because no template feature reads it. Recommendations are marked **template** (ships to every vault through the update) or **vault** (a vault's content or settings, done in that repository).
 
