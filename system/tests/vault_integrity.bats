@@ -83,13 +83,13 @@ core_problem() {
       jq -e --arg r "$rule" '.permissions.deny | index($r)' "$f" >/dev/null
     done
   done
-  # .env (#326): a deny whose first segment is a wildcard masks nothing on Linux, so headless runs anchor at ~/**.
-  # The interactive file is the owner's to change.
-  jq -e '.permissions.deny | index("Read(//**/.env)")' .claude/settings.json >/dev/null
-  for rule in 'Read(~/**/.env)' 'Read(~/**/.env.*)'; do
+  # .env (#326): a sandbox deny whose first segment is a wildcard masks nothing on Linux; the Read tool honours the //** form
+  # (#314) and the ~/** form (the 2026-10-30 probe), so headless keeps the //** pair for a vault outside home and adds ~/**.
+  # The interactive file is the owner's to change: either form passes.
+  jq -e '.permissions.deny | (index("Read(//**/.env)") or index("Read(~/**/.env)"))' .claude/settings.json >/dev/null
+  for rule in 'Read(~/**/.env)' 'Read(~/**/.env.*)' 'Read(//**/.env)' 'Read(//**/.env.*)'; do
     jq -e --arg r "$rule" '.permissions.deny | index($r)' system/headless.settings.json >/dev/null
   done
-  [ "$(jq '[.permissions.deny[] | select(startswith("Read(//**/.env"))] | length' system/headless.settings.json)" = 0 ]
 }
 
 @test "a commit that skips the pre-commit secret scan asks first, though git commit -m is allowed (#298)" {

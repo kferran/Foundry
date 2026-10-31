@@ -331,8 +331,8 @@ def _deny(ctx: Ctx, fm: dict) -> list:
         if cb.get("path"):
             roots.append(path)
     home = Path.home().resolve()
-    for r in dict.fromkeys(Path(os.path.abspath(r)) for r in roots):
-        if not r.resolve().is_relative_to(home):
+    for r in dict.fromkeys(f for r in roots for f in ss.forms(r)):   # as given and resolved: bwrap binds real paths
+        if not Path(r).resolve().is_relative_to(home):
             out += [f"{r}/**/.env", f"{r}/**/.env.*"]
     return out
 
@@ -382,7 +382,9 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
     hosts = list(nc.setting(cb, "order_hosts", "nightshift_hosts") or [])
     web = list(fm.get("hosts") or []) if kind == "research" else []
     settings = idir / "settings.json"
-    settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm), cwd=cwd, fence=ctx.workspace)))
+    own = nc.source(ctx.vault, fm.get("repo")) if kind == "plan" else None   # its clone's objects (git clone --shared)
+    settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm), cwd=cwd,
+                                              fence=ctx.workspace, reopen=[own] if own else [])))
     plugins = [p for p in [ss.superpowers_dir()] if p] + [Path(str(p)).expanduser() for p in nc.setting(cb, "order_plugins", "nightshift_plugins") or []]
     code = nc.git(cwd / "code", "log", "-1", "--format=%h (%cs)").stdout.strip() if kind == "research" and fm.get("repo") else ""
     prompt = (ss.plan_prompt(fm) if kind == "plan" else

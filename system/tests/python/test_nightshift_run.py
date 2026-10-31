@@ -1332,3 +1332,32 @@ def test_a_session_profile_fences_its_workspace(env):
     fs = json.loads((rep.item_dir(vault, fm["id"]) / "settings.json").read_text())["sandbox"]["filesystem"]
     assert str(tmp / "ws") in fs["denyRead"]
     assert str(tmp / "ws" / f"nightshift-{fm['id']}") in fs["allowRead"]
+
+
+def test_a_plan_order_on_a_codebase_inside_the_workspace_reads_its_objects(env):
+    # review of PR A: a plan clone is `git clone --shared`, so its objects live in the codebase; a codebase under
+    # order_workspace must stay readable through the fence (§3.3)
+    vault, tmp = env
+    from test_nightshift_check import registered, set_codebase
+    clone = registered(vault, tmp / "ws" / "code")
+    set_codebase(vault, "shop", order_pr="github:o/shop")
+    assert nr.main(["add", "--kind", "plan", "--title", "shop work", "--partition", "work", "--repo", "shop",
+                    "--base", "main", "--plan", "docs/p.md", "--tasks", "1-2", "--verify", "true", "--now"], vault, NOW) == 0
+    nr.main(["tick"], vault, NOW)
+    _, fm = only_item(vault)
+    fs = json.loads((rep.item_dir(vault, fm["id"]) / "settings.json").read_text())["sandbox"]["filesystem"]
+    assert str(tmp / "ws") in fs["denyRead"]
+    assert str(clone) in fs["allowRead"]
+
+
+def test_env_globs_name_a_symlinked_root_in_both_forms(env, monkeypatch, tmp_path):
+    # review of PR A: bwrap binds real paths, so a symlinked workspace gets its .env globs as given and as resolved
+    vault, tmp = env
+    (tmp_path / "real-ws").mkdir()
+    (tmp_path / "ws-link").symlink_to(tmp_path / "real-ws")
+    set_workspace(vault, tmp_path / "ws-link")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    deny = nr._deny(nr.Ctx(vault, NOW), {"id": "2026-10-08-q", "kind": "research", "partition": "work"})
+    for root in (tmp_path / "ws-link", tmp_path / "real-ws"):
+        assert f"{root}/**/.env" in deny
+        assert f"{root}/**/.env.*" in deny

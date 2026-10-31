@@ -36,12 +36,12 @@ def session_env() -> dict:
     return {k: os.environ[k] for k in ENV if k in os.environ}
 
 
-def _forms(p) -> list:
+def forms(p) -> list:
     """A path as given and as resolved (a symlinked order_workspace): bwrap binds the real path."""
     return list(dict.fromkeys((os.path.abspath(p), str(Path(p).resolve()))))
 
 
-def profile(vault, kind: str, hosts, web_hosts=(), deny=(), *, cwd, fence=None) -> dict:
+def profile(vault, kind: str, hosts, web_hosts=(), deny=(), *, cwd, fence=None, reopen=()) -> dict:
     data = json.loads((Path(vault) / "system" / "nightshift" / f"{kind}.settings.json").read_text(encoding="utf-8"))
     sb = data["sandbox"]
     sb["network"]["allowedDomains"] = sorted(set(sb["network"]["allowedDomains"]) | set(hosts) | set(web_hosts))
@@ -57,12 +57,13 @@ def profile(vault, kind: str, hosts, web_hosts=(), deny=(), *, cwd, fence=None) 
         # The order workspace (other orders' folders, nightshift-runner.git, state/) is denied to Bash with the
         # session's own folder re-opened (confinement spec §3.3, #319). Sandbox only: a mirrored Read deny would
         # outrank any allow and refuse the session's own folder, and --restricted already keeps the Read tool in it.
-        sb["filesystem"]["denyRead"] += _forms(fence)
-        sb["filesystem"]["allowRead"] = _forms(cwd)
+        sb["filesystem"]["denyRead"] += forms(fence)
+        # reopen: a plan order's own codebase, which its `git clone --shared` clone reads objects from.
+        sb["filesystem"]["allowRead"] = list(dict.fromkeys(f for p in (cwd, *reopen) for f in forms(p)))
     data["permissions"]["allow"] += [f"WebFetch(domain:{h})" for h in web_hosts]
     # A ./ rule resolves against the shell's current directory, which a Bash cd moves (#314): anchor it at the
     # session's directory, in both its given and its resolved form (a symlinked order_workspace).
-    roots = [p.lstrip("/") for p in _forms(cwd)]
+    roots = [p.lstrip("/") for p in forms(cwd)]
     def anchored(r):
         m = re.fullmatch(r"(\w+)\(\./(.*)\)", r)
         if m and any(c in root for root in roots for c in "()*?[]{}"):   # a glob character would widen or break it
