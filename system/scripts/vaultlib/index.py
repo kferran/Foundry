@@ -19,6 +19,7 @@ INDEX_VERSION = "2"   # 2: tag issues (#158), so a rebuild lints notes whose byt
 PRUNE = {".git", ".obsidian"}
 NOT_INDEXED = ("system/logs/", "system/quarantine/", "system/jobs/", "system/templates/",
                "system/tests/", "docs/", "changes/", "raw/inbox/", "raw/archive/", "raw/meetings/", "meetings/drop/",
+               "raw/work/held/", "raw/personal/held/", "raw/shared/held/",  # unreviewed stale claims (§3.7)
                "extensions/")  # code and manifests, never notes: walk() prunes it, and staged lint skips it too
 # Walked but never indexed: reachable by explicit path, never by bare [[Name]].
 NAME_EXCLUDED = ("system/tests/", "system/templates/", "system/schemas/", "system/agents/", "docs/",

@@ -4,7 +4,7 @@
 
 ## Directory Map
 - `raw/inbox/`: manual drops (unstructured) and Slack captures. `raw/archive/`: compiled drops. `raw/telemetry/`: production-error notes (not ingested).
-- `raw/<partition>/nightshift/`: Work Order queue notes (tracked; never ingested). `raw/<partition>/notes/`: pending session digests; `raw/<partition>/archive/`: compiled digests.
+- `raw/<partition>/nightshift/`: Work Order queue notes (tracked; never ingested). `raw/<partition>/notes/`: pending session digests; `raw/<partition>/archive/`: compiled digests; `raw/<partition>/held/`: research stale claims awaiting the owner's tick on their Now line.
 - `wiki/work/`, `wiki/personal/`, `wiki/shared/`: compiled notes in `concepts/`, `entities/`, `summaries/` (and `preferences/` outside `shared`). `wiki/Index.md` is the cross-partition index. `wiki/<partition>/Now.md`: the Now page, one checklist of open loops per partition (`work`, `personal`). `wiki/<partition>/rca/`: root-cause analyses from the telemetry extension's `/rca`.
 - `wiki/<partition>/meetings/`: meeting notes and their `.transcript.md` notes, written only by the meeting import (tick an action item's checkbox to close it). `meetings/drop/<partition>/`: drop meeting transcripts here (`.vtt`, `.srt`, `.txt`, `.md`); the server imports and removes them. `raw/meetings/`: fetched Gemini notes awaiting import.
 - `wiki/.staging/<run_id>/`: headless output awaiting publish. Never edit it by hand.

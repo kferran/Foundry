@@ -284,3 +284,13 @@ def test_only_the_cross_partition_index_is_exempt_from_walls(vault):
     # factory F5 spec §4.6: lint and the publish gate share one rule; `type: index` elsewhere is walled.
     write(vault, "wiki/work/Hub.md", '---\ntype: index\n---\n[[Gardening]]\n')
     assert issues(build(vault), "partition-wall") == [("wiki/work/Hub.md", "error", "partition-wall")]
+
+
+def test_a_held_file_is_not_indexed(vault):
+    # confinement spec §3.7: held stale claims are web-sourced and unreviewed; recall and links never reach them
+    for p in ("work", "personal", "shared"):
+        write(vault, f"raw/{p}/held/2026-10-10-x.stale-claims.md", "---\ntype: session_digest\n---\n## Stale claims\n- a → b\n")
+    write(vault, "raw/work/notes/2026-10-10-y.stale-claims.md", "---\ntype: session_digest\n---\n## Stale claims\n- c → d\n")
+    idx = build(vault)
+    assert query(idx, "SELECT path FROM notes WHERE path LIKE 'raw/%/held/%'") == []
+    assert query(idx, "SELECT path FROM notes WHERE path LIKE 'raw/work/notes/%'") == [("raw/work/notes/2026-10-10-y.stale-claims.md",)]

@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=15690
+CORE_CAP=15780
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -553,6 +553,8 @@ sealed_problems() {
   # and the workspace fence took core to 15,582.
   # 15,590 -> 15,690 (#317, #321, Work Order confinement PR B, owner to approve at merge): the research subcommand,
   # base_sha at add with its check at the first clone, requeue and its review fixes took core to 15,680.
+  # 15,690 -> 15,780 (#301 S9, Work Order confinement PR C, owner to approve at merge): held stale claims (held.py),
+  # their release in intake's Now step, the publish gate's held-line rules and the review fixes took core to 15,770.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"

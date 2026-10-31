@@ -1,7 +1,7 @@
 ---
 type: schema
 schema_for: session_digest
-folders: ["raw/work/notes/", "raw/personal/notes/", "raw/shared/notes/", "raw/work/archive/", "raw/personal/archive/", "raw/shared/archive/"]
+folders: ["raw/work/notes/", "raw/personal/notes/", "raw/shared/notes/", "raw/work/held/", "raw/personal/held/", "raw/shared/held/", "raw/work/archive/", "raw/personal/archive/", "raw/shared/archive/"]
 fields:
   type: {kind: const, value: session_digest, required: true, readers: [system/scripts/vaultlib/schema.py]}
   partition: {kind: enum, values: [work, personal, shared], required: true, matches_folder: true, readers: [system/scripts/vaultlib/recall.py, system/scripts/debrief_prep.sh]}
