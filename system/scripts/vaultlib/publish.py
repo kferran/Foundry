@@ -11,7 +11,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from . import frontmatter, links as linkmod, now as nowmod, schema as schemamod
+from . import frontmatter, held as heldmod, links as linkmod, now as nowmod, schema as schemamod
 from .index import PRIVATE, Index, name_excluded, walled
 
 RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
@@ -374,6 +374,10 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
     out += [Problem(target, i.message) for i in schemamod.tag_issues(target, (new.data or {}).get("type"), new, added, schemas)]
     if NOW_PAGE.match(target):   # a line the run adds passes the Now check; older ones pass (factory F5 spec §4.3)
         kept = {line.rstrip() for line in (old.body if old is not None else "").split("\n")}
+        # A held stale-claims line releases web-sourced text to ingest when ticked: only the owner's hand changes it (§3.7).
+        named = lambda body: sorted(x.rstrip() for x in body.split("\n") if heldmod.HELD.search(x))
+        if named(old.body if old is not None else "") != named(new.body):
+            out.append(Problem(target, "a Now line naming raw/<p>/held/ changes only by hand"))
         for line in (x.rstrip() for x in new.body.split("\n") if x.startswith("- [ ] ")):
             if line in kept:
                 continue
