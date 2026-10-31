@@ -81,6 +81,8 @@ def record_usage(vault, date: str, usage: dict, at: str) -> None:
 def _outcomes(vault, date: str) -> list:
     out = []
     for p in sorted((state_dir(vault) / "items").glob("*/outcome.json")):
+        if "." in p.parent.name:   # items/<id>.<n>/: a run requeue set aside (ids hold no dot)
+            continue
         try:
             o = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):

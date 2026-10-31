@@ -48,6 +48,15 @@ NO_START = ("the self-test session did not start (an expired login; a login held
 SELFTEST_TRIES = 3
 
 
+def _date_arg(text: str) -> str:
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+            return date.fromisoformat(text).isoformat()
+    except ValueError:
+        pass
+    raise argparse.ArgumentTypeError(f"not a YYYY-MM-DD date: {text!r}")
+
+
 def _parser():
     # No abbreviations (confinement spec §3.1): an ask or allow rule matches the subcommand and flags as typed.
     p = argparse.ArgumentParser(prog="nightshift.py", allow_abbrev=False)
@@ -81,7 +90,7 @@ def _parser():
     cmd("cancel").add_argument("id")
     cmd("requeue").add_argument("id")   # behind its own ask rule (§3.6)
     rp = cmd("report")
-    rp.add_argument("date", nargs="?")
+    rp.add_argument("date", nargs="?", type=_date_arg)   # report:* is allowed: the date must never become a path
     rp.add_argument("--json", action="store_true")
     cmd("selftest")
     return p
@@ -263,10 +272,13 @@ def _clone(ctx: Ctx, fm: dict) -> Path:
         if not template or nc.git(clone, "rev-parse", "--verify", "--quiet", "refs/remotes/base").returncode == 0:
             return clone   # a reused clone is not checked again (§3.5)
         shutil.rmtree(clone)   # half-built by a killed tick: start again
-    if fm.get("base_sha") and (now := _base_sha(ctx, fm)) and now != fm["base_sha"]:
-        # An unreadable base ("") goes on to the fetch below, which fails with its own reason.
-        raise BaseMoved(f"the base {fm['base']} moved since {fm['id']} was queued ({fm['base_sha'][:7]} → {now[:7]}); "
-                        f"read the plan at the new base, then run nightshift.py requeue {fm['id']}")
+
+    def pinned(got: str) -> None:
+        """The commit the clone starts from must be the one the owner queued (§3.5); a note without one runs as before."""
+        if fm.get("base_sha") and got != fm["base_sha"]:
+            shutil.rmtree(clone, ignore_errors=True)
+            raise BaseMoved(f"the base {fm['base']} moved since {fm['id']} was queued ({fm['base_sha'][:7]} → "
+                            f"{got[:7]}); read the plan at the new base, then run nightshift.py requeue {fm['id']}")
     ctx.workspace.mkdir(parents=True, exist_ok=True)
     branch = f"order/{fm['id']}"
     if template:
@@ -281,10 +293,12 @@ def _clone(ctx: Ctx, fm: dict) -> Path:
             shutil.rmtree(clone, ignore_errors=True)   # the next tick starts from an empty workspace again
             why = (f.stderr.strip().splitlines() or ["no error text"])[-1]
             raise CloneError(f"fetch {fm['base']} from {nc.shown(url)}: {why}")
+        pinned(nc.git(clone, "rev-parse", "refs/remotes/base").stdout.strip())   # what was fetched, not a second read
         subprocess.run(["git", "-C", str(clone), "checkout", "-q", "-b", branch, "refs/remotes/base"], check=True)
     else:
         src = nc.source(ctx.vault, fm["repo"])
         sha = nc.git(src, "rev-parse", f"{fm['base']}^{{commit}}").stdout.strip()
+        pinned(sha)
         subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", str(src), str(clone)], check=True)
         subprocess.run(["git", "-C", str(clone), "checkout", "-q", "-b", branch, sha], check=True)
     with open(clone / ".git" / "info" / "exclude", "a") as f:
@@ -649,7 +663,8 @@ def _report_outcome(ctx: Ctx, fm: dict, out: dict, finished: str) -> None:
                                       "reason": out.get("reason", ""), "started_at": fm.get("started_at") or ctx.clock_now().isoformat(),
                                       "finished_at": finished, "report_date": ctx.date,
                                       "needs": out.get("needs", []), "notes": out.get("notes", ""),
-                                      "output": fm.get("output") or ""})  # a notice links it (#157)
+                                      "output": fm.get("output") or "",  # a notice links it (#157)
+                                      **({"run": int(fm["run"])} if fm.get("run") else {})})   # a requeued run is its own notice
         rep.write(ctx.vault, ctx.date)
 
 
@@ -968,8 +983,9 @@ def _add(ctx: Ctx, a, kind: str) -> int:
     errs = nc.check(ctx.vault, fm, body)
     if not errs and kind == "research":   # owner-set order_hosts are config and are not resolved (§3.2)
         errs = [e for problems in nc.resolve_problems(fm.get("hosts") or []) for e in problems]
-    if not errs and kind == "plan" and (sha := _base_sha(ctx, fm)):
-        fm["base_sha"] = sha   # the commit the owner approved; the first clone checks it (§3.5)
+    if not errs and kind == "plan":   # the commit the owner approves; the first clone checks it (§3.5)
+        fm["base_sha"] = _base_sha(ctx, fm)
+        errs = [] if fm["base_sha"] else [f"cannot read the commit {fm.get('base')} names; try again"]
     if errs:
         for e in errs:
             print(f"not ready: {e}")
@@ -992,8 +1008,18 @@ def _requeue(ctx: Ctx, item_id: str) -> int:
         print(f"no item {item_id}")
         return 2
     path, fm = hits[0]
+    if nc.identifiers(fm):   # the id names the folders removed and moved below
+        print(f"not requeued: {item_id}: {'; '.join(nc.identifiers(fm))}")
+        return 2
     if fm.get("state") not in ("blocked", "failed"):
         print(f"not requeued: {item_id} is {fm.get('state')}; only a blocked or failed order can be requeued")
+        return 2
+    if fm.get("reason") == "delivery":   # its branch may be pushed already: a fresh run's push would be refused
+        print(f"not requeued: {item_id} failed in delivery; deliver it by hand as its Needs-you line says")
+        return 2
+    sha = _base_sha(ctx, fm) if fm.get("kind") == "plan" else ""
+    if fm.get("kind") == "plan" and not sha:
+        print(f"not requeued: cannot read the commit {fm.get('base')} names; try again")
         return 2
     for d in (ctx.workspace / f"nightshift-{item_id}", ctx.workspace / f"nightshift-{item_id}-verify"):
         shutil.rmtree(d, ignore_errors=True)
@@ -1003,10 +1029,9 @@ def _requeue(ctx: Ctx, item_id: str) -> int:
         while idir.with_name(f"{item_id}.{n}").exists():
             n += 1
         idir.rename(idir.with_name(f"{item_id}.{n}"))
-    sha = _base_sha(ctx, fm) if fm.get("kind") == "plan" else ""
     ni.update(path, state="queued", attempts=None, session_id=None, reason=None, result=None, started_at=None,
-              finished_at=None, reset_at=None, **({"base_sha": sha} if sha else {}))
-    print(f"requeued {item_id}")
+              finished_at=None, reset_at=None, run=str(int(fm.get("run") or 1) + 1), **({"base_sha": sha} if sha else {}))
+    print(f"requeued {item_id}" + (f" at {sha[:7]}" if sha else ""))
     return 0
 
 

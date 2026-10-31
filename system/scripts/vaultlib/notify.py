@@ -245,10 +245,13 @@ def collect(vault, now: datetime) -> tuple:
             out = json.loads(path.read_text())
         except (OSError, ValueError):
             continue
-        oid = str(out.get("id") or path.parent.name)
-        if oid in cursor["outcomes"]:
+        if "." in path.parent.name:   # items/<id>.<n>/: a run requeue set aside, already sent (ids hold no dot)
             continue
-        cursor["outcomes"].append(oid)
+        oid = str(out.get("id") or path.parent.name)
+        key = oid if int(out.get("run") or 1) == 1 else f"{oid}#{out['run']}"   # a requeued run is its own notice
+        if key in cursor["outcomes"]:
+            continue
+        cursor["outcomes"].append(key)
         if not first:
             detail = str(out.get("result") or next(iter(out.get("needs") or []), "") or out.get("reason") or "")
             # The id is written by a script in a fixed shape: never redacted (#157).

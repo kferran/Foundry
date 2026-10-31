@@ -28,6 +28,8 @@ fields:
   reset_at: {kind: datetime, readers: [system/scripts/vaultlib/nightshift_sched.py]}
   result: {kind: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
   reason: {kind: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
+  base_sha: {kind: string, readers: [system/scripts/vaultlib/nightshift_run.py]}
+  run: {kind: int, min: "1", readers: [system/scripts/vaultlib/nightshift_run.py]}
 ---
 # Nightshift item
 One Work Order, a unit of unattended work (Nightshift spec §4), written by `/order` and updated by `system/scripts/nightshift.py`. The body is the research brief (`kind: research`) or a free note. The runner writes only `state` and the runner fields, and never changes an item the user cancelled.

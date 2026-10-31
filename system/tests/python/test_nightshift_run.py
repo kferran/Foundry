@@ -1426,7 +1426,6 @@ def test_add_records_base_sha(env, tmp_path):
     path, _ = only_item(vault)
     path.unlink()
     codebase_item(vault, tmp_path, ["true"])
-    from test_nightshift_check import registered  # noqa: F401  (the clone codebase_item made)
     assert only_item(vault)[1]["base_sha"] == git(tmp_path / "cb" / "shop", "rev-parse", "main").strip()
 
 
@@ -1540,3 +1539,71 @@ def test_needs_you_lines_name_requeue(env):
     nr.main(["tick"], vault, NOW)
     out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
     assert f"then run nightshift.py requeue {fm['id']}" in out["needs"][0]
+
+
+@pytest.mark.parametrize("date", ["/tmp/x", "../x", "2026-10-07\nforged", "2026-13-01x"])
+def test_report_refuses_a_date_that_is_not_a_date(env, tmp_path, date):
+    # review of PR B (I2): report:* is allowed, so its argument must not become a path
+    vault, tmp = env
+    assert nr.main(["report", date], vault, NOW) == 2
+    assert nr.main(["report", "--json", date], vault, NOW) == 2
+    assert not list(tmp_path.rglob("x.md"))
+
+
+def test_add_refuses_a_plan_whose_base_commit_cannot_be_read(env, monkeypatch, capsys):
+    # review of PR B (I3): a new order is never queued unpinned
+    vault, tmp = env
+    monkeypatch.setattr(nr, "_base_sha", lambda ctx, fm: "")
+    assert add(vault, "--now") == 2
+    assert "not ready: cannot read the commit feat/x names" in capsys.readouterr().out
+    assert ni.items(vault) == []
+
+
+def test_the_pin_is_checked_against_what_the_clone_fetched(env, monkeypatch):
+    # review of PR B (I3): an unreadable ls-remote, or a move between the check and the fetch, still blocks
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    move_remote_base(tmp)
+    monkeypatch.setattr(nr, "_base_sha", lambda ctx, fm: "")
+    nr.main(["tick"], vault, NOW)
+    assert ni.load(path)[0]["reason"] == "base moved"
+    assert not (tmp / "ws" / f"nightshift-{fm['id']}").exists()
+
+
+def test_requeue_refuses_an_unsafe_id(env, capsys):
+    # review of PR B (I4): requeue removes and moves folders named from the id
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    bad = "2026-10-06-x/../../outside"
+    path.write_text(path.read_text().replace(f'id: "{fm["id"]}"', f'id: "{bad}"').replace("state: \"queued\"", "state: \"failed\""))
+    (tmp / "outside").mkdir()
+    assert nr.main(["requeue", bad], vault, NOW) == 2
+    assert "not requeued" in capsys.readouterr().out
+    assert (tmp / "outside").is_dir()
+
+
+def test_requeue_refuses_a_delivery_failure(env, capsys):
+    # review of PR B (I5): the branch may already be pushed; a fresh run's push would be refused after hours of work
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ni.update(path, state="failed", reason="delivery")
+    assert nr.main(["requeue", fm["id"]], vault, NOW) == 2
+    assert "deliver it by hand" in capsys.readouterr().out
+    assert ni.load(path)[0]["state"] == "failed"
+
+
+def test_requeue_counts_the_run_and_the_outcome_carries_it(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    git(tmp / "remote.git", "branch", "-D", "feat/x")
+    nr.main(["tick"], vault, NOW)
+    git(vault, "push", "-q", str(tmp / "remote.git"), "feat/x")
+    assert nr.main(["requeue", fm["id"]], vault, NOW) == 0
+    assert ni.load(path)[0]["run"] == "2"
+    git(tmp / "remote.git", "branch", "-D", "feat/x")
+    nr.main(["tick"], vault, NOW)
+    assert json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())["run"] == 2

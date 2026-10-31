@@ -102,7 +102,7 @@ The commands and skills are under [Daily use](#daily-use).
 | `/impact <component> [--repo name]` | Read-only blast-radius table across registered codebases and the wiki |
 | `/rca <raw/telemetry/note.md>` | The telemetry extension's skill: root-cause analysis of one production error group, an `rca` note with a Ticket draft for you to file; with `--file`, a Now line whose tick files it |
 | `/backup` | Runs the gate (lint, then the test suites when bats and pytest are installed; lint only on a client), commits each headless run on its own, then commits and pushes the rest according to `remote_mode` (through `vault_sync.sh` in `private`) |
-| `/order add\|ask\|list\|cancel\|status` | Queues an approved plan (or a task range of one) or a research brief as a Work Order for an unattended run; lists, cancels and reports on queued Work Orders |
+| `/order add\|ask\|list\|cancel\|requeue\|status` | Queues an approved plan (or a task range of one) or a research brief as a Work Order for an unattended run; lists, cancels, requeues and reports on queued Work Orders |
 | `/setup` | Onboarding; safe to re-run |
 | `/humanizer`, `/digest` | Edit prose against the vendored skill; write a session digest on demand |
 | `/grilling` | Grill a plan or a new idea, one round of numbered questions at a time, each with a recommended answer; the Foundry adds five questions that validate a new idea (Development) |

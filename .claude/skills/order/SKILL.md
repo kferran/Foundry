@@ -3,7 +3,7 @@ name: order
 description: |
   Queue refined work as a Work Order for unattended execution: an approved implementation plan (or a task range of one)
   that ends in a pull request, or a written research brief that ends in a findings note. Use for
-  /order add|ask|list|cancel|status, when the user wants work run in the background, later today or overnight, or when
+  /order add|ask|list|cancel|requeue|status, when the user wants work run in the background, later today or overnight, or when
   the user approves a plan.
 ---
 # Work Orders

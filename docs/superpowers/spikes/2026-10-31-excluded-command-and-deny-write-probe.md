@@ -45,3 +45,16 @@ The same refusals held in `--permission-mode default`.
 - In a project's settings, a `denyWrite` path relative to the project (bare or `./`) holds; a leading `/` does not.
 - `<command>` matches only that command with no arguments; `<command> *` matches it with or without arguments.
 - **Not checked:** an interactive session's prompt for the ask rule.
+
+## Can a sandboxed session reach outside through the excluded command? (review of PR B, same day)
+
+Project settings: `excludedCommands: ["system/scripts/ns.sh *"]`, allow `Bash(system/scripts/ns.sh add:*)`, `cd`, `sed` and `touch`, `autoAllowBashIfSandboxed`, `denyWrite` on the queue folder; auto mode.
+
+| Steps | Result |
+|---|---|
+| sandboxed `sed -i` on `system/scripts/ns.sh`, then `system/scripts/ns.sh add edited` | the edited script **ran outside the sandbox** and wrote into the denied folder, no prompt |
+| `system/scripts/ns.sh add compound; touch <denied>/x.md` | the whole line stayed sandboxed; both writes refused |
+| `cd .scratch/copy`, then `system/scripts/ns.sh add viacd` | the copy's script **ran outside the sandbox** and wrote into the denied folder, no prompt |
+
+- An excluded command is matched by the text typed, so any code a sandboxed session can write and then call by that name runs outside the sandbox: the script itself, what it imports or sources, or a copy under a writable folder reached with `cd`. The same holds for any excluded `git` command, whose `.git/config` (`core.sshCommand`, hooks) is writable from the sandbox.
+- So `excludedCommands` cannot carry the CLI past the write deny safely. Spec §3.1a needs another mechanism (owner decision).
