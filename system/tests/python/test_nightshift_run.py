@@ -454,7 +454,7 @@ def test_a_template_base_gone_from_the_remote_fails_at_once_with_a_needs_you_lin
     _, fm = only_item(vault)
     assert (fm["state"], fm["reason"]) == ("failed", "base")
     out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
-    assert out["needs"][0].startswith(f"Push feat/x to the template remote, then queue {fm['id']} again")
+    assert out["needs"][0].startswith(f"Push feat/x to the template remote, then run nightshift.py requeue {fm['id']}")
 
 
 def test_state_lives_under_the_workspace(env):
@@ -507,7 +507,7 @@ def test_add_refuses_a_workspace_inside_the_vault_and_a_tick_fails_a_queued_one(
     assert (fm["state"], fm["reason"]) == ("failed", "workspace")
     out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
     assert out["needs"][0].startswith("Move order_workspace outside the vault")
-    assert f"then queue {fm['id']} again" in out["needs"][0]
+    assert f"then run nightshift.py requeue {fm['id']}" in out["needs"][0]
     assert not list((vault / ".scratch" / "ws").glob("nightshift-*"))   # no clone; state/ follows the workspace
 
 
@@ -1463,3 +1463,80 @@ def test_a_reused_clone_is_not_checked_again(env):
     nr.main(["tick"], vault, NOW)
     assert ni.load(path)[0].get("reason") != "base moved"
     assert (rep.item_dir(vault, fm["id"]) / "settings.json").is_file()
+
+
+def test_requeue_a_blocked_order_records_the_new_base(env):
+    # confinement spec §3.6 (#321): the owner read the plan at the new base and approves it by requeueing
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    new = move_remote_base(tmp)
+    nr.main(["tick"], vault, NOW)
+    assert nr.main(["requeue", fm["id"]], vault, NOW) == 0
+    now, _ = ni.load(path)
+    assert (now["state"], now["base_sha"]) == ("queued", new)
+    assert not now.get("reason")
+    nr.main(["tick"], vault, NOW)
+    assert ni.load(path)[0].get("reason") != "base moved"
+
+
+def test_requeue_a_failed_order_starts_fresh(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    git(tmp / "remote.git", "branch", "-D", "feat/x")
+    nr.main(["tick"], vault, NOW)   # failed: the base is gone
+    git(vault, "push", "-q", str(tmp / "remote.git"), "feat/x")
+    for d in (f"nightshift-{fm['id']}", f"nightshift-{fm['id']}-verify"):
+        (tmp / "ws" / d).mkdir(parents=True, exist_ok=True)
+    ni.update(path, session_id="s-1")
+    assert nr.main(["requeue", fm["id"]], vault, NOW) == 0
+    now, _ = ni.load(path)
+    assert now["state"] == "queued"
+    for k in ("attempts", "session_id", "reason", "result", "started_at", "finished_at", "reset_at"):
+        assert k not in now, k
+    assert not (tmp / "ws" / f"nightshift-{fm['id']}").exists()
+    assert not (tmp / "ws" / f"nightshift-{fm['id']}-verify").exists()
+    assert (rep.state_dir(vault) / "items" / f"{fm['id']}.1" / "outcome.json").is_file()
+    assert not rep.item_dir(vault, fm["id"]).exists()
+
+
+def test_requeue_twice_counts_up(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    for n in (1, 2):
+        ni.update(path, state="failed")
+        rep.item_dir(vault, fm["id"]).mkdir(parents=True, exist_ok=True)
+        assert nr.main(["requeue", fm["id"]], vault, NOW) == 0
+        assert (rep.state_dir(vault) / "items" / f"{fm['id']}.{n}").is_dir()
+
+
+@pytest.mark.parametrize("state", ["queued", "running", "delivering", "done", "cancelled", "waiting_reset"])
+def test_requeue_refuses_other_states(env, capsys, state):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ni.update(path, state=state)
+    rep.item_dir(vault, fm["id"]).mkdir(parents=True, exist_ok=True)
+    before = path.read_text()
+    assert nr.main(["requeue", fm["id"]], vault, NOW) == 2
+    assert f"{fm['id']} is {state}" in capsys.readouterr().out
+    assert path.read_text() == before
+    assert rep.item_dir(vault, fm["id"]).is_dir()
+
+
+def test_requeue_an_unknown_id(env, capsys):
+    vault, tmp = env
+    assert nr.main(["requeue", "2026-10-01-nope"], vault, NOW) == 2
+    assert "no item 2026-10-01-nope" in capsys.readouterr().out
+
+
+def test_needs_you_lines_name_requeue(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    _, fm = only_item(vault)
+    git(tmp / "remote.git", "branch", "-D", "feat/x")
+    nr.main(["tick"], vault, NOW)
+    out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
+    assert f"then run nightshift.py requeue {fm['id']}" in out["needs"][0]

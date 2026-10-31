@@ -79,6 +79,7 @@ def _parser():
     cmd("check").add_argument("note")
     cmd("list").add_argument("--json", action="store_true")
     cmd("cancel").add_argument("id")
+    cmd("requeue").add_argument("id")   # behind its own ask rule (§3.6)
     rp = cmd("report")
     rp.add_argument("date", nargs="?")
     rp.add_argument("--json", action="store_true")
@@ -662,7 +663,7 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
         internal, unresolved = nc.resolve_problems(fm.get("hosts") or [])
         if internal:
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "host", "needs": [
-                f"{internal[0]}: remove the host, then queue {fm['id']} again"]})
+                f"{internal[0]}: queue the brief again with nightshift.py research, without that host"]})
         if unresolved:
             ctx.log({"item": fm["id"], "state": fm.get("state"), "reason": "host does not resolve"})
             return 0
@@ -673,7 +674,7 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     fm = {**fm, "started_at": started}   # the outcome and the report carry the same stamp
     if nc.workspace_inside_vault(ctx.vault, ctx.workspace):   # the session's profile denies the vault root
         return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "workspace", "needs": [
-            f"Move order_workspace outside the vault ({ctx.workspace} is inside it), then queue {fm['id']} again"]})
+            f"Move order_workspace outside the vault ({ctx.workspace} is inside it), then run nightshift.py requeue {fm['id']}"]})
     before = {}
     if fm["kind"] == "plan":
         try:
@@ -682,7 +683,7 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
             return _finish(ctx, path, fm, idir, None, {"state": "blocked", "reason": "base moved", "needs": [str(exc)]})
         except CloneError as exc:   # ends now, with a report row and a Needs-you line, and frees the queue
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
-                f"Push {fm['base']} to the template remote, then queue {fm['id']} again ({exc})"]})
+                f"Push {fm['base']} to the template remote, then run nightshift.py requeue {fm['id']} ({exc})"]})
         before = _before(ctx, fm, idir)
         gone = nc.toolchain_errors(fm["repo"], nc.codebase(ctx.vault, fm["repo"]) or {})
         if gone:   # a directory that passed readiness is gone: block now, before the session spends its budget
@@ -692,7 +693,7 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
             cwd = _research_dir(ctx, fm)
         except CloneError as exc:
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
-                f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then queue {fm['id']} again ({exc})"]})
+                f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then run nightshift.py requeue {fm['id']} ({exc})"]})
     run = _run_session(ctx, path, fm, body, cwd, idir, resume)
     with SHARED:
         rep.record_usage(ctx.vault, ctx.date, run.get("usage") or {}, ctx.clock_now().isoformat())
@@ -982,6 +983,33 @@ def _add(ctx: Ctx, a, kind: str) -> int:
     return 0
 
 
+def _requeue(ctx: Ctx, item_id: str) -> int:
+    """Start a blocked or failed order fresh (confinement spec §3.6): its clones go, its items folder is kept aside as
+    items/<id>.<n>/, and a plan order records its base's commit again, which the owner approves by running this.
+    ponytail: no runner lock, like cancel; no tick starts a blocked or failed order."""
+    hits = [(p, fm) for p, fm, _ in ni.items(ctx.vault) if fm.get("id") == item_id]
+    if not hits:
+        print(f"no item {item_id}")
+        return 2
+    path, fm = hits[0]
+    if fm.get("state") not in ("blocked", "failed"):
+        print(f"not requeued: {item_id} is {fm.get('state')}; only a blocked or failed order can be requeued")
+        return 2
+    for d in (ctx.workspace / f"nightshift-{item_id}", ctx.workspace / f"nightshift-{item_id}-verify"):
+        shutil.rmtree(d, ignore_errors=True)
+    idir = rep.item_dir(ctx.vault, item_id)
+    if idir.exists():
+        n = 1
+        while idir.with_name(f"{item_id}.{n}").exists():
+            n += 1
+        idir.rename(idir.with_name(f"{item_id}.{n}"))
+    sha = _base_sha(ctx, fm) if fm.get("kind") == "plan" else ""
+    ni.update(path, state="queued", attempts=None, session_id=None, reason=None, result=None, started_at=None,
+              finished_at=None, reset_at=None, **({"base_sha": sha} if sha else {}))
+    print(f"requeued {item_id}")
+    return 0
+
+
 def main(argv: list, vault: Path, now: datetime | None = None) -> int:
     vault, now = Path(vault), now or datetime.now(timezone.utc)
     try:
@@ -1010,6 +1038,8 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
         for p, fm, _ in ni.items(vault):
             print(f"{fm.get('id')}  {fm.get('kind')}  {fm.get('state')}  {fm.get('start')}  {fm.get('result') or fm.get('reason') or ''}")
         return 0
+    if cmd == "requeue":
+        return _requeue(ctx, a.id)
     if cmd == "cancel":
         hits = [p for p, fm, _ in ni.items(vault) if fm.get("id") == a.id]
         if not hits:
