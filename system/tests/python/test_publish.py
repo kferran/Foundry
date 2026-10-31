@@ -684,3 +684,11 @@ def test_the_gate_refuses_a_brief_that_changes_a_held_line(vault, staged):
 
 def test_the_gate_passes_a_brief_that_keeps_held_lines_and_moves_others(vault):
     assert held_run(vault, [OTHER, HELD], [HELD, OTHER, "- [ ] owed: A new line (since 2026-10-02)"]) == []
+
+
+def test_an_ingest_never_writes_the_now_archive(run):
+    # review of PR C: intake reads ticked held lines from now-archive too, so ingest must not forge one there
+    target = "wiki/work/now-archive/2026-10.md"
+    stage_new(run, target, NOW_HEAD + HELD.replace("- [ ] ", "- [x] ", 1) + "\n")
+    decide(run, rec(target))
+    assert "the Now archive is written only by now.py" in reasons(publish.validate_run(run, RID, now=LATER)[2])

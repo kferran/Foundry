@@ -17,6 +17,7 @@ from .index import PRIVATE, Index, name_excluded, walled
 RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
 MEETINGS = re.compile(r"^wiki/[^/]+/meetings/")
 NOW_PAGE = re.compile(r"^wiki/[^/]+/Now\.md$")
+NOW_ARCHIVE = re.compile(r"^wiki/[^/]+/now-archive/")
 INDEX_NOTE = "wiki/Index.md"
 DECISION_KINDS = {"noop", "patch", "create", "deprecate", "supersede"}
 SHRINK_EXEMPT = {"deprecate", "supersede"}
@@ -334,6 +335,8 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
         return [Problem(target, "meeting notes are written only by the meeting import")]
     if command == "ingest" and NOW_PAGE.match(target):
         return [Problem(target, "the Now page is written only by now.py and the brief")]  # audit S5
+    if command == "ingest" and NOW_ARCHIVE.match(target):   # intake reads ticked held lines there too (§3.7)
+        return [Problem(target, "the Now archive is written only by now.py")]
     if Path(target).suffix != ".md":
         return [Problem(target, "not a markdown note")]
     if not _resolves(vault, target):
@@ -372,12 +375,14 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
     # A tag the run adds keeps the form; a tag the note already had is the owner's to fix (#158).
     added = [t for t in _tags(new) if old is None or t not in _tags(old)]
     out += [Problem(target, i.message) for i in schemamod.tag_issues(target, (new.data or {}).get("type"), new, added, schemas)]
+    # A held stale-claims line releases web-sourced text to ingest when ticked, on the page or in its archive (both are
+    # read by intake): only the owner's hand adds, removes or changes one (§3.7).
+    named = lambda body: sorted(x.rstrip() for x in body.split("\n") if heldmod.HELD.search(x))
+    if (NOW_PAGE.match(target) or NOW_ARCHIVE.match(target)) and \
+            named(old.body if old is not None else "") != named(new.body):
+        out.append(Problem(target, "a Now line naming raw/<p>/held/ changes only by hand"))
     if NOW_PAGE.match(target):   # a line the run adds passes the Now check; older ones pass (factory F5 spec §4.3)
         kept = {line.rstrip() for line in (old.body if old is not None else "").split("\n")}
-        # A held stale-claims line releases web-sourced text to ingest when ticked: only the owner's hand changes it (§3.7).
-        named = lambda body: sorted(x.rstrip() for x in body.split("\n") if heldmod.HELD.search(x))
-        if named(old.body if old is not None else "") != named(new.body):
-            out.append(Problem(target, "a Now line naming raw/<p>/held/ changes only by hand"))
         for line in (x.rstrip() for x in new.body.split("\n") if x.startswith("- [ ] ")):
             if line in kept:
                 continue

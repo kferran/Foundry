@@ -48,7 +48,7 @@ def test_a_crossed_line_archives_the_file_unread(hv):
     f = hold(hv)
     close(hv, "work", "-")
     held.step(hv, TODAY, alerts()[1])
-    assert (hv / "raw/work/archive" / f.name).is_file()
+    assert (hv / "raw/work/held/rejected" / f.name).is_file()
     assert not (hv / "raw/work/notes").exists()
 
 
@@ -93,3 +93,43 @@ def test_a_move_that_fails_is_alerted_and_the_file_stays(hv, monkeypatch):
     held.step(hv, TODAY, alert)
     assert f.is_file()
     assert any(f.name in a for a in got)
+
+
+@pytest.mark.parametrize("other, mark", [
+    ("- [ ] owed: Pat asked about raw/work/held/{f} [via:: mail] (since 2026-10-10)", "-"),        # an expired mail line
+    ("- [ ] waiting: Merge raw/work/held/{f} (since 2026-10-10, https://github.com/o/r/pull/9)", "x"),   # closed by a merge
+    ("- [ ] owed: Look again at raw/work/held/{f} (since 2026-10-10)", "x"),                       # another hand line
+], ids=["expired-mail-line", "merged-pr-line", "other-hand-line"])
+def test_only_the_runners_own_line_decides(hv, other, mark):
+    # review of PR C: a line that merely names the path, closed by expiry, a merge or the owner, never moves the file
+    f = hold(hv)
+    page = hv / "wiki/work/Now.md"
+    line = other.format(f=f.name).replace("- [ ] ", f"- [{mark}] ", 1)
+    page.write_text(page.read_text().replace("## Waiting", f"## Waiting\n{line}"))
+    held.step(hv, TODAY, alerts()[1])
+    assert f.is_file()
+
+
+def test_a_crossed_file_is_kept_out_of_the_index_and_recall(hv):
+    # review of PR C: a rejected file never reaches an indexed folder (raw/<p>/archive/ is read by recall)
+    f = hold(hv)
+    close(hv, "work", "-")
+    held.step(hv, TODAY, alerts()[1])
+    assert (hv / "raw/work/held/rejected" / f.name).is_file()
+    assert not (hv / "raw/work/archive").exists()
+
+
+def test_a_line_too_long_for_the_cap_is_refused_not_cut(hv):
+    # review of PR C: a cut line would lose the path, and the file would wait for ever unnoticed
+    f = hold(hv, oid="2026-10-10-" + "a" * 200, line=False)
+    got, alert = alerts()
+    held.step(hv, TODAY, alert)
+    assert any(f.name[:40] in a for a in got)
+    assert [l for l in now.open_lines(now.read(hv, "work")) if "held/" in l] == []
+
+
+def test_only_partition_folders_are_read(hv):
+    f = write(hv, "raw/inbox/held/2026-10-10-x.stale-claims.md", BODY.format(p="work", id="2026-10-10-x"))
+    held.step(hv, TODAY, alerts()[1])
+    assert f.is_file()
+    assert "held/" not in now.read(hv, "work")

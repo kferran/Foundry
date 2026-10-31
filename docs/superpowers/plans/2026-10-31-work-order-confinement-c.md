@@ -24,6 +24,7 @@
 
 - **Ruling 1, the statement names the path once and leads with it closely:** `Review <n> stale claims from a research Work Order before they reach the wiki: raw/<p>/held/<id>.stale-claims.md`. The id is in the path, and `fit=True` cuts from the end, so the path is the reason the line must stay under the cap. With an id at the 80-character limit the line is still under 300. Cost if wrong: a cut path, which the release step would then not find; Task 1's test pins a long id.
 - **Ruling 2, a held file is found through its line's text**, on the page and in the current and previous month's `now-archive/` (the `nowmod.read` + `nowmod.archived` pattern of `triage.py:276`). `[x]` releases and `[-]` archives; an open line waits; no line means the add failed, so it is retried. Cost if wrong: a line hand-edited to drop the path re-adds a second line.
+- **Ruling 4 (final review), a crossed file goes to `raw/<p>/held/rejected/`**, not `raw/<p>/archive/` as §3.7 says: recall and the debrief read `archive/`, so the rejected web text would reach every session. Only the runner's own line (owed, no who, evidence or via, the exact statement) decides, and ingest may not write `now-archive/`, which intake also reads. Cost if wrong: none; a rejected file can still be read by hand.
 - **Ruling 3, the index skips `raw/*/held/`** (`index.NOT_INDEXED`), and the `session_digest` schema covers `raw/<p>/held/` so lint checks the file. Spec §3.7 is silent on both, and the Global Constraint above requires the first.
 
 ## Review Focus

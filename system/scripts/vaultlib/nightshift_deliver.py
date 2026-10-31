@@ -293,7 +293,8 @@ def stale_claims_input(vault, fm: dict, text: str):
         return None
     name = f"{fm['id']}.stale-claims"
     raw = Path(vault) / "raw" / fm["partition"]
-    for folder in (raw / "held", raw / "notes", raw / "archive", Path(vault) / "system" / "quarantine" / "poisoned"):
+    for folder in (raw / "held", raw / "held" / "rejected", raw / "notes", raw / "archive",
+                   Path(vault) / "system" / "quarantine" / "poisoned"):
         if folder.is_dir() and any(p.name.startswith(name) for p in folder.iterdir()):
             return None  # a second delivery of the same Work Order: it is held, released or compiled already
     path = raw / "held" / f"{name}.md"
