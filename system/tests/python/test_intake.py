@@ -177,7 +177,8 @@ def test_a_busy_run_lock_ends_the_tick_with_inputs_kept_and_no_retry_alert(iv, m
 def usage_reading(vault, five_hour, hours_ago=0.0):
     from datetime import timedelta, timezone
     at = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
-    write(vault, "system/logs/nightshift/health-2099-01-01.json", json.dumps({"usage5": five_hour, "usage5_at": at}))
+    from vaultlib import nightshift_report as rep
+    write(rep.state_dir(vault), "health-2099-01-01.json", json.dumps({"usage5": five_hour, "usage5_at": at}))
 
 
 def test_usage_ceiling_holds_inbox_and_digests_and_alerts_once_a_day(iv):

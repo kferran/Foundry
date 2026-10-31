@@ -33,7 +33,8 @@ def vault(tmp_path: Path) -> Path:
     shutil.copytree(REPO / "system" / "scripts", root / "system" / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copytree(REPO / "system" / "templates", root / "system" / "templates")
     shutil.copytree(EXT, root / "extensions" / "console", ignore=shutil.ignore_patterns("__pycache__", "node_modules"))
-    write(root, "system/config.md", CONFIG)
+    # Runner state lives under order_workspace (#320): never the real ~/code/worktrees from a test.
+    write(root, "system/config.md", CONFIG.removesuffix("---\n") + f'order_workspace: "{tmp_path / "ws"}"\n---\n')
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     return root
 

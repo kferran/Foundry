@@ -29,6 +29,14 @@ def bwrap_works() -> bool:
         ["bwrap", "--ro-bind", "/", "/", "true"], capture_output=True).returncode == 0
 
 
+@pytest.fixture(autouse=True)
+def _no_real_workspace(tmp_path, monkeypatch):
+    """Runner state lives under order_workspace (spec §3.4): a vault with no setting must never read or write the
+    real ~/code/worktrees/state from a test."""
+    from vaultlib import nightshift_check
+    monkeypatch.setattr(nightshift_check, "DEFAULT_WORKSPACE", str(tmp_path / "default-ws"))
+
+
 @pytest.fixture
 def needs_bwrap():
     need_env(bwrap_works(), "bwrap cannot start a sandbox here")

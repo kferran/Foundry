@@ -1,0 +1,3 @@
+- Changed: Work Order runner state (`items/`, `alerts.json`, `health-<date>.json`) moves from `system/logs/nightshift/` to `<order_workspace>/state/`; the first tick after the update moves it, and orders in flight carry on. The daily report stays in the vault. (#320)
+- Changed: Work Order and headless sessions deny `.env` files with globs that work on Linux (`~/**/.env`, `~/**/.env.*`, and the same under a codebase or workspace outside home); the old `**/.env*` masked nothing. A Work Order session can no longer read other orders' folders or runner state. (#326, #319)
+- Changed: a research host that resolves to an internal address is refused when queued and fails the order at start; one that does not resolve waits for the next tick. (#318)

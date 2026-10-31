@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
-from . import alerts as alertsmod, now as nowmod, state as statemod
+from . import alerts as alertsmod, nightshift_report as rep, now as nowmod, state as statemod
 from .config import config
 from .connector import Fail, walk
 from .redact import redact
@@ -240,7 +240,7 @@ def collect(vault, now: datetime) -> tuple:
                 continue
             sent.append(_sans_time(event))
             alerts.append(event)
-    for path in sorted((logs / "nightshift" / "items").glob("*/outcome.json")):
+    for path in sorted((rep.state_dir(vault) / "items").glob("*/outcome.json")):
         try:
             out = json.loads(path.read_text())
         except (OSError, ValueError):

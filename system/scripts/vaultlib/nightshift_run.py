@@ -107,7 +107,7 @@ class Ctx:
 
     def alert(self, key: str, msg: str) -> None:
         day = self.local.date().isoformat()
-        seen = self.vault / rep.DIR / "alerts.json"
+        seen = rep.state_dir(self.vault) / "alerts.json"
         with SHARED:
             data = json.loads(seen.read_text()) if seen.is_file() else {}
             if data.get(key) == day:
@@ -116,6 +116,7 @@ class Ctx:
             seen.parent.mkdir(parents=True, exist_ok=True)
             seen.write_text(json.dumps(data))
             path = self.vault / "system" / "logs" / f"alerts_{day}.md"
+            path.parent.mkdir(parents=True, exist_ok=True)
             with open(path, "a", encoding="utf-8") as f:
                 f.write(f"- {self.local.strftime('%H:%M:%S')} [orders] {msg}\n")
 
@@ -321,11 +322,18 @@ def _deny(ctx: Ctx, fm: dict) -> list:
     out = [str(ctx.vault)]
     # A plan item works in its own codebase; a research item reads code/, so even its own checkout stays denied.
     own = nc.source(ctx.vault, fm.get("repo")) if fm.get("kind") == "plan" and fm.get("repo") != "template" else None
+    roots = [ctx.workspace]   # .env files where the profiles' ~/** globs do not reach (confinement spec §3.3, #326)
     for p in sorted((ctx.vault / "system" / "codebases").glob("*.md")):
         cb = nc.codebase(ctx.vault, p.stem) or {}
         path = Path(str(cb.get("path") or "")).expanduser()
         if cb.get("path") and path != own:
             out.append(str(path))
+        if cb.get("path"):
+            roots.append(path)
+    home = Path.home().resolve()
+    for r in dict.fromkeys(f for r in roots for f in ss.forms(r)):   # as given and resolved: bwrap binds real paths
+        if not Path(r).resolve().is_relative_to(home):
+            out += [f"{r}/**/.env", f"{r}/**/.env.*"]
     return out
 
 
@@ -374,7 +382,9 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
     hosts = list(nc.setting(cb, "order_hosts", "nightshift_hosts") or [])
     web = list(fm.get("hosts") or []) if kind == "research" else []
     settings = idir / "settings.json"
-    settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm), cwd=cwd)))
+    own = nc.source(ctx.vault, fm.get("repo")) if kind == "plan" else None   # its clone's objects (git clone --shared)
+    settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm), cwd=cwd,
+                                              fence=ctx.workspace, reopen=[own] if own else [])))
     plugins = [p for p in [ss.superpowers_dir()] if p] + [Path(str(p)).expanduser() for p in nc.setting(cb, "order_plugins", "nightshift_plugins") or []]
     code = nc.git(cwd / "code", "log", "-1", "--format=%h (%cs)").stdout.strip() if kind == "research" and fm.get("repo") else ""
     prompt = (ss.plan_prompt(fm) if kind == "plan" else
@@ -620,6 +630,14 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     if fm.get("state") == "delivering":
         return _finish(ctx, path, fm, idir, None, _deliver(ctx, fm, idir))
     _stop_stale(idir)
+    if fm["kind"] == "research":   # before the attempt counts: a DNS outage leaves the order as it was (§3.2)
+        internal, unresolved = nc.resolve_problems(fm.get("hosts") or [])
+        if internal:
+            return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "host", "needs": [
+                f"{internal[0]}: remove the host, then queue {fm['id']} again"]})
+        if unresolved:
+            ctx.log({"item": fm["id"], "state": fm.get("state"), "reason": "host does not resolve"})
+            return 0
     resume = fm.get("state") in ("waiting_reset", "running")
     attempts = int(fm.get("attempts") or 0) + 1
     started = fm.get("started_at") or ctx.clock_now().isoformat()   # read now: a slot can free hours into the tick
@@ -772,7 +790,7 @@ class _Pool:
 
 def _day_health(ctx: Ctx, entries) -> tuple:
     """The day's checks on its first tick, and this tick's stamp. Returns (health, Held line it cleared)."""
-    hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+    hfile = rep.state_dir(ctx.vault) / f"health-{ctx.date}.json"
     try:
         h = json.loads(hfile.read_text()) if hfile.is_file() else {}
     except (OSError, ValueError):
@@ -780,7 +798,7 @@ def _day_health(ctx: Ctx, entries) -> tuple:
     # The day's checks run on its first tick. A usage reading run_headless.sh recorded can create the file
     # first (usage ceiling spec), so the test is the sandbox key, not the file; that newer reading is kept.
     if "sandbox" not in h:
-        prev = ctx.vault / rep.DIR / f"health-{(date.fromisoformat(ctx.date) - timedelta(days=1)).isoformat()}.json"
+        prev = rep.state_dir(ctx.vault) / f"health-{(date.fromisoformat(ctx.date) - timedelta(days=1)).isoformat()}.json"
         try:   # the last 5-hour reading outlives the report day, so the ceiling holds right after the brief too
             old = json.loads(prev.read_text()) if prev.is_file() else {}
         except (OSError, ValueError):
@@ -811,7 +829,7 @@ def _claim(ctx: Ctx, fm: dict) -> bool:
 
 def _set_held(ctx: Ctx, held: str) -> None:
     """Write the Held line ("" clears it) when it changed; the brief and the debrief copy the report, so it is in it."""
-    hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+    hfile = rep.state_dir(ctx.vault) / f"health-{ctx.date}.json"
     with SHARED:
         h = json.loads(hfile.read_text()) if hfile.is_file() else {}
         if (h.get("held") or "") == held:
@@ -831,6 +849,9 @@ def tick(ctx: Ctx) -> int:
     """Up to MAX_PARALLEL items at once (parallel orders spec §3). Delivering items first, then running ones resume,
     then queued and waiting items in pick order; each finish refills its slot until nothing runs or can start.
     Each pass reads the clock again: a tick lives for hours, and due times, the window and the ceiling move with it."""
+    moved = rep.migrate_state(ctx.vault)   # once, after the update that moved state out of the vault (#320)
+    if moved:
+        ctx.log({"state": "moved", "to": str(rep.state_dir(ctx.vault)), "names": moved})
     entries, refused = _screen(ctx)
     if refused:
         return 2
@@ -873,7 +894,7 @@ def tick(ctx: Ctx) -> int:
                         continue
                     if chosen[1].get("state") == "queued":
                         # The 5-hour ceiling holds only a new start, read afresh: a finished worker may have raised it.
-                        hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+                        hfile = rep.state_dir(ctx.vault) / f"health-{ctx.date}.json"
                         with SHARED:
                             fresh = json.loads(hfile.read_text()) if hfile.is_file() else day[0]
                         held = ns.five_hour_hold(fresh, now, ctx.max_five_hour)
@@ -914,6 +935,8 @@ def _add(ctx: Ctx, a) -> int:
         body = Path(a.brief_file).read_text(encoding="utf-8") if a.brief_file else ""
     fm = {k: v for k, v in fm.items() if v not in (None, "", [])} | ({"verify": a.verify} if a.kind == "plan" else {})
     errs = nc.check(ctx.vault, fm, body)
+    if not errs and a.kind == "research":   # owner-set order_hosts are config and are not resolved (§3.2)
+        errs = [e for problems in nc.resolve_problems(fm.get("hosts") or []) for e in problems]
     if errs:
         for e in errs:
             print(f"not ready: {e}")

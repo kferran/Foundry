@@ -37,7 +37,7 @@ make_vault() {
   cp -r "$REPO/.claude/commands" "$V/.claude/commands"
   [[ -f "$REPO/system/headless.settings.json" ]] && cp "$REPO/system/headless.settings.json" "$V/system/"
   [[ -f "$REPO/.claude/settings.json" ]] && cp "$REPO/.claude/settings.json" "$V/.claude/"
-  cat > "$V/system/config.md" <<'EOF'
+  cat > "$V/system/config.md" <<EOF
 ---
 type: config
 timezone: "America/Denver"
@@ -45,6 +45,7 @@ brief_time: "06:00"
 debrief_time: "17:00"
 remote_mode: "none"
 default_partition: "personal"
+order_workspace: "$BATS_TEST_TMPDIR/ws"
 ---
 EOF
   git -C "$V" init -q

@@ -1,6 +1,7 @@
 """Per-item outcome files, the health file and the night's report (Nightshift spec §6)."""
 import json
 import os
+import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -8,12 +9,34 @@ from zoneinfo import ZoneInfo
 
 from . import nightshift_check as nc
 
-DIR = "system/logs/nightshift"
+DIR = "system/logs/nightshift"   # the daily report the brief copies; runner state is under state_dir()
 HEALTH_ORDER = ("claude", "gh", "ssh", "sandbox", "usage", "last_tick")
 
 
+def state_dir(vault) -> Path:
+    """What the runner reads back (items/, alerts.json, health-<date>.json) lives outside the vault, where no
+    interactive session writes without a prompt and every Work Order session is denied it (confinement spec §3.4)."""
+    return nc.workspace(nc.config(vault)) / "state"
+
+
 def item_dir(vault, item_id: str) -> Path:
-    return Path(vault) / DIR / "items" / item_id
+    return state_dir(vault) / "items" / item_id
+
+
+def migrate_state(vault) -> list:
+    """Move state left in the vault by an older runner into state_dir(), once; a name already there stays put.
+    Returns the names moved."""
+    old, new = Path(vault) / DIR, state_dir(vault)
+    moved = []
+    for p in sorted([*old.glob("items/*"), old / "alerts.json", *old.glob("health-*.json")]):
+        dest = new / p.relative_to(old)
+        if p.exists() and not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(p), str(dest))
+            moved.append(str(p.relative_to(old)))
+    if (old / "items").is_dir() and not any((old / "items").iterdir()):
+        (old / "items").rmdir()
+    return moved
 
 
 _UMASK = os.umask(0)   # read once: os.umask can only be read by setting it
@@ -35,7 +58,7 @@ def write_outcome(vault, outcome: dict) -> None:
 
 
 def write_health(vault, date: str, health: dict) -> None:
-    _atomic(Path(vault) / DIR / f"health-{date}.json", json.dumps(health, indent=1, sort_keys=True))
+    _atomic(state_dir(vault) / f"health-{date}.json", json.dumps(health, indent=1, sort_keys=True))
 
 
 def record_usage(vault, date: str, usage: dict, at: str) -> None:
@@ -43,7 +66,7 @@ def record_usage(vault, date: str, usage: dict, at: str) -> None:
     a session without a reading leaves it alone."""
     if not usage:
         return
-    hp = Path(vault) / DIR / f"health-{date}.json"
+    hp = state_dir(vault) / f"health-{date}.json"
     try:
         h = json.loads(hp.read_text(encoding="utf-8")) if hp.is_file() else {}
     except (OSError, json.JSONDecodeError):
@@ -57,7 +80,7 @@ def record_usage(vault, date: str, usage: dict, at: str) -> None:
 
 def _outcomes(vault, date: str) -> list:
     out = []
-    for p in sorted((Path(vault) / DIR / "items").glob("*/outcome.json")):
+    for p in sorted((state_dir(vault) / "items").glob("*/outcome.json")):
         try:
             o = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -82,7 +105,7 @@ def _hm(value, tz) -> str:
 
 def data(vault, date: str) -> dict:
     """The report as nightshift.py report --json prints it (#375), read from the files only; build() formats it."""
-    hp = Path(vault) / DIR / f"health-{date}.json"
+    hp = state_dir(vault) / f"health-{date}.json"
     health = json.loads(hp.read_text(encoding="utf-8")) if hp.is_file() else {}
     held = health.pop("held", None) or None
     outcomes = _outcomes(vault, date)

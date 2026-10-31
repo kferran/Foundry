@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=15510
+CORE_CAP=15590
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -79,9 +79,16 @@ core_problem() {
   for f in .claude/settings.json system/headless.settings.json; do
     jq empty "$f"
     [ "$(jq '.permissions.blockReadsOutsideWorkingDirectories' "$f")" = "true" ]
-    for rule in 'Read(~/.ssh/**)' 'Read(~/.gnupg/**)' 'Read(~/.claude/.credentials.json)' 'Read(~/.claude.json)' 'Read(~/.claude/settings*.json)' 'Read(~/.config/gcalcli/**)' 'Read(//**/.env)' 'Read(//**/.env.*)'; do
+    for rule in 'Read(~/.ssh/**)' 'Read(~/.gnupg/**)' 'Read(~/.claude/.credentials.json)' 'Read(~/.claude.json)' 'Read(~/.claude/settings*.json)' 'Read(~/.config/gcalcli/**)'; do
       jq -e --arg r "$rule" '.permissions.deny | index($r)' "$f" >/dev/null
     done
+  done
+  # .env (#326): a sandbox deny whose first segment is a wildcard masks nothing on Linux; the Read tool honours the //** form
+  # (#314) and the ~/** form (the 2026-10-30 probe), so headless keeps the //** pair for a vault outside home and adds ~/**.
+  # The interactive file is the owner's to change: either form passes.
+  jq -e '.permissions.deny | (index("Read(//**/.env)") or index("Read(~/**/.env)"))' .claude/settings.json >/dev/null
+  for rule in 'Read(~/**/.env)' 'Read(~/**/.env.*)' 'Read(//**/.env)' 'Read(//**/.env.*)'; do
+    jq -e --arg r "$rule" '.permissions.deny | index($r)' system/headless.settings.json >/dev/null
   done
 }
 
@@ -132,9 +139,10 @@ core_problem() {
     jq -e --arg r "Read($p)" '.permissions.deny | index($r)' "$f" > /dev/null
   done
   for p in '~/.ssh' '~/.gnupg' '~/.config/foundry' '~/.config/gh' '~/.git-credentials' '~/.netrc' '~/.azure' '~/.aws' \
-      '~/.claude/projects' '~/.claude/.credentials.json' '~/.claude.json' '**/.env*'; do
+      '~/.claude/projects' '~/.claude/.credentials.json' '~/.claude.json' '~/**/.env' '~/**/.env.*'; do
     jq -e --arg p "$p" '.sandbox.filesystem.denyRead | index($p)' "$f" > /dev/null
   done
+  [ "$(jq '[.sandbox.filesystem.denyRead[] | select(startswith("**") or startswith("/**"))] | length' "$f")" = 0 ]
 }
 
 @test "interactive settings allow only staging-free vault edits and read-only index commands" {
@@ -530,6 +538,9 @@ sealed_problems() {
   # issue and Work Order its inputs name, took core from 15,340 to 15,466.
   # 15,470 -> 15,510 (#299, owner to approve at merge): brief_run.sh retries a rejected brief once, the smoke check's
   # budget skips rows it cannot hold, and ingest's lock wait ends the tick, which took core from 15,466 to 15,503.
+  # 15,510 -> 15,590 (#318, #319, #320, #326, Work Order confinement PR A, owner to approve at merge): runner state
+  # under order_workspace with a one-time move, the DNS check at add and at session start, the .env globs outside home
+  # and the workspace fence took core to 15,582.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
