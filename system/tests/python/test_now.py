@@ -656,11 +656,13 @@ def test_a_hand_written_line_is_listed_and_left_alone(vault, tmp_path):
 
 def test_cli_add_seeds_the_missing_default_page_first(vault):
     prepare(vault)
-    write(vault, "briefings/2026-10-01.md", "### 1. Objectives\n- [ ] **Old objective**\n### 2.\n")
+    # the CLI reads the real day, so the briefing is dated inside its 30-day lookback
+    old = datetime.now(ZoneInfo("America/Denver")).date() - timedelta(days=1)
+    write(vault, f"briefings/{old}.md", "### 1. Objectives\n- [ ] **Old objective**\n### 2.\n")
     r = cli(vault, "add", "--partition", "work", "--kind", "owed", "--statement", "New")
     assert r.returncode == 0, r.stderr
     lines = now.open_lines(page(vault))
-    assert lines[0] == "- [ ] owed: **Old objective** (since 2026-10-01)"
+    assert lines[0] == f"- [ ] owed: **Old objective** (since {old})"
     assert lines[1].startswith("- [ ] owed: New [due:: ")
 
 
