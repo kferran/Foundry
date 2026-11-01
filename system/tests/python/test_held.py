@@ -1,5 +1,7 @@
 """Held stale claims (confinement spec §3.7, #301 S9): released on a ticked line, archived on a crossed one."""
+import os
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -21,6 +23,9 @@ def hv(vault: Path) -> Path:
 
 def hold(vault, p="work", oid="2026-10-10-x", line=True):
     f = write(vault, f"raw/{p}/held/{oid}.stale-claims.md", BODY.format(p=p, id=oid))
+    # step reads the file's mtime as the day it was held; pin it before TODAY, as a real held file is
+    t = datetime.fromisoformat("2026-10-10T09:00:00").timestamp()
+    os.utime(f, (t, t))
     if line:
         held.add_line(vault, f, 2, "2026-10-10")
     return f
