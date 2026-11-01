@@ -1,0 +1,1 @@
+- Changed: a research Work Order's Stale claims now wait in `raw/<partition>/held/` with one `owed` Now line; tick it to hand them to ingest, or cross it out to archive them unread. A headless run cannot change that line. (#301 S9)

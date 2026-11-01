@@ -642,6 +642,17 @@ def test_each_intake_tick_closes_now_lines_on_finished_work_orders(iv):
     assert f"_(closed: Work Order done {today()})_" in (iv / "wiki/work/Now.md").read_text()
 
 
+def test_the_now_step_releases_a_ticked_held_file(iv):
+    # confinement spec §3.7: the intake tick reads the owner's tick and hands the held stale claims to ingest
+    write(iv, "raw/work/held/2026-10-08-r.stale-claims.md", "---\ntype: session_digest\n---\n## Stale claims\n- a → b\n")
+    write(iv, "wiki/work/Now.md", '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-08"\npartition: work\n---\n'
+          "# Now\n\n## Needs you\n- [x] owed: Review 1 stale claims from a research Work Order before they reach the "
+          "wiki: raw/work/held/2026-10-08-r.stale-claims.md (since 2026-10-08)\n\n## Waiting\n")
+    Intake(iv, now=later()).check_now()
+    assert (iv / "raw/work/notes/2026-10-08-r.stale-claims.md").is_file()
+    assert not (iv / "raw/work/held/2026-10-08-r.stale-claims.md").exists()
+
+
 def test_a_busy_run_lock_skips_the_now_check(iv):
     write(iv, "wiki/work/Now.md", '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-08"\npartition: work\n---\n'
           "# Now\n\n## Needs you\n- [x] owed: A (since 2026-10-08)\n\n## Waiting\n")

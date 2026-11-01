@@ -654,3 +654,41 @@ def test_a_staged_hard_link_is_refused(vault):
 
 def test_the_gate_passes_an_added_brief_line_that_names_its_writer(vault):
     assert brief_run(vault, [OLD_LONG, "- [ ] owed: New objective [via:: brief] (since 2026-10-01)"]) == []
+
+
+HELD = ("- [ ] owed: Review 1 stale claims from a research Work Order before they reach the wiki: "
+        "raw/work/held/2026-10-01-r.stale-claims.md [due:: 2026-10-31] (since 2026-10-01)")
+OTHER = "- [ ] owed: Send the draft (since 2026-10-01)"
+HELD_REFUSAL = "a Now line naming raw/<p>/held/ changes only by hand"
+
+
+def held_run(vault, live, staged):
+    """A brief run staging wiki/work/Now.md with `staged` lines over a live page holding `live` (confinement §3.7)."""
+    write(vault, "wiki/work/Now.md", NOW_HEAD + "\n".join(live) + "\n")
+    os.utime(vault / "wiki/work/Now.md", (time.time() - 600, time.time() - 600))
+    publish.snapshot(vault, BID, ["wiki/work/**"])
+    publish.record_stage(vault, BID, "wiki/work/Now.md")
+    stage_new(vault, "wiki/work/Now.md", NOW_HEAD + "\n".join(staged) + "\n", run_id=BID)
+    return [r for r in reasons(publish.validate_run(vault, BID, now=LATER)[2]) if "Now line" in r]
+
+
+@pytest.mark.parametrize("staged", [
+    [OTHER, HELD.replace("- [ ] ", "- [x] ", 1)],                       # ticked
+    [OTHER],                                                             # removed
+    [OTHER, HELD, HELD.replace("2026-10-01-r", "2026-10-01-q")],        # added
+    [OTHER, HELD.replace("Review 1", "Review 2")],                       # reworded
+], ids=["ticked", "removed", "added", "reworded"])
+def test_the_gate_refuses_a_brief_that_changes_a_held_line(vault, staged):
+    assert held_run(vault, [OTHER, HELD], staged) == [HELD_REFUSAL]
+
+
+def test_the_gate_passes_a_brief_that_keeps_held_lines_and_moves_others(vault):
+    assert held_run(vault, [OTHER, HELD], [HELD, OTHER, "- [ ] owed: A new line (since 2026-10-02)"]) == []
+
+
+def test_an_ingest_never_writes_the_now_archive(run):
+    # review of PR C: intake reads ticked held lines from now-archive too, so ingest must not forge one there
+    target = "wiki/work/now-archive/2026-10.md"
+    stage_new(run, target, NOW_HEAD + HELD.replace("- [ ] ", "- [x] ", 1) + "\n")
+    decide(run, rec(target))
+    assert "the Now archive is written only by now.py" in reasons(publish.validate_run(run, RID, now=LATER)[2])
