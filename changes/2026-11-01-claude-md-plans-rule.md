@@ -1,0 +1,1 @@
+- Changed: CLAUDE.md's Approvals rule now says a plan comes before building anything larger than a one-sentence fix: with the superpowers plugin installed, a spec from `superpowers:brainstorming` and a plan from `superpowers:writing-plans`. (#456)
