@@ -27,7 +27,7 @@ The findings note has: a table of candidates against the questions above; a verd
 ## Queue line (for the Foreman session)
 
 ```
-system/scripts/nightshift.py add --kind research --title "A chat gateway in front of the Foundry" --partition shared \
+system/scripts/nightshift.py research --title "A chat gateway in front of the Foundry" --partition shared \
   --brief-file docs/superpowers/specs/2026-10-11-chat-gateway-research-brief.md \
   --output wiki/shared/summaries/ChatGatewayOptions.md \
   --host docs2.openclaw.ai --host github.com --host agentic-ai.readthedocs.io \
