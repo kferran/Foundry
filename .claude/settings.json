@@ -92,7 +92,8 @@
       "Bash(git commit *--no-verify*)", "Bash(git commit -n*)", "Bash(git commit * -n*)",
       "Bash(system/scripts/nightshift.py research:*)", "Bash(system/scripts/nightshift.py requeue:*)",
       "Edit(/raw/*/nightshift/**)", "Write(/raw/*/nightshift/**)", "Edit(/system/codebases/**)", "Write(/system/codebases/**)",
-      "Edit(/system/nightshift/**)", "Write(/system/nightshift/**)"
+      "Edit(/system/nightshift/**)", "Write(/system/nightshift/**)",
+      "Edit(/system/scripts/**)", "Write(/system/scripts/**)", "Edit(/extensions/**)", "Write(/extensions/**)"
     ]
   }
 }
