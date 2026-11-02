@@ -133,14 +133,17 @@ else
   [[ -z "$recovery_failed" ]] || alert "publish recovery failed for run(s): $recovery_failed (see system/logs/runs/<run_id>/publish.json)"
 fi
 
-runs_today=0
-if [[ -f "$LEDGER" ]]; then
-  runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and .command != "meeting" and ([2,3,4,6] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
-fi
-if (( runs_today >= MAX_PER_DAY )); then
-  marker="system/logs/.cap-alerted-$TODAY"
-  [[ -e "$marker" ]] || { alert "daily headless cap ($MAX_PER_DAY) reached; inputs left in place"; : > "$marker"; }
-  die 4 "daily cap reached"
+# The cap is ingest's spend limit: the brief and debrief neither count toward it nor wait on it (#436 S4).
+if [[ "$cmd" == ingest ]]; then
+  runs_today=0
+  if [[ -f "$LEDGER" ]]; then
+    runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select(.command == "ingest" and ([2,3,4,6] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
+  fi
+  if (( runs_today >= MAX_PER_DAY )); then
+    marker="system/logs/.cap-alerted-$TODAY"
+    [[ -e "$marker" ]] || { alert "daily headless cap ($MAX_PER_DAY) reached; inputs left in place"; : > "$marker"; }
+    die 4 "daily cap reached"
+  fi
 fi
 
 run_id="$RUN_TS-$cmd-$(od -An -N2 -tx1 /dev/urandom | tr -d ' \n')"

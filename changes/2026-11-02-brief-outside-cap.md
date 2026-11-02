@@ -1,0 +1,1 @@
+- Changed: the daily headless cap (`HEADLESS_MAX_RUNS_PER_DAY`, 60) counts and stops ingest runs only, so a day of failing ingest no longer refuses the morning brief. (#460)
