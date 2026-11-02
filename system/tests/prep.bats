@@ -250,7 +250,7 @@ codebase() {  # <name> <path>
   digest raw/work/notes/w1.md work 2026-10-01T09:00:00-06:00 "## Outcome
 Done."
   printf -- '- 10:00:00 [sync] one\n- 11:00:00 [intake] two\n' > system/logs/alerts_2026-10-01.md
-  # Runs are counted as run_headless.sh counts them for the daily cap: no retry, meeting or usage-error run, any
+  # Runs are counted as the daily cap counted them before #436 S4: no retry, meeting or usage-error run, any
   # spacing, a bad line skipped (PR #253 review).
   {
     printf '{"run_id":"a","command":"ingest","started_at":"2026-10-01T09:00:00-06:00"}\n'

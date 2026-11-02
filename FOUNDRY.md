@@ -354,7 +354,7 @@ You can also type `/setup` and answer its questions one at a time; the prompt on
 - **10. Report:** the Obsidian plugins, then a status table of everything that was set up.
 - **11. First brief:** `/brief` runs, so you read a brief before setup ends.
 
-Once the units are installed, the timers run real headless `claude -p` jobs. They use your Claude subscription and are capped at 60 runs a day (`HEADLESS_MAX_RUNS_PER_DAY`).
+Once the units are installed, the timers run real headless `claude -p` jobs. They use your Claude subscription and are capped at 60 ingest runs a day (`HEADLESS_MAX_RUNS_PER_DAY`); the brief and debrief always run.
 
 ## Security model
 

@@ -182,7 +182,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "the brief and debrief run when ingest has reached the daily cap (#436 S4)" {
+@test "the brief runs when ingest has reached the daily cap (#436 S4)" {
   mkdir -p system/logs
   today="$(TZ=America/Denver date +%F)"
   for i in 1 2; do printf '{"run_id":"r%s","command":"ingest","started_at":"%sT01:00:00-06:00","exit":1}\n' "$i" "$today" >> "$LEDGER"; done

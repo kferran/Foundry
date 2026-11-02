@@ -102,8 +102,8 @@ esac
 
 prep_meetings
 prep_sections debrief debrief_sections
-# The heartbeat (#166): the day's commits, digests, pull requests, alerts and headless runs (as run_headless.sh counts
-# them for the daily cap); unknown when git or the digest query failed, so a quiet day and a dead read differ.
+# The heartbeat (#166): the day's commits, digests, pull requests, alerts and headless runs (every command, as the
+# daily cap counted them before it counted ingest only, #436 S4); unknown when git or the digest query failed, so a quiet day and a dead read differ.
 signals="$( { grep -h '^- ' "$PREP_DIR/git.md" "$PREP_DIR/prs.md" "system/logs/alerts_$PREP_DATE.md"
   grep -hE '^## [^ ]+\.md \(' "$PREP_DIR/digests.md"
   jq -R --arg d "$PREP_DATE" 'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and .command != "meeting" and ([2,3,4,6] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "system/logs/runs-${PREP_DATE:0:7}.jsonl"
