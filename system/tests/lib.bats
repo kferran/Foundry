@@ -115,3 +115,23 @@ lib_config_setup() {
   run config_validate
   [ "$status" -eq 1 ]
 }
+
+@test "crash_trap: a set -e stop exits 70 and alerts once a day per unit (#436 S3)" {
+  mkdir -p system/logs
+  printf '%s\n' '#!/bin/bash' 'set -euo pipefail' 'source system/scripts/lib_fetch.sh' 'FETCH_TAG=smoke' \
+    'crash_trap foundry-x' 'f() { false; }' 'f' > "$BATS_TEST_TMPDIR/c.sh"
+  run bash "$BATS_TEST_TMPDIR/c.sh"
+  [ "$status" -eq 70 ]
+  run bash "$BATS_TEST_TMPDIR/c.sh"
+  [ "$status" -eq 70 ]
+  [ "$(grep -c '\[smoke\] foundry-x crashed: exit 1 at line [0-9]*; journalctl --user -u foundry-x' system/logs/alerts_*.md)" -eq 1 ]
+}
+
+@test "crash_trap: a failure inside || does not trip the trap (#436 S3)" {
+  mkdir -p system/logs
+  printf '%s\n' '#!/bin/bash' 'set -euo pipefail' 'source system/scripts/lib_fetch.sh' 'FETCH_TAG=smoke' \
+    'crash_trap foundry-x' 'rc=0' 'false || rc=$?' 'exit "$rc"' > "$BATS_TEST_TMPDIR/c.sh"
+  run bash "$BATS_TEST_TMPDIR/c.sh"
+  [ "$status" -eq 1 ]
+  [ -z "$(ls system/logs/alerts_*.md 2>/dev/null)" ]
+}

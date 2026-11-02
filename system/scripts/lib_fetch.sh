@@ -37,6 +37,11 @@ alert_once() {  # <key> <text>: "- HH:MM:SS [FETCH_TAG] <key> <text>", at most o
   local f="system/logs/alerts_$(date +%F).md"
   grep -qF -- "[$FETCH_TAG] $1" "$f" 2>/dev/null || printf -- '- %s [%s] %s %s\n' "$(date +%H:%M:%S)" "$FETCH_TAG" "$1" "$2" >> "$f"
 }
+crash_trap() {  # <unit>: a set -e stop exits 70, which fails the unit, and alerts once a day (#436 S3)
+  set -E   # functions and subshells inherit the trap; an `||` list never fires it
+  # shellcheck disable=SC2064  # the unit is fixed now; the exit and line are read when the trap fires
+  trap "rc=\$?; alert_once '$1 crashed:' \"exit \$rc at line \$LINENO; journalctl --user -u $1\"; exit 70" ERR
+}
 fetch_reason() {  # <exit> <reason>: FETCH_REASON, led by its connector class (connector health spec §2)
   connector_classify "$1" "$2" "${work:-}"
   FETCH_REASON="${CONNECTOR_CLASS:+$CONNECTOR_CLASS: }$2"
