@@ -182,6 +182,23 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "the brief runs when ingest has reached the daily cap (#436 S4)" {
+  mkdir -p system/logs
+  today="$(TZ=America/Denver date +%F)"
+  for i in 1 2; do printf '{"run_id":"r%s","command":"ingest","started_at":"%sT01:00:00-06:00","exit":1}\n' "$i" "$today" >> "$LEDGER"; done
+  HEADLESS_MAX_RUNS_PER_DAY=2 STUB_MODE=brief run "$RH" brief
+  [ "$status" -eq 0 ]
+  [ ! -e "system/logs/.cap-alerted-$today" ]
+}
+
+@test "brief and debrief runs do not count toward the ingest cap (#436 S4)" {
+  mkdir -p system/logs
+  today="$(TZ=America/Denver date +%F)"
+  for c in brief debrief; do printf '{"run_id":"%s","command":"%s","started_at":"%sT01:00:00-06:00","exit":0}\n' "$c" "$c" "$today" >> "$LEDGER"; done
+  HEADLESS_MAX_RUNS_PER_DAY=2 STUB_MODE=noop run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+}
+
 @test "an account usage limit exits 4, alerts once, and is not reported as a failed input" {
   STUB_MODE=usage_limit run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 4 ]
