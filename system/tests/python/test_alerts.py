@@ -72,3 +72,25 @@ def test_alert_writes_once_a_day_per_key(vault):
     assert alerts.alert(vault, "2026-10-23", "09:06:00", "triage", "no key")
     text = (vault / "system/logs/alerts_2026-10-23.md").read_text(encoding="utf-8")
     assert text == "- 09:00:00 [triage] k1 first\n- 09:06:00 [triage] no key\n"
+
+
+def test_guard_exits_70_and_alerts_once_a_day_per_unit(tmp_path, capsys):
+    """#436 S3: a crash in a unit's script exits 70, which fails the unit, and alerts once a day per unit."""
+    def boom():
+        raise ValueError("bad")
+    assert alerts.guard(boom, tmp_path, "foundry-x", "orders") == 70
+    assert alerts.guard(boom, tmp_path, "foundry-x", "orders") == 70
+    text = "".join(p.read_text() for p in (tmp_path / "system/logs").glob("alerts_*.md"))
+    assert text.count("[orders] foundry-x crashed: ValueError; journalctl --user -u foundry-x") == 1
+    assert "Traceback" in capsys.readouterr().err
+
+
+def test_guard_returns_the_result_of_a_clean_run(tmp_path):
+    assert alerts.guard(lambda: 1, tmp_path, "foundry-x", "orders") == 1
+
+
+def test_guard_exits_70_when_the_alert_cannot_be_written(tmp_path, monkeypatch):
+    def refuse(*a, **k):
+        raise OSError("read-only")
+    monkeypatch.setattr(alerts, "alert", refuse)
+    assert alerts.guard(lambda: 1 / 0, tmp_path, "foundry-x", "orders") == 70
