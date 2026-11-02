@@ -9,4 +9,6 @@ sys.path[:0] = [str(VAULT / "system" / "scripts"), str(Path(__file__).resolve().
 from telemetrylib import telemetry_run  # noqa: E402
 from vaultlib import alerts  # noqa: E402
 
-sys.exit(alerts.guard(lambda: telemetry_run.main(sys.argv[1:], VAULT), VAULT, "foundry-telemetry", "telemetry"))
+# Only the unit's own call (no arguments) alerts: the smoke check's --check and --sources report their own failure.
+sys.exit(alerts.guard(lambda: telemetry_run.main(sys.argv[1:], VAULT), VAULT, "foundry-telemetry", "telemetry",
+                     alerting=not sys.argv[1:]))

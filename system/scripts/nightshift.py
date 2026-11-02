@@ -9,4 +9,6 @@ VAULT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
 from vaultlib import alerts, nightshift_run  # noqa: E402
 
-sys.exit(alerts.guard(lambda: nightshift_run.main(sys.argv[1:], VAULT), VAULT, "foundry-nightshift", "orders"))
+# Only the unit's own call (`tick`) alerts: a crash in `list --json` from the brief's prep is in that prep's log.
+sys.exit(alerts.guard(lambda: nightshift_run.main(sys.argv[1:], VAULT), VAULT, "foundry-nightshift", "orders",
+                     alerting=sys.argv[1:] == ["tick"]))

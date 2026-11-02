@@ -94,3 +94,16 @@ def test_guard_exits_70_when_the_alert_cannot_be_written(tmp_path, monkeypatch):
         raise OSError("read-only")
     monkeypatch.setattr(alerts, "alert", refuse)
     assert alerts.guard(lambda: 1 / 0, tmp_path, "foundry-x", "orders") == 70
+
+
+def test_guard_with_alert_off_exits_70_and_writes_nothing(tmp_path):
+    """#436 S3 review: a CLI call that is not the unit's own run (list --json from the brief's prep) alerts nothing."""
+    assert alerts.guard(lambda: 1 / 0, tmp_path, "foundry-x", "orders", alerting=False) == 70
+    assert not list((tmp_path / "system/logs").glob("alerts_*.md"))
+
+
+def test_guard_exits_70_when_the_alerts_file_cannot_be_read(tmp_path, monkeypatch):
+    def corrupt(*a, **k):
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+    monkeypatch.setattr(alerts, "alert", corrupt)
+    assert alerts.guard(lambda: 1 / 0, tmp_path, "foundry-x", "orders") == 70

@@ -405,9 +405,14 @@ print("\n".join(sorted(tags)))' "$REPO")"
   [ "$output" = "$(printf '%s/system/scripts/lib_connector.sh\n%s/system/scripts/run_headless.sh' "$REPO" "$REPO")" ]
 }
 
-@test "the Python unit scripts run through alerts.guard, so a crash exits 70 and alerts (#436 S3)" {
-  grep -qF 'alerts.guard(lambda: nightshift_run.main(sys.argv[1:], VAULT), VAULT, "foundry-nightshift", "orders")' \
+@test "the unit scripts exit 70 on a crash and alert only on the unit's own call (#436 S3)" {
+  grep -qF 'alerts.guard(lambda: nightshift_run.main(sys.argv[1:], VAULT), VAULT, "foundry-nightshift", "orders",' \
     "$REPO/system/scripts/nightshift.py"
-  grep -qF 'alerts.guard(lambda: telemetry_run.main(sys.argv[1:], VAULT), VAULT, "foundry-telemetry", "telemetry")' \
+  grep -qF 'alerting=sys.argv[1:] == ["tick"]' "$REPO/system/scripts/nightshift.py"
+  grep -qxF 'ExecStart="{{VAULT_ROOT}}/system/scripts/nightshift.py" tick' "$REPO/system/systemd/foundry-nightshift.service.in"
+  grep -qF 'alerts.guard(lambda: telemetry_run.main(sys.argv[1:], VAULT), VAULT, "foundry-telemetry", "telemetry",' \
     "$REPO/extensions/telemetry/scripts/telemetry_fetch.py"
+  grep -qF 'alerting=not sys.argv[1:]' "$REPO/extensions/telemetry/scripts/telemetry_fetch.py"
+  grep -qx 'crash_trap foundry-smoke .*' "$REPO/system/scripts/smoke_check.sh"
+  grep -qx '(( check )) || crash_trap foundry-watch .*' "$REPO/extensions/intraday/scripts/watch_fetch.sh"
 }

@@ -85,13 +85,17 @@ def alert(vault, day: str, clock: str, tag: str, text: str, key: str = "") -> bo
     return True
 
 
-def guard(fn, vault, unit: str, tag: str) -> int:
+def guard(fn, vault, unit: str, tag: str, alerting: bool = True) -> int:
     """fn()'s exit, or 70 for an exception that escapes it (#436 S3): the traceback goes to stderr, which the journal
-    keeps, and one alert a day per unit names it. Exit 1 stays a handled failure that already alerted."""
+    keeps, and one alert a day per unit names it. Exit 1 stays a handled failure that already alerted.
+    alerting=False for a call that is not the unit's own run: its traceback is in its caller's output, not the unit's
+    journal."""
     try:
         return fn()
     except Exception as exc:
         traceback.print_exc()
+        if not alerting:
+            return 70
         try:
             from .config import config
             try:
@@ -100,6 +104,6 @@ def guard(fn, vault, unit: str, tag: str) -> int:
                 t = datetime.now(ZoneInfo("UTC"))
             alert(vault, f"{t:%Y-%m-%d}", f"{t:%H:%M:%S}", tag,
                   f"{unit} crashed: {type(exc).__name__}; journalctl --user -u {unit}", key=f"{unit} crashed:")
-        except OSError:
-            pass   # the exit still fails the unit
+        except Exception:
+            pass   # an unwritable or unreadable alerts file: the exit still fails the unit
         return 70

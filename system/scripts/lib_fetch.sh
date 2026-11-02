@@ -38,9 +38,12 @@ alert_once() {  # <key> <text>: "- HH:MM:SS [FETCH_TAG] <key> <text>", at most o
   grep -qF -- "[$FETCH_TAG] $1" "$f" 2>/dev/null || printf -- '- %s [%s] %s %s\n' "$(date +%H:%M:%S)" "$FETCH_TAG" "$1" "$2" >> "$f"
 }
 crash_trap() {  # <unit>: a set -e stop exits 70, which fails the unit, and alerts once a day (#436 S3)
-  set -E   # functions and subshells inherit the trap; an `||` list never fires it
+  set -E   # functions inherit the trap; an `||` list never fires it
+  # A subshell (a process substitution, which never had errexit) carries on as before; its failure reaches the
+  # script only through the command that reads it. An alert that cannot be written still exits 70.
   # shellcheck disable=SC2064  # the unit is fixed now; the exit and line are read when the trap fires
-  trap "rc=\$?; alert_once '$1 crashed:' \"exit \$rc at line \$LINENO; journalctl --user -u $1\"; exit 70" ERR
+  trap "rc=\$?; if (( BASHPID == \$\$ )); then
+    alert_once '$1 crashed:' \"exit \$rc at line \$LINENO; journalctl --user -u $1\" || true; exit 70; fi" ERR
 }
 fetch_reason() {  # <exit> <reason>: FETCH_REASON, led by its connector class (connector health spec §2)
   connector_classify "$1" "$2" "${work:-}"
