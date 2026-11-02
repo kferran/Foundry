@@ -1,7 +1,7 @@
 # Run-time resilience: outages, crashes and the brief's room (#436 S1, S3, S4)
 
 **Grill:** not an owner idea: audit, the 2026-10-30 stability assessment as filed in https://github.com/kferran/Foundry/issues/436
-**Builder check:** 2026-11-01, four questions. The smoke check would miss a crash followed by a clean tick and would re-alert units whose handled exits already fail them: F2 changed to an alert from the crashing script (§3.2). What the S1 build does if the probe disagrees, and whether the debrief heartbeat follows the cap: settled as Claude's calls (§6). Whether F1 and F2 are decided: the owner's (§5).
+**Builder check:** 2026-11-01, four questions. The smoke check would miss a crash followed by a clean tick and would re-alert units whose handled exits already fail them: F2 changed to an alert from the crashing script (§3.2). What the S1 build does if the probe disagrees, and whether the debrief heartbeat follows the cap: settled as Claude's calls (§6). Whether F1 and F2 are decided: the owner's, decided 2026-11-02 as recommended (§5).
 **Blueprint:** none: three fixes to the existing intake, runner and unit plumbing; no new shape.
 
 ## 1. Why
@@ -59,6 +59,8 @@ The cap check and the count at `run_headless.sh:137-143` apply to `ingest` only.
 - The pull requests touch the headless runner and intake, so the owner merges them.
 
 ## 5. Forks for the owner
+
+Decided by the owner, 2026-11-02: both as recommended (the `claude -p` check; the crashing script alerts).
 
 - **F1, the outage check.** Recommended: the `claude -p` check above. The alternative reads the failed run's own output: no `result` line means outage. It costs no extra call, but it rests on how claude reports each failure, and a timeout (124) never has a result line, so a hanging input would never poison.
 - **F2, how a crash reaches the owner.** Recommended: the script alerts on its own crash (§3.2). The alternative is `OnFailure=` on each service, starting an alert unit within seconds. It also catches a kill or a start timeout, and it covers every `foundry-*` service, but it is one more unit file that every vault installs with `install_units.sh --update`, and it alerts again for the brief, debrief and intake units, which already fail (and alert) on their handled exits.
