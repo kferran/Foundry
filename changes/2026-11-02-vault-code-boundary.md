@@ -1,0 +1,1 @@
+- Changed: the Edit and Write tools now ask before they write under `system/scripts/` or `extensions/`, and FOUNDRY.md's Security model says why: the units run that code outside any sandbox, so the permission mode, not the Bash sandbox, is what keeps a steered session off your machine. (#433)

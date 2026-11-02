@@ -98,6 +98,10 @@ core_problem() {
       'Edit(/system/nightshift/**)' 'Write(/system/nightshift/**)'; do
     jq -e --arg r "$rule" '.permissions.ask | index($r)' .claude/settings.json >/dev/null
   done
+  # The units run the vault's scripts outside any sandbox, so a tool write to them asks too (#433, owner 2026-11-02).
+  for rule in 'Edit(/system/scripts/**)' 'Write(/system/scripts/**)' 'Edit(/extensions/**)' 'Write(/extensions/**)'; do
+    jq -e --arg r "$rule" '.permissions.ask | index($r)' .claude/settings.json >/dev/null
+  done
   # The sandbox cannot let only the CLI through (probe 2026-10-31): no excluded command and no write deny for it.
   [ "$(jq '.sandbox.excludedCommands // [] | length' .claude/settings.json)" = 0 ]
 }
