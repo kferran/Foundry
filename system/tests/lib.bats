@@ -155,3 +155,56 @@ lib_config_setup() {
   [ "$status" -eq 0 ]
   [ -z "$(ls system/logs/alerts_*.md 2>/dev/null)" ]
 }
+
+@test "crash_trap: an unset variable under set -u exits 70 and alerts once a day (no ERR fires)" {
+  mkdir -p system/logs
+  printf '%s\n' '#!/bin/bash' 'set -euo pipefail' 'source system/scripts/lib_fetch.sh' 'FETCH_TAG=smoke' \
+    'crash_trap foundry-x' 'echo "$nope"' > "$BATS_TEST_TMPDIR/c.sh"
+  run bash "$BATS_TEST_TMPDIR/c.sh"
+  [ "$status" -eq 70 ]
+  run bash "$BATS_TEST_TMPDIR/c.sh"
+  [ "$status" -eq 70 ]
+  [ "$(grep -c '\[smoke\] foundry-x crashed: exit 1; journalctl --user -u foundry-x' system/logs/alerts_*.md)" -eq 1 ]
+}
+
+@test "crash_trap: a bad arithmetic expression exits 70 and alerts (no ERR fires)" {
+  mkdir -p system/logs
+  printf '%s\n' '#!/bin/bash' 'set -euo pipefail' 'source system/scripts/lib_fetch.sh' 'FETCH_TAG=smoke' \
+    'crash_trap foundry-x' 'x=$(( 1/0 ))' > "$BATS_TEST_TMPDIR/c.sh"
+  run bash "$BATS_TEST_TMPDIR/c.sh"
+  [ "$status" -eq 70 ]
+  grep -q '\[smoke\] foundry-x crashed: exit 1; journalctl --user -u foundry-x' system/logs/alerts_*.md
+}
+
+@test "crash_trap: a TERM is a stop, not a crash, even after a failed command" {
+  mkdir -p system/logs
+  # The TERM lands while a child runs after a failed command: the EXIT trap then reads that command's 3.
+  printf '%s\n' '#!/bin/bash' 'set -euo pipefail' 'source system/scripts/lib_fetch.sh' 'FETCH_TAG=smoke' \
+    'crash_trap foundry-x' 'sh -c "exit 3" || sh -c "kill -TERM \$PPID; sleep 0.2"' 'exit 0' > "$BATS_TEST_TMPDIR/c.sh"
+  run bash "$BATS_TEST_TMPDIR/c.sh"
+  [ "$status" -eq 143 ]
+  [ -z "$(ls system/logs/alerts_*.md 2>/dev/null)" ]
+}
+
+@test "crash_trap: a handled exit 1 from a function stays 1 with no crash alert" {
+  mkdir -p system/logs
+  printf '%s\n' '#!/bin/bash' 'set -euo pipefail' 'source system/scripts/lib_fetch.sh' 'FETCH_TAG=smoke' \
+    'crash_trap foundry-x' 'f() { echo "handled" >&2; exit 1; }' 'f' > "$BATS_TEST_TMPDIR/c.sh"
+  run bash "$BATS_TEST_TMPDIR/c.sh"
+  [ "$status" -eq 1 ]
+  [ -z "$(ls system/logs/alerts_*.md 2>/dev/null)" ]
+}
+
+@test "crash_trap: the fetch workdir is still removed when an unset variable crashes the script" {
+  mkdir -p system/logs "$BATS_TEST_TMPDIR/bin"
+  # fetch_workdir's mktemp -p /tmp, sent under the test's directory (/tmp can be read-only in a sandbox)
+  printf '#!/bin/bash\nexec %q -d -p %q\n' "$(command -v mktemp)" "$BATS_TEST_TMPDIR" > "$BATS_TEST_TMPDIR/bin/mktemp"
+  chmod +x "$BATS_TEST_TMPDIR/bin/mktemp"
+  printf '%s\n' '#!/bin/bash' 'set -euo pipefail' 'source system/scripts/lib_fetch.sh' 'FETCH_TAG=smoke' \
+    'crash_trap foundry-x' 'fetch_workdir' "echo \"\$work\" > '$BATS_TEST_TMPDIR/w'" 'echo "$nope"' > "$BATS_TEST_TMPDIR/c.sh"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run bash "$BATS_TEST_TMPDIR/c.sh"
+  [ "$status" -eq 70 ]
+  [ -n "$(cat "$BATS_TEST_TMPDIR/w")" ]
+  [ ! -e "$(cat "$BATS_TEST_TMPDIR/w")" ]
+  grep -q 'foundry-x crashed:' system/logs/alerts_*.md
+}

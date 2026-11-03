@@ -14,7 +14,7 @@ source system/scripts/lib_config.sh
 # shellcheck source=lib_fetch.sh
 source system/scripts/lib_fetch.sh   # alert_once; smoke logs its own rows with smoke_logline below
 FETCH_TAG=smoke
-crash_trap foundry-smoke   # a set -e stop exits 70; 1 stays "a source failed" (#436 S3)
+crash_trap foundry-smoke   # a crash exits 70; 1 stays "a source failed" (#436 S3)
 
 (( $# == 0 )) || { echo "usage: smoke_check.sh" >&2; exit 2; }
 case "$(config_get machine_role standalone)" in
@@ -27,7 +27,7 @@ mkdir -p system/logs
 log="system/logs/smoke-$(date +%Y-%m).jsonl"
 failed=0
 out="$(mktemp)"
-trap 'rm -f -- "$out"' EXIT
+exit_cleanup='rm -f -- "$out"'   # run by crash_trap's EXIT trap
 
 smoke_logline() {  # <source> <exit> <reason>
   jq -cn --arg time "$(date -Iseconds)" --arg source "$1" --argjson exit "$2" --arg reason "$3" \
@@ -234,7 +234,7 @@ done
 # Unit drift (#166): each unit and drop-in install_units.sh --dry-run renders against its installed copy. A unit not
 # installed (one the owner never installed, or removed) is left out; with none installed the line reads off.
 rdir="$(mktemp -d)"
-trap 'rm -rf -- "$out" "$rdir"' EXIT
+exit_cleanup='rm -rf -- "$out" "$rdir"'
 urc=0
 timeout "${SMOKE_UNITS_TIMEOUT:-60}" system/scripts/install_units.sh --dry-run > "$rdir/all" 2> "$out" < /dev/null || urc=$?
 if (( urc != 0 )); then
