@@ -443,7 +443,7 @@ Every feature is built on one line, in this order. Each step names where its det
 1. **Blueprint:** the feature's shape (Source, Poller, Compile run or Work Order), named in its spec ([Architecture](#architecture)).
 2. **Standard parts:** `vaultlib/connector.py` (the stream walker and `Fail`), `lib_fetch.sh` (`logline`, `alert_once`, `fail`, `skip`), `vaultlib/config.py` (the one config reader) and `system/tests/stub_claude_connector` (the connector stub), each listed with its reason in `conformance.bats`'s `PART_HOMES`; and `vaultlib/api.py`, the one module an extension imports.
 3. **Stations:** grill, spec, plan, build, review and close, each with its skill (the table below).
-4. **Gates:** `conformance.bats` (the spec and plan header lines, the part homes, the timing budgets), `test_source_rule.py` (the Source rule) and `vault_integrity.bats` (the core budget, the vendor names, this manual's inventory) fail CI.
+4. **Gates:** `conformance.bats` (the spec and plan header lines, the part homes, the timing budgets), `test_source_rule.py` (the Source rule), `vault_integrity.bats` (the core budget, the vendor names, this manual's inventory) and `pipeline.bats` (the pipeline graph) fail CI. Each core unit has a node in `system/pipeline.yml` (its scripts, reads, writes, locks and failure edges); `pipeline.bats` checks the node's locks against the lock files its scripts name and its catch-all alert against the entry script's `crash_trap` or `alerts.guard`, and a silent path the code still has is a `PIPELINE_GAPS` line naming its issue (factory F6, #477).
 5. **Defect labels:** one `defect:` label per fix ([Two lanes](#development)), and what holds each class (Defect classes, below).
 
 **Add a Source.**

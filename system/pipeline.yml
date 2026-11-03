@@ -1,0 +1,128 @@
+# The pipeline graph (factory F6, #477): one node per core unit in system/systemd/. system/tests/pipeline.bats
+# checks this file against the code (system/tests/pipeline_graph.py, rules P1 to P8); a gap the code has today is a
+# PIPELINE_GAPS line there, never an edge declared here that the code lacks. Paths are vault paths: a trailing /
+# is a folder, * matches one path part. The index skips this file (it reads only .md).
+#
+# Edges: alert:<tag> (a tag in vaultlib/alerts.py), quarantine, retry-next-tick (a timer unit runs it again),
+# caller:<node>, unavailable (system/logs/inputs/<date>/unavailable.md, which the brief reads), none.
+# `other` is the catch-all: an alert there needs the entry script to install crash_trap or alerts.guard (P3).
+
+sources:   # written from outside the graph
+  - {path: raw/inbox/, by: the owner and the capture channel}
+  - {path: meetings/drop/, by: the owner}
+  - {path: raw/*/notes/, by: the memory hooks}
+  - {path: raw/*/nightshift/, by: /order add}
+  - {path: wiki/*/Now.md, by: the owner's ticks in Obsidian}
+  - {path: briefings/, by: the owner's Notes section}
+
+sinks:     # read outside the graph
+  - {path: wiki/, by: the owner in Obsidian}
+  - {path: briefings/, by: the owner}
+  - {path: raw/archive/, by: the audit layer}
+
+nodes:
+  intake:
+    unit: foundry-intake
+    entry: system/scripts/intake.py
+    scripts: [system/scripts/intake_daemon.sh, system/scripts/intake.py, system/scripts/vaultlib/intake.py,
+              system/scripts/run_headless.sh, system/scripts/vaultlib/publish.py, system/scripts/vaultlib/now.py]
+    reads: [raw/inbox/, raw/*/notes/, raw/meetings/, meetings/drop/, briefings/, wiki/*/Now.md]
+    writes: [raw/inbox/, raw/archive/, raw/*/archive/, system/quarantine/, wiki/, wiki/*/Now.md,
+             system/logs/runs/, system/logs/alerts_*.md]
+    locks: [intake.lock, run.lock, stage.lock]
+    failure:
+      input: quarantine
+      busy: retry-next-tick
+      other: alert:intake
+
+  brief:
+    unit: foundry-brief
+    scripts: [system/scripts/brief_run.sh, system/scripts/brief_prep.sh, system/scripts/run_headless.sh,
+              system/scripts/vaultlib/publish.py, system/scripts/vaultlib/now.py]
+    reads: [wiki/, briefings/, system/logs/inputs/, system/logs/alerts_*.md, system/logs/nightshift/,
+            system/quarantine/]
+    writes: [briefings/, wiki/*/Now.md, system/logs/inputs/, system/logs/runs/, system/logs/alerts_*.md]
+    locks: [run.lock, stage.lock]
+    failure:
+      prep: unavailable
+      rejected: alert:intake
+      busy: alert:intake
+      other: alert:intake
+
+  debrief:
+    unit: foundry-debrief
+    entry: system/scripts/run_headless.sh
+    scripts: [system/scripts/run_headless.sh, system/scripts/debrief_prep.sh, system/scripts/vaultlib/publish.py]
+    reads: [raw/*/notes/, raw/*/archive/, system/logs/inputs/, system/logs/alerts_*.md, system/logs/runs/,
+            system/logs/nightshift/, system/quarantine/]
+    writes: [briefings/, system/logs/inputs/, system/logs/runs/, system/logs/alerts_*.md]
+    locks: [run.lock, stage.lock]
+    failure:
+      prep: unavailable
+      other: alert:intake
+
+  meetings:
+    unit: foundry-meetings
+    scripts: [system/scripts/meetings_fetch.sh]
+    writes: [raw/meetings/, system/logs/alerts_*.md]
+    locks: [meetings.lock]
+    failure:
+      busy: retry-next-tick
+      other: alert:meetings
+
+  nightshift:
+    unit: foundry-nightshift
+    scripts: [system/scripts/nightshift.py, system/scripts/vaultlib/nightshift_run.py,
+              system/scripts/vaultlib/nightshift_deliver.py]
+    reads: [raw/*/nightshift/]
+    writes: [system/logs/nightshift/, wiki/, wiki/*/Now.md, system/logs/alerts_*.md]
+    locks: [nightshift.lock, run.lock]
+    failure:
+      busy: retry-next-tick
+      other: alert:orders
+
+  notify:
+    unit: foundry-notify
+    scripts: [system/scripts/notify.sh]
+    reads: [system/logs/alerts_*.md, system/logs/runs/]
+    locks: [notify.lock]
+    failure:
+      busy: retry-next-tick
+      hold: alert:notify
+      other: alert:notify
+
+  smoke:
+    unit: foundry-smoke
+    scripts: [system/scripts/smoke_check.sh]
+    writes: [system/logs/alerts_*.md]
+    locks: []
+    failure:
+      other: alert:smoke
+
+  sync:
+    unit: foundry-sync
+    scripts: [system/scripts/vault_sync.sh, system/scripts/lib_git.sh]
+    locks: [index.lock, run.lock]
+    failure:
+      busy: retry-next-tick
+      blocked: alert:sync
+      other: alert:sync
+
+  triage:
+    unit: foundry-triage
+    scripts: [system/scripts/triage_fetch.sh, system/scripts/triage.py, system/scripts/vaultlib/triage.py]
+    writes: [wiki/*/Now.md, system/logs/alerts_*.md]
+    locks: [run.lock]
+    failure:
+      busy: alert:triage
+      other: alert:triage
+
+  update:
+    unit: foundry-update
+    scripts: [system/scripts/update_template.sh, system/scripts/lib_git.sh]
+    writes: [system/logs/inputs/, system/logs/alerts_*.md]
+    locks: [run.lock]
+    failure:
+      busy: alert:update
+      conflict: alert:update
+      other: alert:update
