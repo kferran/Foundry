@@ -38,7 +38,8 @@ fi
 exec 9> system/logs/notify.lock
 flock -n 9 || { logline 4 "a tick is already running"; exit 4; }
 hold="system/logs/notify/hold" lifted="system/logs/notify/hold.lifted" again=""
-[[ ! -e "$lifted" || -n "$(find "$lifted" -mtime +6)" ]] || again="; it lifted once this week, so delete it by hand"
+[[ ! -e "$hold" || ! -e "$lifted" ]] || (( $(stat -c %Y "$hold") - $(stat -c %Y "$lifted") >= 604800 )) ||
+  again="; it lifted once this week, so delete it by hand"   # the hold was written within 7 days of the last lift
 if [[ -e "$hold" && -z "$again" && -n "$(find "$hold" -mmin +1440)" ]]; then
   mv -f "$hold" "$lifted"
   touch "$lifted"

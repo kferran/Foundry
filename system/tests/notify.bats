@@ -131,6 +131,25 @@ held() {
   [ "${lines[-1]}" = "notify: other: held since a session broke its rules ($(head -n 1 system/logs/notify/hold)): read system/logs/notify-$(TZ=America/Denver date +%Y-%m).jsonl, then delete system/logs/notify/hold; it lifted once this week, so delete it by hand" ]
 }
 
+@test "a hold written within 7 days of a lift stays after that week, and one written later lifts (#436 S6)" {
+  held '7 days ago'
+  mkdir -p system/logs/notify
+  printf 'old\n' > system/logs/notify/hold.lifted
+  touch -d '8 days ago' system/logs/notify/hold.lifted
+  printf -- '- 06:10:00 [intake] one\n' >> "$ALERTS"
+  rm -f "$STUB_ARGS"
+  run "$N"
+  [ "$status" -eq 5 ]
+  [ ! -e "$STUB_ARGS" ]
+  [ "${lines[-1]##*; }" = "it lifted once this week, so delete it by hand" ]
+  touch -d '25 hours ago' system/logs/notify/hold
+  touch -d '9 days ago' system/logs/notify/hold.lifted
+  slack_posts "$(system/scripts/notify.py collect | jq -r .message)"
+  run "$N"
+  [ "$status" -eq 0 ]
+  [ ! -e system/logs/notify/hold ]
+}
+
 @test "a post that drifted counts as sent and alerts once a day" {
   printf -- '- 06:10:00 [intake] one\n' >> "$ALERTS"
   printf -- '- 06:10:01 [intake] two\n' >> "$ALERTS"
