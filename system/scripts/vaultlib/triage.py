@@ -121,27 +121,35 @@ def stats(results: int, persisted: int = 0) -> dict:
     """A tick's counts for its log line (counts only, never mail or chat text): what the search returned, the reply's
     rows, the rows kept, the pages the model saw only as too large, and the rows dropped by reason."""
     return {"results": results, "rows": 0, "kept": 0, "persisted": persisted,
-            "dropped": {"unknown": 0, "empty": 0, "duplicate": 0}}
+            "dropped": {"unknown": 0, "empty": 0, "duplicate": 0, "malformed": 0}}
 
 
-def threads(got: list) -> dict:
-    """thread id -> {link, date, sender} of its latest message, from the search results only."""
-    out = {}
+def threads(got: list, s: dict = None) -> dict:
+    """thread id -> {link, date, sender} of its latest message, from the search results only. A thread that lacks an
+    id, a link or its messages is skipped and counted in s, so one bad thread never stops the tick; a search whose
+    every thread is malformed fails, since its shape has changed."""
+    out, total, malformed = {}, 0, 0
     for sc in got:
         listed = sc.get("threads", [])  # an empty object means no threads
         if not isinstance(listed, list):
             raise Fail(1, "the search result carries no threads list")
         for t in listed:
+            total += 1
             msgs = [m for m in (t.get("messages") or []) if isinstance(m, dict)] if isinstance(t, dict) else []
             if not (isinstance(t, dict) and isinstance(t.get("id"), str) and str(t.get("viewUrl", "")).startswith("https://")
                     and msgs):
-                raise Fail(1, "a thread lacks an id, a link or its messages")
+                malformed += 1
+                continue
             # A thread comes back whole when one message matches: the owner's own replies never make it new.
             msgs = [m for m in msgs if "SENT" not in (m.get("labelIds") or [])]
             if not msgs:
                 continue
             latest = max(msgs, key=lambda m: str(m.get("date", "")))
             out[t["id"]] = {"link": t["viewUrl"], "date": str(latest.get("date", "")), "sender": str(latest.get("sender", ""))}
+    if malformed and malformed == total:
+        raise Fail(1, "every thread lacks an id, a link or its messages")
+    if s is not None:
+        s["dropped"]["malformed"] += malformed
     return out
 
 
@@ -183,8 +191,8 @@ def extract(stream, q: str) -> dict:
     persisted = {}
     pages, result = check_stream(stream, TOOL, accept, MAX_PAGES, "Gmail", persisted)
     got = pages.get("search", [])
-    known = threads(got)
     s = stats(sum(len(p.get("threads") or []) for p in got), persisted.get("search", 0))
+    known = threads(got, s)
     items, seen = [], set()
     for r in reply(result):
         s["rows"] += 1
@@ -264,6 +272,7 @@ def chat_extract(stream, q: dict, tool: str, notify_channel: str) -> dict:
 
 
 REFUSED = "a Now line was refused"   # an alert names the reason, never the line (factory F5 spec §4.2)
+MALFORMED = "a thread lacked an id, a link or its messages and was skipped"
 
 
 def record(vault, partition: str, found: dict, today: str, now_iso: str, now_epoch: int, source: str = "mail") -> list:
@@ -274,6 +283,9 @@ def record(vault, partition: str, found: dict, today: str, now_iso: str, now_epo
              if r.get("kind") == "item" and r.get("source", "mail") == source}
     added, mine, prev = [], {t for t, _ in known}, (date.fromisoformat(today).replace(day=1) - timedelta(days=1)).isoformat()
     held = "\n".join([nowmod.read(vault, partition), *nowmod.archived(vault, partition, prev, today)])
+    skipped = ((found.get("stats") or {}).get("dropped") or {}).get("malformed", 0)
+    if skipped:   # counts only: the thread itself is never named
+        alerts.alert(vault, today, now_iso[11:19], "triage", f"{MALFORMED} ({skipped} this tick)", key=MALFORMED)
     for i in found.get("items") or []:
         if (i["thread_id"], i["date"]) in known or (i["link"] in held and i["thread_id"] not in mine):
             continue   # seen, or another source's line (the intraday watch's) already holds the thread
