@@ -387,6 +387,8 @@ case "$CURL_CASE" in
   skipped-only) echo "{\"total_count\": 2, \"check_runs\": [$(run test completed '"skipped"'), $(run docs completed '"neutral"')]}" ;;
   paged) echo "{\"total_count\": 101, \"check_runs\": [$(run test completed '"success"')]}" ;;
   garbage) echo '<html>rate limited</html>' ;;
+  empty) ;;
+  missing) exit 127 ;;  # what the shell returns when no curl is installed
   *) exit 22 ;;
 esac
 EOF
@@ -426,8 +428,10 @@ none|no runs
 skipped-only|no runs
 paged|no runs
 garbage|unreachable
-down|unreachable'
-  [ "$n" -eq 7 ]
+empty|unreachable
+down|unreachable
+missing|unreachable (curl is not installed)'
+  [ "$n" -eq 9 ]
 }
 
 @test "no curl call off GitHub or with nothing new (#436 S2)" {

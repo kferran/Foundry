@@ -97,9 +97,11 @@ fi
 # ci_state <owner/repo> <sha>: green, pending, failing: <names>, no runs or unreachable, from the commit's public
 # check runs (#436 S2). Green needs every run listed, completed and passing, and at least one success.
 ci_state() {
-  local json
+  local json rc=0
   json="$(curl -fsS --connect-timeout 10 --max-time "${UPDATE_CHECKS_TIMEOUT:-20}" \
-    "https://api.github.com/repos/$1/commits/$2/check-runs?per_page=100" 2>/dev/null 9>&-)" || { echo unreachable; return; }
+    "https://api.github.com/repos/$1/commits/$2/check-runs?per_page=100" 2>/dev/null 9>&-)" || rc=$?
+  (( rc != 127 )) || { echo "unreachable (curl is not installed)"; return; }
+  [[ "$rc" == 0 && "$json" == *[![:space:]]* ]] || { echo unreachable; return; }  # jq prints nothing for an empty body
   jq -r '[.check_runs[] | {name, status, conclusion}] as $r
     | [$r[] | select(.conclusion | IN("success", "neutral", "skipped") | not) | .name] as $bad
     | if .total_count != ($r | length) then "no runs"
