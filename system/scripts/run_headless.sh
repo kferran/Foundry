@@ -75,7 +75,7 @@ write_ledger() {
   if (( ${#shas[@]} )); then
     prevname="system/logs/runs-$(date -d "$(date +%Y-%m-01) -1 day" +%Y-%m).jsonl"
     failures="$( { cat "$prevname" "$LEDGER" 2>/dev/null || true; } | jq -R --argjson s "$(json_list "${shas[@]}")" \
-      'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and ([0,3,4,6,129,130,143] | index($e) | not) and ([.input_sha256[]? | strings] | any(. as $x | $s | index($x)))) | 1' | wc -l)"
+      'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and ([0,3,4,6,7,129,130,143] | index($e) | not) and ([.input_sha256[]? | strings] | any(. as $x | $s | index($x)))) | 1' | wc -l)"
     attempt=$(( failures + 1 ))
   fi
   if [[ -n "$run_id" ]]; then
@@ -137,7 +137,7 @@ fi
 if [[ "$cmd" == ingest ]]; then
   runs_today=0
   if [[ -f "$LEDGER" ]]; then
-    runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select(.command == "ingest" and ([2,3,4,6] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
+    runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select(.command == "ingest" and ([2,3,4,6,7] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
   fi
   if (( runs_today >= MAX_PER_DAY )); then
     marker="system/logs/.cap-alerted-$TODAY"
@@ -193,6 +193,17 @@ set -e
 if (( rc != 0 )) && [[ -s "$out" ]] && jq -e '.is_error == true and ((.result // "") | tostring | test("(spend|usage|rate) limit|limit resets|usage-credits"; "i"))' "$out" > /dev/null 2>&1; then
   rc=4
 fi
+# A failure or a timeout from claude itself (an outage, an expired login) is not the input's fault either: a short
+# run with no tools tells them apart, and exit 7 holds intake without an attempt (#436 S1).
+claude_works() {
+  local o crc=0
+  o="$(timeout -k 10s "${HEADLESS_CHECK_TIMEOUT:-60s}" "$CLAUDE_BIN" -p "Reply with the word ok." --tools "" \
+    --strict-mcp-config --no-session-persistence --output-format json < /dev/null 2>> "$LOG" 9>&-)" || crc=$?
+  (( crc == 0 )) && [[ -n "$o" ]] && jq -e '.is_error == false' <<< "$o" > /dev/null 2>&1 && return 0
+  check_reason="exit $crc$(jq -r '.result // empty | tostring | " (" + .[0:160] + ")"' <<< "$o" 2>/dev/null || true)"
+  return 1
+}
+if (( rc == 1 || rc == 124 )) && ! claude_works; then rc=7; fi
 denials="$(jq -r '(.permission_denials // []) | length' "$out" 2>/dev/null || true)"
 [[ "$denials" =~ ^[0-9]+$ ]] || denials=0
 
@@ -221,6 +232,9 @@ else
   if (( rc == 4 )); then
     marker="system/logs/.usage-limit-alerted-$TODAY"
     [[ -e "$marker" ]] || { alert "account usage limit reached ($(jq -r '.result | tostring | .[0:160]' "$out" 2>/dev/null)); inputs left in place"; : > "$marker"; }
+  elif (( rc == 7 )); then
+    marker="system/logs/.outage-alerted-$TODAY"
+    [[ -e "$marker" ]] || { alert "claude is not working ($check_reason); intake holds its inputs until it does"; : > "$marker"; }
   else
     alert "$cmd $run_id failed (exit $rc)"
   fi

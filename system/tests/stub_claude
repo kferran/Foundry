@@ -1,5 +1,15 @@
 #!/bin/bash
 # Test double for claude -p. Behaviour via STUB_MODE; records argv to $STUB_ARGS and stdin target to $STUB_STDIN.
+# run_headless.sh's outage check (#436 S1): argv to $STUB_CHECK_ARGS, behaviour via STUB_CHECK (ok, fail, hang).
+if printf '%s\n' "$@" | grep -qx 'Reply with the word ok.'; then
+  printf '%s\n' "$@" > "${STUB_CHECK_ARGS:-/dev/null}"
+  case "${STUB_CHECK:-ok}" in
+    fail) echo "Not logged in" >&2; exit 1 ;;
+    hang) exec sleep 5 ;;
+  esac
+  printf '{"type":"result","is_error":false,"result":"ok"}\n'
+  exit 0
+fi
 printf '%s\n' "$@" > "${STUB_ARGS:-/dev/null}"
 readlink /proc/self/fd/0 > "${STUB_STDIN:-/dev/null}"
 # STUB_USAGE=<five-hour utilization>: the rate_limit_event line stream-json prints at the start of a session.

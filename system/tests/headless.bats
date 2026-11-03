@@ -482,3 +482,53 @@ brief_stubs() {
   [ "$status" -eq 5 ]
   [ "$(cat system/logs/alerts_*.md | grep -c 'rejected or empty')" -eq 1 ]
 }
+
+@test "a failed run whose outage check fails exits 7, alerts once a day, and is no attempt (#436 S1)" {
+  STUB_MODE=fail STUB_CHECK=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 7 ]
+  STUB_MODE=fail STUB_CHECK=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 7 ]
+  [ "$(grep -c 'claude is not working' system/logs/alerts_*.md)" -eq 1 ]
+  run grep -c 'failed (exit' system/logs/alerts_*.md
+  [ "$output" = "0" ]
+  STUB_MODE=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 1 ]
+  [ "$(jq -s 'map(.exit) | join(",")' "$LEDGER")" = '"7,7,1"' ]
+  [ "$(jq -s 'last | .attempt' "$LEDGER")" -eq 1 ]
+}
+
+@test "a timeout whose outage check fails exits 7 (#436 S1)" {
+  HEADLESS_TIMEOUT=1 STUB_MODE=sleep STUB_CHECK=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 7 ]
+}
+
+@test "an outage check that hangs ends at its timeout and counts as an outage (#436 S1)" {
+  HEADLESS_CHECK_TIMEOUT=1 STUB_MODE=fail STUB_CHECK=hang run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 7 ]
+}
+
+@test "the outage check runs only after exit 1 or 124, with no tools (#436 S1)" {
+  export STUB_CHECK_ARGS="$BATS_TEST_TMPDIR/check"
+  STUB_MODE=noop run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+  [ ! -e "$STUB_CHECK_ARGS" ]
+  STUB_MODE=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 1 ]
+  grep -qx 'Reply with the word ok.' "$STUB_CHECK_ARGS"
+  [ "$(grep -A1 -x -- '--tools' "$STUB_CHECK_ARGS" | tail -n 1)" = "" ]
+}
+
+@test "a usage limit runs no outage check (#436 S1)" {
+  export STUB_CHECK_ARGS="$BATS_TEST_TMPDIR/check"
+  STUB_MODE=usage_limit run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 4 ]
+  [ ! -e "$STUB_CHECK_ARGS" ]
+}
+
+@test "outage runs do not count toward the daily cap (#436 S1)" {
+  mkdir -p system/logs
+  today="$(TZ=America/Denver date +%F)"
+  for i in 1 2; do printf '{"run_id":"r%s","command":"ingest","started_at":"%sT01:00:00-06:00","exit":7}\n' "$i" "$today" >> "$LEDGER"; done
+  HEADLESS_MAX_RUNS_PER_DAY=2 STUB_MODE=noop run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+}
