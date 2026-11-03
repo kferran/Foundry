@@ -1136,3 +1136,116 @@ def test_overdue_leaves_the_writer_tag_out(vault):
     write(vault, "wiki/work/Now.md", HEAD.format(p="work") +
           "- [ ] owed: Tagged [via:: mail] [due:: 2026-10-19] (since 2026-10-01)\n\n## Waiting\n")
     assert now.overdue(vault, "2026-10-20").splitlines()[1] == "- owed: Tagged [due:: 2026-10-19] (since 2026-10-01)"
+
+
+# --- now.merge, the Now.md merge driver (#436 S5) ---
+
+MHEAD = HEAD.format(p="work")
+MA = "- [ ] owed: Review the export PR [due:: 2026-10-12] (Blake, since 2026-10-09, https://github.com/acme/shop/pull/7)"
+MA2 = MA.replace("the export PR", "the export PR and its docs")
+MB = "- [ ] owed: Send the invoice [due:: 2026-11-08] (since 2026-10-09)"
+MC = "- [ ] draft: Reply to the vendor [due:: 2026-10-12] (vendor, since 2026-10-09)"
+MW = "- [ ] waiting: Access to the logs [due:: 2026-10-12] (Sam, since 2026-10-09, EX-12)"
+CLOSE = "PR merged 2026-10-10"
+
+
+def pg(*needs, waiting=()):
+    return MHEAD + "".join(f"{x}\n" for x in needs) + "\n## Waiting\n" + "".join(f"{x}\n" for x in waiting)
+
+
+def tick(line, mark="x", how=""):
+    return f"- [{mark}]{line[5:]}" + (f" _(closed: {how})_" if how else "")
+
+
+def test_merge_tick_against_close():
+    base, server, client = pg(MA, MB), pg(tick(MA, how=CLOSE), MB), pg(tick(MA), MB)
+    assert now.merge(base, server, client) == server
+    assert now.merge(base, client, server) == server
+    assert now.merge(base, pg(tick(MA, "-", "expired 2026-10-16"), MB), client) == client   # [x] beats [-]
+    assert now.merge(base, server, pg(tick(MA) + "  ", MB)) == server   # a trailing space pairs by key
+
+
+def test_merge_rewrite_and_tick():
+    base, server = pg(MA, MB), pg(MA2, MB)
+    client = pg(tick(MA), "  - 2026-10-10: asked about the docs", MB)
+    want = pg(tick(MA2), "  - 2026-10-10: asked about the docs", MB)
+    assert now.merge(base, server, client) == want
+    assert now.merge(base, client, server) == want
+
+
+def test_merge_adds_on_both_sides():
+    assert now.merge(pg(MA), pg(MA, MB), pg(MA, MC, waiting=(MW,))) == pg(MA, MC, MB, waiting=(MW,))
+    assert now.merge(pg(MA), pg(MA, MB), pg(MA, MB)) == pg(MA, MB)
+    notes = ("  - 2026-10-10: one", "  - 2026-10-10: two")
+    assert now.merge(pg(MA, notes[0]), pg(MA, notes[0], notes[1]), pg(MA, "  - 2026-10-11: three")) \
+        == pg(MA, notes[1], "  - 2026-10-11: three")   # a note the client removed goes; both new ones stay
+
+
+def test_merge_archived_against_ticked():
+    base, server, client = pg(MA, MB), pg(MB), pg(tick(MA), MB)
+    assert now.merge(base, server, client) == server
+    assert now.merge(base, client, server) == server
+    stamped = pg(tick(MA, how="ticked 2026-10-10"), MB)
+    assert now.merge(stamped, server, stamped) == server
+
+
+def test_merge_empty_base():
+    assert now.merge("", pg(MA), pg(MB)) == pg(MB, MA)   # theirs' new line goes first in its section
+
+
+def test_merge_layout_from_one_side():
+    no_waiting = MHEAD + f"{MA}\n"   # the server's add writes the missing heading
+    assert now.merge(no_waiting, pg(MA, waiting=(MW,)), MHEAD + f"{tick(MA)}\n") == pg(tick(MA), waiting=(MW,))
+
+
+MD = "- [ ] owed: Call the bank [due:: 2026-10-12] (Blake, since 2026-10-09)"
+MN = "  - 2026-10-10: one"
+TOP = MHEAD.replace("## Needs you\n", "") + "x\n"   # a page with no heading yet
+TWO = ("- [ ] owed: Review the first part (Blake, since 2026-10-09)",
+       "- [ ] owed: Review the second part (Blake, since 2026-10-09)")
+
+
+@pytest.mark.parametrize("base, ours, theirs, reason", [
+    (pg(MA), pg(MA2), pg(MA.replace("PR", "pull request")), "changed on both sides"),          # two rewrites
+    (pg(MA), pg(MB), pg(MA, "  - 2026-10-10: a note"), "gone on one side"),                    # gone vs a note
+    (pg(MA), pg(MB), pg(MA.replace("PR", "pull request")), "gone on one side"),                # gone vs a rewrite
+    (pg(MA), pg(*TWO), pg(tick(MA)), "gone on one side"),                                      # two candidates
+    (pg(tick(MA, how="ticked 2026-10-10")), pg(), pg(MA), "gone on one side"),                 # gone vs reopened
+    (pg(MA), pg(MA, MB), pg(MB, waiting=(MA,)), "different section"),                          # a moved line
+    (pg(MA), pg(MA, MA), pg(MA, MB), "twice"),                                                 # a key twice
+    (pg(MA), pg(MA, "  - 2026-10-10: n", "  - 2026-10-10: n"), pg(MA, MB), "twice"),           # a note twice
+    ("<<<<<<< ours\n" + pg(MA), pg(MA, MB), pg(MA), "conflict marker"),                        # a criss-cross base
+    (pg(MA), pg(MA).replace("# Now", "# Now page"), pg(MA).replace("# Now", "# Open loops"), "layout"),
+    (pg(MA), pg(MA).replace("\n## Waiting\n", "\n"), pg(MA, waiting=(MW,)), 'no "## Waiting" section'),
+    # final review: a look-alike line (same kind, since and who) added where the line went never takes its tick or note
+    (pg(tick(MA, how="ticked 2026-10-10"), MB), pg(MB, MD), pg(tick(MA, how="ticked 2026-10-10"), MN, MB), "gone on one"),
+    (pg(MA, MB), pg(MB, MD), pg(tick(MA), MB), "gone on one side"),
+    (pg(MA, MB), pg(MB, MD), pg(MA, MN, MB), "gone on one side"),
+    (pg("- [ ] buy milk"), pg("- [ ] buy oat milk"), pg("- [x] buy milk"), "gone on one side"),    # a hand-written line
+    (pg(MB), pg(MB.replace("invoice", "invoice and receipt")), pg(tick(MB)), "no evidence"),       # rewrite vs tick
+    (TOP, TOP + f"{MA}\n", TOP.replace("x\n", "y\n"), "above the first heading"),
+], ids=["two-rewrites", "gone-vs-note", "gone-vs-rewrite", "two-candidates", "gone-vs-reopened", "moved", "key-twice",
+        "note-twice", "conflict-marker", "layout-both", "no-section", "archived-vs-note-lookalike", "lookalike-vs-tick",
+        "lookalike-vs-note", "hand-rewrite-vs-tick", "rewrite-no-evidence-vs-tick", "above-headings"])
+def test_merge_blocks(base, ours, theirs, reason):
+    with pytest.raises(ValueError, match=reason):
+        now.merge(base, ours, theirs)
+
+
+def test_merge_driver_writes_ours_or_exits_1(vault, tmp_path):
+    base, ours, theirs = (tmp_path / name for name in ("o", "a", "b"))
+    server = pg(tick(MA, how=CLOSE), MB)
+    base.write_text(pg(MA, MB), encoding="utf-8")
+    ours.write_text(pg(tick(MA), MB), encoding="utf-8")
+    theirs.write_text(server, encoding="utf-8")
+    r = cli(vault, "merge-driver", str(base), str(ours), str(theirs))
+    assert (r.returncode, r.stderr, ours.read_text(encoding="utf-8")) == (0, "", server)
+    theirs.write_bytes(b"\xff\xfe- [x] owed")
+    r = cli(vault, "merge-driver", str(base), str(ours), str(theirs))
+    assert (r.returncode, r.stderr) == (1, "now merge: a version is not UTF-8\n")
+    assert ours.read_text(encoding="utf-8") == server
+    theirs.write_text(pg(MA2), encoding="utf-8")
+    ours.write_text(pg(MA.replace("PR", "pull request")), encoding="utf-8")
+    r = cli(vault, "merge-driver", str(base), str(ours), str(theirs))
+    assert r.returncode == 1
+    assert r.stderr.startswith('now merge: the line "owed: Review the export') and r.stderr.count("\n") == 1

@@ -757,6 +757,49 @@ def test_two_docs_with_the_same_title_minutes_apart_are_two_meetings(iv):
     assert not list((iv / "raw/archive").glob("*.gdoc.md"))
 
 
+LATE_TITLE = "Weekly sync - Planning - 2026/10/05 15:57 MDT - Notes by Gemini"  # Meet's twin Doc, 57 minutes on
+LATE_NAME = "2026-10-05-1557-weekly-sync-planning"
+
+
+def canonical_notes(vault):
+    return sorted(p.name for p in (vault / "wiki/work/meetings").glob("*.md") if not p.name.endswith(".transcript.md")
+                  and frontmatter.parse(p.read_text()).data.get("status", "canonical") == "canonical")
+
+
+def test_an_empty_first_doc_is_retired_by_a_full_twin_doc_the_same_day_457(iv):
+    config(iv, meetings_partition="work")
+    fetched(iv, body=NOT_PRODUCED + TRANSCRIPT + END)
+    tick(iv)
+    aged(iv, "work", NAME)
+    fetched(iv, doc_id="FAKE-doc-late", title=LATE_TITLE)
+    tick(iv)
+    assert frontmatter.parse((iv / f"wiki/work/meetings/{NAME}.md").read_text()).data["status"] == "deprecated"
+    assert canonical_notes(iv) == [f"{LATE_NAME}.md"]
+    assert "replaced an empty first source" in alerts(iv)
+
+
+def test_an_empty_second_doc_the_same_day_is_archived_457(iv):
+    config(iv, meetings_partition="work")
+    fetched(iv)
+    tick(iv)
+    aged(iv, "work", NAME)
+    fetched(iv, doc_id="FAKE-doc-late", title=LATE_TITLE, body=NOT_PRODUCED + TRANSCRIPT + END)
+    tick(iv)
+    assert canonical_notes(iv) == [f"{NAME}.md"] and not (iv / f"wiki/work/meetings/{LATE_NAME}.md").exists()
+    assert (iv / "raw/archive/FAKE-doc-late.gdoc.md").is_file() and fetch_skips(iv) == [("FAKE-doc-late", True)]
+
+
+def test_two_full_docs_with_the_same_title_the_same_day_stay_two_meetings_457(iv):
+    config(iv, meetings_partition="work")
+    fetched(iv)
+    tick(iv)
+    aged(iv, "work", NAME)
+    fetched(iv, doc_id="FAKE-doc-late", title=LATE_TITLE)
+    tick(iv)
+    assert canonical_notes(iv) == [f"{NAME}.md", f"{LATE_NAME}.md"]
+    assert not list((iv / "raw/archive").glob("*.gdoc.md"))
+
+
 def test_a_name_taken_by_another_meeting_gets_a_suffix(iv):
     config(iv, meetings_partition="work")
     write(iv, f"wiki/work/meetings/{NAME}.md", meeting("work", NAME, "Weekly sync - Planning",

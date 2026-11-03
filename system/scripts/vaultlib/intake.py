@@ -600,14 +600,14 @@ class Intake:
                 # that tick stopped before its log line (#43): the brief's Notices read complete from it
                 self._meeting_log({"kind": "imported", "source": rel, "note": note, "complete": m.complete})
         else:
-            twin = next((p for p, d in known if d.get("status") != "deprecated" and self._same_meeting(m, d)), None)
             name = self._free_name(meetings.note_name(m))
+            empty = self._empty(meetings.render_meeting(m, name, partition), meetings.render_transcript(m, name, partition))
+            twin = next((p for p, d in known if d.get("status") != "deprecated" and self._same_meeting(m, empty, p, d)),
+                        None)
             retire = None
             if twin is not None:  # first source wins, unless it is empty and this one is not (#142)
                 local = twin.parent.parent.name == partition
-                if not (local and self._empty_note(twin)
-                        and not self._empty(meetings.render_meeting(m, name, partition),
-                                            meetings.render_transcript(m, name, partition))):
+                if not (local and self._empty_note(twin) and not empty):
                     # a first note with empty sections takes this source's notes (#215: a drop, then its Doc)
                     filled = meetings.fill_sections(twin.read_text(encoding="utf-8"), m) if local else None
                     if filled is None and local and m.source.startswith("drop:") and not self._empty_note(twin):
@@ -670,9 +670,12 @@ class Intake:
         except (OSError, UnicodeDecodeError):
             return False  # a note that cannot be read is kept
 
-    def _same_meeting(self, m, data) -> bool:
+    def _same_meeting(self, m, empty: bool, note: Path, data) -> bool:
         if m.source.startswith("gdoc:") and str(data.get("source", "")).startswith("gdoc:"):
-            return False  # one Gemini Doc per meeting (spec §1.1): two Docs are two meetings
+            # one Gemini Doc per meeting (spec §1.1), except that Meet can write an empty twin Doc about an hour
+            # apart (#457): the same slug on the same day with exactly one side empty is one meeting
+            return (meetings.slug(str(data.get("title", ""))) == meetings.slug(m.title)
+                    and str(data.get("date")) == f"{m.start:%Y-%m-%d}" and empty != self._empty_note(note))
         try:
             start = datetime.fromisoformat(str(data.get("start")))
             if start.tzinfo is None:  # the schema allows a start without an offset: it is local time

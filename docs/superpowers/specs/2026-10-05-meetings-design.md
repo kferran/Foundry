@@ -24,6 +24,7 @@ Meetings, scheduled or impromptu, produce transcripts and Gemini notes that neve
 
 - All meetings with a conference link over two weeks were Google Meet.
 - Each Meet meeting with Gemini has one Google Doc titled `<event title> - YYYY/MM/DD HH:MM <TZ> - Notes by Gemini`; a meeting with no calendar event is titled `Meeting started YYYY/MM/DD HH:MM <TZ> - Notes by Gemini`. Event titles can contain ` - `, so the title is parsed from the right.
+- **Added 2026-11-03 (owner, #457):** Meet can also write two Docs for one meeting, one of them empty, 56 to 58 minutes apart (seen twice in one week), so §2.3 step 5 treats two Docs with the same slug and date, exactly one of them empty, as one meeting, with no 15-minute window.
 - The Doc, read with `read_file_content`, holds in order: Quick notes; Full notes with an `Invited` line, `### Summary`, `### Decisions`, `### Next steps` (lines `- \[Owner, Owner\] Title: text`) and `### Details` (with timestamp links); then the Transcript (`## <title> - Transcript`, `### HH:MM:SS` sections, `**Speaker:** text` turns, ending `### Transcription ended after HH:MM:SS` and a footer).
 - Calendar event attachments are not reliable: a recurring event carries a past instance's Doc. The fetch finds Docs by searching Drive.
 - A Doc another person owns appears in the user's Drive as a shortcut with no target ID in its metadata; searching with `mimeType = 'application/vnd.google-apps.document'` finds the real Doc among shared files, and it reads normally.

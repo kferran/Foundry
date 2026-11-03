@@ -4,9 +4,10 @@
 # table, then the sources' ranks; empty when there are no such groups.
 : > "$PREP_DIR/sections/telemetry.md"
 rc=0
-extensions/telemetry/scripts/telemetry_fetch.py > /dev/null 2>> "$PREP_DIR/prep_errors.log" || rc=$?
+extensions/telemetry/scripts/brief_fetch.sh > /dev/null 2>> "$PREP_DIR/prep_errors.log" || rc=$?
 case "$rc" in
   0) ;;
+  124) prep_unavailable "telemetry: the fetch timed out" ;;
   1) prep_unavailable "telemetry: a source failed (see system/logs/telemetry-${PREP_DATE:0:7}.jsonl)" ;;
   4) prep_unavailable "telemetry: a fetch was already running" ;;
   *) prep_unavailable "telemetry: telemetry_fetch.py failed (exit $rc; see $PREP_DIR/prep_errors.log)" ;;
