@@ -1,5 +1,6 @@
 """Memory recall (spec §6.17): vault_index.py recall and vaultlib/recall.py."""
 import fcntl
+import json
 import os
 import shutil
 import subprocess
@@ -139,12 +140,13 @@ def test_busy_index_lock_falls_back_without_refreshing(cli, vault):
     with open(vault / "system" / "index.lock", "a") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         start = time.monotonic()
-        r = cli("recall", "--cwd", str(vault))
+        r = cli("recall", "--cwd", str(vault), "--session-id", "s-1")
         elapsed = time.monotonic() - start
     assert r.returncode == 0, r.stderr
     assert elapsed < 4
     assert "Outcome of p1" in r.stdout
     assert "p2" not in r.stdout
+    assert log_lines(vault, "push")[0]["index_wait_timeout"] is True
 
 
 def test_budget_for_clamps_and_defaults(vault):
@@ -358,3 +360,72 @@ def test_dirty_line_is_skipped_after_a_busy_index_wait_and_never_empties_recall(
     head = cli("recall", "--cwd", str(vault)).stdout.split("1 uncommitted")[0]
     out = cli("recall", "--cwd", str(vault), "--budget-chars", str(len(head) + 5)).stdout
     assert out.startswith("## Foundry vault recall") and "uncommitted" not in out
+
+
+# --- the recall log (#449, recall R0 spec §3) ---
+def log_lines(vault, kind):
+    return [json.loads(line) for p in sorted((vault / "system" / "logs").glob("recall-*.jsonl"))
+            for line in p.read_text(encoding="utf-8").splitlines() if json.loads(line)["kind"] == kind]
+
+
+def test_push_line_records_what_recall_showed(cli, vault):
+    config(vault)
+    digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00")
+    now_page(vault, "personal", [f"- [ ] owed: Item {i} with some words to fill it (since 2026-10-09)" for i in range(30)])
+    r = cli("recall", "--cwd", str(vault), "--budget-chars", "1500", "--session-id", "s-1", "--source", "startup")
+    assert r.returncode == 0, r.stderr
+    [line] = log_lines(vault, "push")
+    assert (line["session"], line["source"]) == ("s-1", "startup")
+    assert (line["scope"], line["codebase"], line["partition"], line["budget"]) == ("vault", None, "personal", 1500)
+    assert line["chars"]["total"] == len(r.stdout)
+    assert sum(line["chars"][k] for k in ("head", "dirty", "now", "digests")) == len(r.stdout)
+    assert line["now_shown"] > 0
+    assert line["now_hidden"] > 0
+    assert line["now_shown"] + line["now_hidden"] == 30
+    assert line["digests"] == ["p1"]
+    assert line["digest_truncated"] is False
+    assert line["index_wait_timeout"] is False
+    assert line["ts"]
+
+
+def test_push_line_marks_a_cut_digest(cli, vault):
+    config(vault)
+    digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00", body="## Outcome\n" + "word " * 600)
+    cli("recall", "--cwd", str(vault), "--budget-chars", "1200", "--session-id", "s-1")
+    [line] = log_lines(vault, "push")
+    assert line["digest_truncated"] is True
+    assert line["digests"] == ["p1"]
+
+
+def test_an_empty_block_logs_chars_total_0(cli, vault):
+    config(vault)
+    r = cli("recall", "--cwd", str(vault), "--budget-chars", "10", "--session-id", "s-1", "--source", "clear")
+    assert r.stdout == ""
+    [line] = log_lines(vault, "push")
+    assert line["chars"]["total"] == 0
+
+
+def test_unknown_source_is_logged_as_given(cli, vault):
+    config(vault)
+    r = cli("recall", "--cwd", str(vault), "--session-id", "s-1", "--source", "later-kind")
+    assert r.returncode == 0, r.stderr
+    assert log_lines(vault, "push")[0]["source"] == "later-kind"
+
+
+def test_no_session_id_or_a_workcell_session_logs_nothing(cli, vault):
+    config(vault)
+    assert cli("recall", "--cwd", str(vault)).returncode == 0
+    assert cli("recall", "--cwd", str(vault), "--session-id", "s-1",
+               env={"FOUNDRY_WORKCELL_SESSION": "1"}).returncode == 0
+    assert list((vault / "system" / "logs").glob("recall-*.jsonl")) == []
+
+
+def test_a_failed_log_write_leaves_stdout_unchanged(cli, vault):
+    config(vault)
+    digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00")
+    plain = cli("recall", "--cwd", str(vault)).stdout
+    shutil.rmtree(vault / "system" / "logs", ignore_errors=True)
+    write(vault, "system/logs", "not a folder\n")
+    r = cli("recall", "--cwd", str(vault), "--session-id", "s-1")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == plain

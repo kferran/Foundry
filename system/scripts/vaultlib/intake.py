@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from . import alerts, cli, convert as convertmod, extensions as extmod, frontmatter, held as heldmod, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
 from . import triage
 from .config import text
+from .state import append_jsonl as _append_jsonl
 
 FRESH_SECONDS = 60
 MAX_ATTEMPTS = 3
@@ -41,19 +42,6 @@ DUPLICATE_SECONDS = 15 * 60
 # A meeting note with no summary, decisions or action items and a transcript under this many spoken lines is empty:
 # the reported case (#142) had 9 lines from a minute of talk before everyone left; a meeting that was held has dozens.
 EMPTY_TRANSCRIPT_LINES = 20
-
-
-def _append_jsonl(path, record) -> None:
-    """Append one JSON line; first terminate a torn last line so it cannot swallow this record."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "ab+") as fh:
-        fh.seek(0, os.SEEK_END)
-        if fh.tell():
-            fh.seek(-1, os.SEEK_END)
-            if fh.read(1) != b"\n":
-                fh.write(b"\n")
-        fh.write((json.dumps(record) + "\n").encode("utf-8"))
 
 
 def sha256_file(path) -> str:
