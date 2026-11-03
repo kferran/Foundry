@@ -647,13 +647,13 @@ def check(vault, today: str, alert, gh: str = "gh") -> int:
     for partition in PARTITIONS:
         lines, before = stamp(read(vault, partition), today).split("\n"), closed
         for i, line in enumerate(lines):
-            key = line.rstrip()
-            if key in found:
-                lines[i], closed = f"- [x]{key[5:]} _(closed: {found[key]} {today})_", closed + 1
-            elif expires(lines, i, today):
-                lines[i], closed = f"- [-]{key[5:]} _(closed: expired {today})_", closed + 1
+            to, how = (("done stamped", found[line.rstrip()]) if line.rstrip() in found else
+                       ("dropped stamped", "expired") if expires(lines, i, today) else (None, ""))
+            new = to and now_states.transition(line, "check", to, how, today, vault)
+            if new:
+                lines[i], closed = new, closed + 1
         if closed > before:
-            write(vault, partition, stamp("\n".join(lines), today))
+            write(vault, partition, "\n".join(lines))
     return closed
 
 

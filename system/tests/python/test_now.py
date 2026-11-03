@@ -305,6 +305,31 @@ def test_check_keeps_a_tick_made_while_gh_runs(vault, tmp_path):
     assert "_(closed: PR merged 2026-10-09)_" in text
 
 
+def test_check_keeps_a_hand_drop_made_while_gh_runs_and_closes_through_the_table(vault, tmp_path, monkeypatch):
+    # Factory F7 spec §3, T7 and T8: check's closes come from now_states.transition(writer="check"); a line the owner
+    # closed by hand while gh ran keeps the owner's mark (the table has no done or dropped to done for check).
+    from vaultlib import now_states
+    calls, real = [], now_states.transition
+    monkeypatch.setattr(now_states, "transition", lambda line, writer, to, *a, **k: (
+        calls.append((writer, to)), real(line, writer, to, *a, **k))[1])
+    prepare(vault)
+    now.add(vault, "work", "owed", "Dropped PR", TODAY, evidence="https://github.com/acme/shop/pull/7")
+    now.add(vault, "work", "owed", "Merged PR", TODAY, evidence="https://github.com/acme/shop/pull/8")
+    now.add(vault, "work", "owed", "Old mail", "2026-10-01", via="mail")
+    stub = tmp_path / "gh"
+    stub.write_text(f"#!/bin/bash\nsed -i 's/- \\[ \\] owed: Dropped PR/- [-] owed: Dropped PR/' "
+                    f"{vault}/wiki/work/Now.md\necho MERGED\n")
+    stub.chmod(0o755)
+    calls.clear()
+    assert now.check(vault, TODAY, [].append, str(stub)) == 2
+    lines = page(vault).split("\n")
+    assert any(x.startswith("- [-] owed: Dropped PR") and x.endswith(f"_(closed: ticked {TODAY})_") for x in lines)
+    assert any(x.startswith("- [x] owed: Merged PR") and x.endswith(f"_(closed: PR merged {TODAY})_") for x in lines)
+    assert any(x.startswith("- [-] owed: Old mail") and x.endswith(f"_(closed: expired {TODAY})_") for x in lines)
+    assert ("check", "done stamped") in calls and ("check", "dropped stamped") in calls
+    assert not (vault / "system/logs/now-2026-10.jsonl").exists()   # nothing refused
+
+
 def test_check_and_the_stamp_keep_both_fields(vault, tmp_path):
     prepare(vault)  # Now clock spec §5: check rewrites a line by prefix, so the fields survive a close
     now.add(vault, "work", "owed", "Pick it", TODAY, "vendor", "https://github.com/acme/shop/pull/7", rec="CSV: it loads")
