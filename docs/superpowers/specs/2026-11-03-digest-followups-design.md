@@ -1,7 +1,7 @@
 # Digest follow-ups become proposed Now lines (#476)
 
 **Grill:** 2026-11-03, the owner's round 1 on #476, copied in `## Grill` below.
-**Builder check:** 2026-11-03, a fresh subagent against this branch. One question, O1 (what `[x]` means and whether an untouched proposal expires), is the owner's (§8). Two points were settled: the core budget paragraph now gives both cap paths, since the run-time resilience 2 spec planned one raise in S5's pull request and S7 and S8 still have to land against the free lines (§4); the live acceptance first checks whether a stubbed claude gets a digest archived, and asks the owner for a real run if not (§7). Written-design calls are marked "my call" in §3.
+**Builder check:** 2026-11-03, a fresh subagent against this branch. One question, O1 (what `[x]` means and whether an untouched proposal expires), went to the owner, who chose (b) (§8). Two points were settled: the core budget paragraph now gives both cap paths, since the run-time resilience 2 spec planned one raise in S5's pull request and S7 and S8 still have to land against the free lines (§4); the live acceptance first checks whether a stubbed claude gets a digest archived, and asks the owner for a real run if not (§7). Written-design calls are marked "my call" in §3.
 **Blueprint:** none: a deterministic step inside the intake tick, with no fetch, no model call and no new unit.
 
 ## 1. Why
@@ -150,7 +150,9 @@ One plan (`superpowers:writing-plans`), then one pull request, failing tests fir
 
 **Live acceptance** (a throwaway clone under `.scratch/`, intake run by hand): drop a digest with two follow-ups into `raw/work/notes/`, one of them already added with `now.py add`; run intake twice (the first tick archives and queues it, the second adds); the work page gains one `[via:: digest]` line; mark it `[-]`, run intake again, nothing comes back. `_archive_batch` runs only when the ingest run exits 0 (`intake.py:451-452`): the plan first checks whether a stubbed `CLAUDE_BIN` (`run_headless.sh:11`) gets the digest archived; if not, the run needs real claude, which is the owner's approval.
 
-## 8. Open questions for the owner
+## 8. Owner decisions
+
+**O1 decided (owner, 2026-11-03): (b).** `digest` joins `MACHINE`; an untouched proposal expires as `[-]` after 7 days; a note under it or deleting its `[via:: …]` field keeps it; `[x]` means done. §3's and §6's "or the O1 answer" clauses resolve to this. The grill's Q4 wording ("`[x]` keeps") is superseded by it.
 
 - **O1. What `[x]` means, and what happens to an untouched proposal.** The grill says "`[x]` keeps, `[-]` drops, as held research claims do". On every other Now line `[x]` means done, and the brief's From Now block ticks lines the same way.
   - **Recommended (b): a machine line.** `digest` joins `MACHINE`. An untouched proposal expires as `[-]` after 7 days, the owner keeps one with a note under it or by deleting its `[via:: …]` field (the mail and chat rule), `[x]` is done. No code beyond the tuple, the page stays bounded, and a week of silence counts as a drop in the health share.
