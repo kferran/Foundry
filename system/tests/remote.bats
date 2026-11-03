@@ -369,6 +369,96 @@ upstream_pr() {
   alerts | grep -qF '[update] template update skipped: another run held run.lock'
 }
 
+# gh_template: the template remote is https://github.com/acme/tpl.git, fetched from UP through insteadOf, and curl is
+# a stub that logs its arguments to CURL_ARGS and answers the check-runs request with the case CURL_CASE names.
+gh_template() {
+  git remote set-url template https://github.com/acme/tpl.git
+  git config url."$UP".insteadOf https://github.com/acme/tpl.git
+  export CURL_ARGS="$BATS_TEST_TMPDIR/curl.args"
+  cat > "$STUBS/curl" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >> "$CURL_ARGS"
+run() { printf '{"name": "%s", "status": "%s", "conclusion": %s}' "$@"; }
+case "$CURL_CASE" in
+  green) echo "{\"total_count\": 2, \"check_runs\": [$(run test completed '"success"'), $(run docs completed '"skipped"')]}" ;;
+  pending) echo "{\"total_count\": 2, \"check_runs\": [$(run test in_progress null), $(run docs completed '"success"')]}" ;;
+  failing) echo "{\"total_count\": 2, \"check_runs\": [$(run test completed '"failure"'), $(run docs completed '"success"')]}" ;;
+  none) echo '{"total_count": 0, "check_runs": []}' ;;
+  skipped-only) echo "{\"total_count\": 2, \"check_runs\": [$(run test completed '"skipped"'), $(run docs completed '"neutral"')]}" ;;
+  paged) echo "{\"total_count\": 101, \"check_runs\": [$(run test completed '"success"')]}" ;;
+  garbage) echo '<html>rate limited</html>' ;;
+  *) exit 22 ;;
+esac
+EOF
+  chmod +x "$STUBS/curl"
+}
+
+@test "a green head merges and names its revert (#436 S2)" {
+  template_setup
+  gh_template
+  upstream_commit new.txt hello
+  head="$(git -C "$W" rev-parse HEAD)"
+  CURL_CASE=green run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  [ "$(cat new.txt)" = hello ]
+  merge="$(git log -1 --merges --format=%H)"
+  alerts | grep -qF "[update] template updated: merged 1 change(s): upstream: new.txt; merge ${merge:0:12} (undo: git revert -m 1 ${merge:0:12})"
+  grep -qF "repos/acme/tpl/commits/$head/check-runs?per_page=100" "$CURL_ARGS"
+}
+
+@test "each other state skips with one alert, exit 0 (#436 S2)" {
+  template_setup
+  gh_template
+  upstream_commit new.txt hello
+  before="$(git rev-parse HEAD)"
+  head="$(git -C "$W" rev-parse HEAD)"
+  n=0
+  while IFS='|' read -r case state; do
+    CURL_CASE="$case" run "$UT" --unattended
+    [ "$status" -eq 0 ]
+    [ "$(git rev-parse HEAD)" = "$before" ]
+    n=$(( n + 1 ))
+    [ "$(alerts | grep -c '\[update\]')" -eq "$n" ]
+    alerts | tail -n 1 | grep -qF "[update] template update skipped: CI for acme/tpl@${head:0:12} is $state; the vault is unchanged; the next run tries again"
+  done <<< 'pending|pending
+failing|failing: test
+none|no runs
+skipped-only|no runs
+paged|no runs
+garbage|unreachable
+down|unreachable'
+  [ "$n" -eq 7 ]
+}
+
+@test "no curl call off GitHub or with nothing new (#436 S2)" {
+  template_setup
+  gh_template
+  git remote set-url template https://gitlab.com/acme/tpl.git
+  git config --add url."$UP".insteadOf https://gitlab.com/acme/tpl.git
+  upstream_commit new.txt hello
+  CURL_CASE=failing run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  [ "$(cat new.txt)" = hello ]
+  [ ! -e "$CURL_ARGS" ]
+  git remote set-url template https://github.com/acme/tpl.git
+  CURL_CASE=failing run "$UT" --unattended
+  [ "$status" -eq 0 ]
+  CURL_CASE=failing run "$UT"
+  [ "$status" -eq 0 ]
+  [ ! -e "$CURL_ARGS" ]
+}
+
+@test "a hand run merges whatever the state and prints it (#436 S2)" {
+  template_setup
+  gh_template
+  upstream_commit new.txt hello
+  head="$(git -C "$W" rev-parse HEAD)"
+  CURL_CASE=failing run "$UT"
+  [ "$status" -eq 0 ]
+  [ "$(cat new.txt)" = hello ]
+  grep -qxF "update_template: CI for acme/tpl@${head:0:12} is failing: test" <<< "$output"
+}
+
 # The unattended update commits a dirty tree the way the sync does (audit C4 spec §2), so these cases run the
 # pre-commit hook and may hold a pending published run.
 hooks_on() {
