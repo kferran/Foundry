@@ -11,7 +11,7 @@ setup() {
   # A PATH holding exactly the tools under test: real ones linked in, the rest stubbed.
   BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$BIN"
-  for c in git jq bats systemctl python3 flock timeout systemd-analyze; do
+  for c in git jq bats systemctl python3 flock timeout systemd-analyze curl; do
     ln -s "$(command -v "$c")" "$BIN/$c"
   done
   for c in claude pacman az bwrap socat; do
@@ -23,7 +23,7 @@ setup() {
 @test "check_deps: every item present reports ok and --strict passes" {
   run env PATH="$BIN" "$CD" --strict
   [ "$status" -eq 0 ]
-  for item in claude git jq bats systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze bwrap socat; do
+  for item in claude git jq bats systemctl python3 flock timeout pyyaml pytest fts5 systemd-analyze bwrap socat curl; do
     grep -qx "ok $item" <<< "$output"
   done
 }
@@ -71,6 +71,15 @@ setup() {
   [ "$status" -eq 0 ]
   run grep -c socat <<< "$output"
   [ "$output" = 0 ]
+}
+
+@test "check_deps: curl (the update's CI check) is required on standalone and server, not on a client (#436 S2)" {
+  rm "$BIN/curl"
+  run env PATH="$BIN" "$CD" --strict --role server
+  [ "$status" -eq 1 ]
+  grep -qx 'missing curl sudo pacman -S curl' <<< "$output"
+  run env PATH="$BIN" "$CD" --strict --role client
+  [ "$status" -eq 0 ]
 }
 
 @test "check_deps: a missing required tool gets an install hint and fails only --strict" {

@@ -94,6 +94,35 @@ if (( unattended )) && g merge-base --is-ancestor "$ref" HEAD; then
   exit 0
 fi
 
+# ci_state <owner/repo> <sha>: green, pending, failing: <names>, no runs or unreachable, from the commit's public
+# check runs (#436 S2). Green needs every run listed, completed and passing, and at least one success.
+ci_state() {
+  local json rc=0
+  json="$(curl -fsS --connect-timeout 10 --max-time "${UPDATE_CHECKS_TIMEOUT:-20}" \
+    "https://api.github.com/repos/$1/commits/$2/check-runs?per_page=100" 2>/dev/null 9>&-)" || rc=$?
+  (( rc != 127 )) || { echo "unreachable (curl is not installed)"; return; }
+  [[ "$rc" == 0 && "$json" == *[![:space:]]* ]] || { echo unreachable; return; }  # jq prints nothing for an empty body
+  jq -r '[.check_runs[] | {name, status, conclusion}] as $r
+    | [$r[] | select(.conclusion | IN("success", "neutral", "skipped") | not) | .name] as $bad
+    | if .total_count != ($r | length) then "no runs"
+      elif any($r[]; .status != "completed") then "pending"
+      elif $bad != [] then "failing: \($bad | join(", "))"
+      elif any($r[]; .conclusion == "success") then "green"
+      else "no runs" end' <<< "$json" 2>/dev/null || echo unreachable
+}
+# The unattended update merges only a green head; a hand run prints the state and merges, the way out (spec §9 Q-A).
+# The raw URL: git remote get-url would expand insteadOf. A template off github.com is never checked.
+slug="$(git_github_slug "$(g config --get remote.template.url)")"
+if [[ -n "$slug" ]] && ! g merge-base --is-ancestor "$ref" HEAD; then
+  head="$(g rev-parse "$ref")"
+  ci="CI for $slug@${head:0:12} is $(ci_state "$slug" "$head")"
+  (( unattended )) || echo "update_template: $ci"
+  if (( unattended )) && [[ "$ci" != *" is green" ]]; then
+    alert "template update skipped: ${committed}$ci; the vault is unchanged; the next run tries again"
+    exit 0
+  fi
+fi
+
 # The vault owns README.md (#90): for this merge only, an attributes file marks it merge=ours and the driver keeps
 # the vault's version, the first update included. Sync merges between machines define neither and merge it normally.
 attrs="$(mktemp)"
@@ -117,6 +146,7 @@ if ! out="$(g -c core.attributesFile="$attrs" -c merge.ours.driver=true merge --
   exit 1
 fi
 printf '%s\n' "$out"
+merge="$(g rev-parse --short=12 HEAD)"
 
 list=""
 if (( unattended )); then
@@ -183,5 +213,5 @@ else
 fi
 
 if (( unattended )); then
-  alert "template updated: ${committed}merged ${#merged[@]} change(s): $list${new_units:+; new unit available: $new_units (install with system/scripts/install_units.sh)}${notes_suffix}"
+  alert "template updated: ${committed}merged ${#merged[@]} change(s): $list; merge $merge (undo: git revert -m 1 $merge)${new_units:+; new unit available: $new_units (install with system/scripts/install_units.sh)}${notes_suffix}"
 fi

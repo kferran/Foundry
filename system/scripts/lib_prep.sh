@@ -1,6 +1,8 @@
 # shellcheck shell=bash
 # Shared setup for brief_prep.sh and debrief_prep.sh (spec §6.5). Source after lib_args.sh and
 # lib_config.sh, from VAULT_ROOT. prep_init sets TZ, PREP_DATE and PREP_DIR.
+# shellcheck source=lib_git.sh
+source system/scripts/lib_git.sh
 
 prep_init() {  # <script name> [date]
   PREP_NAME="$1"
@@ -59,7 +61,7 @@ github_repos() {
     [[ -n "$pr" ]] || pr="$(codebase_get "$name" nightshift_pr)"
     [[ "$pr" != github:* ]] || printf '%s\n' "${pr#github:}"
   done < <(codebases_list)
-  config_get template_remote | sed -nE 's#^.*github\.com[:/]([^/]+/[^/]+)$#\1#p' | sed 's/\.git$//'
+  git_github_slug "$(config_get template_remote)"
 }
 
 # prep_sections <brief|debrief> <dir>: sections from enabled extensions (extensions spec §3). Each extension's
