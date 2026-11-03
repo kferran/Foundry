@@ -565,7 +565,7 @@ sealed_problems() {
   # its daily alert, intake holding on it and the review fix took core from 15,812 to 15,829.
   # 15,850 -> 16,250 (#449, recall R0 and R1 spec §5, owner to approve at merge): the one raise for recall R0 to R5 (Q6);
   # R0's push and pull logs (recall_log.py, the counts recall.build returns, the hooks' lines and the
-  # PostToolUseFailure entry) took core from 15,837 to 16,012.
+  # PostToolUseFailure entry, then the final review's fixes) took core from 15,837 to 16,039.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"

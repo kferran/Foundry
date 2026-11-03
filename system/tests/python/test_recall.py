@@ -509,8 +509,42 @@ def test_pull_quoted_arguments_and_options(vault):
 
 def test_pull_survives_unbalanced_quotes(vault):
     session(vault)
-    [r] = recall_log.pull(vault, bash(f'{VI} related "open', ""))
+    [r] = recall_log.pull(vault, bash(f'{VI} related "open', "- T — wiki/personal/a.md (p)\n"))
     assert r["sub"] == "related"
+    assert (r["hits"], r["paths"], r["found"]) == (None, None, None)   # a failed parse feeds no counts
+
+
+def test_pull_counts_only_when_the_call_is_the_whole_command(vault):
+    session(vault)
+    [cut] = recall_log.pull(vault, bash(f"{VI} backlinks Kafka; cat notes.md", "- wiki/a.md\n- [ ] owed: x\n"))
+    [piped] = recall_log.pull(vault, bash(f"{VI} show Kafka | head -3", "# Kafka\n"))
+    [whole] = recall_log.pull(vault, bash(f"{VI} backlinks Kafka", "- wiki/a.md\n- not a path\n- raw/x.md\n"))
+    assert (cut["hits"], cut["paths"], cut["found"]) == (None, None, None)
+    assert piped["found"] is None
+    assert (whole["hits"], whole["paths"]) == (2, ["wiki/a.md", "raw/x.md"])
+
+
+def test_pull_logs_only_real_subcommands(vault):
+    session(vault)
+    [r] = recall_log.pull(vault, bash(f"grep -rn {VI} Marker-sub-file.md", ""))
+    assert r["sub"] == "other"
+    assert "Marker-sub" not in json.dumps(log_lines(vault, "pull"))
+
+
+def test_pull_never_reads_a_heredoc_body(vault):
+    session(vault)
+    assert recall_log.pull(vault, bash(f"cat > f.md <<'EOF'\nrun {VI} show Marker-heredoc\nEOF", "")) == []
+    assert recall_log.pull(vault, bash(f"cat > f.md <<EOF\ndon't run {VI} show Marker-heredoc\nEOF", "")) == []
+
+
+def test_terms_hash_needs_a_whole_key(vault):
+    write(vault, "system/logs/memory/recall.key", "")
+    assert recall_log.terms_hash(vault, "kafka") is None
+
+
+def test_terms_hash_gives_none_when_the_key_cannot_be_made(vault):
+    write(vault, "system/logs/memory", "not a folder\n")
+    assert recall_log.terms_hash(vault, "kafka") is None
 
 
 def test_pull_ignores_a_command_without_the_script(vault):
@@ -544,9 +578,15 @@ def test_neither_log_holds_prompt_note_or_query_text(cli, vault):
     session(vault)
     recall_log.pull(vault, bash(f"{VI} show Kafka", "# Kafka\nMarker-note-text.\n"))
     recall_log.pull(vault, bash(f'{VI} related "Marker-query-text"', ""))
+    # Output another command shares: a Now page after backlinks, titles a pipe made from related --json (final review).
+    recall_log.pull(vault, bash(f"{VI} backlinks Kafka; cat wiki/personal/Now.md",
+                                "- wiki/a.md\n- [ ] owed: Marker-now-text (since 2026-10-09)\n"))
+    recall_log.pull(vault, bash(f"{VI} related x --json | jq -c 'map(.title)'", '["Marker-title-text"]'))
+    recall_log.pull(vault, bash(f"{VI} backlinks Kafka", "- Marker-bullet-text\n"))
     log = "".join(p.read_text() for p in (vault / "system" / "logs").glob("recall-*.jsonl"))
-    assert log.count("\n") == 3
-    for marker in ("Marker-digest-text", "Marker-note-text", "Marker-query-text", "marker-query-text"):
+    assert log.count("\n") == 6
+    for marker in ("Marker-digest-text", "Marker-note-text", "Marker-query-text", "marker-query-text",
+                   "Marker-now-text", "Marker-title-text", "Marker-bullet-text"):
         assert marker not in log
 
 

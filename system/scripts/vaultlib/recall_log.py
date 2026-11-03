@@ -7,6 +7,7 @@ import os
 import re
 import shlex
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,9 @@ SID = re.compile(r"^[A-Za-z0-9-]{1,100}$")
 VALUE_OPTS = {"--limit", "--codebase", "--type", "--per-source", "--budget-chars"}
 PARTITIONS = {"work", "personal", "shared"}
 RELATED_LINE = re.compile(r"^- .+ — (.+?\.md) \(", re.M)
+NOTE_PATH = re.compile(r"(wiki|raw|briefings|system)/[^\n]*\.md")
+SUBS = {"issues", "validate", "query", "related", "show", "backlinks", "orphans", "stale", "field", "tags", "set",
+        "stage", "recall", "rebuild"}   # vaultlib/cli.py build_parser; anything else logs "other"
 MAX_PATHS = 10
 
 
@@ -29,39 +33,56 @@ def write(vault, record: dict) -> None:
         pass
 
 
-def terms_hash(vault, text: str) -> str:
-    """Keyed SHA-256 of the terms (lowercased, whitespace collapsed), 16 hex: a short term cannot be found by hashing
-    guesses, and the same terms hash alike within one vault (Q8)."""
+def _key(vault) -> bytes:
+    """The vault's 32-byte key, made once (mode 600) and linked into place whole, so no reader sees it half-written."""
     path = Path(vault) / "system" / "logs" / "memory" / "recall.key"
-    try:
+    if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(os.urandom(32))
-    except FileExistsError:
-        pass
-    key = path.read_bytes()
+        fd, tmp = tempfile.mkstemp(dir=path.parent)
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(os.urandom(32))
+            os.link(tmp, path)
+        except FileExistsError:
+            pass
+        finally:
+            os.unlink(tmp)
+    return path.read_bytes()
+
+
+def terms_hash(vault, text: str):
+    """Keyed SHA-256 of the terms (lowercased, whitespace collapsed), 16 hex: a short term cannot be found by hashing
+    guesses, and the same terms hash alike within one vault (Q8). None when there is no whole key."""
+    try:
+        key = _key(vault)
+    except OSError:
+        return None
+    if len(key) != 32:
+        return None
     return hmac.new(key, " ".join(text.lower().split()).encode("utf-8"), hashlib.sha256).hexdigest()[:16]
 
 
-def _tokens(command: str) -> list:
+def _punct(t: str) -> bool:
+    return bool(t) and set(t) <= set("();<>|&")
+
+
+def _calls(command: str) -> tuple:
+    """([(sub, first positional argument)] for each vault_index.py invocation, whether the command is exactly one
+    invocation and parsed cleanly, so its output is that call's alone). A heredoc body is prose, never read."""
+    command = command.split("<<", 1)[0]
     try:
         lex = shlex.shlex(command, posix=True, punctuation_chars=True)
         lex.whitespace_split = True
-        return list(lex)
-    except ValueError:  # an unbalanced quote: the plain split still finds the subcommand
-        return command.split()
-
-
-def _calls(command: str) -> list:
-    """(sub, first positional argument) for each vault_index.py invocation in a shell command."""
-    tokens, calls = _tokens(command), []
+        tokens, ok = list(lex), True
+    except ValueError:  # an unbalanced quote: the plain split still finds the subcommand, but feeds no counts
+        tokens, ok = command.split(), False
+    calls, starts = [], []
     for i, tok in enumerate(tokens):
         if tok.rsplit("/", 1)[-1] != "vault_index.py":
             continue
         sub, arg, prev = None, None, ""
         for t in tokens[i + 1:]:
-            if t and set(t) <= set("();<>|&"):
+            if _punct(t):
                 break
             value = prev in VALUE_OPTS or (t in PARTITIONS and (prev == "--partition" or prev in PARTITIONS))
             if sub is None:
@@ -70,19 +91,24 @@ def _calls(command: str) -> list:
                 arg = t
                 break
             prev = t
-        calls.append((sub, arg))
-    return calls
+        calls.append((sub if sub in SUBS else "other", arg))
+        starts.append(i)
+    whole = ok and len(calls) == 1 and starts[0] <= 1 and not any(_punct(t) for t in tokens)
+    return calls, whole
 
 
 def _paths(sub: str, stdout: str) -> list:
+    """The vault note paths in a related or backlinks output; anything else (a title, a Now line) is dropped."""
     if stdout.lstrip().startswith("["):
         try:
-            return [h.get("path") if isinstance(h, dict) else h for h in json.loads(stdout)]
-        except (ValueError, AttributeError):
+            found = [h.get("path") if isinstance(h, dict) else h for h in json.loads(stdout)]
+        except (ValueError, AttributeError, TypeError):
             return []
-    if sub == "related":
-        return RELATED_LINE.findall(stdout)
-    return [line[2:] for line in stdout.splitlines() if line.startswith("- ")]
+    elif sub == "related":
+        found = RELATED_LINE.findall(stdout)
+    else:
+        found = [line[2:] for line in stdout.splitlines() if line.startswith("- ")]
+    return [p for p in found if isinstance(p, str) and NOTE_PATH.fullmatch(p)]
 
 
 def pull(vault, event: dict) -> list:
@@ -100,7 +126,7 @@ def pull(vault, event: dict) -> list:
     failed = event.get("hook_event_name") == "PostToolUseFailure"
     resp = event.get("tool_response")
     stdout = resp if isinstance(resp, str) else (resp.get("stdout") or "") if isinstance(resp, dict) else ""
-    calls, records = _calls(command), []
+    (calls, whole), records = _calls(command), []
     for sub, arg in calls:
         r = {"kind": "pull", "session": sid, "scope": state.get("scope"), "partition": state.get("partition"),
              "sub": sub, "terms": None, "hits": None, "paths": None, "note": None, "found": None}
@@ -108,11 +134,12 @@ def pull(vault, event: dict) -> list:
             r["terms"] = terms_hash(vault, arg)
         if sub in ("show", "backlinks"):
             r["note"] = arg
-        if len(calls) == 1 and failed and sub in ("related", "query", "show", "backlinks"):
+        # Counts only when the call is the whole command: other commands, a pipe or a second call share its stdout.
+        if whole and failed and sub in ("related", "query", "show", "backlinks"):
             r.update(hits=0, paths=[], found=False)   # exit non-zero: nothing came back
-        elif len(calls) == 1 and sub == "show":   # two calls share one stdout, so neither gets counts
+        elif whole and sub == "show":
             r["found"] = bool(stdout.strip())
-        elif len(calls) == 1 and sub in ("related", "backlinks"):
+        elif whole and sub in ("related", "backlinks"):
             paths = _paths(sub, stdout)
             r.update(hits=len(paths), paths=paths[:MAX_PATHS], found=bool(paths))
         write(vault, r)
