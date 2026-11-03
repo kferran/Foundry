@@ -5,7 +5,7 @@
 # [smoke] alert a day per failure (per credential for an expired one), logged to
 # system/logs/smoke-<YYYY-MM>.jsonl. Runs daily from foundry-smoke.timer, 15 minutes before the brief, on a server
 # or standalone machine. At the usage ceiling the connector checks are held; the local checks still run.
-# Exit: 0 every configured source passed, 1 a source failed, 2 usage.
+# Exit: 0 every configured source passed, 1 a source failed, 2 usage, 70 a crash (alerted).
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$VAULT_ROOT"
@@ -14,6 +14,7 @@ source system/scripts/lib_config.sh
 # shellcheck source=lib_fetch.sh
 source system/scripts/lib_fetch.sh   # alert_once; smoke logs its own rows with smoke_logline below
 FETCH_TAG=smoke
+crash_trap foundry-smoke   # a set -e stop exits 70; 1 stays "a source failed" (#436 S3)
 
 (( $# == 0 )) || { echo "usage: smoke_check.sh" >&2; exit 2; }
 case "$(config_get machine_role standalone)" in
