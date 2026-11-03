@@ -53,6 +53,21 @@ EOF
   git -C "$V" config user.name test
 }
 
+# calendar_page <rows json>: the probe's list_events result line (tool_use_id t1; spike 2026-11-03-list-events-page)
+# holding those calendar rows the way the connector lists them: an all-day start.date as midnight UTC, a timed
+# start.dateTime with the America/Denver offset of its day (#436 S8).
+calendar_page() {
+  local line starts=()
+  while IFS= read -r line; do
+    if [[ "$line" == *" " ]]; then starts+=("{\"date\":\"${line% }T00:00:00Z\"}")
+    else starts+=("{\"dateTime\":\"$(TZ=America/Denver date -d "$line" +%FT%T%:z)\"}"); fi
+  done < <(jq -r '.[] | "\(.start_date) \(.start_time)"' <<< "$1")
+  jq -c --argjson rows "$1" --argjson starts "[$(IFS=,; echo "${starts[*]}")]" \
+    '.tool_use_result.structuredContent.events = [range($rows | length) as $i | {start: $starts[$i], summary: $rows[$i].title}]
+     | .tool_use_result.content = (.tool_use_result.structuredContent | tojson)
+     | .message.content[0].content = .tool_use_result.content' "$REPO/system/tests/fixtures/calendar/list_events_page.jsonl"
+}
+
 # use_extension <name…>: turn extensions on in the fixture vault ($V). A folder under the real extensions/ wins,
 # else the loader's fixture extension of that name is copied in; then config.md lists exactly these names.
 use_extension() {

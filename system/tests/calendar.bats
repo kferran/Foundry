@@ -16,9 +16,14 @@ setup() {
   stream_ok '[{"start_date":"2026-10-05","start_time":"09:00","end_date":"2026-10-05","end_time":"09:30","title":"Standup"}]'
 }
 
-# stream_ok <events json>: a successful session returning those events.
+# stream_ok <events json> [page rows json]: a successful session returning those events, whose list_events result
+# lists the same events (or the page rows).
 stream_ok() {
+  local last
   stream "{\"status\":\"ok\",\"reason\":\"\",\"events\":$1}" ToolSearch mcp__claude_ai_Google_Calendar__list_events StructuredOutput
+  last="$(tail -n 1 "$STUB_STREAM")"
+  sed -i '$d' "$STUB_STREAM"
+  { calendar_page "${2:-$1}"; printf '%s\n' "$last"; } >> "$STUB_STREAM"
 }
 
 # stream <structured output json> <tool name…>: a session using those tools (ids t0, t1, …) and returning that output.
@@ -43,8 +48,32 @@ arg_after() { awk -v f="$1" 'p { print; exit } $0 == f { p = 1 }' "$STUB_ARGS"; 
   [ "$output" = "$(printf '2026-10-05\t09:00\t2026-10-05\t09:30\tStandup')" ]
   log="system/logs/calendar_fetch-2026-10.jsonl"
   [ "$(wc -l < "$log")" -eq 1 ]
-  [ "$(jq -c '[.date, .exit, .events, .cost_usd, .turns, .denials]' "$log")" = '["2026-10-05",0,1,0.2,4,0]' ]
+  [ "$(jq -c '[.date, .exit, .events, .cost_usd, .turns, .denials, .unverified]' "$log")" = '["2026-10-05",0,1,0.2,4,0,""]' ]
   [ "$(jq -c .tools "$log")" = '["ToolSearch","Bash"]' ]
+}
+
+@test "an unverified fetch prints the rows, exits 0 and alerts once (#436 S8)" {
+  stream_ok '[{"start_date":"2026-10-05","start_time":"09:00","end_date":"2026-10-05","end_time":"09:30","title":"Standup"}]' \
+    '[{"start_date":"2026-10-05","start_time":"09:15","end_date":"2026-10-05","end_time":"09:30","title":"Standup"}]'
+  run "$CF" "$DAY"
+  run "$CF" "$DAY"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$(printf '2026-10-05\t09:00\t2026-10-05\t09:30\tStandup')"* ]]
+  [[ "$output" == *"calendar_fetch: unverified: row 1 (2026-10-05 09:00) differs from the connector's results"* ]]
+  [ "$(grep -c '\[calendar\] calendar rows unverified: row 1 (2026-10-05 09:00) differs' system/logs/alerts_*.md)" -eq 1 ]
+  run grep -c Standup system/logs/alerts_*.md
+  [ "$output" = 0 ]
+  log="system/logs/calendar_fetch-2026-10.jsonl"
+  [ "$(jq -r '[.exit, .unverified] | @tsv' "$log" | sort -u)" = "$(printf '0\trow 1 (2026-10-05 09:00) differs from the connector'"'"'s results')" ]
+}
+
+@test "--check passes when unverified (#436 S8)" {
+  today="$(TZ=America/Denver date +%F)"
+  stream_ok "[{\"start_date\":\"$today\",\"start_time\":\"\",\"end_date\":\"$today\",\"end_time\":\"\",\"title\":\"Holiday\"}]" '[]'
+  run "$CF" --check
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"calendar_fetch: the connector listed 1 events"* ]]
+  grep -qF '[calendar] calendar rows unverified: the connector listed 0 events, the rows hold 1' system/logs/alerts_*.md
 }
 
 @test "the session is confined: one allowed tool, the deny list, hooks and skills off, no isolation flags that hide connectors" {
