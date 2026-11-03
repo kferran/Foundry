@@ -9,12 +9,12 @@ import shutil
 import signal
 import subprocess
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import alerts, cli, convert as convertmod, extensions as extmod, frontmatter, held as heldmod, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
-from . import backfill, recall_log, state as statemod, triage
+from . import backfill, prune as prunemod, recall_log, state as statemod, triage
 from .config import text
 from .state import append_jsonl as _append_jsonl
 
@@ -85,8 +85,8 @@ class Intake:
     def today(self) -> str:
         return self.dt().strftime("%Y-%m-%d")
 
-    def alert(self, message: str) -> None:
-        alerts.alert(self.vault, self.today(), self.dt().strftime("%H:%M:%S"), "intake", message)
+    def alert(self, message: str, key: str = "") -> None:
+        alerts.alert(self.vault, self.today(), self.dt().strftime("%H:%M:%S"), "intake", message, key=key)
 
     def config(self, key: str, default: str) -> str:
         return text(self.vault, key, default)
@@ -273,6 +273,23 @@ class Intake:
                 self.alert(f"briefing {path.name} {problem}; the blocks after it wait until it is fixed")
                 _append_jsonl(record_path, {"kind": "alert", "briefing": rel, "reason": problem, "date": day})
         return not (problem and hits_notes)
+
+    # -- one prune a day (#436 S7) ---------------------------------------
+    def prune(self) -> None:
+        """Delete what has aged 30 days and is settled, once a day under run.lock (busy: the next tick tries)."""
+        marker = self.logs / ".pruned"
+        if marker.is_file() and marker.read_text(encoding="utf-8").strip() == self.today():
+            return
+        try:
+            with self.lock("run.lock", timeout=0):
+                done = prunemod.prune(self.vault, self.dt().date() - timedelta(days=30))
+                if done["unsettled"]:   # once a day: the next pass is tomorrow's
+                    self.alert(f"{done['unsettled']} run folder(s) older than 30 days are not settled "
+                               f"(oldest {done['oldest']}); they stay")
+                self.logs.mkdir(parents=True, exist_ok=True)
+                marker.write_text(self.today() + "\n", encoding="utf-8")
+        except TimeoutError:
+            pass
 
     # -- the Now page (Now page spec §3.4) -------------------------------
     def check_now(self) -> None:
@@ -953,6 +970,10 @@ class Intake:
         try:
             with self.lock("intake.lock", timeout=0):
                 self.extract_briefing()
+                try:
+                    self.prune()
+                except Exception as exc:  # noqa: BLE001 - the tick goes on; .pruned is unwritten, so the next one retries
+                    self.alert(f"prune failed ({exc.__class__.__name__}: {exc}); will retry", key="prune failed (")
                 try:
                     self.check_now()
                 except Exception as exc:  # noqa: BLE001 - meetings, inbox and digests still run
