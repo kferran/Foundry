@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=16080
+CORE_CAP=16480
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -566,6 +566,9 @@ sealed_problems() {
   # its daily alert, intake holding on it and the review fix took core from 15,812 to 15,829.
   # 15,850 -> 16,080 (#436 S2, S5-S8, owner to approve at merge): the Now.md merge driver (S5), the update's CI gate
   # (S2), the notice hold's lift (S6), the 30-day prune (S7) and the calendar check (S8); S5 took core from 15,837 to 15,966.
+  # 16,080 -> 16,480 (#449, recall R0 and R1 spec §5, owner to approve at merge): the one raise of 400 lines for recall R0
+  # to R5 (Q6); R0's push and pull logs (recall_log.py, the counts recall.build returns, the hooks' lines and the
+  # PostToolUseFailure entry, then the final review's fixes) took 202 lines.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"

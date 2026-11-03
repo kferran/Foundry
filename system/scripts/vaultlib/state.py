@@ -37,3 +37,16 @@ def records(*paths: Path) -> list:
             if isinstance(r, dict):
                 out.append(r)
     return out
+
+
+def append_jsonl(path, record) -> None:
+    """Append one JSON line; first terminate a torn last line so it cannot swallow this record."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "ab+") as fh:
+        fh.seek(0, os.SEEK_END)
+        if fh.tell():
+            fh.seek(-1, os.SEEK_END)
+            if fh.read(1) != b"\n":
+                fh.write(b"\n")
+        fh.write((json.dumps(record) + "\n").encode("utf-8"))

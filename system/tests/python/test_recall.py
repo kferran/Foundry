@@ -1,5 +1,7 @@
 """Memory recall (spec §6.17): vault_index.py recall and vaultlib/recall.py."""
 import fcntl
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -7,7 +9,7 @@ import time
 from pathlib import Path
 
 from helpers import write
-from vaultlib import recall
+from vaultlib import recall, recall_log
 
 CONFIG = ('---\ntype: config\ntimezone: "America/Denver"\nbrief_time: "06:00"\ndebrief_time: "17:00"\n'
           'remote_mode: "none"\ndefault_partition: "{p}"\nrecall_budget_chars: "{b}"\n---\n')
@@ -139,12 +141,13 @@ def test_busy_index_lock_falls_back_without_refreshing(cli, vault):
     with open(vault / "system" / "index.lock", "a") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         start = time.monotonic()
-        r = cli("recall", "--cwd", str(vault))
+        r = cli("recall", "--cwd", str(vault), "--session-id", "s-1")
         elapsed = time.monotonic() - start
     assert r.returncode == 0, r.stderr
     assert elapsed < 4
     assert "Outcome of p1" in r.stdout
     assert "p2" not in r.stdout
+    assert log_lines(vault, "push")[0]["index_wait_timeout"] is True
 
 
 def test_budget_for_clamps_and_defaults(vault):
@@ -358,3 +361,247 @@ def test_dirty_line_is_skipped_after_a_busy_index_wait_and_never_empties_recall(
     head = cli("recall", "--cwd", str(vault)).stdout.split("1 uncommitted")[0]
     out = cli("recall", "--cwd", str(vault), "--budget-chars", str(len(head) + 5)).stdout
     assert out.startswith("## Foundry vault recall") and "uncommitted" not in out
+
+
+# --- the recall log (#449, recall R0 spec §3) ---
+def log_lines(vault, kind):
+    return [json.loads(line) for p in sorted((vault / "system" / "logs").glob("recall-*.jsonl"))
+            for line in p.read_text(encoding="utf-8").splitlines() if json.loads(line)["kind"] == kind]
+
+
+def test_push_line_records_what_recall_showed(cli, vault):
+    config(vault)
+    digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00")
+    now_page(vault, "personal", [f"- [ ] owed: Item {i} with some words to fill it (since 2026-10-09)" for i in range(30)])
+    r = cli("recall", "--cwd", str(vault), "--budget-chars", "1500", "--session-id", "s-1", "--source", "startup")
+    assert r.returncode == 0, r.stderr
+    [line] = log_lines(vault, "push")
+    assert (line["session"], line["source"]) == ("s-1", "startup")
+    assert (line["scope"], line["codebase"], line["partition"], line["budget"]) == ("vault", None, "personal", 1500)
+    assert line["chars"]["total"] == len(r.stdout)
+    assert sum(line["chars"][k] for k in ("head", "dirty", "now", "digests")) == len(r.stdout)
+    assert line["now_shown"] > 0
+    assert line["now_hidden"] > 0
+    assert line["now_shown"] + line["now_hidden"] == 30
+    assert line["digests"] == ["p1"]
+    assert line["digest_truncated"] is False
+    assert line["index_wait_timeout"] is False
+    assert line["ts"]
+
+
+def test_push_line_marks_a_cut_digest(cli, vault):
+    config(vault)
+    digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00", body="## Outcome\n" + "word " * 600)
+    cli("recall", "--cwd", str(vault), "--budget-chars", "1200", "--session-id", "s-1")
+    [line] = log_lines(vault, "push")
+    assert line["digest_truncated"] is True
+    assert line["digests"] == ["p1"]
+
+
+def test_an_empty_block_logs_chars_total_0(cli, vault):
+    config(vault)
+    r = cli("recall", "--cwd", str(vault), "--budget-chars", "10", "--session-id", "s-1", "--source", "clear")
+    assert r.stdout == ""
+    [line] = log_lines(vault, "push")
+    assert line["chars"]["total"] == 0
+
+
+def test_unknown_source_is_logged_as_given(cli, vault):
+    config(vault)
+    r = cli("recall", "--cwd", str(vault), "--session-id", "s-1", "--source", "later-kind")
+    assert r.returncode == 0, r.stderr
+    assert log_lines(vault, "push")[0]["source"] == "later-kind"
+
+
+def test_no_session_id_or_a_workcell_session_logs_nothing(cli, vault):
+    config(vault)
+    assert cli("recall", "--cwd", str(vault)).returncode == 0
+    assert cli("recall", "--cwd", str(vault), "--session-id", "s-1",
+               env={"FOUNDRY_WORKCELL_SESSION": "1"}).returncode == 0
+    assert list((vault / "system" / "logs").glob("recall-*.jsonl")) == []
+
+
+def test_a_failed_log_write_leaves_stdout_unchanged(cli, vault):
+    config(vault)
+    digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00")
+    plain = cli("recall", "--cwd", str(vault)).stdout
+    shutil.rmtree(vault / "system" / "logs", ignore_errors=True)
+    write(vault, "system/logs", "not a folder\n")
+    r = cli("recall", "--cwd", str(vault), "--session-id", "s-1")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == plain
+
+
+def session(vault, sid="s-1"):
+    write(vault, f"system/logs/memory/sessions/{sid}.json",
+          json.dumps({"scope": "vault", "partition": "personal", "codebase": "vault"}))
+
+
+def bash(command, stdout="", sid="s-1", **extra):
+    return {"session_id": sid, "tool_name": "Bash", "tool_input": {"command": command},
+            "tool_response": {"stdout": stdout, "stderr": ""}, **extra}
+
+
+VI = "system/scripts/vault_index.py"
+
+
+def test_pull_related_hashes_terms_and_keeps_paths(vault):
+    session(vault)
+    [r] = recall_log.pull(vault, bash(f'{VI} related "Kafka   Lag"',
+                                      "- Kafka — wiki/personal/concepts/Kafka.md (personal, concept)\n"
+                                      "- A — B — wiki/personal/concepts/Lag Notes.md (personal, concept, 2026-10-01)\n"))
+    assert (r["kind"], r["session"], r["sub"], r["hits"], r["found"]) == ("pull", "s-1", "related", 2, True)
+    assert r["paths"] == ["wiki/personal/concepts/Kafka.md", "wiki/personal/concepts/Lag Notes.md"]
+    assert len(r["terms"]) == 16
+    assert r["terms"] == recall_log.terms_hash(vault, "kafka lag")
+    assert (r["scope"], r["partition"], r["note"]) == ("vault", "personal", None)
+    [line] = log_lines(vault, "pull")
+    assert line.pop("ts")
+    assert line == r
+
+
+def test_pull_related_json_output_and_at_most_ten_paths(vault):
+    session(vault)
+    hits = [{"path": f"wiki/personal/concepts/N{i}.md", "title": "T"} for i in range(12)]
+    [r] = recall_log.pull(vault, bash(f"{VI} related x --json", json.dumps(hits)))
+    assert r["hits"] == 12
+    assert r["paths"] == [h["path"] for h in hits[:10]]
+
+
+def test_pull_query_logs_a_hash_only(vault):
+    session(vault)
+    [r] = recall_log.pull(vault, bash(f'{VI} query --json "SELECT path FROM notes"', '{"rows": [["a"]]}'))
+    assert (r["sub"], r["hits"], r["paths"], r["note"]) == ("query", None, None, None)
+    assert len(r["terms"]) == 16
+    assert "SELECT" not in json.dumps(log_lines(vault, "pull"))
+
+
+def test_pull_show_found_and_not_found(vault):
+    session(vault)
+    [found] = recall_log.pull(vault, bash(f"{VI} show Kafka", "---\ntype: concept\n---\n# Kafka\n"))
+    [missing] = recall_log.pull(vault, bash(f"{VI} show Nothing", ""))
+    assert (found["sub"], found["note"], found["found"]) == ("show", "Kafka", True)
+    assert (missing["note"], missing["found"]) == ("Nothing", False)
+
+
+def test_pull_backlinks_counts_paths(vault):
+    session(vault)
+    [r] = recall_log.pull(vault, bash(f"{VI} backlinks wiki/personal/concepts/Kafka.md", "- wiki/a.md\n- wiki/b.md\n"))
+    assert (r["note"], r["hits"], r["paths"], r["found"]) == ("wiki/personal/concepts/Kafka.md", 2,
+                                                             ["wiki/a.md", "wiki/b.md"], True)
+
+
+def test_pull_two_invocations_share_no_counts(vault):
+    session(vault)
+    out = recall_log.pull(vault, bash(f"{VI} related x; /abs/{VI} show y | head", "- T — wiki/a.md (p)\n"))
+    assert [(r["sub"], r["hits"], r["paths"], r["found"]) for r in out] == [("related", None, None, None),
+                                                                          ("show", None, None, None)]
+    assert out[1]["note"] == "y"
+
+
+def test_pull_quoted_arguments_and_options(vault):
+    session(vault)
+    [rel] = recall_log.pull(vault, bash(f"{VI} related --limit 5 --partition work shared 'Two  Words' --json", "[]"))
+    [show] = recall_log.pull(vault, bash(f'python3 {VI} show "Note With Spaces"', "x"))
+    assert rel["terms"] == recall_log.terms_hash(vault, "two words")
+    assert show["note"] == "Note With Spaces"
+
+
+def test_pull_survives_unbalanced_quotes(vault):
+    session(vault)
+    [r] = recall_log.pull(vault, bash(f'{VI} related "open', "- T — wiki/personal/a.md (p)\n"))
+    assert r["sub"] == "related"
+    assert (r["hits"], r["paths"], r["found"]) == (None, None, None)   # a failed parse feeds no counts
+
+
+def test_pull_counts_only_when_the_call_is_the_whole_command(vault):
+    session(vault)
+    [cut] = recall_log.pull(vault, bash(f"{VI} backlinks Kafka; cat notes.md", "- wiki/a.md\n- [ ] owed: x\n"))
+    [piped] = recall_log.pull(vault, bash(f"{VI} show Kafka | head -3", "# Kafka\n"))
+    [whole] = recall_log.pull(vault, bash(f"{VI} backlinks Kafka", "- wiki/a.md\n- not a path\n- raw/x.md\n"))
+    assert (cut["hits"], cut["paths"], cut["found"]) == (None, None, None)
+    assert piped["found"] is None
+    assert (whole["hits"], whole["paths"]) == (2, ["wiki/a.md", "raw/x.md"])
+
+
+def test_pull_logs_only_real_subcommands(vault):
+    session(vault)
+    [r] = recall_log.pull(vault, bash(f"grep -rn {VI} Marker-sub-file.md", ""))
+    assert r["sub"] == "other"
+    assert "Marker-sub" not in json.dumps(log_lines(vault, "pull"))
+
+
+def test_pull_never_reads_a_heredoc_body(vault):
+    session(vault)
+    assert recall_log.pull(vault, bash(f"cat > f.md <<'EOF'\nrun {VI} show Marker-heredoc\nEOF", "")) == []
+    assert recall_log.pull(vault, bash(f"cat > f.md <<EOF\ndon't run {VI} show Marker-heredoc\nEOF", "")) == []
+
+
+def test_terms_hash_needs_a_whole_key(vault):
+    write(vault, "system/logs/memory/recall.key", "")
+    assert recall_log.terms_hash(vault, "kafka") is None
+
+
+def test_terms_hash_gives_none_when_the_key_cannot_be_made(vault):
+    write(vault, "system/logs/memory", "not a folder\n")
+    assert recall_log.terms_hash(vault, "kafka") is None
+
+
+def test_pull_ignores_a_command_without_the_script(vault):
+    session(vault)
+    assert recall_log.pull(vault, bash("cat notes.md", f"see {VI} show x")) == []
+    assert recall_log.pull(vault, {**bash(f"{VI} show x"), "tool_name": "Edit"}) == []
+
+
+def test_pull_skips_subagents_and_unknown_sessions(vault):
+    session(vault)
+    assert recall_log.pull(vault, bash(f"{VI} show x", agent_id="a1")) == []
+    assert recall_log.pull(vault, bash(f"{VI} show x", sid="s-unknown")) == []
+    assert recall_log.pull(vault, bash(f"{VI} show x", sid="../s-1")) == []
+    assert log_lines(vault, "pull") == []
+
+
+def test_terms_hash_is_keyed_and_stable(vault):
+    first = recall_log.terms_hash(vault, "Kafka lag")
+    assert recall_log.terms_hash(vault, " kafka   LAG ") == first
+    assert first != hashlib.sha256(b"kafka lag").hexdigest()[:16]
+    key = vault / "system" / "logs" / "memory" / "recall.key"
+    assert key.stat().st_mode & 0o777 == 0o600
+    assert recall_log.terms_hash(vault, "other") != first
+
+
+def test_neither_log_holds_prompt_note_or_query_text(cli, vault):
+    # C8: a digest body (what recall pushes), a note body (what show prints) and a query stay out of the log.
+    config(vault)
+    digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00", body="## Outcome\nMarker-digest-text.\n")
+    assert "Marker-digest-text" in cli("recall", "--cwd", str(vault), "--session-id", "s-1").stdout
+    session(vault)
+    recall_log.pull(vault, bash(f"{VI} show Kafka", "# Kafka\nMarker-note-text.\n"))
+    recall_log.pull(vault, bash(f'{VI} related "Marker-query-text"', ""))
+    # Output another command shares: a Now page after backlinks, titles a pipe made from related --json (final review).
+    recall_log.pull(vault, bash(f"{VI} backlinks Kafka; cat wiki/personal/Now.md",
+                                "- wiki/a.md\n- [ ] owed: Marker-now-text (since 2026-10-09)\n"))
+    recall_log.pull(vault, bash(f"{VI} related x --json | jq -c 'map(.title)'", '["Marker-title-text"]'))
+    recall_log.pull(vault, bash(f"{VI} backlinks Kafka", "- Marker-bullet-text\n"))
+    log = "".join(p.read_text() for p in (vault / "system" / "logs").glob("recall-*.jsonl"))
+    assert log.count("\n") == 6
+    for marker in ("Marker-digest-text", "Marker-note-text", "Marker-query-text", "marker-query-text",
+                   "Marker-now-text", "Marker-title-text", "Marker-bullet-text"):
+        assert marker not in log
+
+
+def failed(command, sid="s-1"):
+    """A PostToolUseFailure event (plan Task 1 probe): a Bash call that exits non-zero, with no tool_response."""
+    return {"session_id": sid, "hook_event_name": "PostToolUseFailure", "tool_name": "Bash",
+            "tool_input": {"command": command}, "error": "Exit code 1\nnot found: Marker-error-text"}
+
+
+def test_pull_a_failed_call_logs_found_false_and_hits_0(vault):
+    session(vault)
+    [show] = recall_log.pull(vault, failed(f"{VI} show Nothing"))
+    [rel] = recall_log.pull(vault, failed(f'{VI} related "no such terms"'))
+    [query] = recall_log.pull(vault, failed(f'{VI} query "SELECT bad"'))
+    assert (show["sub"], show["note"], show["found"]) == ("show", "Nothing", False)
+    assert (rel["sub"], rel["hits"], rel["paths"], rel["found"]) == ("related", 0, [], False)
+    assert (query["sub"], query["hits"], query["found"]) == ("query", 0, False)
+    assert "Marker-error-text" not in "".join(p.read_text() for p in (vault / "system/logs").glob("recall-*.jsonl"))
