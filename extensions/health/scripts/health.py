@@ -198,8 +198,11 @@ def dismissed(vault, w, th):
     counts = {}
     for m, mark, _, day, _ in _now_lines(vault, w):
         if day and w.has(day):
-            # The writer when the line names one (Now writer spec §3.3); no field means a session or the owner wrote it.
-            host = nowmod.via(m["statement"]) or "session"
+            # The writer when the line names one (Now writer spec §3.3). With none, an old mail or chat line from before
+            # tag-writers keeps its guess from the evidence link; any other line is a session's or the owner's.
+            ev = m["evidence"] or ""
+            guess = next((n for h, n in (("mail.google.com", "mail"), ("slack.com", "slack")) if h in ev), None)
+            host = nowmod.via(m["statement"]) or ("guess:" + guess if guess else "session")
             d, total = counts.get(host, (0, 0))
             counts[host] = (d + (mark == "-"), total + 1)
     value = {h: _pct(d, t) for h, (d, t) in sorted(counts.items()) if t >= DISMISS_MIN}
