@@ -194,21 +194,12 @@ def now_flow(vault, w, th):
     return value, text, "closures ≥ inflow", "ok" if len(closed) >= inflow else "breach"
 
 
-def _host(evidence: str) -> str:
-    if not evidence:
-        return "none"
-    for host, name in (("mail.google.com", "mail"), ("slack.com", "slack"), ("github.com", "github")):
-        if host in evidence:
-            return name
-    return "other"
-
-
 def dismissed(vault, w, th):
     counts = {}
     for m, mark, _, day, _ in _now_lines(vault, w):
         if day and w.has(day):
-            # The writer when the line names one (Now writer spec §3.3), else the old guess from its evidence link.
-            host = nowmod.via(m["statement"]) or "guess:" + _host(m["evidence"] or "")
+            # The writer when the line names one (Now writer spec §3.3); no field means a session or the owner wrote it.
+            host = nowmod.via(m["statement"]) or "session"
             d, total = counts.get(host, (0, 0))
             counts[host] = (d + (mark == "-"), total + 1)
     value = {h: _pct(d, t) for h, (d, t) in sorted(counts.items()) if t >= DISMISS_MIN}

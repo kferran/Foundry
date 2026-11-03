@@ -1120,3 +1120,19 @@ def test_tag_writers_dry_run_then_once(vault):
     r = cli(vault, "tag-writers", "--dry-run")
     assert r.returncode == 0, r.stderr
     assert "tag-writers work: 0 tagged, 0 expire at the next check, 1 skipped" in r.stdout
+
+
+def test_a_repeat_fit_add_cut_differently_matches_the_first(vault):
+    # The cut depends on who, evidence, rec and due, so the stored statement can differ from the repeat's cut.
+    prepare(vault)
+    long = "Reply about the rollout " + "and its many details " * 14
+    assert now.add(vault, "work", "owed", long, TODAY, rec="Yes: it is quick", fit=True)[0] == "added"
+    assert now.add(vault, "work", "owed", long, TODAY, fit=True)[0] in ("exists", "updated")
+    assert page(vault).count("Reply about the rollout") == 1
+
+
+def test_overdue_leaves_the_writer_tag_out(vault):
+    prepare(vault)
+    write(vault, "wiki/work/Now.md", HEAD.format(p="work") +
+          "- [ ] owed: Tagged [via:: mail] [due:: 2026-10-19] (since 2026-10-01)\n\n## Waiting\n")
+    assert now.overdue(vault, "2026-10-20").splitlines()[1] == "- owed: Tagged [due:: 2026-10-19] (since 2026-10-01)"

@@ -336,6 +336,7 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
     validate(partition, kind, statement, who, evidence, rec, due)
     over = len(render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who),
                       writer)) - MAX_LINE
+    full = statement
     if fit and over > 0:
         statement = _cut(statement, over)
     text = read(vault, partition) or new_page(vault, partition, today)
@@ -344,7 +345,9 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
         if not (m and m.group("kind") == kind):
             continue
         bare, old_rec, old_due = fields(m.group("statement"))
-        if bare != fields(statement)[0]:
+        # A stored line may hold a different cut of the same statement (the cut depends on the other fields).
+        want = fields(full)[0]
+        if bare != want and not (bare.endswith("…") and want.startswith(bare[:-1])):
             continue
         if due and old_due and due > old_due:
             raise ValueError(f"would loosen the clock (due {old_due})")
@@ -649,7 +652,7 @@ def overdue(vault, day: str) -> str:
                 continue
             group = band((date.fromisoformat(day) - date.fromisoformat(due.group(1))).days)
             if group is not None:
-                groups[group].append((due.group(1), f"- {line.rstrip()[6:]}"))
+                groups[group].append((due.group(1), f"- {strip_via(line.rstrip())[6:]}"))
     # One block per group and one for the count, joined by a blank line, so Markdown keeps each bold label on its own
     # line and the count out of the last bullet.
     # At most MAX_OVERDUE lines, the fewest days over first, then one count line (phase A follow-up).
