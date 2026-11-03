@@ -231,3 +231,22 @@ lib_config_setup() {
   [ -n "$(cat "$BATS_TEST_TMPDIR/w")" ]
   [ ! -e "$(cat "$BATS_TEST_TMPDIR/w")" ]
 }
+
+@test "git_github_slug reads https and ssh forms (#436 S2)" {
+  source system/scripts/lib_git.sh
+  run git_github_slug https://github.com/o/r.git
+  [ "$status" -eq 0 ]
+  [ "$output" = o/r ]
+  run git_github_slug https://github.com/o/r
+  [ "$output" = o/r ]
+  run git_github_slug git@github.com:o/r.git
+  [ "$output" = o/r ]
+  run git_github_slug ssh://git@github.com/o/r
+  [ "$output" = o/r ]
+  run git_github_slug https://gitlab.com/o/r.git
+  [ "$status" -eq 0 ]
+  [ "$output" = "" ]
+  run git_github_slug "$BATS_TEST_TMPDIR/up.git"
+  [ "$status" -eq 0 ]
+  [ "$output" = "" ]
+}
