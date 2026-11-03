@@ -535,3 +535,37 @@ brief_stubs() {
   HEADLESS_MAX_RUNS_PER_DAY=2 STUB_MODE=noop run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 0 ]
 }
+
+@test "a raw exit 7 from claude goes through the outage check like any failure (#473)" {
+  STUB_MODE=fail7 STUB_CHECK=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 7 ]
+  [ "$(grep -c 'claude is not working (exit 1' system/logs/alerts_*.md)" -eq 1 ]
+  STUB_MODE=fail7 run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 1 ]
+}
+
+@test "a brief or debrief that fails on an outage says so in its own alert, marker or not (#473)" {
+  STUB_MODE=fail STUB_CHECK=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 7 ]
+  STUB_MODE=fail STUB_CHECK=fail run "$RH" brief
+  [ "$status" -eq 7 ]
+  STUB_MODE=fail STUB_CHECK=fail run "$RH" debrief
+  [ "$status" -eq 7 ]
+  [ "$(grep -c '\] brief .* failed: claude is not working (exit 1' system/logs/alerts_*.md)" -eq 1 ]
+  [ "$(grep -c '\] debrief .* failed: claude is not working (exit 1' system/logs/alerts_*.md)" -eq 1 ]
+  [ "$(grep -c 'intake holds its inputs' system/logs/alerts_*.md)" -eq 1 ]
+}
+
+@test "pin: a rejected publish runs no outage check (#473)" {
+  export STUB_CHECK_ARGS="$BATS_TEST_TMPDIR/check"
+  STUB_MODE=nothing run "$RH" brief
+  [ "$status" -eq 5 ]
+  [ ! -e "$STUB_CHECK_ARGS" ]
+}
+
+@test "pin: a timeout whose outage check passes stays 124 (#473)" {
+  export STUB_CHECK_ARGS="$BATS_TEST_TMPDIR/check"
+  HEADLESS_TIMEOUT=1 STUB_MODE=sleep run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 124 ]
+  grep -qx 'Reply with the word ok.' "$STUB_CHECK_ARGS"
+}
