@@ -139,9 +139,10 @@ driver="'${VAULT_ROOT//\'/\'\\\'\'}/system/scripts/now.py' merge-driver %O %A %B
 for attempt in 1 2; do
   net fetch -q --prune origin || fail fetch "git fetch origin failed"
   if ! git merge-base --is-ancestor "origin/$branch" HEAD; then
-    if ! err="$(git -c core.attributesFile="$attrs" -c merge.now.driver="$driver" merge -q --no-edit \
-                  -m "sync($role): merge origin/$branch" -m "Foundry-Command: sync"$'\n'"Foundry-Role: $role" \
-                  "origin/$branch" 2>&1)"; then
+    # recursive=binary: the inner merge of two merge bases never runs the driver, so a criss-cross conflicts.
+    if ! err="$(git -c core.attributesFile="$attrs" -c merge.now.driver="$driver" -c merge.now.recursive=binary \
+                  merge -q --no-edit -m "sync($role): merge origin/$branch" \
+                  -m "Foundry-Command: sync"$'\n'"Foundry-Role: $role" "origin/$branch" 2>&1)"; then
       if [[ -n "$(git ls-files -u)" ]]; then
         # Conflicts are never resolved here (§5.4): abort, publish this side, block the runs.
         paths="$(git diff --name-only --diff-filter=U)"

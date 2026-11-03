@@ -1198,6 +1198,9 @@ def test_merge_layout_from_one_side():
     assert now.merge(no_waiting, pg(MA, waiting=(MW,)), MHEAD + f"{tick(MA)}\n") == pg(tick(MA), waiting=(MW,))
 
 
+MD = "- [ ] owed: Call the bank [due:: 2026-10-12] (Blake, since 2026-10-09)"
+MN = "  - 2026-10-10: one"
+TOP = MHEAD.replace("## Needs you\n", "") + "x\n"   # a page with no heading yet
 TWO = ("- [ ] owed: Review the first part (Blake, since 2026-10-09)",
        "- [ ] owed: Review the second part (Blake, since 2026-10-09)")
 
@@ -1213,9 +1216,17 @@ TWO = ("- [ ] owed: Review the first part (Blake, since 2026-10-09)",
     (pg(MA), pg(MA, "  - 2026-10-10: n", "  - 2026-10-10: n"), pg(MA, MB), "twice"),           # a note twice
     ("<<<<<<< ours\n" + pg(MA), pg(MA, MB), pg(MA), "conflict marker"),                        # a criss-cross base
     (pg(MA), pg(MA).replace("# Now", "# Now page"), pg(MA).replace("# Now", "# Open loops"), "layout"),
-    (pg(MA), pg(MA).replace("\n## Waiting\n", "\n"), pg(MA, waiting=(MW,)), "section to place"),
+    (pg(MA), pg(MA).replace("\n## Waiting\n", "\n"), pg(MA, waiting=(MW,)), 'no "## Waiting" section'),
+    # final review: a look-alike line (same kind, since and who) added where the line went never takes its tick or note
+    (pg(tick(MA, how="ticked 2026-10-10"), MB), pg(MB, MD), pg(tick(MA, how="ticked 2026-10-10"), MN, MB), "gone on one"),
+    (pg(MA, MB), pg(MB, MD), pg(tick(MA), MB), "gone on one side"),
+    (pg(MA, MB), pg(MB, MD), pg(MA, MN, MB), "gone on one side"),
+    (pg("- [ ] buy milk"), pg("- [ ] buy oat milk"), pg("- [x] buy milk"), "gone on one side"),    # a hand-written line
+    (pg(MB), pg(MB.replace("invoice", "invoice and receipt")), pg(tick(MB)), "no evidence"),       # rewrite vs tick
+    (TOP, TOP + f"{MA}\n", TOP.replace("x\n", "y\n"), "above the first heading"),
 ], ids=["two-rewrites", "gone-vs-note", "gone-vs-rewrite", "two-candidates", "gone-vs-reopened", "moved", "key-twice",
-        "note-twice", "conflict-marker", "layout-both", "no-section"])
+        "note-twice", "conflict-marker", "layout-both", "no-section", "archived-vs-note-lookalike", "lookalike-vs-tick",
+        "lookalike-vs-note", "hand-rewrite-vs-tick", "rewrite-no-evidence-vs-tick", "above-headings"])
 def test_merge_blocks(base, ours, theirs, reason):
     with pytest.raises(ValueError, match=reason):
         now.merge(base, ours, theirs)

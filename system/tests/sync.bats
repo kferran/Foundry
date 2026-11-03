@@ -510,3 +510,26 @@ client_ticks() {  # the client ticks the export line and commits it
   [ "$status" -eq 1 ]
   grep -q '^<<<<<<< ' wiki/work/Now.md
 }
+
+@test "a criss-cross merge whose inner Now.md merge the driver refuses still blocks (#436 S5)" {
+  now_base "$NA" "$NB"
+  now_page "$C" "${NA/export PR/export PR client}" "$NB"
+  git -C "$C" commit -q -am C1
+  c1="$(git -C "$C" rev-parse HEAD)"
+  now_page "$V" "${NA/export PR/export PR server}" "$NB"
+  git commit -q --no-verify -am S1
+  git push -q origin HEAD:refs/heads/side
+  git -C "$C" fetch -q origin
+  run git -C "$C" merge -q --no-edit origin/side
+  now_page "$C" "${NA/export PR/export PR client}" "${NB/- \[ \]/- [x]}"
+  git -C "$C" commit -q -am M_c
+  git -C "$C" push -q origin HEAD:refs/heads/side HEAD:"$B"
+  git fetch -q origin
+  run git merge -q --no-edit "$c1"
+  now_page "$V" "${NA/export PR/export PR server}" "${NB/- \[ \]/- [x]}"
+  git commit -q --no-verify -am M_s
+  [ "$(git merge-base --all HEAD "origin/$B" | wc -l)" -eq 2 ]
+  run "$VS"
+  [ "$status" -eq 3 ]
+  grep -qx 'wiki/work/Now.md' system/logs/sync-blocked
+}

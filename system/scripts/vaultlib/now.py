@@ -185,30 +185,35 @@ def _version(text: str) -> list:
     return items
 
 
-def _pair(base: list, side: list) -> tuple:
-    """({base index: side Block}, {unpaired base index: rewrite candidates}): by key, then a base line missing on the
-    side takes the one new line there of the same kind, since, who and section (a line two claim counts as two)."""
+def _pair(base: list, side: list) -> dict:
+    """{base index: side Block}: by key, then an open base line missing on the side takes the one new line there of
+    the same kind, since, who, evidence and section (set rewrites open lines only), unless another line claims it."""
     def ident(blk):
         m = parse(blk.raw)
-        return m and (m.group("kind"), m.group("since"), m.group("who"), blk.section)
+        return m and (m.group("kind"), m.group("since"), m.group("who"), m.group("evidence"), blk.section)
     keys, old = {s.key: s for s in side}, {b.key for b in base}
     pairs = {k: keys[b.key] for k, b in enumerate(base) if b.key in keys}
     claims = {k: [s for s in side if s.key not in old and ident(b) and ident(b) == ident(s)]
-              for k, b in enumerate(base) if k not in pairs}
+              for k, b in enumerate(base) if k not in pairs and b.mark == " "}
     taken = [s for ss in claims.values() for s in ss]
     pairs.update({k: ss[0] for k, ss in claims.items() if len(ss) == 1 and taken.count(ss[0]) == 1})
-    return pairs, {k: max(len(ss), 2) if ss else 0 for k, ss in claims.items() if k not in pairs}
+    return pairs
 
 
-def _merge_block(b, o, t, o_candidates: int, t_candidates: int):
-    """One line merged three-way, None when it goes; b, o or t is None where that version lacks it."""
+def _merge_block(b, o, t, o_added: bool, t_added: bool):
+    """One line merged three-way, None when it goes; b, o or t is None where that version lacks it. x_added: that side
+    has a new line in b's section, so a line gone there may have been rewritten."""
     if o is None or t is None:
-        y, n = (t, o_candidates) if o is None else (o, t_candidates)
+        y, added = (t, o_added) if o is None else (o, t_added)
         if y is None or b is None:
             return y
-        if y.key == b.key and y.notes == b.notes and (y.mark == b.mark or (y.mark in "xX-" and n == 0)):
+        if y.key == b.key and y.notes == b.notes and (y.mark == b.mark or (y.mark in "xX-" and not added)):
             return None   # unchanged, or only closed where the other side archived it
         raise ValueError(f'the line "{b.key[1:61]}" is gone on one side and changed on the other')
+    for y, z in ((o, t), (t, o)) if b else ():
+        if y.key != b.key and (z.mark, z.notes) != (b.mark, b.notes) and not parse(b.raw).group("evidence"):
+            raise ValueError(f'the line "{b.key[1:61]}" was rewritten on one side and changed on the other, '
+                             'and it has no evidence to pair it by')
     if o.section != t.section:
         raise ValueError(f'the line "{o.key[1:61]}" is in a different section on each side')
     bk, bm, bn = (b.key, b.mark, b.notes) if b else (None, None, ())
@@ -230,11 +235,12 @@ def merge(base: str, ours: str, theirs: str) -> str:
     (lb, lo, lt), (bb, bo, bt) = ([[x for x in v if isinstance(x, cls)] for v in versions] for cls in (str, Block))
     if lo != lt and lb not in (lo, lt):
         raise ValueError("the page layout changed on both sides")
-    (po, co), (pt, ct) = _pair(bb, bo), _pair(bb, bt)
-    new_t = {s.key: s for s in bt if s not in pt.values()}
-    ents = [(b, po.get(k), pt.get(k), co.get(k, 0), ct.get(k, 0)) for k, b in enumerate(bb)]
-    ents += [(None, s, new_t.pop(s.key, None), 0, 0) for s in bo if s not in po.values()]
-    ents += [(None, None, s, 0, 0) for s in new_t.values()]
+    po, pt = _pair(bb, bo), _pair(bb, bt)
+    new_o, new_t = [s for s in bo if s not in po.values()], {s.key: s for s in bt if s not in pt.values()}
+    so, st = {s.section for s in new_o}, {s.section for s in new_t.values()}
+    ents = [(b, po.get(k), pt.get(k), b.section in so, b.section in st) for k, b in enumerate(bb)]
+    ents += [(None, s, new_t.pop(s.key, None), False, False) for s in new_o]
+    ents += [(None, None, s, False, False) for s in new_t.values()]
     merged = [_merge_block(*ent) for ent in ents]
     # The side whose layout won gives the order; the other's new lines go after their predecessor, or open their section.
     s, x, skel, other = (1, 2, versions[1], bt) if lo == lt or lt == lb else (2, 1, versions[2], bo)
@@ -246,7 +252,8 @@ def merge(base: str, ours: str, theirs: str) -> str:
                 at = order.index(prev[blk.section]) if blk.section in prev else next(
                     (n for n, i in enumerate(order) if isinstance(i, str) and i.rstrip() == blk.section), None)
                 if at is None:
-                    raise ValueError(f'no "{blk.section}" section to place "{blk.key[1:61]}"')
+                    where = f'no "{blk.section}" section' if blk.section else "it sits above the first heading"
+                    raise ValueError(f'nowhere to place "{blk.key[1:61]}": {where}')
                 order.insert(at + 1, e)
             prev[blk.section] = e
     text = "\n".join(y for i in order for y in (
