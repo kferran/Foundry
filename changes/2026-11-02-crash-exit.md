@@ -1,0 +1,1 @@
+- Changed: a crash in the Work Order runner, the telemetry fetch, the intraday watch or the smoke check now exits 70 and alerts once a day with the `journalctl` command, instead of passing as a handled failure. (#461)
