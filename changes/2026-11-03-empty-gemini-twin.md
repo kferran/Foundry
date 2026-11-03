@@ -1,0 +1,1 @@
+- Fixed: when Google Meet writes two Gemini Docs for one meeting and one is empty, the vault keeps one meeting note. (#PR)
