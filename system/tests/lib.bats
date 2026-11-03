@@ -208,3 +208,26 @@ lib_config_setup() {
   [ ! -e "$(cat "$BATS_TEST_TMPDIR/w")" ]
   grep -q 'foundry-x crashed:' system/logs/alerts_*.md
 }
+
+@test "crash_trap: a cleanup that fails leaves a clean run at 0 with no alert (#484 review)" {
+  mkdir -p system/logs
+  : > "system/logs/alerts_$(date +%F).md"
+  printf '%s\n' '#!/bin/bash' 'set -euo pipefail' 'source system/scripts/lib_fetch.sh' 'FETCH_TAG=smoke' \
+    'crash_trap foundry-x' 'exit_cleanup=false' 'exit 0' > "$BATS_TEST_TMPDIR/c.sh"
+  run bash "$BATS_TEST_TMPDIR/c.sh"
+  [ "$status" -eq 0 ]
+  run grep -c 'crashed:' system/logs/alerts_"$(date +%F)".md
+  [ "$output" = "0" ]
+}
+
+@test "fetch_workdir without crash_trap keeps the script's exit and removes the workdir (#484 review)" {
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!/bin/bash\nexec %q -d -p %q\n' "$(command -v mktemp)" "$BATS_TEST_TMPDIR" > "$BATS_TEST_TMPDIR/bin/mktemp"
+  chmod +x "$BATS_TEST_TMPDIR/bin/mktemp"
+  printf '%s\n' '#!/bin/bash' 'set -euo pipefail' 'source system/scripts/lib_fetch.sh' 'FETCH_TAG=smoke' \
+    'fetch_workdir' "echo \"\$work\" > '$BATS_TEST_TMPDIR/w'" 'exit 3' > "$BATS_TEST_TMPDIR/c.sh"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run bash "$BATS_TEST_TMPDIR/c.sh"
+  [ "$status" -eq 3 ]
+  [ -n "$(cat "$BATS_TEST_TMPDIR/w")" ]
+  [ ! -e "$(cat "$BATS_TEST_TMPDIR/w")" ]
+}

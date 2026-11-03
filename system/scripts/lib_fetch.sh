@@ -53,7 +53,7 @@ crash_exit() {  # <text>: the unit's crash alert, once a day, then exit 70 (an a
 on_exit() {  # the one EXIT trap bash keeps: exit_cleanup, then the crashes ERR never sees (an unset variable, a bad
   # $(( ))). The script's own exit (its BASH_COMMAND), 70 from ERR and a stop signal stand.
   local rc=$? cmd="$BASH_COMMAND"
-  eval "${exit_cleanup:-}"
+  eval "${exit_cleanup:-}" || true   # a cleanup that fails never makes a clean run a crash
   [[ -n "${crash_unit:-}" && "$cmd" != exit && "$cmd" != "exit "* ]] || return 0
   (( rc == 0 || rc == 70 || crash_signal || BASHPID != $$ )) || crash_exit "exit $rc"
 }
