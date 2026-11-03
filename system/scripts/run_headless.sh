@@ -204,6 +204,8 @@ claude_works() {
   check_reason="exit $crc$(jq -r '.result // empty | tostring | " (" + .[0:160] + ")"' <<< "$o" 2>/dev/null || true)"
   return 1
 }
+check_reason=""
+(( rc == 7 )) && rc=1   # exit 7 is ours: a raw 7 from claude goes through the check like any failure
 if (( rc == 1 || rc == 124 )) && ! claude_works; then rc=7; fi
 denials="$(jq -r '(.permission_denials // []) | length' "$out" 2>/dev/null || true)"
 [[ "$denials" =~ ^[0-9]+$ ]] || denials=0
@@ -233,6 +235,8 @@ else
   if (( rc == 4 )); then
     marker="system/logs/.usage-limit-alerted-$TODAY"
     [[ -e "$marker" ]] || { alert "account usage limit reached ($(jq -r '.result | tostring | .[0:160]' "$out" 2>/dev/null)); inputs left in place"; : > "$marker"; }
+  elif (( rc == 7 )) && [[ "$cmd" == brief || "$cmd" == debrief ]]; then
+    alert "$cmd $run_id failed: claude is not working ($check_reason)"
   elif (( rc == 7 )); then
     marker="system/logs/.outage-alerted-$TODAY"
     [[ -e "$marker" ]] || { alert "claude is not working ($check_reason); intake holds its inputs until it does"; : > "$marker"; }

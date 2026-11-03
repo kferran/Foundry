@@ -1,0 +1,1 @@
+- Fixed: a brief or debrief that fails because claude is not working says so in its own alert, and an exit 7 from claude itself is checked like any other failure. (#473)
