@@ -1,0 +1,1 @@
+- Changed: an outage or an expired claude login no longer moves good inputs to quarantine: ingest exits 7, intake holds its inputs, and one alert a day says claude is not working. (#469)
