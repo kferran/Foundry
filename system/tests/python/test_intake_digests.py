@@ -2,6 +2,7 @@ import json
 
 from helpers import write
 from test_intake import calls, iv, ledger_month, later  # noqa: F401  (iv is a fixture)
+from vaultlib import backfill, frontmatter
 from vaultlib.intake import Intake
 
 
@@ -174,3 +175,83 @@ def test_retry_midway_oserror_still_records_ledger(iv, monkeypatch):
     monkeypatch.setenv("STUB_RC", "5")
     Intake(iv, now=later()).run()
     assert (iv / "raw/inbox/a.md").exists()  # one failure since retry, not poisoned
+
+
+# -- recall R1 (#438): the excerpt a backfilled digest is written from (recall spec §4.3) --
+def prompt(ts, text, **extra):
+    return {"type": "user", "isSidechain": False, "timestamp": ts, "message": {"role": "user", "content": text}, **extra}
+
+
+def reply(ts, *blocks, **extra):
+    return {"type": "assistant", "isSidechain": False, "timestamp": ts,
+            "message": {"role": "assistant", "content": list(blocks)}, **extra}
+
+
+def tool_result(ts, text):
+    return {"type": "user", "isSidechain": False, "timestamp": ts, "toolUseResult": {"stdout": text},
+            "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": text}]}}
+
+
+def transcript(path, *entries, raw_lines=()):
+    lines = [json.dumps(e) for e in entries]
+    for at, line in raw_lines:
+        lines.insert(at, line)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+T1, T2, T3, T4 = (f"2026-11-03T13:49:1{n}.026Z" for n in range(4))
+
+
+def test_excerpt_keeps_prompts_text_and_tool_lines_in_order(tmp_path):
+    path = transcript(
+        tmp_path / "s.jsonl",
+        {"type": "permission-mode", "permissionMode": "default"},
+        prompt(T1, "Tidy the export job"),
+        reply(T2, {"type": "thinking", "thinking": "private reasoning"}, {"type": "text", "text": "Reading it now."},
+              {"type": "tool_use", "name": "Read", "input": {"file_path": "/x/export.py"}},
+              {"type": "tool_use", "name": "Bash", "input": {"command": "pytest -q\n" + "y" * 300, "description": "d"}}),
+        {"type": "attachment", "timestamp": T3, "attachment": {"content": "attached text"}},
+        reply(T4, {"type": "text", "text": "Done."}))
+    text, cut, last = backfill.excerpt(path)
+    assert text.split("\n") == [
+        f"[{T1}] user: Tidy the export job",
+        f"[{T2}] assistant: Reading it now.",
+        f"[{T2}] tool Read /x/export.py",
+        f"[{T2}] tool Bash " + ("pytest -q " + "y" * 300)[:200],
+        f"[{T4}] assistant: Done."]
+    assert (cut, last) == (0, T4)
+
+
+def test_excerpt_drops_sidechain_and_tool_results(tmp_path):
+    path = transcript(tmp_path / "s.jsonl", prompt(T1, "Go"), tool_result(T2, "secret tool output"),
+                      prompt(T3, "subagent prompt", isSidechain=True), reply(T4, {"type": "text", "text": "ok"}))
+    text, _, _ = backfill.excerpt(path)
+    assert text == f"[{T1}] user: Go\n[{T4}] assistant: ok"
+
+
+def test_excerpt_keeps_the_newest_100000_with_a_marker(tmp_path):
+    entries = [prompt(T1, f"turn {i} " + "z" * 990) for i in range(150)] + [reply(T4, {"type": "text", "text": "the end"})]
+    whole = "\n".join(f"[{T1}] user: turn {i} " + "z" * 990 for i in range(150)) + f"\n[{T4}] assistant: the end"
+    text, cut, last = backfill.excerpt(transcript(tmp_path / "s.jsonl", *entries))
+    marker, kept = text.split("\n", 1)
+    assert cut == len(whole) - backfill.EXCERPT_CAP > 0
+    assert marker == f"[… {cut} earlier characters left out …]"
+    assert kept == whole[cut:] and len(kept) == backfill.EXCERPT_CAP
+    assert last == T4
+
+
+def test_excerpt_skips_bad_and_huge_lines(tmp_path):
+    huge = json.dumps(prompt(T2, "h" * (backfill.LINE_CAP + 1)))
+    path = transcript(tmp_path / "s.jsonl", prompt(T1, "before"), reply(T4, {"type": "text", "text": "after"}),
+                      raw_lines=[(1, "not json {"), (2, huge), (3, '["a list"]')])
+    text, cut, _ = backfill.excerpt(path)
+    assert text == f"[{T1}] user: before\n[{T4}] assistant: after" and cut == 0
+
+
+def test_excerpt_header_is_the_digest_frontmatter():
+    state = {"partition": "work", "codebase": "vault"}
+    head = backfill.header(state, "bf000001-aaaa", "2026-11-03T06:49:13-07:00", 2)
+    data = frontmatter.parse(head + "body\n").data
+    assert data == {"type": "session_digest", "partition": "work", "codebase": "vault", "session_id": "bf000001-aaaa",
+                    "created_at": "2026-11-03T06:49:13-07:00", "redactions": "2"}
