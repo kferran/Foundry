@@ -94,14 +94,15 @@ core_problem() {
 
 @test "a research order, a requeue and a tool write to what steers the runner ask first (#317, #321)" {
   for rule in 'Bash(system/scripts/nightshift.py research:*)' 'Bash(system/scripts/nightshift.py requeue:*)' \
-      'Edit(/raw/*/nightshift/**)' 'Write(/raw/*/nightshift/**)' 'Edit(/system/codebases/**)' 'Write(/system/codebases/**)' \
-      'Edit(/system/nightshift/**)' 'Write(/system/nightshift/**)'; do
+      'Edit(/raw/*/nightshift/**)' 'Edit(/system/codebases/**)' 'Edit(/system/nightshift/**)'; do
     jq -e --arg r "$rule" '.permissions.ask | index($r)' .claude/settings.json >/dev/null
   done
   # The units run the vault's scripts outside any sandbox, so a tool write to them asks too (#433, owner 2026-11-02).
-  for rule in 'Edit(/system/scripts/**)' 'Write(/system/scripts/**)' 'Edit(/extensions/**)' 'Write(/extensions/**)'; do
+  for rule in 'Edit(/system/scripts/**)' 'Edit(/extensions/**)'; do
     jq -e --arg r "$rule" '.permissions.ask | index($r)' .claude/settings.json >/dev/null
   done
+  # Edit rules cover the Write tool too; a Write(...) rule never matches and Claude Code warns of it at every session start.
+  [ "$(jq '[.permissions[] | arrays[] | select(startswith("Write("))] | length' .claude/settings.json)" = 0 ]
   # The sandbox cannot let only the CLI through (probe 2026-10-31): no excluded command and no write deny for it.
   [ "$(jq '.sandbox.excludedCommands // [] | length' .claude/settings.json)" = 0 ]
 }
