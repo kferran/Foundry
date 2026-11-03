@@ -1,1 +1,1 @@
-- Fixed: a smoke check or intraday watch run that dies on an unset variable or a bad arithmetic expression now fails its unit and alerts, as other crashes do. (#PR)
+- Fixed: a smoke check or intraday watch run that dies on an unset variable or a bad arithmetic expression now fails its unit and alerts, as other crashes do. (#484)
