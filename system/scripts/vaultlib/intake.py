@@ -14,7 +14,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import alerts, cli, convert as convertmod, extensions as extmod, frontmatter, held as heldmod, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
-from . import triage
+from . import backfill, recall_log, state as statemod, triage
 from .config import text
 from .state import append_jsonl as _append_jsonl
 
@@ -164,10 +164,10 @@ class Intake:
         _append_jsonl(self.logs / f"intake_manifest-{self.dt().year}.jsonl",
                       {"sha256": sha, "name": name, "published_at": self.dt().isoformat()})
 
-    def headless(self, rel_paths, shas) -> int:
+    def headless(self, rel_paths, shas, command="ingest") -> int:
         self.runs += 1
         env = {**os.environ, "FOUNDRY_ORIGINAL_SHA256": " ".join(shas)}
-        return subprocess.run([str(self.vault / "system/scripts/run_headless.sh"), "ingest", *rel_paths],
+        return subprocess.run([str(self.vault / "system/scripts/run_headless.sh"), command, *rel_paths],
                               cwd=self.vault, env=env).returncode
 
     def poison(self, path: Path, origin: str, sha: str, reason: str = "") -> None:
@@ -484,6 +484,100 @@ class Intake:
                 self.alert(f"digest {origin} failed (exit {rc}); will retry")
         except OSError as exc:
             self.alert(f"skipped {origin}: {exc.__class__.__name__}: {exc}")
+
+    # -- backfill: a digest for a session that ended without one (recall R1 spec §4) ---------------------------
+    def process_backfills(self) -> None:
+        """Each queued session at least FRESH_SECONDS old, oldest first, inside the tick's run budget and the ceiling."""
+        markers = [m for m in (self.logs / "memory" / "sessions").glob("*.backfill") if self.eligible(m)]
+        for marker in sorted(markers, key=lambda m: m.stat().st_mtime):
+            if self.runs >= self.max_runs or self.held() or not self._backfill(marker):
+                return
+
+    def _keep_dir(self) -> Path:
+        """transcript_keep_dir as memory_keep.sh resolves it."""
+        state_home = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+        return Path(os.path.expanduser(self.config("transcript_keep_dir", "") or f"{state_home}/foundry/transcripts"))
+
+    def _backfill(self, marker: Path) -> bool:
+        """One queued session (spec §4.2 to §4.6). False ends the tick."""
+        sid = marker.name[:-len(".backfill")]
+        state = statemod.load(marker.with_suffix(".json"), None) if recall_log.SID.match(sid) else None
+        keep = self._keep_dir()
+        if not isinstance(state, dict):
+            return self._skip_backfill(marker, sid, "no session state")
+        if not (keep.is_absolute() and (keep / f"{sid}.jsonl").is_file()):
+            return self._skip_backfill(marker, sid, "no kept transcript")
+        id8 = sid[:8]
+        if any(any(self.vault.glob(f"{d}/*-{id8}-*.md")) for d in ("raw/*/notes", "raw/*/archive", "system/quarantine/poisoned")):
+            return self._skip_backfill(marker, sid, "has a digest")  # a Stop digest, even one written after the marker
+        text, cut, last = backfill.excerpt(keep / f"{sid}.jsonl")
+        try:
+            zone = ZoneInfo(str(state.get("tz")))
+        except (ZoneInfoNotFoundError, ValueError):
+            zone = self.tz
+        try:
+            end = datetime.fromisoformat(last.replace("Z", "+00:00")).astimezone(zone)
+        except ValueError:
+            return self._skip_backfill(marker, sid, "nothing to digest")
+        text, count = redactmod.redact(text)
+        head = backfill.header(state, sid, end.isoformat(timespec="seconds"), count)
+        name = f"{end:%Y-%m-%d-%H%M}-{id8}-backfill.md"
+        staged = self.vault / "raw" / "inbox" / ".staging" / name
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        staged.write_text(f"{head}{text}\n", encoding="utf-8")
+        sha = sha256_file(staged)   # stable once the session ended: the run ledger counts attempts by it
+        try:
+            rc = self.headless([staged.relative_to(self.vault).as_posix()], [sha], "digest-backfill")
+        finally:
+            staged.unlink(missing_ok=True)
+        digest = self.vault / "raw" / str(state.get("partition")) / "notes" / name
+        if rc == 0 and digest.is_file():
+            wrong = self._read_back(digest, head)
+            if wrong:
+                self.poison(digest, digest.relative_to(self.vault).as_posix(), sha, f"backfill read-back failed ({wrong})")
+            else:
+                run_id = next((r.get("run_id") for r in reversed(list(self._ledgers()))
+                               if sha in (r.get("input_sha256") or [])), None)
+                recall_log.write(self.vault, {"kind": "backfill", "session": sid, "result": "written", "run_id": run_id,
+                                              "chars": len(text), "cut": cut})
+            marker.unlink(missing_ok=True)
+        elif rc in STOP_TICK:
+            return False
+        elif rc == 0:   # a held-back publish: nothing to read back
+            self._quarantine_backfill(marker, "the run published nothing")
+        elif rc == INVALID_INPUT_EXIT:
+            self._quarantine_backfill(marker, "rejected as invalid input (exit 2)")
+        elif self.failures_since_retry(sha) >= MAX_ATTEMPTS:
+            self._quarantine_backfill(marker, f"{MAX_ATTEMPTS} failed attempts, the last exit {rc}")
+        else:
+            self.alert(f"backfill of session {id8} failed (exit {rc}); will retry")
+        return True
+
+    def _skip_backfill(self, marker: Path, sid: str, why: str) -> bool:
+        recall_log.write(self.vault, {"kind": "backfill", "session": sid, "result": "skipped", "why": why})
+        marker.unlink(missing_ok=True)
+        return True
+
+    def _quarantine_backfill(self, marker: Path, why: str) -> None:
+        """Moving the marker back to system/logs/memory/sessions/ retries it (spec §4.6)."""
+        dest = unique(self.vault / "system" / "quarantine" / "backfill" / marker.name)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(marker), str(dest))
+        dest.with_name(dest.name + ".reason").write_text(why + "\n", encoding="utf-8")
+        self.alert(f"backfill of session {marker.name[:8]} quarantined: {why}")
+
+    def _read_back(self, digest: Path, head: str) -> str:
+        """The first thing the published digest got wrong against the block it was given (spec §4.4), or ''."""
+        note, want = frontmatter.parse(digest.read_text(encoding="utf-8", errors="replace")), frontmatter.parse(head).data
+        data = note.data or {}
+        for key in ("session_id", "codebase", "partition", "created_at"):
+            if str(data.get(key)) != str(want[key]):
+                return key
+        if data.get("provenance") != ["headless"]:
+            return "provenance"
+        if re.search(r"^## Corrections\b", note.body, re.M):
+            return "Corrections"
+        return "redaction" if redactmod.redact(note.body)[0] != note.body else ""
 
     # -- meetings (meetings spec §2.3) -------------------------------------
     def import_meetings(self) -> None:
@@ -865,8 +959,8 @@ class Intake:
                     self.import_meetings()
                 except Exception as exc:  # noqa: BLE001 - inbox and digests still run
                     self.alert(f"meeting import failed ({exc.__class__.__name__}: {exc}); will retry")
-                if self.process_inbox():
-                    self.process_digests()
+                if self.process_inbox() and self.process_digests():
+                    self.process_backfills()
         except TimeoutError:
             pass  # another daemon is running
 

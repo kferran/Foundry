@@ -44,9 +44,20 @@ with open(calls, "a") as fh:
 ledger = vault / "system/logs" / f"runs-{datetime.now(TZ).strftime('%Y-%m')}.jsonl"
 ledger.parent.mkdir(parents=True, exist_ok=True)
 with open(ledger, "a") as fh:
-    fh.write(json.dumps({"run_id": f"stub-{time.time_ns()}", "command": "ingest",
+    fh.write(json.dumps({"run_id": f"stub-{time.time_ns()}", "command": args[0],
                          "started_at": datetime.now(TZ).isoformat(), "inputs": args[1:],
                          "input_sha256": os.environ.get("FOUNDRY_ORIGINAL_SHA256", "").split(), "exit": rc}) + "\\n")
+if args[:1] == ["digest-backfill"] and rc == 0:  # the gate publishes the one target, provenance stamped
+    import re
+    src = staged[args[1]]
+    part = re.search(r'^partition: "?([a-z]+)', src, re.M).group(1)
+    out = (src.split("\\n---\\n", 1)[0] + '\\nprovenance: ["headless"]\\n---\\n## Outcome\\n'
+           + os.environ.get("STUB_BACKFILL_BODY", "Tidied the export job.") + "\\n")
+    for old, new in json.loads(os.environ.get("STUB_BACKFILL_SUB", "[]")):
+        out = out.replace(old, new)
+    dest = vault / "raw" / part / "notes" / Path(args[1]).name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(out)
 sys.exit(rc)
 """
 
