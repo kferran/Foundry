@@ -197,8 +197,9 @@ fi
 # run with no tools tells them apart, and exit 7 holds intake without an attempt (#436 S1).
 claude_works() {
   local o crc=0
-  o="$(timeout -k 10s "${HEADLESS_CHECK_TIMEOUT:-60s}" "$CLAUDE_BIN" -p "Reply with the word ok." --tools "" \
-    --strict-mcp-config --no-session-persistence --output-format json < /dev/null 2>> "$LOG" 9>&-)" || crc=$?
+  o="$(timeout -k 10s "${HEADLESS_CHECK_TIMEOUT:-60s}" "$CLAUDE_BIN" -p "Reply with the word ok." --restricted \
+    --settings system/headless.settings.json --tools "" --strict-mcp-config --no-session-persistence \
+    --output-format json < /dev/null 2>> "$LOG" 9>&-)" || crc=$?
   (( crc == 0 )) && [[ -n "$o" ]] && jq -e '.is_error == false' <<< "$o" > /dev/null 2>&1 && return 0
   check_reason="exit $crc$(jq -r '.result // empty | tostring | " (" + .[0:160] + ")"' <<< "$o" 2>/dev/null || true)"
   return 1

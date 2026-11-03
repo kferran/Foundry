@@ -505,6 +505,7 @@ brief_stubs() {
 @test "an outage check that hangs ends at its timeout and counts as an outage (#436 S1)" {
   HEADLESS_CHECK_TIMEOUT=1 STUB_MODE=fail STUB_CHECK=hang run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 7 ]
+  [ "$(grep -c 'claude is not working (exit 124)' system/logs/alerts_*.md)" -eq 1 ]
 }
 
 @test "the outage check runs only after exit 1 or 124, with no tools (#436 S1)" {
@@ -516,6 +517,8 @@ brief_stubs() {
   [ "$status" -eq 1 ]
   grep -qx 'Reply with the word ok.' "$STUB_CHECK_ARGS"
   [ "$(grep -A1 -x -- '--tools' "$STUB_CHECK_ARGS" | tail -n 1)" = "" ]
+  grep -qx -- --restricted "$STUB_CHECK_ARGS"
+  [ "$(grep -A1 -x -- '--settings' "$STUB_CHECK_ARGS" | tail -n 1)" = system/headless.settings.json ]
 }
 
 @test "a usage limit runs no outage check (#436 S1)" {
