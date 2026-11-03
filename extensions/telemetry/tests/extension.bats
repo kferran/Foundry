@@ -80,6 +80,13 @@ prep_telemetry() {
   [ "$(grep -c 'brief_prep: telemetry' "$IN/unavailable.md")" -eq 2 ]
 }
 
+@test "brief section: a fetch that hangs is cut off at TELEMETRY_PREP_TIMEOUT and listed as unavailable" {
+  printf '#!/bin/bash\nsleep 30\n' > extensions/telemetry/scripts/telemetry_fetch.py
+  TELEMETRY_PREP_TIMEOUT=1 run prep_telemetry
+  [ "$status" -eq 0 ]
+  grep -qxF -- '- brief_prep: telemetry: the fetch timed out' "$IN/unavailable.md"
+}
+
 @test "brief section: the active groups as one table and the source ranks; empty with no group" {
   run prep_telemetry
   [ "$status" -eq 0 ]

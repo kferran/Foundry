@@ -54,7 +54,7 @@ move_vault() {  # <new path>: relocate the vault and re-derive the paths the tes
   [ "$status" -eq 1 ]
   grep -qx 'TimeoutStartSec=130min' "$UD/foundry-intake.service"
   # The brief's worst case, two runs of prep and brief with brief_run.sh's wait between them (#299).
-  grep -qx 'TimeoutStartSec=110min' "$UD/foundry-brief.service"
+  grep -qx 'TimeoutStartSec=115min' "$UD/foundry-brief.service"
   grep -qx 'TimeoutStartSec=45min' "$UD/foundry-debrief.service"
   run grep -c '^ExecStartPre=' "$UD/foundry-brief.service"   # brief_run.sh runs the prep itself (#299)
   [ "$output" = 0 ]
