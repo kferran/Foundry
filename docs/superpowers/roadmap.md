@@ -88,7 +88,7 @@ The spec covers several subsystems that depend on each other in a strict order (
    - Value: #436's S5 and S6 are missing failure edges, which F6 finds before they ship; the Now-line defect class came back 3 times after its gate, and F7 makes its transitions one checked table.
 4. **Recall track** (owner, 2026-10-31: recall gaps first, after the audit track's security work; grill on #449). Recall improves memory, a feature that passed live acceptance, so the proof-before-features rule does not hold it. One grill covers the track, then one spec per step:
    - R0 (#449, done: spec #474, build #480): log what recall pushes and what sessions pull, plus a retrieval eval set (recall@5, MRR). Every later step is measured against it.
-   - R1 (#438, done: spec #474, build (#PR)): a digest written from the kept transcript when a session leaves none.
+   - R1 (#438, done: spec #474, build (#496)): a digest written from the kept transcript when a session leaves none.
    - R2 (#450): prompt-aware recall at the first `UserPromptSubmit`, lexical and logged only (shadow) until R0's numbers clear the bar.
    - R3 (#439, with #444): a shorter push (Now lines plus a digest index) and `timeline`/`show` to pull detail. #444's static share waits for Plan 5's preferences.
    - R4 (#446): the entity-match ranker, scored on R0's eval.

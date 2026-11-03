@@ -1,1 +1,1 @@
-- Changed: a session in the vault or a registered codebase that ends without a digest gets one written from its kept transcript by the next intake ticks, marked headless. (#PR)
+- Changed: a session in the vault or a registered codebase that ends without a digest gets one written from its kept transcript by the next intake ticks, marked headless. (#496)
