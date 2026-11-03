@@ -8,7 +8,7 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from vaultlib import quarantine  # noqa: E402
+from vaultlib import alerts, quarantine  # noqa: E402
 from vaultlib.intake import Intake  # noqa: E402
 
 parser = argparse.ArgumentParser(prog="intake_daemon.sh")
@@ -32,5 +32,5 @@ elif args.retry_input:
 elif args.retry or args.retry_all:
     for restored in intake.retry(args.retry):
         print(restored)
-else:
-    intake.run()
+else:   # the unit's own tick: a crash exits 70 and alerts once a day (#436, F6 gap)
+    sys.exit(alerts.guard(lambda: intake.run() or 0, vault, "foundry-intake", "intake"))

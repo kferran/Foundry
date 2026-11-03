@@ -35,6 +35,7 @@ TZ="$(config_get timezone UTC)"
 export TZ
 mkdir -p system/logs
 FETCH_NAME=triage_fetch FETCH_TAG=triage FETCH_LOG="system/logs/triage_fetch-$(date +%Y-%m).jsonl" FETCH_ALERTS="1 2 3 4 6 7"
+(( check )) || crash_trap foundry-triage   # the unit's run and its source children: a crash exits 70 (#436, F6 gap)
 FETCH_LABEL="Inbox triage"
 [[ "$src" != chat ]] || FETCH_LABEL="Chat triage"
 FETCH_FIELDS="$(jq -cn --arg s "$src" '{items: 0} + (if $s == "" then {} else {source: $s} end)')"

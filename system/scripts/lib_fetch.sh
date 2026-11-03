@@ -43,7 +43,8 @@ crash_trap() {  # <unit>: a crash exits 70, which fails the unit, and alerts onc
   # A subshell (a process substitution) carries on; its failure reaches the script only through its reader.
   trap 'rc=$?; if (( BASHPID == $$ )); then crash_exit "exit $rc at line $LINENO"; fi' ERR
   # A stop is no crash: the EXIT trap can read a failed command's exit then, so it is flagged and re-sent as TERM.
-  trap 'crash_signal=1; trap - TERM INT HUP; kill -TERM $$' TERM INT HUP
+  # The re-sent TERM kills the shell before its EXIT trap runs, so the cleanup runs here first (the #40 /tmp rule).
+  trap 'crash_signal=1; eval "${exit_cleanup:-}" || true; exit_cleanup=; trap - TERM INT HUP; kill -TERM $$' TERM INT HUP
   trap on_exit EXIT
 }
 crash_exit() {  # <text>: the unit's crash alert, once a day, then exit 70 (an alert that cannot be written too)

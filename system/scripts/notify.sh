@@ -25,6 +25,7 @@ source system/scripts/lib_fetch.sh
 
 FETCH_NAME=notify FETCH_TAG=notify FETCH_LABEL=Notices FETCH_ALERTS="1 2 3 4 5 6 7 127" FETCH_FIELDS='{"events": 0}'
 fetch_check_arg "$@"
+(( check )) || crash_trap foundry-notify   # the unit's own run: a crash exits 70 and alerts (#436, F6 gap)
 TZ="$(config_get timezone UTC)"
 export TZ
 mkdir -p system/logs

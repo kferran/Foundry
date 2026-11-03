@@ -261,3 +261,12 @@ thread_posts() {
   [ "$status" -eq 2 ]
   [ ! -e "$STUB_ARGS" ]
 }
+
+@test "an unexpected failure exits 70 and alerts once as a crash (#436, F6 gap)" {
+  printf -- '- 06:10:00 [intake] one\n' >> "$ALERTS"
+  slack_posts "$(system/scripts/notify.py collect | jq -r .message)"
+  jq_fails_logline
+  run "$N"
+  [ "$status" -eq 70 ]
+  [ "$(grep -c '\[notify\] foundry-notify crashed: ' "$ALERTS")" -eq 1 ]
+}
