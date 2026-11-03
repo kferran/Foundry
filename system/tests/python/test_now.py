@@ -1219,3 +1219,22 @@ TWO = ("- [ ] owed: Review the first part (Blake, since 2026-10-09)",
 def test_merge_blocks(base, ours, theirs, reason):
     with pytest.raises(ValueError, match=reason):
         now.merge(base, ours, theirs)
+
+
+def test_merge_driver_writes_ours_or_exits_1(vault, tmp_path):
+    base, ours, theirs = (tmp_path / name for name in ("o", "a", "b"))
+    server = pg(tick(MA, how=CLOSE), MB)
+    base.write_text(pg(MA, MB), encoding="utf-8")
+    ours.write_text(pg(tick(MA), MB), encoding="utf-8")
+    theirs.write_text(server, encoding="utf-8")
+    r = cli(vault, "merge-driver", str(base), str(ours), str(theirs))
+    assert (r.returncode, r.stderr, ours.read_text(encoding="utf-8")) == (0, "", server)
+    theirs.write_bytes(b"\xff\xfe- [x] owed")
+    r = cli(vault, "merge-driver", str(base), str(ours), str(theirs))
+    assert (r.returncode, r.stderr) == (1, "now merge: a version is not UTF-8\n")
+    assert ours.read_text(encoding="utf-8") == server
+    theirs.write_text(pg(MA2), encoding="utf-8")
+    ours.write_text(pg(MA.replace("PR", "pull request")), encoding="utf-8")
+    r = cli(vault, "merge-driver", str(base), str(ours), str(theirs))
+    assert r.returncode == 1
+    assert r.stderr.startswith('now merge: the line "owed: Review the export') and r.stderr.count("\n") == 1

@@ -156,136 +156,103 @@ def _block_end(lines: list, i: int) -> int:
     return j
 
 
-# The Now.md merge driver (#436 S5): a line is its key (the line less its mark and close stamp), its mark, its stamp
-# and its notes. Anything it cannot place is a ValueError, and the sync blocks as before.
+# The Now.md merge driver (#436 S5). A line pairs by its key, the line less its mark and close stamp; what the driver
+# cannot place is a ValueError, and the sync blocks as before.
 Block = namedtuple("Block", "section key mark suffix notes raw")
-CHECKBOX, SUFFIX = re.compile(r"^- \[(.)\]"), re.compile(r" _\(closed: .*\)_$")
+CHECKBOX, SUFFIX = re.compile(r"^- \[.\]"), re.compile(r" _\(closed: .*\)_$")
 CONFLICT_MARK = re.compile(r"^(?:<{7}|={7}|>{7}|\|{7})(?: |$)")
 RANK = {" ": 0, "-": 1, "x": 2, "X": 2}   # closed beats open, [x] beats [-]
 
 
-def _version(text: str) -> tuple:
-    """(items, blocks): items are the page's layout lines and, in place, the index of each block."""
-    lines, items, blocks, section, i = text.split("\n"), [], [], None, 0
+def _version(text: str) -> list:
+    """The page's layout lines and its Blocks, in page order."""
+    lines, items, section, i = text.split("\n"), [], None, 0
     while i < len(lines):
-        line = lines[i]
+        line, j = lines[i], _block_end(lines, i)
         if CONFLICT_MARK.match(line):
             raise ValueError("a conflict marker in one version")
-        if not CHECKBOX.match(line):
-            section = line.rstrip() if line.startswith("## ") else section
+        if CHECKBOX.match(line):
+            head = line.rstrip()
+            suffix = s.group(0) if (s := SUFFIX.search(head)) else ""
+            items.append(Block(section, head[5:len(head) - len(suffix)], head[3], suffix, tuple(lines[i + 1:j]), line))
+        else:
+            section, j = (line.rstrip() if line.startswith("## ") else section), i + 1
             items.append(line)
-            i += 1
-            continue
-        j, head = _block_end(lines, i), line.rstrip()
-        suffix = s.group(0) if (s := SUFFIX.search(head)) else ""
-        blk = Block(section, head[5:len(head) - len(suffix)], head[3], suffix, lines[i + 1:j], line)
-        if len(set(blk.notes)) < len(blk.notes):
-            raise ValueError(f'a note is twice under "{_short(blk)}"')
-        if any(b.key == blk.key for b in blocks):
-            raise ValueError(f'the line "{_short(blk)}" is twice in one version')
-        items.append(len(blocks))
-        blocks.append(blk)
         i = j
-    return items, blocks
-
-
-def _short(blk) -> str:
-    return blk.key.strip()[:60]
-
-
-def _ident(blk):
-    m = parse(blk.raw)
-    return m and (m.group("kind"), m.group("since"), m.group("who"), blk.section)
+    blocks = [b for b in items if isinstance(b, Block)]
+    if len({b.key for b in blocks}) < len(blocks) or any(len(set(b.notes)) < len(b.notes) for b in blocks):
+        raise ValueError("a line, or a note under one line, is twice in one version")
+    return items
 
 
 def _pair(base: list, side: list) -> tuple:
-    """({base index: side index}, {unpaired base index: rewrite candidates}). A base line missing from a side pairs with
-    the one new line there of the same kind, since, who and section; a candidate two lines claim counts as two."""
-    keys = {b.key: j for j, b in enumerate(side)}
+    """({base index: side Block}, {unpaired base index: rewrite candidates}): by key, then a base line missing on the
+    side takes the one new line there of the same kind, since, who and section (a line two claim counts as two)."""
+    def ident(blk):
+        m = parse(blk.raw)
+        return m and (m.group("kind"), m.group("since"), m.group("who"), blk.section)
+    keys, old = {s.key: s for s in side}, {b.key for b in base}
     pairs = {k: keys[b.key] for k, b in enumerate(base) if b.key in keys}
-    old = {b.key for b in base}
-    claims = {k: [j for j, s in enumerate(side) if s.key not in old and _ident(b) and _ident(b) == _ident(s)]
+    claims = {k: [s for s in side if s.key not in old and ident(b) and ident(b) == ident(s)]
               for k, b in enumerate(base) if k not in pairs}
-    taken = [j for js in claims.values() for j in js]
-    for k, js in claims.items():
-        if len(js) == 1 and taken.count(js[0]) == 1:
-            pairs[k] = js[0]
-    return pairs, {k: len(js) if len(js) != 1 else 2 for k, js in claims.items() if k not in pairs}
+    taken = [s for ss in claims.values() for s in ss]
+    pairs.update({k: ss[0] for k, ss in claims.items() if len(ss) == 1 and taken.count(ss[0]) == 1})
+    return pairs, {k: max(len(ss), 2) if ss else 0 for k, ss in claims.items() if k not in pairs}
 
 
-def _merge_block(b, o, t, candidates: tuple):
-    """The merged block of one line (None when it goes), from its base, ours and theirs (None where absent)."""
+def _merge_block(b, o, t, o_candidates: int, t_candidates: int):
+    """One line merged three-way, None when it goes; b, o or t is None where that version lacks it."""
     if o is None or t is None:
-        y, n = (t, candidates[0]) if o is None else (o, candidates[1])
+        y, n = (t, o_candidates) if o is None else (o, t_candidates)
         if y is None or b is None:
             return y
         if y.key == b.key and y.notes == b.notes and (y.mark == b.mark or (y.mark in "xX-" and n == 0)):
             return None   # unchanged, or only closed where the other side archived it
-        raise ValueError(f'the line "{_short(b)}" is gone on one side and changed on the other')
+        raise ValueError(f'the line "{b.key[1:61]}" is gone on one side and changed on the other')
     if o.section != t.section:
-        raise ValueError(f'the line "{_short(o)}" is in a different section on each side')
-    bk, bm, bn = (b.key, b.mark, b.notes) if b else (None, None, [])
+        raise ValueError(f'the line "{o.key[1:61]}" is in a different section on each side')
+    bk, bm, bn = (b.key, b.mark, b.notes) if b else (None, None, ())
     if o.key != t.key and bk not in (o.key, t.key):
-        raise ValueError(f'the line "{_short(b)}" was changed on both sides')
+        raise ValueError(f'the line "{b.key[1:61]}" was changed on both sides')
+    if not (t.mark in (o.mark, bm) or o.mark == bm or {o.mark, t.mark} <= RANK.keys()):
+        raise ValueError(f'the line "{o.key[1:61]}" was marked differently on both sides')
     key = t.key if o.key == bk else o.key
-    if t.mark in (o.mark, bm) or o.mark == bm:
-        mark = o.mark if t.mark in (o.mark, bm) else t.mark
-    elif {o.mark, t.mark} <= RANK.keys():
-        mark = max(o.mark, t.mark, key=RANK.__getitem__)
-    else:
-        raise ValueError(f'the line "{_short(o)}" was marked differently on both sides')
+    mark = o.mark if t.mark in (o.mark, bm) else t.mark if o.mark == bm else max(o.mark, t.mark, key=RANK.get)
     suffix = "" if mark == " " else next((s.suffix for s in (o, t) if s.mark == mark and s.suffix), "")
-    notes = [x for x in o.notes if x in t.notes or x not in bn] + [x for x in t.notes if x not in o.notes + bn]
+    notes = tuple(x for x in o.notes if x in t.notes or x not in bn) + tuple(x for x in t.notes if x not in o.notes + bn)
     raw = next((s.raw for s in (o, t) if (s.key, s.mark, s.suffix) == (key, mark, suffix)), f"- [{mark}]{key}{suffix}")
     return Block(o.section, key, mark, suffix, notes, raw)
 
 
 def merge(base: str, ours: str, theirs: str) -> str:
-    """The Now page merged line by line (spec §3), or ValueError naming what it cannot place."""
-    (ib, bb), (io, bo), (it, bt) = (_version(text) for text in (base, ours, theirs))
-    lb, lo, lt = ([x for x in items if isinstance(x, str)] for items in (ib, io, it))
+    """The Now page merged line by line (spec §3); ValueError names what it cannot place."""
+    versions = [_version(text) for text in (base, ours, theirs)]
+    (lb, lo, lt), (bb, bo, bt) = ([[x for x in v if isinstance(x, cls)] for v in versions] for cls in (str, Block))
     if lo != lt and lb not in (lo, lt):
         raise ValueError("the page layout changed on both sides")
     (po, co), (pt, ct) = _pair(bb, bo), _pair(bb, bt)
-    ents = [(k, po.get(k), pt.get(k)) for k in range(len(bb))]
-    new_t = {bt[j].key: j for j in range(len(bt)) if j not in pt.values()}
-    ents += [(None, j, new_t.pop(bo[j].key, None)) for j in range(len(bo)) if j not in po.values()]
-    ents += [(None, None, j) for j in new_t.values()]
-    merged = [_merge_block(None if k is None else bb[k], None if o is None else bo[o], None if t is None else bt[t],
-                           (co.get(k, 0), ct.get(k, 0))) for k, o, t in ents]
-    # The side whose layout won is the skeleton; the other side's new lines go after their predecessor there.
-    s, x, skel, other = (1, 2, io, bt) if lo == lt or lt == lb else (2, 1, it, bo)
-    at_s = {ent[s]: e for e, ent in enumerate(ents) if ent[s] is not None}
-    at_x = {ent[x]: e for e, ent in enumerate(ents) if ent[x] is not None}
-    after, prev = {}, {}
-    for j, blk in enumerate(other):
-        e = at_x[j]
-        if merged[e] is not None:
+    new_t = {s.key: s for s in bt if s not in pt.values()}
+    ents = [(b, po.get(k), pt.get(k), co.get(k, 0), ct.get(k, 0)) for k, b in enumerate(bb)]
+    ents += [(None, s, new_t.pop(s.key, None), 0, 0) for s in bo if s not in po.values()]
+    ents += [(None, None, s, 0, 0) for s in new_t.values()]
+    merged = [_merge_block(*ent) for ent in ents]
+    # The side whose layout won gives the order; the other's new lines go after their predecessor, or open their section.
+    s, x, skel, other = (1, 2, versions[1], bt) if lo == lt or lt == lb else (2, 1, versions[2], bo)
+    at_s, at_x = ({ent[i].key: e for e, ent in enumerate(ents) if ent[i] is not None} for i in (s, x))
+    order, prev = [at_s[i.key] if isinstance(i, Block) else i for i in skel], {}
+    for blk in other:
+        if merged[e := at_x[blk.key]] is not None:
             if ents[e][s] is None:
-                after.setdefault(prev.get(blk.section, blk.section), []).append(e)
+                at = order.index(prev[blk.section]) if blk.section in prev else next(
+                    (n for n, i in enumerate(order) if isinstance(i, str) and i.rstrip() == blk.section), None)
+                if at is None:
+                    raise ValueError(f'no "{blk.section}" section to place "{blk.key[1:61]}"')
+                order.insert(at + 1, e)
             prev[blk.section] = e
-    out, keys = [], []
-
-    def emit(e):
-        out.extend([merged[e].raw, *merged[e].notes])
-        keys.append(merged[e].key)
-        for n in after.pop(e, []):
-            emit(n)
-
-    for item in skel:
-        if isinstance(item, int):
-            if merged[at_s[item]] is not None:
-                emit(at_s[item])
-            continue
-        out.append(item)
-        for n in after.pop(item.rstrip(), []) if item.startswith("## ") else []:
-            emit(n)
-    if after:
-        blk = merged[next(iter(after.values()))[0]]
-        raise ValueError(f'no "{blk.section}" section to place "{_short(blk)}"')
-    if len(set(keys)) < len(keys):
-        raise ValueError("a line is twice in the merged page")
-    return "\n".join(out)
+    text = "\n".join(y for i in order for y in (
+        [i] if isinstance(i, str) else [merged[i].raw, *merged[i].notes] if merged[i] else []))
+    _version(text)   # a line twice in the result refuses too
+    return text
 
 
 def archive_path(vault, partition: str, month: str) -> Path:

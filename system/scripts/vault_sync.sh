@@ -131,19 +131,26 @@ while IFS= read -r line; do
   grep -qsF "left out of the sync commit: $path_key" "$LOGS/alerts_$(date +%F).md" \
     || alert "left out of the sync commit: $line; remove it, or, if it is not a secret, the owner commits it by hand with --no-verify"
 done <<< "$GIT_SYNC_SECRETS"
+# Now.md merges line by line (#436 S5) in this merge only: a hand merge and the update's merge stay textual.
+attrs="$(mktemp)"
+trap 'rm -f -- "$attrs"' EXIT
+printf 'wiki/*/Now.md merge=now\n' > "$attrs"
+driver="'${VAULT_ROOT//\'/\'\\\'\'}/system/scripts/now.py' merge-driver %O %A %B"
 for attempt in 1 2; do
   net fetch -q --prune origin || fail fetch "git fetch origin failed"
   if ! git merge-base --is-ancestor "origin/$branch" HEAD; then
-    if ! err="$(git merge -q --no-edit -m "sync($role): merge origin/$branch" \
-                  -m "Foundry-Command: sync"$'\n'"Foundry-Role: $role" "origin/$branch" 2>&1)"; then
+    if ! err="$(git -c core.attributesFile="$attrs" -c merge.now.driver="$driver" merge -q --no-edit \
+                  -m "sync($role): merge origin/$branch" -m "Foundry-Command: sync"$'\n'"Foundry-Role: $role" \
+                  "origin/$branch" 2>&1)"; then
       if [[ -n "$(git ls-files -u)" ]]; then
         # Conflicts are never resolved here (§5.4): abort, publish this side, block the runs.
         paths="$(git diff --name-only --diff-filter=U)"
+        now_err="$(grep -m 1 '^now merge: ' <<< "$err")"
         git merge --abort || block "merge conflict with origin/$branch, and git merge --abort failed" "$paths"$'\n'
         pending="foundry/$role-pending"
         net push -q --force origin "HEAD:refs/heads/$pending" || alert "could not push $pending to origin"
         block "merge conflict with origin/$branch; resolve it by merging origin/$pending (FOUNDRY.md: Sync conflicts)" \
-          "pending branch: $pending"$'\n'"$paths"$'\n'
+          "pending branch: $pending"$'\n'"$paths"$'\n'"${now_err:+$now_err$'\n'}"
       fi
       [[ ! -e "$git_dir/MERGE_HEAD" ]] || git merge --abort
       # git names the files it would overwrite on tab-indented lines after its first line (C7 §2).
