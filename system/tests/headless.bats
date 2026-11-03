@@ -569,3 +569,63 @@ brief_stubs() {
   [ "$status" -eq 124 ]
   grep -qx 'Reply with the word ok.' "$STUB_CHECK_ARGS"
 }
+
+# --- digest-backfill (#438, recall R1 spec §4.5): one staged excerpt in, one digest out ---
+BF="raw/inbox/.staging/2026-11-03-0900-bf000001-backfill.md"
+excerpt() {  # excerpt <path> <partition>: a staged excerpt as the intake tick writes it
+  printf -- '---\ntype: session_digest\npartition: "%s"\ncodebase: "vault"\nsession_id: "bf000001-aaaa"\ncreated_at: "2026-11-03T09:00:00-07:00"\nredactions: "0"\n---\n[2026-11-03T16:00:00.000Z] user: tidy the export job\n' "$2" > "$1"
+}
+
+@test "digest-backfill: takes exactly one staged -backfill.md input (#438)" {
+  excerpt "$BF" work
+  run "$RH" digest-backfill; [ "$status" -eq 2 ]
+  run "$RH" digest-backfill "$BF" "$BF"; [ "$status" -eq 2 ]
+  run "$RH" digest-backfill raw/work/notes/d1.md; [ "$status" -eq 2 ]
+  excerpt raw/inbox/.staging/2026-11-03-0900-bf000001.md work
+  run "$RH" digest-backfill raw/inbox/.staging/2026-11-03-0900-bf000001.md; [ "$status" -eq 2 ]
+  mkdir -p raw/inbox/.staging/sub
+  excerpt raw/inbox/.staging/sub/x-backfill.md work
+  run "$RH" digest-backfill raw/inbox/.staging/sub/x-backfill.md; [ "$status" -eq 2 ]
+  excerpt "$BF" other
+  run "$RH" digest-backfill "$BF"; [ "$status" -eq 2 ]
+  [ ! -e "$LEDGER" ]
+  [ ! -e "$STUB_ARGS" ]
+}
+
+@test "digest-backfill: its snapshot target is that one file (#438)" {
+  excerpt "$BF" work
+  STUB_MODE=backfill run "$RH" digest-backfill "$BF"
+  [ "$status" -eq 0 ]
+  d="raw/work/notes/2026-11-03-0900-bf000001-backfill.md"
+  grep -qx 'provenance: \["headless"\]' "$d"
+  grep -qx 'session_id: "bf000001-aaaa"' "$d"
+  [ "$(jq -r '.command + " " + .partition + " " + .inputs[0]' "$LEDGER")" = "digest-backfill work $BF" ]
+  rm "$d"
+  STUB_MODE=backfill_extra run "$RH" digest-backfill "$BF"
+  [ "$status" -eq 5 ]
+  [ ! -e raw/work/notes/other.md ]
+  [ ! -e "$d" ]
+}
+
+@test "digest-backfill: its tool list is Read,Write with one allow rule (#438)" {
+  excerpt "$BF" personal
+  STUB_MODE=backfill run "$RH" digest-backfill "$BF"
+  [ "$status" -eq 0 ]
+  grep -qx -- 'Read,Write' "$STUB_ARGS"
+  grep -qE -- '^Edit\(/wiki/\.staging/[0-9]{8}T[0-9]{6}-digest-backfill-[0-9a-f]{4}/\*\*\)$' "$STUB_ARGS"
+  run grep -c -E '^(Bash|Edit)\(' "$STUB_ARGS"
+  [ "$output" -eq 1 ]
+  [ -f raw/personal/notes/2026-11-03-0900-bf000001-backfill.md ]
+}
+
+@test "digest-backfill: it counts toward the daily cap (#438)" {
+  mkdir -p system/logs
+  today="$(TZ=America/Denver date +%F)"
+  for i in 1 2; do printf '{"run_id":"r%s","command":"digest-backfill","started_at":"%sT01:00:00-06:00","exit":0}\n' "$i" "$today" >> "$LEDGER"; done
+  HEADLESS_MAX_RUNS_PER_DAY=2 run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 4 ]
+  excerpt "$BF" work
+  HEADLESS_MAX_RUNS_PER_DAY=2 STUB_MODE=backfill run "$RH" digest-backfill "$BF"
+  [ "$status" -eq 4 ]
+  [ ! -e "$STUB_ARGS" ]
+}
