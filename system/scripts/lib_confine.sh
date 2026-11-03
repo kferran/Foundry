@@ -53,7 +53,8 @@ confine_deny() {
 }
 
 # confine_settings <server name to keep> <working directory>: set CONFINE_SETTINGS to hooks off and every other
-# listed server denied by name. This only lowers cost; the deny list and the tool-use check are the boundary.
+# listed server denied by name. This only lowers cost and is best effort: claude.ai connectors that `claude mcp list`
+# omits stay loaded (#301 S11). The one allowed tool under dontAsk and the tool-use check are the boundary.
 # Returns 1 with CONFINE_SETTINGS empty and CONFINE_ERROR set when the settings cannot be built: an empty --settings
 # would leave hooks on.
 confine_settings() {

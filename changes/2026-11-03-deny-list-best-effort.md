@@ -1,0 +1,1 @@
+- Changed: FOUNDRY.md says a connector session's MCP server deny list is best effort (claude.ai connectors that `claude mcp list` omits stay loaded); the one allowed tool and the tool-use check are the boundary. (#470)
