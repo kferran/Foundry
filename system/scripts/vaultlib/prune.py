@@ -77,7 +77,10 @@ def prune(vault, cutoff: date) -> dict:
             shutil.rmtree(d)
             done["inputs"] += 1
     for row in quarantine.items(vault, cutoff + timedelta(days=30)):
-        kept = (runs / Path(row.path).name).exists()   # an unsettled run keeps its held-back staging
+        name = Path(row.path).name
+        kept = (runs / name).exists()   # an unsettled run keeps its held-back staging
+        if row.kind == "run" and not publish.RUN_ID.match(name):
+            continue   # a folder someone else put here is not a run's staging
         if row.kind in quarantine.SAFE and row.days >= 30 and not kept:
             item = vault / row.path
             if item.is_dir() and not item.is_symlink():

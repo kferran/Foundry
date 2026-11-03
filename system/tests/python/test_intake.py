@@ -890,6 +890,16 @@ def test_prune_inputs_and_safe_quarantine_only(iv):
     assert (done["inputs"], done["quarantine"]) == (1, 2)
 
 
+def test_prune_keeps_a_quarantine_folder_not_named_as_a_run(iv):
+    from vaultlib import prune
+    other = write(iv, "system/quarantine/kept-by-hand/note.md", "x").parent
+    old = time.time() - 40 * 86400
+    os.utime(other, (old, old))
+    done = prune.prune(iv, cutoff())
+    assert other.exists()
+    assert done["quarantine"] == 0
+
+
 def test_prune_entries_of_archived_briefings_only(iv):
     from vaultlib import prune
     archived, kept_here, young, nowhere = days_ago(31), days_ago(32), days_ago(29), days_ago(33)
