@@ -248,6 +248,8 @@ system/
 docs/superpowers/             specs, plans, spike results
 ```
 
+Once a day the intake tick deletes what is 30 days old and settled: run folders in `system/logs/runs/` that recovery and `commit_runs.py` are done with, prep inputs in `system/logs/inputs/`, quarantined run staging and telemetry state backups, and the `system/logs/extracted_blocks.jsonl` entries of briefings already archived; poisoned inputs, quarantined meetings and backfills stay, and an older run folder that is not settled stays, with its held-back staging and one alert a day.
+
 ## Machine roles
 
 Each machine that holds the vault has a `machine_role` in its own `system/config.md`, chosen in `/setup`:

@@ -28,7 +28,7 @@ nodes:
               system/scripts/run_headless.sh, system/scripts/vaultlib/publish.py, system/scripts/vaultlib/now.py]
     reads: [raw/inbox/, raw/*/notes/, raw/meetings/, meetings/drop/, briefings/, wiki/*/Now.md]
     writes: [raw/inbox/, raw/archive/, raw/*/archive/, system/quarantine/, wiki/, wiki/*/Now.md,
-             system/logs/runs/, system/logs/alerts_*.md]
+             system/logs/runs/, system/logs/inputs/, system/logs/alerts_*.md]
     locks: [intake.lock, run.lock, stage.lock]
     failure:
       input: quarantine
