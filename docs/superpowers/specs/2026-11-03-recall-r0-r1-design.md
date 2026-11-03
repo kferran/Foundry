@@ -10,7 +10,7 @@ Nothing records what recall does or whether it helps (#449).
 - `vaultlib/recall.py` builds the SessionStart block. Nothing logs its size, how many Now lines it showed or hid, or which digests it held.
 - `usage_log.sh` logs slash commands and Skill calls in vault-root sessions only. Nobody can tell whether a session pulls from the index after the push.
 
-A session's digest exists only if the working agent writes one when the `Stop` hook asks (#438). It is lost when the agent ignores the request and the session ends before the next one (`memory_capture.sh:73-78` alerts and skips that request; lines 83-90 ask again only after another `digest_min_events` events and `digest_min_minutes` minutes), when the session ends before the thresholds are first met, or when the terminal closes (if `SessionEnd` fires then: O3). `memory_keep.sh` already copies every in-scope transcript to `transcript_keep_dir` at `SessionEnd`, and no script reads the copies.
+A session's digest exists only if the working agent writes one when the `Stop` hook asks (#438). It is lost when the agent ignores the request and the session ends before the next one (`memory_capture.sh:73-78` alerts and skips that request; lines 83-90 ask again only after another `digest_min_events` events and `digest_min_minutes` minutes), when the session ends before the thresholds are first met, or when the terminal closes (if `SessionEnd` fires then; otherwise the tick-side sweep, O3). `memory_keep.sh` already copies every in-scope transcript to `transcript_keep_dir` at `SessionEnd`, and no script reads the copies.
 
 Every later recall change (R2 to R6: #450, #439 with #444, #446, #440, #345) is built only if R0's numbers show its gap (Q1).
 
@@ -196,7 +196,9 @@ One plan (superpowers:writing-plans) at `docs/superpowers/plans/2026-11-03-recal
 
 On the last merge: tick R0 and R1 on #449 and #438, and update the roadmap's recall track line. #449's proposal items 3 (the eval set) and 4 (health) stay open there as checklist lines, marked "waits for R4 (#446)" and "waits for #374".
 
-## 8. Open for the owner
+## 8. Decided by the owner
+
+Decided by the owner, 2026-11-03: O1, O2 and O3 as recommended.
 
 - **O1, the tail of a session that already has a digest.** A session whose Stop digest came early and whose later work had none keeps losing that later work. Recommended: leave it out of R1 (a session with any digest is never backfilled), and let #440 (M2), which reuses this step for partial sessions, decide it with R0's numbers. The alternative trims the excerpt to entries after `last_digest_at` and writes a second digest for such a session.
 - **O2, Corrections in a backfilled digest.** A Correction becomes a preference note at ingest (`ingest.md` step 9). Recommended: no Corrections section in R1, so no preference is learned from a headless reading of a transcript whose assistant turns may quote untrusted text. The alternative keeps the section, limited to the owner's own words from user turns, and adds a tick check that each statement appears verbatim in a user turn of the excerpt.
