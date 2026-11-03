@@ -1,5 +1,6 @@
 """Memory recall (spec §6.17): vault_index.py recall and vaultlib/recall.py."""
 import fcntl
+import hashlib
 import json
 import os
 import shutil
@@ -8,7 +9,7 @@ import time
 from pathlib import Path
 
 from helpers import write
-from vaultlib import recall
+from vaultlib import recall, recall_log
 
 CONFIG = ('---\ntype: config\ntimezone: "America/Denver"\nbrief_time: "06:00"\ndebrief_time: "17:00"\n'
           'remote_mode: "none"\ndefault_partition: "{p}"\nrecall_budget_chars: "{b}"\n---\n')
@@ -429,3 +430,121 @@ def test_a_failed_log_write_leaves_stdout_unchanged(cli, vault):
     r = cli("recall", "--cwd", str(vault), "--session-id", "s-1")
     assert r.returncode == 0, r.stderr
     assert r.stdout == plain
+
+
+def session(vault, sid="s-1"):
+    write(vault, f"system/logs/memory/sessions/{sid}.json",
+          json.dumps({"scope": "vault", "partition": "personal", "codebase": "vault"}))
+
+
+def bash(command, stdout="", sid="s-1", **extra):
+    return {"session_id": sid, "tool_name": "Bash", "tool_input": {"command": command},
+            "tool_response": {"stdout": stdout, "stderr": ""}, **extra}
+
+
+VI = "system/scripts/vault_index.py"
+
+
+def test_pull_related_hashes_terms_and_keeps_paths(vault):
+    session(vault)
+    [r] = recall_log.pull(vault, bash(f'{VI} related "Kafka   Lag"',
+                                      "- Kafka — wiki/personal/concepts/Kafka.md (personal, concept)\n"
+                                      "- A — B — wiki/personal/concepts/Lag Notes.md (personal, concept, 2026-10-01)\n"))
+    assert (r["kind"], r["session"], r["sub"], r["hits"], r["found"]) == ("pull", "s-1", "related", 2, True)
+    assert r["paths"] == ["wiki/personal/concepts/Kafka.md", "wiki/personal/concepts/Lag Notes.md"]
+    assert len(r["terms"]) == 16
+    assert r["terms"] == recall_log.terms_hash(vault, "kafka lag")
+    assert (r["scope"], r["partition"], r["note"]) == ("vault", "personal", None)
+    [line] = log_lines(vault, "pull")
+    assert line.pop("ts")
+    assert line == r
+
+
+def test_pull_related_json_output_and_at_most_ten_paths(vault):
+    session(vault)
+    hits = [{"path": f"wiki/personal/concepts/N{i}.md", "title": "T"} for i in range(12)]
+    [r] = recall_log.pull(vault, bash(f"{VI} related x --json", json.dumps(hits)))
+    assert r["hits"] == 12
+    assert r["paths"] == [h["path"] for h in hits[:10]]
+
+
+def test_pull_query_logs_a_hash_only(vault):
+    session(vault)
+    [r] = recall_log.pull(vault, bash(f'{VI} query --json "SELECT path FROM notes"', '{"rows": [["a"]]}'))
+    assert (r["sub"], r["hits"], r["paths"], r["note"]) == ("query", None, None, None)
+    assert len(r["terms"]) == 16
+    assert "SELECT" not in json.dumps(log_lines(vault, "pull"))
+
+
+def test_pull_show_found_and_not_found(vault):
+    session(vault)
+    [found] = recall_log.pull(vault, bash(f"{VI} show Kafka", "---\ntype: concept\n---\n# Kafka\n"))
+    [missing] = recall_log.pull(vault, bash(f"{VI} show Nothing", ""))
+    assert (found["sub"], found["note"], found["found"]) == ("show", "Kafka", True)
+    assert (missing["note"], missing["found"]) == ("Nothing", False)
+
+
+def test_pull_backlinks_counts_paths(vault):
+    session(vault)
+    [r] = recall_log.pull(vault, bash(f"{VI} backlinks wiki/personal/concepts/Kafka.md", "- wiki/a.md\n- wiki/b.md\n"))
+    assert (r["note"], r["hits"], r["paths"], r["found"]) == ("wiki/personal/concepts/Kafka.md", 2,
+                                                             ["wiki/a.md", "wiki/b.md"], True)
+
+
+def test_pull_two_invocations_share_no_counts(vault):
+    session(vault)
+    out = recall_log.pull(vault, bash(f"{VI} related x; /abs/{VI} show y | head", "- T — wiki/a.md (p)\n"))
+    assert [(r["sub"], r["hits"], r["paths"], r["found"]) for r in out] == [("related", None, None, None),
+                                                                          ("show", None, None, None)]
+    assert out[1]["note"] == "y"
+
+
+def test_pull_quoted_arguments_and_options(vault):
+    session(vault)
+    [rel] = recall_log.pull(vault, bash(f"{VI} related --limit 5 --partition work shared 'Two  Words' --json", "[]"))
+    [show] = recall_log.pull(vault, bash(f'python3 {VI} show "Note With Spaces"', "x"))
+    assert rel["terms"] == recall_log.terms_hash(vault, "two words")
+    assert show["note"] == "Note With Spaces"
+
+
+def test_pull_survives_unbalanced_quotes(vault):
+    session(vault)
+    [r] = recall_log.pull(vault, bash(f'{VI} related "open', ""))
+    assert r["sub"] == "related"
+
+
+def test_pull_ignores_a_command_without_the_script(vault):
+    session(vault)
+    assert recall_log.pull(vault, bash("cat notes.md", f"see {VI} show x")) == []
+    assert recall_log.pull(vault, {**bash(f"{VI} show x"), "tool_name": "Edit"}) == []
+
+
+def test_pull_skips_subagents_and_unknown_sessions(vault):
+    session(vault)
+    assert recall_log.pull(vault, bash(f"{VI} show x", agent_id="a1")) == []
+    assert recall_log.pull(vault, bash(f"{VI} show x", sid="s-unknown")) == []
+    assert recall_log.pull(vault, bash(f"{VI} show x", sid="../s-1")) == []
+    assert log_lines(vault, "pull") == []
+
+
+def test_terms_hash_is_keyed_and_stable(vault):
+    first = recall_log.terms_hash(vault, "Kafka lag")
+    assert recall_log.terms_hash(vault, " kafka   LAG ") == first
+    assert first != hashlib.sha256(b"kafka lag").hexdigest()[:16]
+    key = vault / "system" / "logs" / "memory" / "recall.key"
+    assert key.stat().st_mode & 0o777 == 0o600
+    assert recall_log.terms_hash(vault, "other") != first
+
+
+def test_neither_log_holds_prompt_note_or_query_text(cli, vault):
+    # C8: a digest body (what recall pushes), a note body (what show prints) and a query stay out of the log.
+    config(vault)
+    digest(vault, "personal", "p1", "2026-10-01T09:00:00-06:00", body="## Outcome\nMarker-digest-text.\n")
+    assert "Marker-digest-text" in cli("recall", "--cwd", str(vault), "--session-id", "s-1").stdout
+    session(vault)
+    recall_log.pull(vault, bash(f"{VI} show Kafka", "# Kafka\nMarker-note-text.\n"))
+    recall_log.pull(vault, bash(f'{VI} related "Marker-query-text"', ""))
+    log = "".join(p.read_text() for p in (vault / "system" / "logs").glob("recall-*.jsonl"))
+    assert log.count("\n") == 3
+    for marker in ("Marker-digest-text", "Marker-note-text", "Marker-query-text", "marker-query-text"):
+        assert marker not in log

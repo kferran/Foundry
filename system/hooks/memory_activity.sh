@@ -21,4 +21,8 @@ n=0
 [[ -f "$d/$sid.events" ]] && { read -r n < "$d/$sid.events" || n=0; }
 [[ "$n" =~ ^[0-9]+$ ]] || n=0
 printf '%d\n' $(( n + 1 )) > "$d/$sid.events"
+# The pull log (recall R0 spec §3.3): only a Bash call that names the index takes the slow path.
+[[ "${FOUNDRY_WORKCELL_SESSION:-}" != 1 && "$input" == *vault_index.py* \
+  && "$input" =~ \"tool_name\"[[:space:]]*:[[:space:]]*\"Bash\" ]] || exit 0
+printf '%s' "$input" | timeout 3 "${BASH_SOURCE[0]%/*}/../scripts/recall_log.py" pull > /dev/null 2>&1
 exit 0

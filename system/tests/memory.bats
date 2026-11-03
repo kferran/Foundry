@@ -526,3 +526,44 @@ rlog() { cat "$VP"/system/logs/recall-*.jsonl; }
   [ -z "$output" ]
   [ "$(rlog | jq -r 'select(.session == "rl-2") | .kind + " " + (.failed | tostring)')" = "push true" ]
 }
+
+bashtool() {  # bashtool <sid> <command> [stdout]: a Bash PostToolUse event
+  hook memory_activity.sh "$(jq -cn --arg s "$1" --arg c "$VP" --arg cmd "$2" --arg o "${3:-}" '{session_id: $s, cwd: $c,
+    tool_name: "Bash", tool_input: {command: $cmd}, tool_response: {stdout: $o, stderr: ""}, hook_event_name: "PostToolUse"}')"
+}
+
+@test "recall log: a Bash show logs one pull line (#449)" {
+  start pl-1
+  bashtool pl-1 "system/scripts/vault_index.py show Kafka" $'---\ntype: concept\n---\nbody'
+  [ "$status" -eq 0 ]
+  [ "$(rlog | jq -r 'select(.kind == "pull") | .sub + " " + .note + " " + (.found | tostring)')" = "show Kafka true" ]
+  [ "$(cat "$S/pl-1.events")" -eq 1 ]
+}
+
+@test "recall log: a plain Bash call logs nothing and spawns neither jq nor python (#449)" {
+  start pl-2
+  stubs="$BATS_TEST_TMPDIR/stubs"
+  mkdir -p "$stubs"
+  for c in jq python3 python; do printf '#!/bin/bash\ntouch "%s/spawned-%s"\nexit 1\n' "$BATS_TEST_TMPDIR" "$c" > "$stubs/$c"; chmod +x "$stubs/$c"; done
+  j="$(jq -cn --arg c "$VP" '{session_id: "pl-2", cwd: $c, tool_name: "Bash", tool_input: {command: "ls"}, tool_response: {stdout: "a"}}')"
+  PATH="$stubs:$PATH" hook memory_activity.sh "$j"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$S/pl-2.events")" -eq 1 ]
+  run ls "$BATS_TEST_TMPDIR"/spawned-*
+  [ "$status" -ne 0 ]
+  run grep -c '"pull"' "$VP"/system/logs/recall-*.jsonl
+  [ "$output" = "0" ]
+}
+
+@test "recall log: a subagent and a Workcell session log no pull (#449)" {
+  start pl-3
+  hook memory_activity.sh "$(jq -cn --arg c "$VP" '{session_id: "pl-3", cwd: $c, agent_id: "a1", tool_name: "Bash",
+    tool_input: {command: "system/scripts/vault_index.py show Kafka"}, tool_response: {stdout: "x"}}')"
+  export FOUNDRY_WORKCELL_SESSION=1
+  start pl-4
+  bashtool pl-4 "system/scripts/vault_index.py show Kafka" "x"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$S/pl-4.events")" -eq 1 ]
+  run grep -c '"pull"' "$VP"/system/logs/recall-*.jsonl
+  [ "$output" = "0" ]
+}
