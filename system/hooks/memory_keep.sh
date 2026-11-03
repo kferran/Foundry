@@ -65,6 +65,17 @@ main() {
     mem_log "keep: could not copy the transcript for $sid"
   fi
   prune "$dir"
+  queue "$sid" "$(jq -r '.hook_event_name // empty' <<< "$input")"
+}
+
+queue() {  # queue <sid> <event>: a session that did real work and ended with no digest gets a backfill marker (#438)
+  local sid="$1" st="$MEM_SESSIONS/$1.json" done min asked events=0
+  [[ "$2" == SessionEnd && "${FOUNDRY_WORKCELL_SESSION:-}" != 1 ]] || return 0
+  read -r done min asked < <(jq -r '"\(.last_digest_at) \(.digest_min_events) \(.last_request_at // 0)"' "$st" 2>/dev/null)
+  [[ "$done" == 0 && "$min" =~ ^[0-9]+$ ]] || return 0
+  [[ -f "$MEM_SESSIONS/$sid.events" ]] && read -r events < "$MEM_SESSIONS/$sid.events"
+  [[ "$events" =~ ^[0-9]+$ ]] || events=0
+  if (( events >= min )) || [[ "$asked" != 0 ]]; then : > "$MEM_SESSIONS/$sid.backfill"; fi
 }
 
 main
