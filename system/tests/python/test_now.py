@@ -305,6 +305,31 @@ def test_check_keeps_a_tick_made_while_gh_runs(vault, tmp_path):
     assert "_(closed: PR merged 2026-10-09)_" in text
 
 
+def test_check_keeps_a_hand_drop_made_while_gh_runs_and_closes_through_the_table(vault, tmp_path, monkeypatch):
+    # Factory F7 spec §3, T7 and T8: check's closes come from now_states.transition(writer="check"); a line the owner
+    # closed by hand while gh ran keeps the owner's mark (the table has no done or dropped to done for check).
+    from vaultlib import now_states
+    calls, real = [], now_states.transition
+    monkeypatch.setattr(now_states, "transition", lambda line, writer, to, *a, **k: (
+        calls.append((writer, to)), real(line, writer, to, *a, **k))[1])
+    prepare(vault)
+    now.add(vault, "work", "owed", "Dropped PR", TODAY, evidence="https://github.com/acme/shop/pull/7")
+    now.add(vault, "work", "owed", "Merged PR", TODAY, evidence="https://github.com/acme/shop/pull/8")
+    now.add(vault, "work", "owed", "Old mail", "2026-10-01", via="mail")
+    stub = tmp_path / "gh"
+    stub.write_text(f"#!/bin/bash\nsed -i 's/- \\[ \\] owed: Dropped PR/- [-] owed: Dropped PR/' "
+                    f"{vault}/wiki/work/Now.md\necho MERGED\n")
+    stub.chmod(0o755)
+    calls.clear()
+    assert now.check(vault, TODAY, [].append, str(stub)) == 2
+    lines = page(vault).split("\n")
+    assert any(x.startswith("- [-] owed: Dropped PR") and x.endswith(f"_(closed: ticked {TODAY})_") for x in lines)
+    assert any(x.startswith("- [x] owed: Merged PR") and x.endswith(f"_(closed: PR merged {TODAY})_") for x in lines)
+    assert any(x.startswith("- [-] owed: Old mail") and x.endswith(f"_(closed: expired {TODAY})_") for x in lines)
+    assert ("check", "done stamped") in calls and ("check", "dropped stamped") in calls
+    assert not (vault / "system/logs/now-2026-10.jsonl").exists()   # nothing refused
+
+
 def test_check_and_the_stamp_keep_both_fields(vault, tmp_path):
     prepare(vault)  # Now clock spec §5: check rewrites a line by prefix, so the fields survive a close
     now.add(vault, "work", "owed", "Pick it", TODAY, "vendor", "https://github.com/acme/shop/pull/7", rec="CSV: it loads")
@@ -349,13 +374,13 @@ def test_review_groups_closed_stale_and_duplicate_lines_and_writes_nothing(vault
         "stale": ["- [ ] owed: Old one [due:: 2026-10-24] (since 2026-09-24)"],
         "duplicate": ["- [ ] owed: Send the  report [due:: 2026-10-31] (since 2026-10-01)",
                       "- [ ] draft: send the report [due:: 2026-11-08] (since 2026-10-09)"],
-        "unreadable": [], "long": [], "page_bytes": len(before.encode())}
+        "unreadable": [], "unknown": [], "long": [], "page_bytes": len(before.encode())}
     assert now.review(vault, "work", TODAY, stale_days=13, gh=gh_stub(tmp_path, "OPEN"))["stale"] == [
         "- [ ] owed: Old one [due:: 2026-10-24] (since 2026-09-24)",
         "- [ ] owed: Fourteen days [due:: 2026-10-25] (since 2026-09-25)"]
     assert path.read_text() == before
     assert not (vault / "system/logs").exists()
-    assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": [], "unreadable": [],
+    assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": [], "unreadable": [], "unknown": [],
                                                     "long": [], "page_bytes": 0}
 
 
@@ -453,6 +478,17 @@ def test_review_lists_a_line_with_a_field_after_the_parenthesis_as_unreadable(va
     assert r.stdout == (f"## Unreadable lines (1): move the text or the [rec::] or [due::] field after the parenthesis "
                         f"back before it\n{bad}\n")
     assert page(vault) == before
+
+
+def test_review_lists_a_line_with_an_unknown_mark(vault):
+    # Factory F7 spec Goal 5: a mark that is no state ([/]) is listed for the owner to fix by hand.
+    prepare(vault)
+    bad = "- [/] owed: x (since 2026-11-01)"
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n"
+          f"---\n# Now\n\n## Needs you\n{bad}\n- [x] owed: Done (since 2026-10-01)\n\n## Waiting\n")
+    assert now.review(vault, "work", TODAY)["unknown"] == [bad]
+    r = cli(vault, "review", "--partition", "work")
+    assert r.stdout == f"## Unreadable marks (1): tick, drop or reopen it by hand\n{bad}\n"
 
 
 def test_review_lists_a_line_with_an_update_appended_after_the_parenthesis(vault):
@@ -1086,6 +1122,37 @@ def test_expiry_review_findings(vault, tmp_path):
     lines = page(vault).split("\n")
     assert f"- [-]{added[5:]} _(closed: expired {TODAY})_" in lines
     assert all(line in lines for line in stay)
+
+
+def test_the_stamp_goes_through_the_state_table(monkeypatch):
+    # Factory F7 spec §3, T9 and T10: the stamp's marks and stamps come from now_states.transition().
+    from vaultlib import now_states
+    calls, real = [], now_states.transition
+    monkeypatch.setattr(now_states, "transition", lambda line, writer, to, *a, **k: (
+        calls.append((writer, to)), real(line, writer, to, *a, **k))[1])
+    text = ("- [-] owed: Dropped (since 2026-10-01)\n- [x] owed: Ticked (since 2026-10-01)\n"
+            "- [ ] owed: Reopened (since 2026-10-01) _(closed: ticked 2026-10-02)_\n- [ ] owed: Open (since 2026-10-01)")
+    assert now.stamp(text, TODAY) == (
+        f"- [-] owed: Dropped (since 2026-10-01) _(closed: ticked {TODAY})_\n"
+        f"- [x] owed: Ticked (since 2026-10-01) _(closed: ticked {TODAY})_\n"
+        "- [ ] owed: Reopened (since 2026-10-01)\n- [ ] owed: Open (since 2026-10-01)")
+    assert calls == [("stamp", "dropped stamped"), ("stamp", "done stamped"), ("stamp", "open")]
+
+
+def test_a_reopened_expired_line_loses_its_writer_and_stays_open(vault, tmp_path):
+    # Factory F7 spec Goal 4: the owner unticks an expired machine line; it becomes the owner's and never expires again.
+    prepare(vault)
+    expired = f"- [-] owed: Old mail [via:: mail] (since 2026-10-01) _(closed: expired {TODAY})_"
+    reopened = "- [ ] " + expired[6:]
+    assert now.stamp(reopened, "2026-10-10") == "- [ ] owed: Old mail (since 2026-10-01)"
+    write(vault, "wiki/work/Now.md", f"---\ntype: concept\n---\n# Now\n\n## Needs you\n{reopened}\n")
+    for day in ("2026-10-10", "2026-10-11"):
+        assert now.check(vault, day, lambda m: None, gh_stub(tmp_path)) == 0
+        assert now.open_lines(page(vault)) == [reopened]   # check wrote nothing
+    now.add(vault, "work", "owed", "Another", "2026-10-11")
+    assert now.open_lines(page(vault))[0] == "- [ ] owed: Old mail (since 2026-10-01)"
+    assert now.check(vault, "2026-10-12", lambda m: None, gh_stub(tmp_path)) == 0
+    assert "- [ ] owed: Old mail (since 2026-10-01)" in page(vault).split("\n")
 
 
 def test_tag_writers_skips_a_line_it_cannot_tag_whole(vault):
