@@ -59,11 +59,26 @@ def test_matching_rows_verified(tmp_path):
     for calls in [(page(),),
                   (page(PAGE["events"][:2]), page(PAGE["events"][2:])),       # two pages
                   (call(text=json.dumps(PAGE)),),                             # the text copy only
-                  (call(text="rate limited", error=True), page())]:           # a failed page, then the retry
+                  (call(text="rate limited", error=True), page()),            # a failed page, then the retry
+                  (page(), page()),                                           # a page read twice
+                  (page([{k: v for k, v in e.items() if k != "id"} for e in PAGE["events"]]),)]:   # no ids
         p, data = run(session(ok(NY), calls=calls), tmp_path)
         assert p.returncode == 0, p.stderr
         assert data["unverified"] == "", calls
         assert "unverified" not in p.stderr
+    empty = {k: v for k, v in PAGE.items() if k != "events"}   # an empty day's page may leave the key out
+    p, data = run(session(ok([]), calls=(call(text=json.dumps(empty), sc=empty),)), tmp_path)
+    assert data["unverified"] == ""
+
+
+def test_unfinished_paging_unverified(tmp_path):
+    # The last page read still names a next page: the rows can match what was read and miss the rest.
+    p, data = run(session(ok(NY), calls=(page(), call(text="rate limited", error=True))), tmp_path)
+    assert data["unverified"] == ""
+    more = dict(PAGE, nextPageToken="next")
+    p, data = run(session(ok(NY), calls=(call(text=json.dumps(more), sc=more),)), tmp_path)
+    assert p.returncode == 0
+    assert data["unverified"] == "the session did not read every page"
 
 
 def test_count_mismatch(tmp_path):
@@ -96,9 +111,10 @@ def test_all_day_and_offset_times(tmp_path):
 
 @pytest.mark.parametrize("calls", [
     (call(text="…"),),                                          # no structuredContent and a text that is no JSON
-    (page(text=False), call(sc={"items": []})),                 # a page without events
+    (page(text=False), call(sc={"events": "none"})),            # events that are not a list
     (page([{"summary": "No start"}]),),
     (page([{"summary": "Bad time", "start": {"dateTime": "soon"}}]),),
+    (page([{"summary": "Year one", "start": {"dateTime": "0001-01-01T00:00:00+05:00"}}]),),   # OverflowError
     (),                                                         # a call with no result: the stream has none
 ])
 def test_unreadable_pages_unverified(tmp_path, calls):
