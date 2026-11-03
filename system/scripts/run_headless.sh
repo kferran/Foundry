@@ -34,7 +34,7 @@ input_partition() {
 
 cmd="${1:-}"
 (( $# )) && shift
-case "$cmd" in ingest|brief|debrief) ;; *) die 2 "unknown command: ${cmd:-<none>}" ;; esac
+case "$cmd" in ingest|brief|debrief|digest-backfill) ;; *) die 2 "unknown command: ${cmd:-<none>}" ;; esac
 LOG="system/logs/headless/${cmd}_${TODAY}.log"
 
 inputs=() shas=() partition=""
@@ -57,6 +57,15 @@ if [[ "$cmd" == ingest ]]; then
     read -r -a shas <<< "$FOUNDRY_ORIGINAL_SHA256"
     (( ${#shas[@]} == ${#inputs[@]} )) || die 2 "FOUNDRY_ORIGINAL_SHA256 has ${#shas[@]} entries for ${#inputs[@]} inputs"
   fi
+elif [[ "$cmd" == digest-backfill ]]; then  # one excerpt the intake tick staged (recall spec §4.5)
+  (( $# == 1 )) || die 2 "digest-backfill takes one staged -backfill.md path"
+  relpath="$(args_vault_path "$1")" || die 2 "not a file inside the vault: $1"
+  name="${relpath#raw/inbox/.staging/}"
+  [[ "$relpath" == raw/inbox/.staging/*-backfill.md && "$name" != */* ]] || die 2 "not a staged -backfill.md: $relpath"
+  args_raw_filename "$name" || die 2 "unsafe input filename: $relpath"
+  partition="$(system/scripts/vault_index.py field "$relpath" partition 2>/dev/null || true)"
+  case "$partition" in work|personal|shared) ;; *) die 2 "no work, personal or shared partition: $relpath" ;; esac
+  inputs=("$relpath") shas=("$(sha256sum -- "$relpath" | cut -d' ' -f1)")
 else
   (( $# == 0 )) || die 2 "$cmd takes no arguments"
 fi
@@ -112,7 +121,7 @@ if [[ ! -f "$cmdfile" ]]; then
 fi
 
 exec 9>system/run.lock
-if [[ "$cmd" == ingest ]]; then
+if [[ "$cmd" == ingest || "$cmd" == digest-backfill ]]; then
   # A short wait: the intake tick ends on exit 6 and its inputs stay for the next tick (#299, plan ruling 2).
   flock -w "${INGEST_LOCK_WAIT:-60}" 9 || die 6 "run.lock busy"
 elif ! flock -w "$LOCK_WAIT" 9; then
@@ -133,11 +142,12 @@ else
   [[ -z "$recovery_failed" ]] || alert "publish recovery failed for run(s): $recovery_failed (see system/logs/runs/<run_id>/publish.json)"
 fi
 
-# The cap is ingest's spend limit: the brief and debrief neither count toward it nor wait on it (#436 S4).
-if [[ "$cmd" == ingest ]]; then
+# The cap is the intake tick's spend limit (ingest and digest-backfill): the brief and debrief neither count toward it
+# nor wait on it (#436 S4).
+if [[ "$cmd" == ingest || "$cmd" == digest-backfill ]]; then
   runs_today=0
   if [[ -f "$LEDGER" ]]; then
-    runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select(.command == "ingest" and ([2,3,4,6,7] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
+    runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select((.command == "ingest" or .command == "digest-backfill") and ([2,3,4,6,7] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
   fi
   if (( runs_today >= MAX_PER_DAY )); then
     marker="system/logs/.cap-alerted-$TODAY"
@@ -151,6 +161,7 @@ case "$cmd" in
   ingest) if [[ "$partition" == shared ]]; then targets=("wiki/shared/**"); else targets=("wiki/$partition/**" "wiki/shared/**"); fi ;;
   brief) targets=("briefings/$TODAY.md" "wiki/work/Now.md" "wiki/personal/Now.md") ;;  # new objectives go to Now
   debrief) targets=("briefings/$TODAY.debrief.md") ;;
+  digest-backfill) targets=("raw/$partition/notes/${inputs[0]##*/}") ;;
 esac
 started="$(date -Iseconds)"
 if ! system/scripts/publish_staged.py snapshot "$run_id" --targets "${targets[@]}" >/dev/null 2>> "$LOG"; then
@@ -167,7 +178,12 @@ prompt="${body//\$ARGUMENTS/$argstr}"
 
 vi="system/scripts/vault_index.py"
 allow=("Edit(/wiki/.staging/$run_id/**)")
-for sub in query related show backlinks orphans issues validate field stage tags; do allow+=("Bash($vi $sub:*)"); done
+tools="Read,Glob,Grep,Edit,Write,Bash"
+if [[ "$cmd" == digest-backfill ]]; then
+  tools="Read,Write"  # the digest summarizes its excerpt: no Bash and no index (recall spec §4.5)
+else
+  for sub in query related show backlinks orphans issues validate field stage tags; do allow+=("Bash($vi $sub:*)"); done
+fi
 
 out="system/logs/runs/$run_id/claude.json" stream="system/logs/runs/$run_id/stream.jsonl"
 printf '\n===== %s %s %s\n' "$(date -Iseconds)" "$run_id" "${inputs[*]:-}" >> "$LOG"
@@ -177,7 +193,7 @@ set +e
 # result line, which every check below reads (usage ceiling spec).
 timeout -k 30s "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --append-system-prompt-file CLAUDE.md \
   --restricted --settings system/headless.settings.json --strict-mcp-config --no-session-persistence \
-  --permission-mode dontAsk --output-format stream-json --verbose --tools "Read,Glob,Grep,Edit,Write,Bash" \
+  --permission-mode dontAsk --output-format stream-json --verbose --tools "$tools" \
   --allowedTools "${allow[@]}" < /dev/null > "$stream" 2>> "$LOG" 9>&- &
 cpid=$!
 wait "$cpid"

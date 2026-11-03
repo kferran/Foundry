@@ -13,4 +13,4 @@ fields:
   work_order: {kind: string, readers: []}
 ---
 # Session digest
-A memory digest written by the Stop hook from `last_assistant_message`. Compiled into the wiki by the intake compiler.
+A memory digest written by the Stop hook from `last_assistant_message`, or by the intake tick's backfill (`digest-backfill`, `provenance: ["headless"]`) from the kept transcript of a session that ended without one. Compiled into the wiki by the intake compiler.

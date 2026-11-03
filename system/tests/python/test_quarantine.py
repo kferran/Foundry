@@ -55,6 +55,16 @@ def test_a_held_back_run_whose_input_a_later_run_published_says_so(vault):
     assert rows["20261015T055900-ingest-b2"].reason == ""
 
 
+def test_a_quarantined_backfill_marker_is_one_row_with_its_reason_and_way_back(vault):
+    # recall R1 (#438): the brief must never call a held session "safe to delete"
+    write(vault, "system/quarantine/backfill/bf000001-aaaa.backfill", "")
+    (vault / "system/quarantine/backfill/bf000001-aaaa.backfill.reason.txt").write_text("rejected (exit 2)\n")
+    [row] = quarantine.items(vault, TODAY)
+    assert (row.kind, row.path, row.reason) == ("backfill", "system/quarantine/backfill/bf000001-aaaa.backfill",
+                                                 "rejected (exit 2)")
+    assert row.way_out == "move it back to system/logs/memory/sessions/ to retry"
+
+
 def test_render_gives_one_line_per_row_and_none_when_empty(vault):
     assert quarantine.render([]) == "none\n"
     held(vault)

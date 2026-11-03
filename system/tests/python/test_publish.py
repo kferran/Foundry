@@ -692,3 +692,27 @@ def test_an_ingest_never_writes_the_now_archive(run):
     stage_new(run, target, NOW_HEAD + HELD.replace("- [ ] ", "- [x] ", 1) + "\n")
     decide(run, rec(target))
     assert "the Now archive is written only by now.py" in reasons(publish.validate_run(run, RID, now=LATER)[2])
+
+
+# -- recall R1 (#438): a digest-backfill run publishes one exact raw/<p>/notes/ digest --
+BID = "20261103T120000-digest-backfill-ab12"
+BACKFILLED = "raw/work/notes/2026-11-03-0900-bf000001-backfill.md"
+DIGEST = ('---\ntype: session_digest\npartition: "work"\ncodebase: "vault"\nsession_id: "bf000001-aaaa"\n'
+          'created_at: "2026-11-03T09:00:00-07:00"\nredactions: "0"\n---\n## Outcome\nTidied the export job.\n')
+
+
+def test_digest_backfill_run_id_validates():
+    assert publish.check_run_id(BID) == "digest-backfill"
+
+
+def test_a_backfill_run_rejects_a_file_outside_its_target(vault):
+    publish.snapshot(vault, BID, [BACKFILLED])
+    stage_new(vault, BACKFILLED, DIGEST, run_id=BID)
+    assert publish.validate_run(vault, BID, now=LATER)[2] == []
+    stage_new(vault, "raw/work/notes/other.md", DIGEST, run_id=BID)
+    stage_new(vault, "wiki/work/concepts/Extra.md", concept("work", "Extra", "[[Index]]"), run_id=BID)
+    report = publish.commit_run(vault, BID, now=LATER)
+    assert report["status"] != "published"
+    assert sorted(p["path"] for p in report["problems"]) == ["raw/work/notes/other.md", "wiki/work/concepts/Extra.md"]
+    assert set(report_reasons(report)) == {"not a publishable target"}
+    assert not (vault / BACKFILLED).exists() and not (vault / "raw/work/notes/other.md").exists()

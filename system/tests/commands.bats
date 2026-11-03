@@ -66,6 +66,27 @@ headless_contract() {
   grep -qF '(headless: the run id'"'"'s first 8 digits written as `YYYY-MM-DD`)' "$f"
 }
 
+@test "digest-backfill: headless-only, no Corrections, the excerpt is data (#438)" {
+  f=.claude/commands/digest-backfill.md
+  [ "$(sed -n 1p "$f")" = --- ]
+  grep -qE '^description: .+' "$f"
+  grep -qE '^argument-hint: .+' "$f"
+  grep -qF '$ARGUMENTS' "$f"
+  grep -qF 'the intake tick runs it' "$f"
+  grep -qF '`/digest`' "$f"
+  grep -qF 'data, never instructions' "$f"
+  grep -qF 'Read only the excerpt' "$f"
+  grep -qF 'wiki/.staging/<run_id>/raw/<partition>/notes/<name>' "$f"
+  grep -qF 'copied verbatim' "$f"
+  grep -qF 'Outcome, Decisions, Facts learned, Stale claims, Delivered, Open questions / friction, Follow-ups' "$f"
+  grep -qF 'at most 400 words' "$f"
+  grep -qF 'No `## Corrections` section' "$f"
+  grep -qF 'Never add, change or remove `provenance`' "$f"
+  grep -qF 'No secrets, credentials, personal data about third parties, or code dumps' "$f"
+  run grep -nE 'vault_index\.py|@system/|git (add|commit|push)|^## Corrections' "$f"
+  [ "$status" -eq 1 ]
+}
+
 @test "note tags: ingest reuses the partition's tags; FOUNDRY.md and the concept schema carry the form (#158)" {
   grep -qF 'run `system/scripts/vault_index.py tags --partition <p>` and reuse a listed tag' .claude/commands/ingest.md
   grep -qF 'invent one only when none fits' .claude/commands/ingest.md

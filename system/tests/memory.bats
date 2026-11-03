@@ -591,3 +591,58 @@ failtool() {  # failtool <sid> <command>: a PostToolUseFailure event, which carr
   run ls "$BATS_TEST_TMPDIR"/spawned-*
   [ "$status" -ne 0 ]
 }
+
+# --- the backfill queue (#438, recall R1 spec §4.1): SessionEnd marks a session that ended with no digest ---
+ended() {  # ended <sid> <events> [event]: a session in scope with <events> work events ends
+  keep_env "$1"
+  start "$1"
+  tools "$1" "$2"
+  printf 'x\n' > "$T"
+  keep "$1" "${3:-SessionEnd}"
+}
+
+@test "backfill queue: queues a session with enough events and no digest (#438)" {
+  thresholds 3 0
+  ended bq-1 3
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -f "$S/bq-1.backfill" ]
+  [ ! -s "$S/bq-1.backfill" ]
+}
+
+@test "backfill queue: queues a session whose request was missed and whose counter reset (#438)" {
+  thresholds 3 0
+  keep_env bq-2
+  start bq-2
+  jq '.last_request_at = 1700000000' "$S/bq-2.json" > "$S/bq-2.json.new"
+  mv "$S/bq-2.json.new" "$S/bq-2.json"
+  printf '0\n' > "$S/bq-2.events"
+  printf 'x\n' > "$T"
+  keep bq-2
+  [ "$status" -eq 0 ]
+  [ -f "$S/bq-2.backfill" ]
+}
+
+@test "backfill queue: queues none for PreCompact, a subagent, a Workcell session, a session with a digest, or one below the minimum (#438)" {
+  thresholds 3 0
+  ended bn-1 3 PreCompact
+  [ ! -e "$S/bn-1.backfill" ]
+  ended bn-2 2
+  [ ! -e "$S/bn-2.backfill" ]
+  ended bn-3 0
+  jq '.last_digest_at = 1700000000 | .last_request_at = 1700000000' "$S/bn-3.json" > "$S/bn-3.json.new"
+  mv "$S/bn-3.json.new" "$S/bn-3.json"
+  tools bn-3 3
+  keep bn-3
+  [ ! -e "$S/bn-3.backfill" ]
+  keep_env bn-4
+  start bn-4
+  tools bn-4 3
+  printf 'x\n' > "$T"
+  hook memory_keep.sh "$(jq -cn --arg t "$T" '{session_id: "bn-4", agent_id: "a1", transcript_path: $t, hook_event_name: "SessionEnd"}')"
+  [ ! -e "$S/bn-4.backfill" ]
+  export FOUNDRY_WORKCELL_SESSION=1
+  ended bn-5 3
+  [ "$status" -eq 0 ]
+  [ ! -e "$S/bn-5.backfill" ]
+}

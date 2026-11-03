@@ -14,7 +14,7 @@ from pathlib import Path
 from . import frontmatter, held as heldmod, links as linkmod, now as nowmod, schema as schemamod
 from .index import PRIVATE, Index, name_excluded, walled
 
-RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
+RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift|digest-backfill)-[0-9a-f]{4}$")
 MEETINGS = re.compile(r"^wiki/[^/]+/meetings/")
 NOW_PAGE = re.compile(r"^wiki/[^/]+/Now\.md$")
 NOW_ARCHIVE = re.compile(r"^wiki/[^/]+/now-archive/")
