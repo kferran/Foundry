@@ -93,7 +93,7 @@ The spec covers several subsystems that depend on each other in a strict order (
    - Value: C2 answers a question from the compiled wiki away from the terminal (and in the notify thread, which replaces "Ask from Slack"); C3 runs a vault script from the page, so routine actions need no session.
 7. **Foreman dispatch** (`2026-10-29-foreman-dispatch-plan.md`): D1 the escalation ladder, D2 the CI watch, D3 Foreman proposals, each specced and planned in turn. D3 waits for the audit track's phase 3 (Work Order confinement, #317 to #321) and builds on #413's Now line for a finished Work Order (grilled, owner, 2026-10-29).
    - Value: a blocked Work Order gets a second and a stronger attempt before it reaches you, a pull request reports CI before it asks for approval, and an issue you label becomes a planned Work Order by morning that one tick queues.
-8. **Small fixes from the live vault:** the three minors deferred from #399. #353 (#425), #332 (#413) and #386 (#405, #407) are done.
+8. **Small fixes from the live vault (done):** the three minors deferred from #399 are fixed in #472. #353 (#425), #332 (#413) and #386 (#405, #407) are done.
    - Value: fewer rough edges on the Now page the brief reads each morning.
 9. **Gap plan E to G:** E, the people Workcell (grill round 1, Q1 to Q5, posed and waiting on the owner); F, the planning and communications Workcell; G, Work Orders on the work codebase (#243), grilled first and skipped if that codebase's own tooling covers it.
    - Value: E keeps what each person owes and is owed on their page before a meeting; F drafts plans and messages from the wiki; G takes work-codebase tickets to a pull request unattended, as Work Orders already do for this repository.

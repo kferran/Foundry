@@ -1,0 +1,1 @@
+- Fixed: a repeated Now line with a long statement no longer adds a second copy, the brief's Overdue lines no longer show the writer tag, and the health scorecard counts lines a session wrote as the session's. (#472)
