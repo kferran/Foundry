@@ -176,7 +176,7 @@ def reopen(vault, partition: str, stem: str, reason: str, today: str) -> None:
     for i, line in enumerate(lines):
         m = nowmod.LINE.match(line)
         if m and m.group("evidence") == f"rca:{stem}":
-            unticked = now_states.transition(line, "rca", "open", day=today, vault=vault)
+            unticked = now_states.transition(line, "filer", "open", day=today, vault=vault)
             if unticked is None:
                 continue
             # The reason joins the bare statement; the Now clock's fields stay after it (Now clock spec §3). The
@@ -207,7 +207,7 @@ def filed(vault, partition: str, stem: str, key: str, today: str) -> None:
     for i, line in enumerate(lines):
         m = nowmod.LINE.match(line)
         if m and m.group("evidence") == f"rca:{stem}":
-            lines[i] = now_states.transition(line, "rca", "done stamped", f"filed {key}", today, vault) or line
+            lines[i] = now_states.transition(line, "filer", "done stamped", f"filed {key}", today, vault) or line
     nowmod.write(vault, partition, "\n".join(lines))
 
 

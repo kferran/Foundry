@@ -64,6 +64,18 @@ def test_an_open_line_keeps_the_file(hv):
     assert len([l for l in now.open_lines(now.read(hv, "work")) if "held/" in l]) == 1
 
 
+def test_an_unknown_mark_counts_as_open_and_adds_no_second_line(hv):
+    # Factory F7 spec Goal 5: a [/] line is the owner's to fix; step waits and never re-adds the line.
+    f = hold(hv)
+    close(hv, "work", "/")
+    rel = f.relative_to(hv).as_posix()
+    assert held._mark(hv, rel, "2026-10-10", TODAY) == " "
+    before = now.read(hv, "work")
+    got, alert = alerts()
+    held.step(hv, TODAY, alert)
+    assert f.is_file() and now.read(hv, "work") == before and got == []
+
+
 def test_a_missing_line_is_added_again(hv):
     f = hold(hv, line=False)
     held.step(hv, TODAY, alerts()[1])

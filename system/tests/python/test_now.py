@@ -374,13 +374,13 @@ def test_review_groups_closed_stale_and_duplicate_lines_and_writes_nothing(vault
         "stale": ["- [ ] owed: Old one [due:: 2026-10-24] (since 2026-09-24)"],
         "duplicate": ["- [ ] owed: Send the  report [due:: 2026-10-31] (since 2026-10-01)",
                       "- [ ] draft: send the report [due:: 2026-11-08] (since 2026-10-09)"],
-        "unreadable": [], "long": [], "page_bytes": len(before.encode())}
+        "unreadable": [], "unknown": [], "long": [], "page_bytes": len(before.encode())}
     assert now.review(vault, "work", TODAY, stale_days=13, gh=gh_stub(tmp_path, "OPEN"))["stale"] == [
         "- [ ] owed: Old one [due:: 2026-10-24] (since 2026-09-24)",
         "- [ ] owed: Fourteen days [due:: 2026-10-25] (since 2026-09-25)"]
     assert path.read_text() == before
     assert not (vault / "system/logs").exists()
-    assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": [], "unreadable": [],
+    assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": [], "unreadable": [], "unknown": [],
                                                     "long": [], "page_bytes": 0}
 
 
@@ -478,6 +478,17 @@ def test_review_lists_a_line_with_a_field_after_the_parenthesis_as_unreadable(va
     assert r.stdout == (f"## Unreadable lines (1): move the text or the [rec::] or [due::] field after the parenthesis "
                         f"back before it\n{bad}\n")
     assert page(vault) == before
+
+
+def test_review_lists_a_line_with_an_unknown_mark(vault):
+    # Factory F7 spec Goal 5: a mark that is no state ([/]) is listed for the owner to fix by hand.
+    prepare(vault)
+    bad = "- [/] owed: x (since 2026-11-01)"
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n"
+          f"---\n# Now\n\n## Needs you\n{bad}\n- [x] owed: Done (since 2026-10-01)\n\n## Waiting\n")
+    assert now.review(vault, "work", TODAY)["unknown"] == [bad]
+    r = cli(vault, "review", "--partition", "work")
+    assert r.stdout == f"## Unreadable marks (1): tick, drop or reopen it by hand\n{bad}\n"
 
 
 def test_review_lists_a_line_with_an_update_appended_after_the_parenthesis(vault):

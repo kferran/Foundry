@@ -236,11 +236,11 @@ def test_reopen_refuses_an_open_line_and_logs_it(vault):
     rca.reopen(vault, "work", "2026-10-11-orders", "403 Forbidden", TODAY)
     assert (vault / "wiki/work/Now.md").read_bytes() == before
     log = (vault / "system/logs/now-2026-10.jsonl").read_text().splitlines()
-    assert [(r["writer"], r["from"], r["to"]) for r in map(json.loads, log)] == [("rca", "open", "open")]
+    assert [(r["writer"], r["from"], r["to"]) for r in map(json.loads, log)] == [("filer", "open", "open")]
 
 
 def test_filed_stamps_through_the_table_and_leaves_an_open_line(vault, monkeypatch):
-    # Factory F7 spec §3, T14: the filed stamp comes from now_states.transition(writer="rca").
+    # Factory F7 spec §3, T14: the filed stamp comes from now_states.transition(writer="filer").
     from vaultlib import now_states
     calls, real = [], now_states.transition
     monkeypatch.setattr(now_states, "transition", lambda ln, writer, to, *a, **k: (
@@ -255,7 +255,7 @@ def test_filed_stamps_through_the_table_and_leaves_an_open_line(vault, monkeypat
     page = now.read(vault, "work")
     assert "rca:2026-10-11-orders) _(closed: filed EX-7 2026-10-11)_" in page
     assert "EX-8" not in page and "- [ ] owed: Review RCA draft: 2026-10-11-other" in page
-    assert ("rca", "done stamped") in calls
+    assert ("filer", "done stamped") in calls
 
 
 def test_filed_writes_the_key_to_the_note_and_the_now_line(vault):

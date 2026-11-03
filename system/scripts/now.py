@@ -32,7 +32,8 @@ run.lock busy.
   now.py review --partition <p> [--stale-days N]
                                   read-only: lines closed by their evidence, open more than N days (14) with no
                                   evidence, duplicated, holding text or a [rec::]/[due::] field after the parenthesis
-                                  (unreadable), over 300 characters, and a page over 25 KB; nothing printed when there
+                                  (unreadable), with a mark that is no state ([/]), over 300 characters, and a page over
+                                  25 KB; nothing printed when there
                                   is nothing to review
   now.py overdue [--date YYYY-MM-DD]
                                   read-only: open lines past their [due::] (before the date, today by default) in
@@ -149,6 +150,8 @@ if args.cmd == "review":  # read-only, so no run.lock
     if found["unreadable"]:
         print("\n".join([f"## Unreadable lines ({len(found['unreadable'])}): move the text or the [rec::] or [due::] "
                          "field after the parenthesis back before it", *found["unreadable"]]))
+    if found["unknown"]:
+        print("\n".join([f"## Unreadable marks ({len(found['unknown'])}): tick, drop or reopen it by hand", *found["unknown"]]))
     if found["long"]:
         print("\n".join([f"## Long lines (over {now.MAX_LINE} characters): shorten with now.py set, history with now.py note",
                          *found["long"]]))

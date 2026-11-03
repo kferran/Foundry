@@ -40,11 +40,12 @@ def _own(m, rel: str) -> bool:
 
 def _mark(vault, rel: str, since: str, today: str) -> str | None:
     """The box of rel's own line ("x", "-" or " "), on the page or in its archive since the file was written; a closed
-    line wins over an open one. None when there is no such line."""
+    line wins over an open one, and an unknown mark ([/]) counts as open (factory F7 spec Goal 5). None when there is
+    no such line."""
     lp = page(rel.split("/")[1])
     lines = "\n".join([nowmod.read(vault, lp), *nowmod.archived(vault, lp, since, today)]).splitlines()
     marks = {m["mark"] for line in lines if rel in line and (m := nowmod.LINE.match(line)) and _own(m, rel)}
-    return next((k for k in ("x", "X", "-", " ") if k in marks), None)
+    return next((k for k in ("x", "X", "-") if k in marks), " " if marks else None)
 
 
 def step(vault, today: str, alert) -> None:

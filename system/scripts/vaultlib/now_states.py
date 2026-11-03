@@ -17,10 +17,10 @@ ALLOWED = {   # (writer, from) -> the states it may write; from None is a line t
     ("stamp", "done"): {"done stamped"},                         # T9
     ("stamp", "dropped"): {"dropped stamped"},                   # T9
     ("stamp", "open stamped"): {"open"},                         # T10
-    ("rca", "done"): {"done stamped", "open"},                   # T14 filed, T15 reopen
-    ("rca", "done stamped"): {"done stamped", "open"},
-    ("rca", "dropped"): {"open"},
-    ("rca", "dropped stamped"): {"open"},
+    ("filer", "done"): {"done stamped", "open"},                 # T14 filed, T15 reopen (an extension's ticket filer)
+    ("filer", "done stamped"): {"done stamped", "open"},
+    ("filer", "dropped"): {"open"},
+    ("filer", "dropped stamped"): {"open"},
 }
 
 

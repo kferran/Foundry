@@ -694,8 +694,10 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
     close reason), "stale" (open more than stale_days with no evidence) and "duplicate" (the same bare statement after
     lowercasing, whatever the kind and clock), in page order. A hand-written line that does not parse has no date or
     evidence and is left out of those groups; one that holds a [rec::] or [due::] field it cannot read (written after
-    the parenthesis) is listed under "unreadable" for the Foreman to fix by hand."""
-    lines = [line.rstrip() for line in open_lines(read(vault, partition))]  # an editor's trailing space (C12)
+    the parenthesis) is listed under "unreadable" for the Foreman to fix by hand, and a line whose mark is no state
+    ([/]) under "unknown" (factory F7 spec Goal 5)."""
+    body = frontmatter.parse(read(vault, partition)).body.splitlines()
+    lines = [line.rstrip() for line in body if line.startswith("- [ ] ")]  # an editor's trailing space (C12)
     cutoff = (date.fromisoformat(today) - timedelta(days=stale_days)).isoformat()
     parsed = [(line, LINE.match(line)) for line in lines]
     found = closures(vault, lines, gh, on_fail)
@@ -707,6 +709,7 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
             "stale": [line for line, m in parsed if m and not m.group("evidence") and m.group("since") < cutoff],
             "duplicate": [line for group in statements.values() if len(group) > 1 for line in group],
             "unreadable": [line for line, m in parsed if not m and (FIELD_KEY.search(line) or SCRIPT_META.search(line))],
+            "unknown": [line.rstrip() for line in body if now_states.state(line) == "unknown"],
             "long": [line for line in lines if len(line) > MAX_LINE and parse(line)],   # set and note split each
             "page_bytes": page_path(vault, partition).stat().st_size if page_path(vault, partition).is_file() else 0}
 
