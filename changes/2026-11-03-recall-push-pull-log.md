@@ -1,0 +1,1 @@
+- Changed: the memory hooks now log what recall adds to each session and each `vault_index.py` call the session makes, by count, note name and path, to `system/logs/recall-YYYY-MM.jsonl`, with no prompt or note text and search terms hashed. (#476)
