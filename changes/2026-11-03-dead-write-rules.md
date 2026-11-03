@@ -1,1 +1,1 @@
-- Fixed: Claude Code no longer warns at every session start that five Write ask rules never match; the Edit ask rules, which cover the Write tool, stay. (#PR)
+- Fixed: Claude Code no longer warns at every session start that five Write ask rules never match; the Edit ask rules, which cover the Write tool, stay. (#485)
