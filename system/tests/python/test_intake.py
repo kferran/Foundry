@@ -851,13 +851,16 @@ def test_prune_runs_settled_only(iv):
                          '{"staged": "s", "target": "wiki/a.md", "expected": null}\n'})
     uncommitted = run_folder(iv, days_ago(35), "ingest-cccc", published)
     young = run_folder(iv, days_ago(10), "ingest-dddd", {"committed": "{}"})
+    backfill = run_folder(iv, days_ago(40), "digest-backfill-a4a4", published)   # commit_runs.py never commits one
     (iv / "system/logs/runs/notes").mkdir()
+    held = write(iv, f"system/quarantine/{journal.name}/staged/wiki/a.md", "x").parents[2]
     done = prune.prune(iv, cutoff())
-    for gone in (committed, before_since, no_report, nothing):
+    assert held.is_dir()   # a kept run's held-back staging stays with it
+    for gone in (committed, before_since, no_report, nothing, backfill):
         assert not gone.exists()
     for kept in (journal, uncommitted, young, iv / "system/logs/runs/notes"):
         assert kept.is_dir()
-    assert done["runs"] == 4
+    assert done["runs"] == 5
     assert done["unsettled"] == 2
     assert done["oldest"] == journal.name
 

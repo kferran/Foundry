@@ -7,6 +7,7 @@ import shutil
 from datetime import date, timedelta
 from pathlib import Path
 
+import commit_runs   # system/scripts is on sys.path wherever vaultlib is
 from . import publish, quarantine
 
 DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -19,8 +20,9 @@ def _settled(rd: Path, since: str) -> bool:
     try:
         if journal.exists() and not publish._committed(journal):
             return False
-        # no publish.json: the run ended before publish
-        if (rd / "committed").exists() or rd.name[:15] < since or not report_file.exists():
+        # a kind commit_runs.py never commits (digest-backfill), or no publish.json: the run ended before publish
+        if ((rd / "committed").exists() or rd.name[:15] < since or not commit_runs.RUN_ID.match(rd.name)
+                or not report_file.exists()):
             return True
         report = json.loads(report_file.read_text(encoding="utf-8"))
     except (OSError, ValueError):   # a torn journal or report stays for recovery or a hand fix
@@ -75,7 +77,8 @@ def prune(vault, cutoff: date) -> dict:
             shutil.rmtree(d)
             done["inputs"] += 1
     for row in quarantine.items(vault, cutoff + timedelta(days=30)):
-        if row.kind in quarantine.SAFE and row.days >= 30:
+        kept = (runs / Path(row.path).name).exists()   # an unsettled run keeps its held-back staging
+        if row.kind in quarantine.SAFE and row.days >= 30 and not kept:
             item = vault / row.path
             if item.is_dir() and not item.is_symlink():
                 shutil.rmtree(item)
