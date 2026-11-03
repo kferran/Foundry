@@ -1,1 +1,1 @@
-- Changed: a Slack notice hold lifts itself after 24 h with an alert in the brief; a second hold within 7 days stays until you delete it. (#PR)
+- Changed: a Slack notice hold lifts itself after 24 h with an alert in the brief; a second hold within 7 days stays until you delete it. (#492)
