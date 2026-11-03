@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""The Now page (Now page spec §3.2). Exit 0 ok, 2 usage or an invalid line, 4 run.lock busy.
+"""The Now page (Now page spec §3.2). Exit 0 ok, 1 a merge the driver cannot settle, 2 usage or an invalid line, 4
+run.lock busy.
 
   now.py add --partition <work|personal> --kind <owed|waiting|draft> --statement "<one line>" [--who <name>]
              [--evidence <pull request URL, Work Order id, GitHub issue URL, ticket key, or the form an extension's skill or brief section names>]
@@ -39,6 +40,8 @@
   now.py seed YYYY-MM-DD         once: a missing default-partition page takes the previous brief's open objectives
   now.py fit-staged <run_id>      a brief's staged Now pages: redact each added line and cut it to 300 characters
                                   (run_headless.sh runs it under its own run.lock, before publish)
+  now.py merge-driver <base> <ours> <theirs>
+                                  git's driver for Now.md in the sync's merge: the page merged line by line into <ours>
 """
 import argparse
 import json
@@ -87,7 +90,18 @@ r.add_argument("--stale-days", type=int, default=now.STALE_DAYS)
 sub.add_parser("overdue").add_argument("--date")
 sub.add_parser("seed").add_argument("date")
 sub.add_parser("fit-staged").add_argument("run_id")
+sub.add_parser("merge-driver").add_argument("files", nargs=3, metavar="<base> <ours> <theirs>")
 args = p.parse_args()
+
+if args.cmd == "merge-driver":  # git runs it inside the sync's merge, which holds run.lock (#436 S5)
+    try:
+        text = now.merge(*(Path(f).read_bytes().decode("utf-8") for f in args.files))
+        Path(args.files[1]).write_bytes(text.encode("utf-8"))
+    except Exception as exc:  # noqa: BLE001 - any failure leaves the conflict, so the sync blocks
+        why = "a version is not UTF-8" if isinstance(exc, UnicodeDecodeError) else " ".join(str(exc).split())
+        print(f"now merge: {why}", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
 
 if args.cmd == "fit-staged":  # the caller holds run.lock
     try:

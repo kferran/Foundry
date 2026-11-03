@@ -420,3 +420,116 @@ diverge_on_kafka() {  # the client and the server change the same line; the clie
   [ "$status" -eq 0 ]
   [ "$(cat "$BATS_TEST_TMPDIR/ssh")" = "ssh -o BatchMode=yes -o ConnectTimeout=15" ]
 }
+
+# The Now.md merge driver (#436 S5).
+NA='- [ ] owed: Review the export PR [due:: 2026-10-12] (Blake, since 2026-10-09, https://github.com/acme/shop/pull/7)'
+NB='- [ ] owed: Send the invoice [due:: 2026-11-08] (since 2026-10-09)'
+NX='- [x] owed: Review the export PR [due:: 2026-10-12] (Blake, since 2026-10-09, https://github.com/acme/shop/pull/7)'
+
+now_page() {  # <repo> <line…>: wiki/work/Now.md in the template's form, the lines under "## Needs you"
+  local repo="$1"
+  shift
+  mkdir -p "$repo/wiki/work"
+  { printf -- '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-01"\npartition: work\n---\n# Now\n\n## Needs you\n'
+    printf '%s\n' "$@"
+    printf '\n## Waiting\n'; } > "$repo/wiki/work/Now.md"
+}
+
+now_base() {  # <line…>: the server commits that page and the client pulls it
+  now_page "$V" "$@"
+  git add wiki/work/Now.md
+  git commit -q --no-verify -m now
+  git push -q
+  git -C "$C" pull -q
+}
+
+client_ticks() {  # the client ticks the export line and commits it
+  now_page "$C" "$NX" "$@"
+  git -C "$C" commit -q -am tick
+}
+
+@test "a settled Now.md conflict does not block (#436 S5)" {
+  now_base "$NA" "$NB"
+  client_ticks "$NB"
+  git -C "$C" push -q
+  now_page "$V" "$NX _(closed: PR merged 2026-10-10)_" "$NB"
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ ! -e system/logs/sync-blocked ]
+  [ "$(grep -c '^- \[x\] owed: Review the export PR .* _(closed: PR merged 2026-10-10)_$' wiki/work/Now.md)" -eq 1 ]
+  [ "$(grep -c '^- \[.\] owed: Send the invoice' wiki/work/Now.md)" -eq 1 ]
+  [ "$(git -C "$O" rev-parse "$B")" = "$(git rev-parse HEAD)" ]
+}
+
+@test "a refused Now.md merge blocks with its reason (#436 S5)" {
+  now_base "$NA"
+  now_page "$C" "${NA/export PR/export pull request}"
+  git -C "$C" commit -q -am client
+  git -C "$C" push -q
+  now_page "$V" "${NA/export PR/export PR and its docs}"
+  run "$VS"
+  [ "$status" -eq 3 ]
+  [ ! -e .git/MERGE_HEAD ]
+  grep -qx 'wiki/work/Now.md' system/logs/sync-blocked
+  grep -q '^now merge: the line ".*" was changed on both sides$' system/logs/sync-blocked
+}
+
+@test "another file's conflict still blocks when Now.md settles (#436 S5)" {
+  now_base "$NA"
+  client_ticks
+  diverge_on_kafka
+  now_page "$V" "$NX _(closed: PR merged 2026-10-10)_"
+  run "$VS"
+  [ "$status" -eq 3 ]
+  [ ! -e .git/MERGE_HEAD ]
+  grep -qx 'wiki/work/concepts/Kafka.md' system/logs/sync-blocked
+  run grep -c 'Now.md' system/logs/sync-blocked
+  [ "$output" = 0 ]
+}
+
+@test "a hand merge has no driver, and the sync leaves no attributes file (#436 S5)" {
+  export TMPDIR="$BATS_TEST_TMPDIR/tmp"
+  mkdir -p "$TMPDIR"
+  now_base "$NA"
+  client_ticks
+  git -C "$C" push -q
+  printf 'more\n' >> wiki/work/concepts/Kafka.md
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ -z "$(ls -A "$TMPDIR")" ]
+  run git config --get merge.now.driver
+  [ "$status" -eq 1 ]
+  git -C "$C" pull -q
+  now_page "$C" "$NA"
+  git -C "$C" commit -q -am reopen
+  git -C "$C" push -q
+  now_page "$V" "$NX _(closed: PR merged 2026-10-10)_"
+  git commit -q --no-verify -am close
+  git fetch -q origin
+  run git merge --no-edit "origin/$B"
+  [ "$status" -eq 1 ]
+  grep -q '^<<<<<<< ' wiki/work/Now.md
+}
+
+@test "a criss-cross merge whose inner Now.md merge the driver refuses still blocks (#436 S5)" {
+  now_base "$NA" "$NB"
+  now_page "$C" "${NA/export PR/export PR client}" "$NB"
+  git -C "$C" commit -q -am C1
+  c1="$(git -C "$C" rev-parse HEAD)"
+  now_page "$V" "${NA/export PR/export PR server}" "$NB"
+  git commit -q --no-verify -am S1
+  git push -q origin HEAD:refs/heads/side
+  git -C "$C" fetch -q origin
+  run git -C "$C" merge -q --no-edit origin/side
+  now_page "$C" "${NA/export PR/export PR client}" "${NB/- \[ \]/- [x]}"
+  git -C "$C" commit -q -am M_c
+  git -C "$C" push -q origin HEAD:refs/heads/side HEAD:"$B"
+  git fetch -q origin
+  run git merge -q --no-edit "$c1"
+  now_page "$V" "${NA/export PR/export PR server}" "${NB/- \[ \]/- [x]}"
+  git commit -q --no-verify -am M_s
+  [ "$(git merge-base --all HEAD "origin/$B" | wc -l)" -eq 2 ]
+  run "$VS"
+  [ "$status" -eq 3 ]
+  grep -qx 'wiki/work/Now.md' system/logs/sync-blocked
+}
