@@ -1,4 +1,5 @@
 """RCA-to-Jira (RCA spec §3.3): pending drafts, the filer's arguments, the session check and the write-back."""
+import json
 import shutil
 
 import pytest
@@ -219,9 +220,42 @@ def test_reopen_unticks_the_line_with_the_reason_and_returns_the_draft(vault):
     assert "- [ ] owed: Another line [due:: 2026-11-10] (since 2026-10-11)" in page
     assert 'status: "draft"' in path.read_text()
     assert rca.pending(vault) == []   # nothing retries until the line is ticked again
+    path = vault / "wiki/work/Now.md"
+    path.write_text(path.read_text().replace("- [ ] owed: Review RCA draft", "- [x] owed: Review RCA draft"))
     rca.reopen(vault, "work", "2026-10-11-orders", "403 Forbidden", "2026-10-12")
     page = now.read(vault, "work")
     assert page.count("not filed") == 1 and "not filed 2026-10-12, 403 Forbidden [due:: " in page
+
+
+def test_reopen_refuses_an_open_line_and_logs_it(vault):
+    # Factory F7 spec §3, T15: rca.reopen goes from done or dropped only; the page is left byte for byte.
+    prepare(vault)
+    note(vault)
+    line(vault, "2026-10-11-orders", " ")
+    before = (vault / "wiki/work/Now.md").read_bytes()
+    rca.reopen(vault, "work", "2026-10-11-orders", "403 Forbidden", TODAY)
+    assert (vault / "wiki/work/Now.md").read_bytes() == before
+    log = (vault / "system/logs/now-2026-10.jsonl").read_text().splitlines()
+    assert [(r["writer"], r["from"], r["to"]) for r in map(json.loads, log)] == [("rca", "open", "open")]
+
+
+def test_filed_stamps_through_the_table_and_leaves_an_open_line(vault, monkeypatch):
+    # Factory F7 spec §3, T14: the filed stamp comes from now_states.transition(writer="rca").
+    from vaultlib import now_states
+    calls, real = [], now_states.transition
+    monkeypatch.setattr(now_states, "transition", lambda ln, writer, to, *a, **k: (
+        calls.append((writer, to)), real(ln, writer, to, *a, **k))[1])
+    prepare(vault)
+    note(vault)
+    note(vault, "2026-10-11-other")
+    line(vault, "2026-10-11-orders", "x")
+    line(vault, "2026-10-11-other", " ")
+    rca.filed(vault, "work", "2026-10-11-orders", "EX-7", TODAY)
+    rca.filed(vault, "work", "2026-10-11-other", "EX-8", TODAY)
+    page = now.read(vault, "work")
+    assert "rca:2026-10-11-orders) _(closed: filed EX-7 2026-10-11)_" in page
+    assert "EX-8" not in page and "- [ ] owed: Review RCA draft: 2026-10-11-other" in page
+    assert ("rca", "done stamped") in calls
 
 
 def test_filed_writes_the_key_to_the_note_and_the_now_line(vault):
