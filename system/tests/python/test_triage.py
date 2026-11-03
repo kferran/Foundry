@@ -114,7 +114,25 @@ def test_extract_counts_results_rows_kept_and_drops():
     rows = [item("a1"), item("zz"), item("b2", ask=" "), item("a1")]
     got = tr.extract(mail_stream([thread("a1"), thread("b2")], [thread("c3")], items=rows), Q)
     assert got["stats"] == {"results": 3, "rows": 4, "kept": 1, "persisted": 0,
-                            "dropped": {"unknown": 1, "empty": 1, "duplicate": 1}}
+                            "dropped": {"unknown": 1, "empty": 1, "duplicate": 1, "malformed": 0}}
+
+
+@pytest.mark.parametrize("bad", [{"id": "x9", "viewUrl": "https://mail.google.com/mail/#all/x9", "messages": []},
+                                 {"id": "x9", "messages": thread()["messages"]}, {"viewUrl": LINK}, "x9"])
+def test_a_malformed_thread_is_skipped_counted_and_alerted_once_a_day(vault, bad):
+    prepare(vault)
+    found = tr.extract(mail_stream([thread("a1"), bad], items=[item("a1"), item("x9")]), Q)
+    assert [i["thread_id"] for i in found["items"]] == ["a1"]   # the good thread still lands
+    assert (found["stats"]["results"], found["stats"]["dropped"]["malformed"]) == (2, 1)
+    assert tr.record(vault, "work", found, TODAY, "2026-10-09T09:10:00-06:00", 5_000) == [
+        "Blake: asks how to proceed with a rejected case"]
+    tr.record(vault, "work", found, TODAY, "2026-10-09T09:15:00-06:00", 5_300)
+    alerts = (vault / f"system/logs/alerts_{TODAY}.md").read_text(encoding="utf-8").splitlines()
+    assert alerts == [f"- 09:10:00 [triage] {tr.MALFORMED} (1 this tick)"]
+
+
+def test_a_search_whose_every_thread_is_malformed_fails():
+    assert "every thread" in fails(1, mail_stream([{"viewUrl": LINK}, {"id": "x9"}], items=[item("x9")]))
 
 
 def test_a_chat_page_too_large_fails_6():
@@ -277,7 +295,7 @@ def test_chat_items_take_link_sender_and_channel_from_the_results():
         "thread_id": f"C0000000001/{TS}", "date": TS, "link": PERMALINK, "sender": "blake@example.com",
         "who": "Blake in #ops", "ask": "prod checkout is down", "next_step": "look now"}]
     assert got["stats"] == {"results": 1, "rows": 3, "kept": 1, "persisted": 0,
-                            "dropped": {"unknown": 1, "empty": 0, "duplicate": 1}}
+                            "dropped": {"unknown": 1, "empty": 0, "duplicate": 1, "malformed": 0}}
 
 
 @pytest.mark.parametrize("kwargs,code", [
