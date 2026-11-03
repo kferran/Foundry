@@ -819,3 +819,108 @@ def test_a_failing_or_stuck_tick_is_one_alert_and_the_intake_tick_goes_on(iv):
     alerts = next((iv / "system/logs").glob("alerts_*.md")).read_text()
     assert "[intake] ticker tick failed (exit 2: no settings); will retry" in alerts
     assert "[intake] ticker tick did not finish (TimeoutExpired); will retry" in alerts
+
+
+# -- one prune a day (#436 S7) -------------------------------------------------
+def days_ago(n):
+    from datetime import timedelta
+    return datetime.now(TZ).date() - timedelta(days=n)
+
+
+def cutoff():
+    return days_ago(30)
+
+
+def run_folder(iv, day, name, files=None):
+    rd = iv / "system/logs/runs" / f"{day:%Y%m%d}T100000-{name}"
+    rd.mkdir(parents=True)
+    for rel, text in (files or {}).items():
+        (rd / rel).write_text(text)
+    return rd
+
+
+def test_prune_runs_settled_only(iv):
+    from vaultlib import prune
+    write(iv, "system/logs/commit_runs.since", f"{days_ago(45):%Y%m%d}T000000\n")
+    published = {"publish.json": json.dumps({"published": ["wiki/work/concepts/x.md"]})}
+    committed = run_folder(iv, days_ago(40), "ingest-aaaa", {"committed": "{}", **published})
+    before_since = run_folder(iv, days_ago(50), "brief-a1a1", published)
+    no_report = run_folder(iv, days_ago(40), "meeting-a2a2")
+    nothing = run_folder(iv, days_ago(40), "ingest-a3a3", {"publish.json": json.dumps({"published": []})})
+    journal = run_folder(iv, days_ago(42), "brief-bbbb", {"committed": "{}", "publish.journal":
+                         '{"staged": "s", "target": "wiki/a.md", "expected": null}\n'})
+    uncommitted = run_folder(iv, days_ago(35), "ingest-cccc", published)
+    young = run_folder(iv, days_ago(10), "ingest-dddd", {"committed": "{}"})
+    (iv / "system/logs/runs/notes").mkdir()
+    done = prune.prune(iv, cutoff())
+    for gone in (committed, before_since, no_report, nothing):
+        assert not gone.exists()
+    for kept in (journal, uncommitted, young, iv / "system/logs/runs/notes"):
+        assert kept.is_dir()
+    assert done["runs"] == 4
+    assert done["unsettled"] == 2
+    assert done["oldest"] == journal.name
+
+
+def test_prune_inputs_and_safe_quarantine_only(iv):
+    from vaultlib import prune
+    old_inputs = iv / "system/logs/inputs" / days_ago(31).isoformat()
+    young_inputs = iv / "system/logs/inputs" / days_ago(29).isoformat()
+    write(iv, f"system/logs/inputs/{old_inputs.name}/calendar.tsv", "x")
+    write(iv, f"system/logs/inputs/{young_inputs.name}/calendar.tsv", "x")
+    staging = write(iv, f"system/quarantine/{days_ago(31):%Y%m%d}T100000-ingest-eeee/staged/a.md", "x").parents[1]
+    young_staging = write(iv, f"system/quarantine/{days_ago(10):%Y%m%d}T100000-ingest-ffff/staged/a.md", "x").parents[1]
+    state = write(iv, f"system/quarantine/telemetry_state-{days_ago(40):%Y%m%d}T100000.json", "{}")
+    poisoned = write(iv, "system/quarantine/poisoned/bad.md", "x")
+    write(iv, "system/quarantine/poisoned/bad.md.origin.json",
+          json.dumps({"origin": "raw/inbox/bad.md", "poisoned_at": f"{days_ago(40)}T10:00:00"}))
+    meeting = write(iv, "system/quarantine/meetings/sync.vtt", "x")
+    backfill = write(iv, "system/quarantine/backfill/s1.backfill", "x")
+    old = time.time() - 40 * 86400
+    for path in (meeting, backfill):
+        os.utime(path, (old, old))
+    done = prune.prune(iv, cutoff())
+    for gone in (old_inputs, staging, state):
+        assert not gone.exists()
+    for kept in (young_inputs, young_staging, poisoned, meeting, backfill):
+        assert kept.exists()
+    assert (done["inputs"], done["quarantine"]) == (1, 2)
+
+
+def test_prune_entries_of_archived_briefings_only(iv):
+    from vaultlib import prune
+    archived, kept_here, young, nowhere = days_ago(31), days_ago(32), days_ago(29), days_ago(33)
+    for day in (archived, kept_here, young):
+        write(iv, f"briefings/archive/{day:%Y-%m}/{day}.md", "x")
+    write(iv, f"briefings/{kept_here}.md", "x")
+    lines = [{"kind": "block", "briefing": f"briefings/{archived}.md", "hash": "h"},
+             {"kind": "alert", "briefing": f"briefings/{archived}.md", "reason": "r", "date": str(archived)},
+             {"kind": "notes", "briefing": f"briefings/{kept_here}.md"},
+             {"kind": "notes", "briefing": f"briefings/{young}.md"},
+             {"kind": "notes", "briefing": f"briefings/{nowhere}.md"}]
+    write(iv, "system/logs/extracted_blocks.jsonl", "".join(json.dumps(r) + "\n" for r in lines) + "torn\n")
+    done = prune.prune(iv, cutoff())
+    assert done["entries"] == 2
+    assert blocks_log_raw(iv) == [json.dumps(r) for r in lines[2:]] + ["torn"]
+
+
+def blocks_log_raw(iv):
+    return (iv / "system/logs/extracted_blocks.jsonl").read_text().splitlines()
+
+
+def test_restored_briefing_drops_a_duplicate(iv):
+    from vaultlib import prune
+    day = days_ago(40)
+    path = dated(iv, str(day), "#wiki-ingest-start\nan old idea\n#wiki-ingest-end\n")
+    at(iv, 6).run()
+    assert len(calls(iv)) == 1
+    archived = iv / f"briefings/archive/{day:%Y-%m}/{day}.md"
+    archived.parent.mkdir(parents=True)
+    shutil.copy2(path, archived)
+    path.unlink()
+    assert prune.prune(iv, cutoff())["entries"] == 2   # its block and its notes record
+    shutil.copy2(archived, path)
+    at(iv, 6).run()
+    assert len(calls(iv)) == 1
+    assert len(list((iv / "raw/archive").glob("daily_note_drop_*-dup-*.md"))) == 1
+    assert list((iv / "raw/inbox").glob("daily_note_drop_*.md")) == []
