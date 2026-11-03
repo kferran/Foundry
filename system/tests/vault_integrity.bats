@@ -562,7 +562,7 @@ sealed_problems() {
   # 15,780 -> 15,830 (#436 S3, owner to approve at merge): a crash exits 70 and alerts once a day (alerts.guard for the
   # Python units, crash_trap for the shell ones) and the review fixes took core from 15,774 to 15,812.
   # 15,830 -> 15,850 (#436 S1, owner to approve at merge): the outage check after a failed or timed-out run, exit 7,
-  # its daily alert and intake holding on it took core from 15,812 to 15,828.
+  # its daily alert, intake holding on it and the review fix took core from 15,812 to 15,829.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
