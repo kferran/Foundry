@@ -22,16 +22,18 @@ setup() {
 }
 
 # calendar_says <structured output json> [tool…]: what the stubbed calendar session returns (default tools: ToolSearch
-# and list_events).
+# and list_events, ids t0, t1, …), with a list_events result listing the same events (or PAGE_ROWS, #436 S8).
 calendar_says() {
-  local out="$1" t
+  local out="$1" t n=0
   shift
   {
     printf '{"type":"system","subtype":"init","tools":[]}\n'
     (( $# )) || set -- ToolSearch mcp__claude_ai_Google_Calendar__list_events
     for t in "$@"; do
-      printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"%s","input":{}}]}}\n' "$t"
+      printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t%d","name":"%s","input":{}}]}}\n' "$n" "$t"
+      n=$((n + 1))
     done
+    calendar_page "${PAGE_ROWS:-$(jq -c .events <<< "$out")}"
     printf '{"type":"result","subtype":"success","is_error":false,"num_turns":4,"total_cost_usd":0.2,"permission_denials":[],"structured_output":%s}\n' "$out"
   } > "$STUB_STREAM"
 }
@@ -56,6 +58,20 @@ codebase() {  # <name> <path>
   [ "$status" -eq 0 ]
   [ "$(cat "$IN/calendar.tsv")" = "$(printf '2026-10-01\t09:00\t2026-10-01\t09:30\tStandup')" ]
   [ ! -e "$IN/unavailable.md" ]
+}
+
+@test "brief_prep: an unverified calendar adds one unavailable line; a verified one adds none (#436 S8)" {
+  PAGE_ROWS='[]' calendar_says '{"status":"ok","reason":"","events":[{"start_date":"2026-10-01","start_time":"09:00","end_date":"2026-10-01","end_time":"09:30","title":"Standup"}]}'
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/calendar.tsv")" = "$(printf '2026-10-01\t09:00\t2026-10-01\t09:30\tStandup')" ]
+  [ "$(grep -c -- '- brief_prep: calendar:' "$IN/unavailable.md")" -eq 1 ]
+  grep -qxF -- "- brief_prep: calendar: rows unverified: the connector listed 0 events, the rows hold 1 (check today's events in Google Calendar)" "$IN/unavailable.md"
+  calendar_says '{"status":"ok","reason":"","events":[{"start_date":"2026-10-01","start_time":"09:00","end_date":"2026-10-01","end_time":"09:30","title":"Standup"}]}'
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  run grep -c -- '- brief_prep: calendar:' "$IN/unavailable.md"
+  [ "$output" = 0 ]
 }
 
 @test "brief_prep: a failed calendar fetch is recorded, leaves no partial file, and still exits 0" {

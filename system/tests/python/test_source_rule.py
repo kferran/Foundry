@@ -17,7 +17,7 @@ pytestmark = pytest.mark.skipif(
 
 # Core Sources: their smoke rows (or the reason they have none), then their alert tag when the script sets no FETCH_TAG.
 CORE = {
-    "calendar_fetch.sh": (("calendar",), "calendar"),
+    "calendar_fetch.sh": (("calendar",), None),
     "meetings_fetch.sh": (("meetings",), None),
     "triage_fetch.sh": (("triage", "triage_chat"), None),
     "notify.sh": ("its --check posts a message to the channel", None),
@@ -286,13 +286,21 @@ def test_a_source_missing_a_part_is_caught(tmp_path, rel, edit, want):
      "system/scripts/notify.sh: accepts --check and has no smoke row and no reason in the table"),
     ({**CORE, "triage_fetch.sh": (("triage",), None)},
      "system/scripts/triage_fetch.sh: smoke rows ('triage', 'triage_chat') differ from the table's ('triage',)"),
-    ({**CORE, "calendar_fetch.sh": (("calendar",), None)}, "system/scripts/calendar_fetch.sh: sets no FETCH_TAG"),
     ({**CORE, "meetings_fetch.sh": ((), None)},
      "system/scripts/meetings_fetch.sh: smoke rows ('meetings',) differ from the table's ()"),
-    ({**CORE, "calendar_fetch.sh": ("a reason", "calendar")},
+    ({**CORE, "calendar_fetch.sh": ("a reason", None)},
      "system/scripts/calendar_fetch.sh: has smoke rows ('calendar',) but the table gives a reason"),
-    ({**CORE, "calendar_fetch.sh": (("calendar",), "calender")},
-     "system/scripts/calendar_fetch.sh: the table's tag calender is not a key of alerts.TAGS"),
 ])
 def test_a_table_out_of_step_is_caught(table, want):
     assert source_problems(REPO, table) == [want]
+
+
+def test_a_script_without_a_fetch_tag_takes_the_tables_tag(tmp_path):
+    # Every core Source sets FETCH_TAG since calendar_fetch.sh's (#436 S8): a copy without it checks the table's tag.
+    root = tree(tmp_path)
+    f = root / "system/scripts/calendar_fetch.sh"
+    f.write_text(f.read_text().replace("FETCH_TAG=calendar", ""))
+    assert source_problems(root) == ["system/scripts/calendar_fetch.sh: sets no FETCH_TAG"]
+    assert source_problems(root, {**CORE, "calendar_fetch.sh": (("calendar",), "calendar")}) == []
+    assert source_problems(root, {**CORE, "calendar_fetch.sh": (("calendar",), "calender")}) == [
+        "system/scripts/calendar_fetch.sh: the table's tag calender is not a key of alerts.TAGS"]

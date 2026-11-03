@@ -1,0 +1,1 @@
+- Changed: the brief says when its calendar rows disagree with what the Google Calendar connector listed, and one alert a day names the first difference. (#504)
