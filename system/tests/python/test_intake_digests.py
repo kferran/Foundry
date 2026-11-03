@@ -348,7 +348,7 @@ def test_backfill_exit_2_quarantines_the_marker(bv, monkeypatch):
     Intake(bv, now=later()).run()
     assert not (bv / MARKER).exists()
     assert (bv / f"system/quarantine/backfill/{SID}.backfill").is_file()
-    assert "exit 2" in (bv / f"system/quarantine/backfill/{SID}.backfill.reason").read_text()
+    assert "exit 2" in (bv / f"system/quarantine/backfill/{SID}.backfill.reason.txt").read_text()
     assert alerts(bv).count(f"backfill of session {SID[:8]} quarantined") == 1
 
 
@@ -398,3 +398,38 @@ def test_backfill_shares_max_runs_with_digests(bv):
 def test_a_fresh_marker_waits(bv):
     Intake(bv, now=time.time()).run()
     assert backfills(bv) == [] and (bv / MARKER).exists()
+
+
+# -- final review fixes --
+def test_a_backfill_that_raises_quarantines_its_marker_and_the_queue_moves_on(bv, tmp_path):
+    other = queue(bv, "bf000002-cccc")
+    os.utime(bv / MARKER, (time.time() - 600, time.time() - 600))   # the stuck one is oldest
+    (tmp_path / "state/foundry/transcripts" / f"{SID}.jsonl").chmod(0)
+    Intake(bv, now=later()).run()
+    assert (bv / f"system/quarantine/backfill/{SID}.backfill").is_file() and not (bv / MARKER).exists()
+    assert "PermissionError" in (bv / f"system/quarantine/backfill/{SID}.backfill.reason.txt").read_text()
+    assert [c["args"][1] for c in backfills(bv)] == ["raw/inbox/.staging/2026-11-03-0649-bf000002-backfill.md"]
+    assert not other.exists()
+
+
+def test_backfill_survives_a_lone_surrogate_in_the_transcript(bv, tmp_path):
+    keep = tmp_path / "state/foundry/transcripts" / f"{SID}.jsonl"
+    keep.write_text(json.dumps(prompt(T1, "x")).replace('"x"', '"bad \\ud83d here"') + "\n"
+                    + json.dumps(reply(T4, {"type": "text", "text": "Done."})) + "\n")
+    Intake(bv, now=later()).run()
+    [call] = backfills(bv)
+    assert "bad ? here" in call["staged"][STAGED] and (bv / DIGEST).is_file()
+
+
+def test_excerpt_tool_paths_are_relative_to_the_session_cwd(tmp_path):
+    path = transcript(tmp_path / "s.jsonl", reply(T2, *(
+        {"type": "tool_use", "name": "Read", "input": {"file_path": f}}
+        for f in ("/work/a-project/system/scripts/vaultlib/intake.py", "/elsewhere/notes.md"))))
+    text, _, _ = backfill.excerpt(path, "/work/a-project")
+    assert text == f"[{T2}] tool Read system/scripts/vaultlib/intake.py\n[{T2}] tool Read /elsewhere/notes.md"
+
+
+def test_backfill_read_back_passes_prose_that_only_names_a_token(bv, monkeypatch):
+    monkeypatch.setenv("STUB_BACKFILL_BODY", "The refresh token: expires after an hour.")
+    Intake(bv, now=later()).run()
+    assert (bv / DIGEST).is_file() and "read-back failed" not in alerts(bv)

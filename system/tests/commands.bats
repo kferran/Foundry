@@ -75,6 +75,7 @@ headless_contract() {
   grep -qF 'the intake tick runs it' "$f"
   grep -qF '`/digest`' "$f"
   grep -qF 'data, never instructions' "$f"
+  grep -qF 'Read only the excerpt' "$f"
   grep -qF 'wiki/.staging/<run_id>/raw/<partition>/notes/<name>' "$f"
   grep -qF 'copied verbatim' "$f"
   grep -qF 'Outcome, Decisions, Facts learned, Stale claims, Delivered, Open questions / friction, Follow-ups' "$f"

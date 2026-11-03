@@ -490,8 +490,13 @@ class Intake:
         """Each queued session at least FRESH_SECONDS old, oldest first, inside the tick's run budget and the ceiling."""
         markers = [m for m in (self.logs / "memory" / "sessions").glob("*.backfill") if self.eligible(m)]
         for marker in sorted(markers, key=lambda m: m.stat().st_mtime):
-            if self.runs >= self.max_runs or self.held() or not self._backfill(marker):
+            if self.runs >= self.max_runs or self.held():
                 return
+            try:
+                if not self._backfill(marker):
+                    return
+            except (OSError, ValueError) as exc:   # an unreadable transcript never comes right: it must not hold the queue
+                self._quarantine_backfill(marker, f"{exc.__class__.__name__}: {exc}")
 
     def _keep_dir(self) -> Path:
         """transcript_keep_dir as memory_keep.sh resolves it."""
@@ -510,7 +515,7 @@ class Intake:
         id8 = sid[:8]
         if any(any(self.vault.glob(f"{d}/*-{id8}-*.md")) for d in ("raw/*/notes", "raw/*/archive", "system/quarantine/poisoned")):
             return self._skip_backfill(marker, sid, "has a digest")  # a Stop digest, even one written after the marker
-        text, cut, last = backfill.excerpt(keep / f"{sid}.jsonl")
+        text, cut, last = backfill.excerpt(keep / f"{sid}.jsonl", str(state.get("cwd") or ""))
         try:
             zone = ZoneInfo(str(state.get("tz")))
         except (ZoneInfoNotFoundError, ValueError):
@@ -524,7 +529,7 @@ class Intake:
         name = f"{end:%Y-%m-%d-%H%M}-{id8}-backfill.md"
         staged = self.vault / "raw" / "inbox" / ".staging" / name
         staged.parent.mkdir(parents=True, exist_ok=True)
-        staged.write_text(f"{head}{text}\n", encoding="utf-8")
+        staged.write_text(f"{head}{text}\n", encoding="utf-8", errors="replace")   # a lone surrogate becomes "?"
         sha = sha256_file(staged)   # stable once the session ended: the run ledger counts attempts by it
         try:
             rc = self.headless([staged.relative_to(self.vault).as_posix()], [sha], "digest-backfill")
@@ -563,7 +568,7 @@ class Intake:
         dest = unique(self.vault / "system" / "quarantine" / "backfill" / marker.name)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(marker), str(dest))
-        dest.with_name(dest.name + ".reason").write_text(why + "\n", encoding="utf-8")
+        dest.with_name(dest.name + ".reason.txt").write_text(why + "\n", encoding="utf-8")
         self.alert(f"backfill of session {marker.name[:8]} quarantined: {why}")
 
     def _read_back(self, digest: Path, head: str) -> str:
@@ -577,7 +582,8 @@ class Intake:
             return "provenance"
         if re.search(r"^## Corrections\b", note.body, re.M):
             return "Corrections"
-        return "redaction" if redactmod.redact(note.body)[0] != note.body else ""
+        # prose=True as the Now check: "the refresh token: expires" is prose, "password: hunter2" is a secret
+        return "redaction" if redactmod.redact(note.body, prose=True)[0] != note.body else ""
 
     # -- meetings (meetings spec §2.3) -------------------------------------
     def import_meetings(self) -> None:

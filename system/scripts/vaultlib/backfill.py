@@ -23,8 +23,9 @@ def _entries(path: Path):
                 yield entry
 
 
-def _render(entry: dict):
-    """Prompts and assistant text as they are, each tool call as one line; tool results and thinking are dropped."""
+def _render(entry: dict, cwd: str):
+    """Prompts and assistant text as they are, each tool call as one line; tool results and thinking are dropped.
+    A file path under the session's cwd is shown relative to it, so a long absolute path is not redacted as a key."""
     ts, role = str(entry.get("timestamp", "")), entry["type"]
     message = entry.get("message")
     content = message.get("content") if isinstance(message, dict) else None
@@ -37,15 +38,18 @@ def _render(entry: dict):
             yield f"[{ts}] {role}: {block.get('text', '')}"
         elif kind == "tool_use":
             args = block.get("input") if isinstance(block.get("input"), dict) else {}
-            what = args.get("file_path") or " ".join(str(args.get("command", "")).split())[:200]
+            what = str(args.get("file_path") or "")
+            what = what[len(cwd):] if cwd and what.startswith(cwd) else what
+            what = what or " ".join(str(args.get("command", "")).split())[:200]
             yield f"[{ts}] tool {block.get('name', '')} {what}"
 
 
-def excerpt(path: Path) -> tuple:
+def excerpt(path: Path, cwd: str = "") -> tuple:
     """(text, characters left out, the last entry's timestamp). Over EXCERPT_CAP the newest part is kept."""
     lines, last = [], ""
+    cwd = f"{cwd.rstrip('/')}/" if cwd else ""
     for entry in _entries(path):
-        lines += _render(entry)
+        lines += _render(entry, cwd)
         last = str(entry.get("timestamp") or last)
     text = "\n".join(lines)
     cut = max(0, len(text) - EXCERPT_CAP)

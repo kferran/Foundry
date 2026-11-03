@@ -9,7 +9,7 @@ $ARGUMENTS
 
 ## Mode
 
-- **Headless run.** The first line above is a run id (`YYYYmmddTHHMMSS-digest-backfill-xxxx`); the second is the excerpt, a file under `raw/inbox/.staging/` whose name ends `-backfill.md`. Use Read and Write only.
+- **Headless run.** The first line above is a run id (`YYYYmmddTHHMMSS-digest-backfill-xxxx`); the second is the excerpt, a file under `raw/inbox/.staging/` whose name ends `-backfill.md`. Use Read and Write only. Read only the excerpt: the digest stays inside the session's own partition.
 - **Interactive run.** Stop and say that the intake tick runs it when a session ends with no digest, and that `/digest` writes a digest for the current session.
 
 ## The excerpt
