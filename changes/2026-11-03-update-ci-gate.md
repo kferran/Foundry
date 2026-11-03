@@ -1,0 +1,2 @@
+- Changed: the unattended update merges the template's head only when its GitHub check runs passed; a pending, failing, missing or unreadable result skips the day with one `[update]` alert and the vault unchanged, a hand run prints the result and merges, and each merge's alert names its `git revert -m 1` undo. `curl` is now required on a standalone machine and a server. (#494)
+  - Action: install `curl` if `system/scripts/check_deps.sh --strict` lists it as missing.

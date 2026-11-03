@@ -254,6 +254,7 @@ triage.chat system/scripts/triage_fetch.sh \{TRIAGE_CHAT_TIMEOUT:-([0-9]+)\}
 triage.lock system/scripts/triage.py intake\.lock\("run\.lock", timeout=([0-9]+)\)
 update.lock system/scripts/update_template.sh \{UPDATE_LOCK_WAIT:-([0-9]+)\}
 update.fetch system/scripts/update_template.sh \{UPDATE_FETCH_TIMEOUT:-([0-9]+)\}
+update.checks system/scripts/update_template.sh \{UPDATE_CHECKS_TIMEOUT:-([0-9]+)\}
 smoke.version system/scripts/smoke_check.sh \{SMOKE_VERSION_TIMEOUT:-([0-9]+)\}
 smoke.extensions system/scripts/smoke_check.sh timeout ([0-9]+) system/scripts/extensions\.py smoke
 smoke.units system/scripts/smoke_check.sh \{SMOKE_UNITS_TIMEOUT:-([0-9]+)\}
@@ -310,6 +311,7 @@ triage 1 grace.connector triage.chat
 triage 2 - triage.lock  # triage.py record, once per source
 update 1 - update.lock
 update 1 - update.fetch
+update 1 - update.checks  # the check runs of the template head (#436 S2)
 smoke/calendar 1 grace.listing listing
 smoke/calendar 1 grace.connector calendar
 smoke/meetings 1 grace.listing listing  # --check runs the search only
