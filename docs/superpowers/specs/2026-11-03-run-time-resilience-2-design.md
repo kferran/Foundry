@@ -1,7 +1,7 @@
 # Run-time resilience 2: Now merges, a gated update, notice holds, retention and the calendar check (#436 S2, S5–S8)
 
 **Grill:** 2026-11-03, the owner took every recommendation: https://github.com/kferran/Foundry/issues/436#issuecomment-6598636084, copied under `## Grill`.
-**Builder check:** 2026-11-03, by the author against master `7e2f7b4`. Six questions were settled in §3 to §8: curl is not a listed dependency; `get-url` expands `insteadOf`; no raw `list_events` page is recorded; an offline client ticks a line the server archives; old run folders that a recovery still needs; the watch shares the calendar log. A fresh builder check (2026-11-03) found: the client merges through Obsidian Git, outside the driver (§9 Q-C); the "settled" run folder needs both conditions (§6); extraction entries also wait 30 days (§6); a smaller calendar mark through the existing unavailable line (§7); the prune log dropped; the lift touches `hold.lifted` (§5); five wrong line cites corrected. Three are the owner's (§9).
+**Builder check:** 2026-11-03, by the author against master `7e2f7b4`. Six questions were settled in §3 to §8: curl is not a listed dependency; `get-url` expands `insteadOf`; no raw `list_events` page is recorded; an offline client ticks a line the server archives; old run folders that a recovery still needs; the watch shares the calendar log. A fresh builder check (2026-11-03) found: the client merges through Obsidian Git, outside the driver (§9 Q-C); the "settled" run folder needs both conditions (§6); extraction entries also wait 30 days (§6); a smaller calendar mark through the existing unavailable line (§7); the prune log dropped; the lift touches `hold.lifted` (§5); five wrong line cites corrected. The owner decided its three questions as recommended (§9).
 **Blueprint:** none: fixes to the existing sync, update, notify, intake and calendar code.
 
 ## 1. Why
@@ -62,7 +62,7 @@ The grill's case pairs as a rewrite: the server's text, the client's tick. The r
 
 **Failure.** Exit 1, or a crash, leaves Now.md conflicted. :139 then aborts, pushes the pending branch and blocks as today. The marker (:90) adds `now merge: <reason>` from `$err`. A conflict in any other file still blocks.
 
-**Docs.** FOUNDRY.md:279 is stale: the server writes Now.md for more than closing lines (`add`, `set`, `note`, `tag_writers`, expiry, the brief's publish). It now gives the line rules and says that an unplaceable line still blocks.
+**Docs.** FOUNDRY.md:279 is stale: the server writes Now.md for more than closing lines (`add`, `set`, `note`, `tag_writers`, expiry, the brief's publish). It now gives the line rules, says that an unplaceable line still blocks, and that the driver settles the server's merge only: a conflict on a client is merged in Obsidian (Q-C).
 
 **Tests.** `test_now.py`: `test_merge_tick_against_close`, `test_merge_rewrite_and_tick`, `test_merge_adds_on_both_sides`, `test_merge_archived_against_ticked`, `test_merge_blocks` (each exit-1 case). `sync.bats`: "a settled Now.md conflict does not block", "a refused one blocks with its reason", "another file's conflict still blocks", "a hand merge has no driver".
 
@@ -90,7 +90,7 @@ Skipped and neutral pass because GitHub's required checks count them as passing.
 
 ## 5. S6: a notice hold lifts after 24 h
 
-Before `notify.sh:40`, a hold more than 24 h old by mtime (`find "$hold" -mmin +1440`) moves to `system/logs/notify/hold.lifted` and is touched, so its mtime is the lift time. The tick alerts once a day `[notify] Notices hold lifted after 24 h: <the hold's line>; a session that breaks its rules holds them again`, then goes on. A younger hold exits 5 as today. The next session runs under the same checker (:70-72), so a second trip holds again (Q3; whether that hold lifts is §9 Q-B). `[notify]` has severity `never` (`alerts.py:23`): the lift shows in the brief, never in Slack. After the lift the collector's one-day window for unsent events applies.
+Before `notify.sh:40`, a hold more than 24 h old by mtime (`find "$hold" -mmin +1440`) moves to `system/logs/notify/hold.lifted` and is touched, so its mtime is the lift time. The tick alerts once a day `[notify] Notices hold lifted after 24 h: <the hold's line>; a session that breaks its rules holds them again`, then goes on. A younger hold exits 5 as today. The next session runs under the same checker (:70-72), so a second trip holds again (Q3). A hold written within 7 days of a lift (`hold.lifted`'s mtime) stays until deleted by hand, and its alert says so (Q-B). `[notify]` has severity `never` (`alerts.py:23`): the lift shows in the brief, never in Slack. After the lift the collector's one-day window for unsent events applies.
 
 **Docs:** FOUNDRY.md Slack notices ("until you … delete the hold file") and `notify.sh:9`. **Tests** (`notify.bats`): "a hold older than 24 h lifts with one alert and the tick posts", "a younger hold still exits 5", "a rule break after a lift holds again".
 
@@ -127,7 +127,9 @@ The repository records no raw page: the calendar spec and fixtures hold only the
 - **Safety surfaces:** sync (S5), update (S2), notify's fail-closed hold (S6), connector checker (S8). No unit file changes. The owner merges each PR.
 - Author's calls: the details §3 to §7 add to the grill. Two need a reason here. A hand-run update stays ungated and prints the CI state, because the owner is at the keyboard and it is §9 Q-A's way out. The calendar mark reads the fetch's own stderr in `prep_errors.log`, never the month's log, which the watch appends to all day.
 
-## 9. Open for the owner
+## 9. Decided by the owner
+
+Decided by the owner, 2026-11-03: Q-A, Q-B and Q-C as recommended.
 
 - **Q-A. A GitHub template that never goes green.** A fork with CI off (all jobs skipped) or a private template (unauthenticated 404) never updates unattended and alerts daily. Recommended: accept it with no config key; FOUNDRY.md names the way out, `system/scripts/update_template.sh` by hand, which stays ungated. The alternative is an `update_ci_check: off` key.
 - **Q-B. Does a second hold lift too?** Read literally, Q3 lets a session that keeps breaking its rules post once a day forever, each post checked only after it ran. Recommended: a hold written within 7 days of a lift (`hold.lifted`'s mtime) stays until deleted by hand, and its alert says so (about 3 lines). The alternative is that every hold lifts after 24 h.
