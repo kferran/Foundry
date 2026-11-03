@@ -508,3 +508,21 @@ keep_dir() { system/scripts/vault_index.py set system/config.md transcript_keep_
   [ -f "$BATS_TEST_TMPDIR/unmarked/kp-7.jsonl" ]
   [ -f "$BATS_TEST_TMPDIR/unmarked/$U1.jsonl" ]
 }
+
+# --- the recall log (#449, recall R0 spec §3) ---
+rlog() { cat "$VP"/system/logs/recall-*.jsonl; }
+
+@test "recall log: the hook passes the session id and source (#449)" {
+  start rl-1
+  [ "$status" -eq 0 ]
+  [ "$(rlog | jq -r 'select(.kind == "push") | .session + " " + .source')" = "rl-1 startup" ]
+}
+
+@test "recall log: a recall that fails writes failed: true (#449)" {
+  start rl-0  # builds the scope cache, which the stub below could not
+  printf '#!/bin/bash\nexit 1\n' > system/scripts/vault_index.py
+  start rl-2
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(rlog | jq -r 'select(.session == "rl-2") | .kind + " " + (.failed | tostring)')" = "push true" ]
+}
