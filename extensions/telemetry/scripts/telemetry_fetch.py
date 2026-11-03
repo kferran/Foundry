@@ -7,8 +7,8 @@ from pathlib import Path
 VAULT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(VAULT / "system" / "scripts"), str(Path(__file__).resolve().parent)]
 from telemetrylib import telemetry_run  # noqa: E402
-from vaultlib import alerts  # noqa: E402
+from vaultlib.api import guard  # noqa: E402
 
 # Only the unit's own call (no arguments) alerts: the smoke check's --check and --sources report their own failure.
-sys.exit(alerts.guard(lambda: telemetry_run.main(sys.argv[1:], VAULT), VAULT, "foundry-telemetry", "telemetry",
+sys.exit(guard(lambda: telemetry_run.main(sys.argv[1:], VAULT), VAULT, "foundry-telemetry", "telemetry",
                      alerting=not sys.argv[1:]))
