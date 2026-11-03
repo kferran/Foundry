@@ -37,13 +37,25 @@ alert_once() {  # <key> <text>: "- HH:MM:SS [FETCH_TAG] <key> <text>", at most o
   local f="system/logs/alerts_$(date +%F).md"
   grep -qF -- "[$FETCH_TAG] $1" "$f" 2>/dev/null || printf -- '- %s [%s] %s %s\n' "$(date +%H:%M:%S)" "$FETCH_TAG" "$1" "$2" >> "$f"
 }
-crash_trap() {  # <unit>: a set -e stop exits 70, which fails the unit, and alerts once a day (#436 S3)
+crash_trap() {  # <unit>: a crash exits 70, which fails the unit, and alerts once a day (#436 S3)
   set -E   # functions inherit the trap; an `||` list never fires it
-  # A subshell (a process substitution, which never had errexit) carries on as before; its failure reaches the
-  # script only through the command that reads it. An alert that cannot be written still exits 70.
-  # shellcheck disable=SC2064  # the unit is fixed now; the exit and line are read when the trap fires
-  trap "rc=\$?; if (( BASHPID == \$\$ )); then
-    alert_once '$1 crashed:' \"exit \$rc at line \$LINENO; journalctl --user -u $1\" || true; exit 70; fi" ERR
+  crash_unit="$1" crash_signal=0
+  # A subshell (a process substitution) carries on; its failure reaches the script only through its reader.
+  trap 'rc=$?; if (( BASHPID == $$ )); then crash_exit "exit $rc at line $LINENO"; fi' ERR
+  # A stop is no crash: the EXIT trap can read a failed command's exit then, so it is flagged and re-sent as TERM.
+  trap 'crash_signal=1; trap - TERM INT HUP; kill -TERM $$' TERM INT HUP
+  trap on_exit EXIT
+}
+crash_exit() {  # <text>: the unit's crash alert, once a day, then exit 70 (an alert that cannot be written too)
+  alert_once "$crash_unit crashed:" "$1; journalctl --user -u $crash_unit" || true
+  exit 70
+}
+on_exit() {  # the one EXIT trap bash keeps: exit_cleanup, then the crashes ERR never sees (an unset variable, a bad
+  # $(( ))). The script's own exit (its BASH_COMMAND), 70 from ERR and a stop signal stand.
+  local rc=$? cmd="$BASH_COMMAND"
+  eval "${exit_cleanup:-}" || true   # a cleanup that fails never makes a clean run a crash
+  [[ -n "${crash_unit:-}" && "$cmd" != exit && "$cmd" != "exit "* ]] || return 0
+  (( rc == 0 || rc == 70 || crash_signal || BASHPID != $$ )) || crash_exit "exit $rc"
 }
 fetch_reason() {  # <exit> <reason>: FETCH_REASON, led by its connector class (connector health spec §2)
   connector_classify "$1" "$2" "${work:-}"
@@ -70,7 +82,8 @@ fetch_check_arg() {  # "$@": check=1 for --check, 0 for no argument; anything el
 }
 fetch_workdir() {  # work: a new directory under /tmp, removed on exit; a session's directory under it goes too (#40)
   work="$(mktemp -d -p /tmp)"
-  trap 'rm -rf -- "$work"' EXIT
+  exit_cleanup='rm -rf -- "$work"'
+  trap on_exit EXIT
 }
 fetch_others() {  # <server tools...>: CONNECTOR_OTHERS, each tool but the one the session may call
   local t

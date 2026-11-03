@@ -44,7 +44,7 @@ export TZ
 mkdir -p system/logs
 FETCH_NAME=watch_fetch FETCH_TAG=intraday FETCH_FIELDS='{"count": 0}'
 FETCH_LOG="system/logs/watch_fetch-$(date +%Y-%m).jsonl"
-(( check )) || crash_trap foundry-watch   # the unit's own run: a set -e stop exits 70; 1 stays handled (#436 S3)
+(( check )) || crash_trap foundry-watch   # the unit's own run: a crash exits 70; 1 stays handled (#436 S3)
 rc=0
 
 step() {  # <step> [count]: the JSON object logline merges into a step's line
