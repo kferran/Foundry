@@ -128,7 +128,7 @@ held() {
   [ "$status" -eq 5 ]
   [ ! -e "$STUB_ARGS" ]
   [ -s system/logs/notify/hold ]
-  [ "${lines[-1]}" = "notify: held since a session broke its rules ($(head -n 1 system/logs/notify/hold)): read system/logs/notify-$(TZ=America/Denver date +%Y-%m).jsonl, then delete system/logs/notify/hold; it lifted once this week, so delete it by hand" ]
+  [ "${lines[-1]}" = "notify: other: held since a session broke its rules ($(head -n 1 system/logs/notify/hold)): read system/logs/notify-$(TZ=America/Denver date +%Y-%m).jsonl, then delete system/logs/notify/hold; it lifted once this week, so delete it by hand" ]
 }
 
 @test "a post that drifted counts as sent and alerts once a day" {

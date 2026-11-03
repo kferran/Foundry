@@ -6,7 +6,8 @@
 # day's first tick with something to send first posts the day's parent in its own session; each notice is a reply.
 # A post that reached the channel moves the cursor even when it drifted from the collected text, so a good post is
 # never repeated. A session that broke its rules (another tool or channel, other arguments, text nobody collected)
-# also moves the cursor, so the same lines are not fed again, and holds notices until the owner deletes the hold file.
+# also moves the cursor, so the same lines are not fed again, and holds notices. A hold lifts after 24 h with an alert
+# (#436 S6); one written within 7 days of a lift stays until the owner deletes the hold file (spec §9 Q-B).
 # Exit: 0 sent or nothing to send, 1 claude error (or a refused allow rule), 2 usage, 3 no connector, 4 timeout, the
 # usage limit or a tick already running, 5 held, 6 connector error, 7 the session broke its rules, 127 no claude.
 set -euo pipefail
@@ -36,8 +37,14 @@ if [[ -z "$channel" ]]; then
 fi
 exec 9> system/logs/notify.lock
 flock -n 9 || { logline 4 "a tick is already running"; exit 4; }
-hold="system/logs/notify/hold"
-[[ ! -e "$hold" ]] || fail 5 "held since a session broke its rules ($(head -n 1 "$hold")): read $FETCH_LOG, then delete $hold"
+hold="system/logs/notify/hold" lifted="system/logs/notify/hold.lifted" again=""
+[[ ! -e "$lifted" || -n "$(find "$lifted" -mtime +6)" ]] || again="; it lifted once this week, so delete it by hand"
+if [[ -e "$hold" && -z "$again" && -n "$(find "$hold" -mmin +1440)" ]]; then
+  mv -f "$hold" "$lifted"
+  touch "$lifted"
+  alert_once "Notices hold lifted after 24 h:" "$(head -n 1 "$lifted"); a session that breaks its rules holds them again"
+fi
+[[ ! -e "$hold" ]] || fail 5 "held since a session broke its rules ($(head -n 1 "$hold")): read $FETCH_LOG, then delete $hold$again"
 
 fetch_workdir
 if (( check )); then
