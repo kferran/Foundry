@@ -177,6 +177,27 @@ A plan with no `**Files:**` lines in the selected tasks: the fence is `git diff 
 
 No new unit, config key, alert tag or note type.
 
+## Blueprint checklist
+
+The ladder changes the Work Order shape's runner; it adds no part.
+
+| Part | |
+|---|---|
+| an approved plan that passes the readiness check | uses: `nc.check` at `add`, plus the red rule (§5); the tick's `screen()` checks the new fields' form (§7), so an edited note is refused as today |
+| the runner's sealed profile (`system/nightshift/*.settings.json`) | uses: unchanged; every rung runs under `plan.settings.json` with the same deny list, tool list and environment, and the red check runs in the same `bwrap` verify sandbox as the verify |
+
+| Defect class | What holds it |
+|---|---|
+| C2 Now line | One Now line, on the final outcome only, cut to 300 characters by `fit=True` (`test_a_final_block_leaves_one_now_line_naming_the_rungs`) |
+| C3 timeout | Each rung has half the item's budget in its own `elapsed-<rung>` file, and starts only when the tick's `_fits` allows (`test_a_rung_has_half_the_budget`) |
+| C4 confinement | Rungs reuse the session profile; the history and fence checks run in the runner's repository, and `test_delivery_runs_no_git_inside_the_session_clone` stays green |
+| C6 race | A rung is a queued note the tick starts under the global lock, through the same pool and repo-and-base key as any queued item |
+| C10 flaky test | The `bwrap` cases skip with a reason, as the existing ones do; the budget case uses the monkeypatched clock of `test_budget_spans_attempts` |
+| C11 input bounds | The handoff's caps: 200 log lines, 2,000 characters of the last message, a 200-character failing line, 5 paths in a fence block (`test_nightshift_run.py`) |
+| C12 stale docs | FOUNDRY.md's Work Orders paragraph and the order skill name `--red`, `--escalate` and `ladder.json` (Task 8; `vault_integrity.bats`) |
+| C13 change notes | `changes/2026-11-03-work-order-ladder.md` |
+| C14 gate escape | The handoff lives under `.nightshift/`, which the clone's `info/exclude` keeps out of every commit; a rung that writes outside the plan's files blocks with `fence` (`test_a_rung_outside_the_fence_blocks`) |
+
 ## 8. Tests
 
 pytest, `system/tests/python/`, each failing first:
