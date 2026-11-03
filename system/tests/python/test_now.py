@@ -1088,6 +1088,37 @@ def test_expiry_review_findings(vault, tmp_path):
     assert all(line in lines for line in stay)
 
 
+def test_the_stamp_goes_through_the_state_table(monkeypatch):
+    # Factory F7 spec §3, T9 and T10: the stamp's marks and stamps come from now_states.transition().
+    from vaultlib import now_states
+    calls, real = [], now_states.transition
+    monkeypatch.setattr(now_states, "transition", lambda line, writer, to, *a, **k: (
+        calls.append((writer, to)), real(line, writer, to, *a, **k))[1])
+    text = ("- [-] owed: Dropped (since 2026-10-01)\n- [x] owed: Ticked (since 2026-10-01)\n"
+            "- [ ] owed: Reopened (since 2026-10-01) _(closed: ticked 2026-10-02)_\n- [ ] owed: Open (since 2026-10-01)")
+    assert now.stamp(text, TODAY) == (
+        f"- [-] owed: Dropped (since 2026-10-01) _(closed: ticked {TODAY})_\n"
+        f"- [x] owed: Ticked (since 2026-10-01) _(closed: ticked {TODAY})_\n"
+        "- [ ] owed: Reopened (since 2026-10-01)\n- [ ] owed: Open (since 2026-10-01)")
+    assert calls == [("stamp", "dropped stamped"), ("stamp", "done stamped"), ("stamp", "open")]
+
+
+def test_a_reopened_expired_line_loses_its_writer_and_stays_open(vault, tmp_path):
+    # Factory F7 spec Goal 4: the owner unticks an expired machine line; it becomes the owner's and never expires again.
+    prepare(vault)
+    expired = f"- [-] owed: Old mail [via:: mail] (since 2026-10-01) _(closed: expired {TODAY})_"
+    reopened = "- [ ] " + expired[6:]
+    assert now.stamp(reopened, "2026-10-10") == "- [ ] owed: Old mail (since 2026-10-01)"
+    write(vault, "wiki/work/Now.md", f"---\ntype: concept\n---\n# Now\n\n## Needs you\n{reopened}\n")
+    for day in ("2026-10-10", "2026-10-11"):
+        assert now.check(vault, day, lambda m: None, gh_stub(tmp_path)) == 0
+        assert now.open_lines(page(vault)) == [reopened]   # check wrote nothing
+    now.add(vault, "work", "owed", "Another", "2026-10-11")
+    assert now.open_lines(page(vault))[0] == "- [ ] owed: Old mail (since 2026-10-01)"
+    assert now.check(vault, "2026-10-12", lambda m: None, gh_stub(tmp_path)) == 0
+    assert "- [ ] owed: Old mail (since 2026-10-01)" in page(vault).split("\n")
+
+
 def test_tag_writers_skips_a_line_it_cannot_tag_whole(vault):
     prepare(vault)
     mail = "https://mail.google.com/mail/#all/a1"

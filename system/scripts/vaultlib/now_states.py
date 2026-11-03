@@ -26,7 +26,7 @@ ALLOWED = {   # (writer, from) -> the states it may write; from None is a line t
 
 def state(line):
     """The line's state, one of STATES; None for a line that is no checkbox."""
-    if not (line and line.startswith("- [") and line[4:5] == "]"):
+    if not (line and line.startswith("- [") and line[4:6] == "] "):
         return None
     base = STATE.get(line[3], "unknown")
     return base if base == "unknown" or not now.STAMP.search(line) else f"{base} stamped"

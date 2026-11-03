@@ -13,7 +13,7 @@ from functools import partial
 from pathlib import Path
 
 from . import briefings, frontmatter, index, links as linkmod, nightshift_item
-from . import redact
+from . import now_states, redact
 
 redact_credentials = partial(redact.redact_credentials, prose=True)   # a Now line is prose (#386)
 
@@ -136,13 +136,16 @@ def open_lines(text: str) -> list:
 
 def stamp(text: str, today: str) -> str:
     """Stamp a ticked or dropped line that has no close date; a reopened line loses its old stamp. Closed lines stay
-    until archive() moves them (phase A spec §3.4)."""
+    until archive() moves them (phase A spec §3.4). A reopened expired line also loses its writer, so it is the owner's
+    and never expires again (factory F7 spec Goal 4)."""
     out = []
     for line in text.split("\n"):
-        if line.startswith("- [ ] "):
-            line = STAMP.sub("", line).rstrip()
-        elif CLOSED.match(line) and not STAMP.search(line):
-            line = f"{line.rstrip()} _(closed: ticked {today})_"
+        st = now_states.state(line)
+        if st == "open stamped":
+            new = now_states.transition(line, "stamp", "open")
+            line = strip_via(new) if STAMP.search(line).group(0).startswith("_(closed: expired ") else new
+        elif st in ("done", "dropped"):
+            line = now_states.transition(line, "stamp", f"{st} stamped", "ticked", today)
         out.append(line)
     return "\n".join(out)
 
@@ -634,14 +637,15 @@ def check(vault, today: str, alert, gh: str = "gh") -> int:
     """Close each open line whose evidence shows it is finished, and expire each untouched machine line. Returns the
     lines closed.
 
-    A page is written only when a line closes, and from a fresh read, so a tick made while gh ran is kept.
-    The first failed pull-request check skips the others until the next tick; expiry runs regardless."""
+    A page is written only when a line closes, and from a fresh read, so a tick made while gh ran is kept. Each read
+    is stamped first, so a reopened line is judged without its old stamp. The first failed pull-request check skips
+    the others until the next tick; expiry runs regardless."""
     closed = 0
-    pages = {partition: open_lines(read(vault, partition)) for partition in PARTITIONS}
+    pages = {partition: open_lines(stamp(read(vault, partition), today)) for partition in PARTITIONS}
     found = closures(vault, [line for lines in pages.values() for line in lines], gh,
                      lambda line, reason: _failed(vault, today, line, reason, alert))
     for partition in PARTITIONS:
-        lines, before = read(vault, partition).split("\n"), closed
+        lines, before = stamp(read(vault, partition), today).split("\n"), closed
         for i, line in enumerate(lines):
             key = line.rstrip()
             if key in found:
