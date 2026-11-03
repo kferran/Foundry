@@ -924,3 +924,46 @@ def test_restored_briefing_drops_a_duplicate(iv):
     assert len(calls(iv)) == 1
     assert len(list((iv / "raw/archive").glob("daily_note_drop_*-dup-*.md"))) == 1
     assert list((iv / "raw/inbox").glob("daily_note_drop_*.md")) == []
+
+
+def pruned(iv):
+    path = iv / "system/logs/.pruned"
+    return path.read_text().strip() if path.exists() else ""
+
+
+def alerts_text(iv):
+    return (iv / f"system/logs/alerts_{today()}.md").read_text()
+
+
+def test_prune_once_a_day_and_lock_busy(iv, monkeypatch):
+    from vaultlib import prune
+    first = run_folder(iv, days_ago(40), "ingest-aaaa", {"committed": "{}"})
+    pending = run_folder(iv, days_ago(41), "brief-bbbb", {"publish.journal":
+                         '{"staged": "s", "target": "wiki/a.md", "expected": null}\n'})
+    Intake(iv, now=later()).run()
+    assert not first.exists()
+    assert pruned(iv) == today()
+    second = run_folder(iv, days_ago(40), "ingest-cccc", {"committed": "{}"})
+    Intake(iv, now=later()).run()
+    assert second.is_dir()
+    assert alerts_text(iv).count("run folder(s) older than 30 days") == 1
+    assert (f"[intake] 1 run folder(s) older than 30 days are not settled (oldest {pending.name}); they stay\n"
+            in alerts_text(iv))
+    (iv / "system/logs/.pruned").unlink()
+    with open(iv / "system/run.lock", "a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        Intake(iv, now=later()).prune()
+    assert pruned(iv) == ""
+    assert second.is_dir()
+    tries = []
+
+    def boom(vault, cutoff):   # the pass raises part way, after the run folders
+        tries.append(cutoff)
+        raise OSError("disk went away")
+    monkeypatch.setattr(prune, "_entries", boom)
+    Intake(iv, now=later()).run()
+    assert not second.exists()
+    Intake(iv, now=later()).run()
+    assert len(tries) == 2
+    assert pruned(iv) == ""
+    assert alerts_text(iv).count("[intake] prune failed (OSError: disk went away); will retry\n") == 1

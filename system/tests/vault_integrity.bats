@@ -572,6 +572,7 @@ sealed_problems() {
   # 16,480 -> 16,700 (#436 S7 and S8, recall R2, owner approved 2026-11-03): recall R1 took 222 lines (16,184 to
   # 16,406, the plan aimed at 130), S2 37 and S6 8, which left 29; the raise covers the 30-day prune (S7), the
   # calendar check (S8) and recall R2.
+  # S7 took 108 lines (16,451 to 16,559): vaultlib/prune.py and the intake tick's once-a-day step.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"

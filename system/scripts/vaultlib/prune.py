@@ -15,19 +15,15 @@ BRIEFING = re.compile(r"^briefings/(\d{4}-\d{2}-\d{2})\.md$")
 
 def _settled(rd: Path, since: str) -> bool:
     """Recovery has nothing to roll forward, and commit_runs.py has nothing to commit (its `pending`)."""
-    journal = rd / "publish.journal"
+    journal, report_file = rd / "publish.journal", rd / "publish.json"
     try:
         if journal.exists() and not publish._committed(journal):
             return False
-    except ValueError:   # a torn journal: recovery alerts on it
-        return False
-    if (rd / "committed").exists() or rd.name[:15] < since:
-        return True
-    try:
-        report = json.loads((rd / "publish.json").read_text(encoding="utf-8"))
-    except FileNotFoundError:   # the run ended before publish
-        return True
-    except (OSError, ValueError):
+        # no publish.json: the run ended before publish
+        if (rd / "committed").exists() or rd.name[:15] < since or not report_file.exists():
+            return True
+        report = json.loads(report_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):   # a torn journal or report stays for recovery or a hand fix
         return False
     return isinstance(report, dict) and not [p for p in report.get("published") or [] if isinstance(p, str)]
 
@@ -60,10 +56,8 @@ def prune(vault, cutoff: date) -> dict:
     vault = Path(vault)
     logs = vault / "system" / "logs"
     done = {"runs": 0, "inputs": 0, "quarantine": 0, "entries": 0, "unsettled": 0, "oldest": ""}
-    try:
-        since = (logs / "commit_runs.since").read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        since = ""
+    since_file = logs / "commit_runs.since"   # absent until commit_runs.py first runs
+    since = since_file.read_text(encoding="utf-8").strip() if since_file.is_file() else ""
     runs = logs / "runs"
     for rd in sorted(runs.iterdir()) if runs.is_dir() else []:
         old = publish.RUN_ID.match(rd.name) and rd.name[:8] < f"{cutoff:%Y%m%d}"
@@ -81,7 +75,7 @@ def prune(vault, cutoff: date) -> dict:
             shutil.rmtree(d)
             done["inputs"] += 1
     for row in quarantine.items(vault, cutoff + timedelta(days=30)):
-        if row.kind in ("run", "telemetry_state") and row.days >= 30:
+        if row.kind in quarantine.SAFE and row.days >= 30:
             item = vault / row.path
             if item.is_dir() and not item.is_symlink():
                 shutil.rmtree(item)
