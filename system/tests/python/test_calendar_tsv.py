@@ -1,5 +1,6 @@
 """calendar_tsv.py: validate the calendar fetch's stream-json and print TSV (calendar spec §4.4)."""
 import json
+import os
 import subprocess
 import sys
 
@@ -33,12 +34,80 @@ def ok(events):
     return {"status": "ok", "reason": "", "events": events}
 
 
-def run(text, tmp_path, day=DAY):
+def run(text, tmp_path, day=DAY, tz="America/New_York"):
     summary = tmp_path / "summary.json"
     p = subprocess.run([sys.executable, str(SCRIPT), day, "--summary", str(summary)],
-                       input=text, capture_output=True, text=True)
+                       input=text, capture_output=True, text=True, env={**os.environ, "TZ": tz})
     data = json.loads(summary.read_text()) if summary.exists() else None
     return p, data
+
+
+# The probe's page (docs/superpowers/spikes/2026-11-03-list-events-page.md): an all-day Holiday whose start.date is
+# midnight UTC, a Standup at 09:00-04:00 and an Out of office at 17:00Z, all on 2026-10-05.
+PAGE = json.loads((REPO / "system/tests/fixtures/calendar/list_events_page.jsonl").read_text())["tool_use_result"]["structuredContent"]
+NY = [ev(start_time="", end_time="", title="Holiday"), ev(),
+      ev(start_time="13:00", end_time="14:00", title="Out of office")]   # the page read in America/New_York
+
+
+def page(events=None, text=True):
+    """A list_events call whose result holds PAGE (or PAGE with `events`) in structuredContent and in its text."""
+    p = dict(PAGE, events=PAGE["events"] if events is None else events)
+    return call(text=json.dumps(p) if text else "…", sc=p)
+
+
+def test_matching_rows_verified(tmp_path):
+    for calls in [(page(),),
+                  (page(PAGE["events"][:2]), page(PAGE["events"][2:])),       # two pages
+                  (call(text=json.dumps(PAGE)),),                             # the text copy only
+                  (call(text="rate limited", error=True), page())]:           # a failed page, then the retry
+        p, data = run(session(ok(NY), calls=calls), tmp_path)
+        assert p.returncode == 0, p.stderr
+        assert data["unverified"] == "", calls
+        assert "unverified" not in p.stderr
+
+
+def test_count_mismatch(tmp_path):
+    p, data = run(session(ok(NY[:2]), calls=(page(),)), tmp_path)
+    assert p.returncode == 0
+    assert len(p.stdout.splitlines()) == 2
+    assert data["unverified"] == "the connector listed 3 events, the rows hold 2"
+    assert p.stderr == "calendar_tsv: unverified: the connector listed 3 events, the rows hold 2\n"
+
+
+def test_changed_row_named_without_text(tmp_path):
+    rows = [NY[0], ev(title="Private review"), NY[2]]
+    p, data = run(session(ok(rows), calls=(page(),)), tmp_path)
+    assert p.returncode == 0
+    assert data["unverified"] == "row 2 (2026-10-05 09:00) differs from the connector's results"
+    for title in ("Holiday", "Standup", "Out of office", "Private review"):
+        assert title not in data["unverified"] and title not in p.stderr
+    p, data = run(session(ok([ev(start_time="", end_time="", title="Other"), *NY[1:]]), calls=(page(),)), tmp_path)
+    assert data["unverified"] == "row 1 (2026-10-05 all day) differs from the connector's results"
+
+
+def test_all_day_and_offset_times(tmp_path):
+    # West of UTC: the Holiday's midnight-UTC date stays 2026-10-05; the -04:00 and Z starts convert.
+    la = [NY[0], ev(start_time="06:00", end_time="06:30"), ev(start_time="10:00", end_time="11:00", title="Out of office")]
+    p, data = run(session(ok(la), calls=(page(),)), tmp_path, tz="America/Los_Angeles")
+    assert (p.returncode, data["unverified"]) == (0, ""), p.stderr
+    p, data = run(session(ok(NY), calls=(page(),)), tmp_path, tz="America/Los_Angeles")   # times not converted
+    assert data["unverified"] == "row 2 (2026-10-05 09:00) differs from the connector's results"
+
+
+@pytest.mark.parametrize("calls", [
+    (call(text="…"),),                                          # no structuredContent and a text that is no JSON
+    (page(text=False), call(sc={"items": []})),                 # a page without events
+    (page([{"summary": "No start"}]),),
+    (page([{"summary": "Bad time", "start": {"dateTime": "soon"}}]),),
+    (),                                                         # a call with no result: the stream has none
+])
+def test_unreadable_pages_unverified(tmp_path, calls):
+    text = session(ok(NY), calls=calls or (call(),))
+    if not calls:   # drop the call's tool_result line
+        text = "\n".join(line for line in text.splitlines() if '"tool_use_id": "t1"' not in line) + "\n"
+    p, data = run(text, tmp_path)
+    assert p.returncode == 0, p.stderr
+    assert data["unverified"] == "the connector's results could not be read"
 
 
 def test_valid_events_become_sorted_sanitized_tsv(tmp_path):
