@@ -22,8 +22,9 @@ allow: ["Bash(extensions/telemetry/scripts/telemetry_fetch.py --list)", "Bash(ex
 deps: [az]
 index_ignore: []
 budget:
-  values: {RCA_TIMEOUT: 300, PER_TICK: 3, FILED_LOCK_WAIT: 120}
+  values: {RCA_TIMEOUT: 300, PER_TICK: 3, FILED_LOCK_WAIT: 120, TELEMETRY_PREP_TIMEOUT: 120}
   steps:  # rca.py tick runs rca_file.sh for at most PER_TICK drafts
+    - "brief 2 - TELEMETRY_PREP_TIMEOUT"  # brief_prep.sh's last fetch, once per run, twice when the first is rejected
     - "tick PER_TICK grace.listing listing"
     - "tick PER_TICK grace.connector RCA_TIMEOUT"
     - "tick PER_TICK - FILED_LOCK_WAIT"  # rca.py filed or reopen waits for run.lock

@@ -1,0 +1,1 @@
+- Fixed: a telemetry source that hangs no longer holds the morning brief; the brief lists it as unavailable. (#PR)
