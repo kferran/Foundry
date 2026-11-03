@@ -32,7 +32,9 @@ INVALID_INPUT_EXIT = 2
 SETTINGS_EXIT = 3
 SIGNAL_EXITS = (129, 130, 143)  # SIGHUP/SIGINT/SIGTERM: a stop or shutdown, not the input
 BUSY_EXIT = 6   # run.lock busy: ingest waits INGEST_LOCK_WAIT, then the tick ends and the next one retries (#299)
-NOT_INPUT_FAULT = (0, SETTINGS_EXIT, CAP_EXIT, BUSY_EXIT, *SIGNAL_EXITS)
+OUTAGE_EXIT = 7   # claude itself does not work (an outage, an expired login): held like the cap (#436 S1)
+NOT_INPUT_FAULT = (0, SETTINGS_EXIT, CAP_EXIT, BUSY_EXIT, OUTAGE_EXIT, *SIGNAL_EXITS)
+STOP_TICK = (CAP_EXIT, SETTINGS_EXIT, BUSY_EXIT, OUTAGE_EXIT)   # the tick ends and the inputs stay
 MEETING_PARTITIONS = ("work", "personal")
 DROP_SUFFIXES = (".vtt", ".srt", ".txt", ".md")
 DUPLICATE_SECONDS = 15 * 60
@@ -399,7 +401,7 @@ class Intake:
             archive.mkdir(parents=True, exist_ok=True)
             path.rename(unique(archive / path.name))
             return True
-        if rc in (CAP_EXIT, SETTINGS_EXIT, BUSY_EXIT):
+        if rc in STOP_TICK:
             return False  # cap or invalid settings: every later run would fail too
         if rc == INVALID_INPUT_EXIT:
             # run_headless.sh rejects before any ledger line, so attempts would never advance
@@ -460,7 +462,7 @@ class Intake:
                 rc = self.headless([p.relative_to(self.vault).as_posix() for p in batch], [shas[p] for p in batch])
                 if rc == 0:
                     self._archive_batch(partition, batch, shas, solo)
-                elif rc in (CAP_EXIT, SETTINGS_EXIT, BUSY_EXIT):
+                elif rc in STOP_TICK:
                     return False  # cap or invalid settings: every later run would fail too
                 elif len(batch) > 1:
                     # includes rc 2: one bad name must not poison its batch-mates

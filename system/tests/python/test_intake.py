@@ -174,6 +174,20 @@ def test_a_busy_run_lock_ends_the_tick_with_inputs_kept_and_no_retry_alert(iv, m
     assert "will retry" not in alerts and "one at a time" not in alerts
 
 
+def test_an_outage_ends_the_tick_and_never_poisons(iv, monkeypatch):
+    # #436 S1: exit 7 (claude itself fails) ends the tick like the cap; no attempt, no retry alert.
+    write(iv, "raw/inbox/a.md", "a")
+    write(iv, "raw/work/notes/d1.md", "---\ntype: session_digest\npartition: work\n---\none\n")
+    monkeypatch.setenv("STUB_RC", "7")
+    for _ in range(3):
+        Intake(iv, now=later()).run()
+    assert len(calls(iv)) == 3
+    assert (iv / "raw/inbox/a.md").exists() and (iv / "raw/work/notes/d1.md").exists()
+    assert not (iv / "system/quarantine/poisoned").exists()
+    alerts = "".join(p.read_text() for p in (iv / "system/logs").glob("alerts_*.md"))
+    assert "will retry" not in alerts and "one at a time" not in alerts
+
+
 def usage_reading(vault, five_hour, hours_ago=0.0):
     from datetime import timedelta, timezone
     at = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
@@ -381,7 +395,7 @@ def test_settings_and_busy_exits_do_not_poison(iv, monkeypatch):
 def test_failures_since_retry_ignores_nonfault_exits(iv):
     import hashlib
     sha = hashlib.sha256(b"a").hexdigest()
-    for rc in (3, 4, 6, None, "x", 0):
+    for rc in (3, 4, 6, 7, None, "x", 0):
         ledger_line(iv, command="ingest", input_sha256=[sha], exit=rc)
     assert Intake(iv).failures_since_retry(sha) == 0
     ledger_line(iv, command="ingest", input_sha256=[sha], exit=5)

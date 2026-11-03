@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=15830
+CORE_CAP=15850
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -561,6 +561,8 @@ sealed_problems() {
   # their release in intake's Now step, the publish gate's held-line rules and the review fixes took core to 15,770.
   # 15,780 -> 15,830 (#436 S3, owner to approve at merge): a crash exits 70 and alerts once a day (alerts.guard for the
   # Python units, crash_trap for the shell ones) and the review fixes took core from 15,774 to 15,812.
+  # 15,830 -> 15,850 (#436 S1, owner to approve at merge): the outage check after a failed or timed-out run, exit 7,
+  # its daily alert, intake holding on it and the review fix took core from 15,812 to 15,829.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
