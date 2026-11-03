@@ -9,6 +9,7 @@ from pathlib import Path
 
 STAMP = re.compile(r"(\d{8})T\d{6}")   # a run id or a telemetry backup name starts with %Y%m%dT%H%M%S
 SIDECARS = (".origin.json", ".reason.txt")
+SAFE = ("run", "telemetry_state")   # the kinds whose way out is "safe to delete"; the daily prune takes them at 30 days
 
 
 @dataclass
