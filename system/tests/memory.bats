@@ -567,3 +567,27 @@ bashtool() {  # bashtool <sid> <command> [stdout]: a Bash PostToolUse event
   run grep -c '"pull"' "$VP"/system/logs/recall-*.jsonl
   [ "$output" = "0" ]
 }
+
+failtool() {  # failtool <sid> <command>: a PostToolUseFailure event, which carries no tool_response
+  hook memory_activity.sh "$(jq -cn --arg s "$1" --arg c "$VP" --arg cmd "$2" '{session_id: $s, cwd: $c,
+    hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_input: {command: $cmd}, error: "Exit code 1"}')"
+}
+
+@test "recall log: a failed Bash show logs found: false (#449)" {
+  start pf-1
+  failtool pf-1 "system/scripts/vault_index.py show Nothing"
+  [ "$status" -eq 0 ]
+  [ "$(rlog | jq -r 'select(.kind == "pull") | .sub + " " + .note + " " + (.found | tostring) + " " + (.hits | tostring)')" = "show Nothing false 0" ]
+}
+
+@test "recall log: a failed plain Bash call spawns neither jq nor python (#449)" {
+  start pf-2
+  stubs="$BATS_TEST_TMPDIR/stubs"
+  mkdir -p "$stubs"
+  for c in jq python3 python; do printf '#!/bin/bash\ntouch "%s/spawned-%s"\nexit 1\n' "$BATS_TEST_TMPDIR" "$c" > "$stubs/$c"; chmod +x "$stubs/$c"; done
+  j="$(jq -cn --arg c "$VP" '{session_id: "pf-2", cwd: $c, hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_input: {command: "false"}, error: "Exit code 1"}')"
+  PATH="$stubs:$PATH" hook memory_activity.sh "$j"
+  [ "$status" -eq 0 ]
+  run ls "$BATS_TEST_TMPDIR"/spawned-*
+  [ "$status" -ne 0 ]
+}

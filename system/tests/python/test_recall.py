@@ -548,3 +548,20 @@ def test_neither_log_holds_prompt_note_or_query_text(cli, vault):
     assert log.count("\n") == 3
     for marker in ("Marker-digest-text", "Marker-note-text", "Marker-query-text", "marker-query-text"):
         assert marker not in log
+
+
+def failed(command, sid="s-1"):
+    """A PostToolUseFailure event (plan Task 1 probe): a Bash call that exits non-zero, with no tool_response."""
+    return {"session_id": sid, "hook_event_name": "PostToolUseFailure", "tool_name": "Bash",
+            "tool_input": {"command": command}, "error": "Exit code 1\nnot found: Marker-error-text"}
+
+
+def test_pull_a_failed_call_logs_found_false_and_hits_0(vault):
+    session(vault)
+    [show] = recall_log.pull(vault, failed(f"{VI} show Nothing"))
+    [rel] = recall_log.pull(vault, failed(f'{VI} related "no such terms"'))
+    [query] = recall_log.pull(vault, failed(f'{VI} query "SELECT bad"'))
+    assert (show["sub"], show["note"], show["found"]) == ("show", "Nothing", False)
+    assert (rel["sub"], rel["hits"], rel["paths"], rel["found"]) == ("related", 0, [], False)
+    assert (query["sub"], query["hits"], query["found"]) == ("query", 0, False)
+    assert "Marker-error-text" not in "".join(p.read_text() for p in (vault / "system/logs").glob("recall-*.jsonl"))

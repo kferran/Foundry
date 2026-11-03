@@ -95,7 +95,10 @@ def pull(vault, event: dict) -> list:
     except (OSError, ValueError):
         return []
     command = (event.get("tool_input") or {}).get("command") or ""
-    resp = event.get("tool_response")   # Bash gives {stdout, stderr, ...}; the probe (plan Task 1) confirms it
+    # Probe (plan Task 1): PostToolUse carries tool_response {stdout, stderr, ...}; a call that exits non-zero fires
+    # PostToolUseFailure instead, with no tool_response (its error text is never read).
+    failed = event.get("hook_event_name") == "PostToolUseFailure"
+    resp = event.get("tool_response")
     stdout = resp if isinstance(resp, str) else (resp.get("stdout") or "") if isinstance(resp, dict) else ""
     calls, records = _calls(command), []
     for sub, arg in calls:
@@ -105,7 +108,9 @@ def pull(vault, event: dict) -> list:
             r["terms"] = terms_hash(vault, arg)
         if sub in ("show", "backlinks"):
             r["note"] = arg
-        if len(calls) == 1 and sub == "show":   # two calls share one stdout, so neither gets counts
+        if len(calls) == 1 and failed and sub in ("related", "query", "show", "backlinks"):
+            r.update(hits=0, paths=[], found=False)   # exit non-zero: nothing came back
+        elif len(calls) == 1 and sub == "show":   # two calls share one stdout, so neither gets counts
             r["found"] = bool(stdout.strip())
         elif len(calls) == 1 and sub in ("related", "backlinks"):
             paths = _paths(sub, stdout)
