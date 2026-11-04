@@ -36,18 +36,18 @@ Date: 2026-11-04. Sources: shallow clones of each repo's default branch on this 
 
 ### Where The Foundry is behind
 
-- **No retrieval measurement.** Both claude-obsidian (`bench --queries`) and obsidian-second-brain (`/obsidian-retrieval-eval`) measure search quality on your own questions. The Foundry has ingest evals but no retrieval eval, and #345 (semantic retrieval) is waiting on a research brief that has nothing to score against.
-- **Inputs from the web and media.** URLs, YouTube, audio and images are handled by obsidian-second-brain today; the Foundry's URL capture is still a waiting item under #333.
+- **No retrieval measurement.** Both claude-obsidian (`bench --queries`) and obsidian-second-brain (`/obsidian-retrieval-eval`) measure search quality on your own questions. The Foundry has ingest evals and no retrieval eval yet: the recall track planned one (#449 item 3, 20 to 30 real questions scored by recall@5 and MRR), and the R0 grill (Q4) moved it to R4 (#446), the first change that needs scoring. #345 (semantic retrieval) is R6, after it.
+- **Inputs from the web and media.** URLs, YouTube, audio and images are handled by obsidian-second-brain today; the Foundry's URL capture is roadmap item 11 (from the closed #333), with source fetchers in #347.
 - **Obsidian-native views.** The Foundry depends on the Dataview community plugin. Bases is now a core Obsidian feature, and kepano's skill teaches its syntax. Canvas is unused.
 - **Portability and setup cost.** Linux and systemd only, Claude Code only, a long setup. This is a deliberate trade for unattended runs, but it is the main reason the others are easier to adopt.
 - **Thinking tools.** obsidian-second-brain's `/obsidian-challenge`, `/obsidian-emerge` and `/obsidian-panel` use the vault to push back on a decision. The Foundry has `/grilling`, which does not read the wiki; #346 covers this and is ungrilled.
 
 ## Worth borrowing, ranked
 
-1. **Retrieval eval (from claude-obsidian `bench` and obsidian-second-brain `/obsidian-retrieval-eval`).** A golden file of 20 to 40 real questions with the notes that should answer them, scored as recall@k and MRR against `vault_index.py query|related`. Small (one script, one golden file, reuses the `eval_check.py` pattern), and it gives #345 a baseline: semantic recall gets built only if it beats FTS5 on this file. Recommend doing this before queuing the semantic-recall research brief.
+1. **Retrieval eval (from claude-obsidian `bench` and obsidian-second-brain `/obsidian-retrieval-eval`).** A golden file of 20 to 40 real questions with the notes that should answer them, scored as recall@k and MRR against `vault_index.py query|related`. Small (one script, one golden file, reuses the `eval_check.py` pattern), and it gives #345 a baseline: semantic recall gets built only if it beats FTS5 on this file. This is #449 item 3, which waits for R4 (#446).
 2. **Freshness policy and lint (obsidian-second-brain `references/freshness-policy.md`, `scripts/freshness_lint.py`).** This is #344. The spec is already written and MIT: every fact is timeless, dated (`(as of YYYY-MM-DD)`) or a pointer to where truth lives; a present-tense count or status with no stamp is an error. Its refresh loop (re-observe, convert to pointer, or retire into a dated note) fits the Foundry's Stale claims rule. Borrow the rule text into the ingest skill and the concept schema, and the lint rules into `/lint` and the publish gate (gate as warning first).
 3. **Owner check-in on stale people and project notes (`/obsidian-checkin`).** Lint can only compare notes with notes; news that never reached the vault (a job change, a settled bill) needs the owner. Its design fits the Foundry well: a script picks at most 3 entity notes untouched for 14 days, the model writes 1 to 3 facts from each, open cards persist in a state file, and "same" stamps `last-checked`. In the Foundry this would be a brief section (or Now lines with `[via:: checkin]`) and pairs with gap plan E, the people Workcell.
-4. **Vendor kepano's `obsidian-markdown` and `obsidian-bases` skills.** Reference-only, MIT, maintained by Obsidian's CEO. Ingest gets correct callouts, embeds and properties, and Bases gives a core-plugin path for the From Now block and `wiki/Index.md` dashboards, which removes the Dataview dependency over time. `defuddle` is the natural fetcher for #333 URL capture.
+4. **Vendor kepano's `obsidian-markdown` and `obsidian-bases` skills.** Reference-only, MIT, maintained by Obsidian's CEO. Ingest gets correct callouts, embeds and properties, and Bases gives a core-plugin path for the `wiki/Index.md` dashboards (the From Now block is a Dataview `TASK` query that ticks lines in place, which Bases may not cover; unverified). `defuddle` is the natural fetcher for URL capture (#347).
 5. **`/obsidian-challenge` as the model for #346.** "Your vault argues against your idea using your own history": search the index for reversed decisions, failures and earlier preferences on the topic and quote them. A read-only skill on top of `vault_index.py`, close to what `/grilling` already does with an added wiki search step.
 6. **Source and claim ledgers (claude-obsidian `provenance.md`).** SHA-256 identity per source, an authority level (`official`, `primary`, `secondary`, `community`), and the rule that two sources with the same origin do not count as independent corroboration. Worth it only if research Work Orders start citing many web sources; until then, note it and skip.
 7. **Proactivity levels (second-brain-starter).** Observer, Advisor, Assistant, Partner as one named setting for how far triage and the intraday watch may act. The Foundry is fixed at Advisor (it drafts, never sends). Useful only as wording if you later let it send low-risk messages.
@@ -61,4 +61,18 @@ Date: 2026-11-04. Sources: shallow clones of each repo's default branch on this 
 
 ## Already on your roadmap
 
-Items 2, 4 (`defuddle`, through #333), 5 and the semantic half of item 1 already exist as #344, #333, #346 and #345. What these repos add is working reference implementations to read before each grill, and the retrieval eval, which is not on the roadmap and should come before #345.
+Items 1, 2, 4 (`defuddle`) and 5 already exist as #449 item 3 (with #345 for its semantic half), #344, #347 and #346. What these repos add is working reference implementations to read before each grill.
+
+## Decisions (owner, 2026-11-04)
+
+Grilled in one round; every recommendation approved. Each decision is recorded on its issue.
+
+| Item | Decision |
+|---|---|
+| 1. Retrieval eval | Stays with R4 (#446), as the R0 grill placed it; both reference implementations noted on #449. |
+| 2. Freshness lint | #344 keeps its place in the grill queue; rule text in ingest and gate-as-warning-first added as grill input. |
+| 3. Owner check-in | A candidate for gap plan E, the people Workcell, decided in E's spec (#112). |
+| 4. Kepano skills, Bases | No skills loaded into headless runs (prompt words). Bases in place of Dataview filed as #510, last in the grill queue; Defuddle noted on #347. |
+| 5. Challenge | #346 keeps its place; its grill waits for R4's retrieval eval. |
+| 6. Source ledgers | Dropped. |
+| 7. Proactivity levels | Kept as an open item (owner: "the foreman operating in multiple capacities and instructing sub agents accordingly"): #511, in the grill queue right after #443. |
