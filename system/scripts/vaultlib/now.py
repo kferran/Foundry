@@ -43,10 +43,11 @@ SINCE = re.compile(r"\s*_\(open since (\d{4}-\d{2}-\d{2})(?:, \d+ days?)?\)_")
 # Dataview reads the key in any case and "::" with or without spaces, so a hand edit may write either.
 REC = re.compile(r"\[rec::\s*([^\[\]\n]*[^\[\]\s])\s*\]", re.IGNORECASE)
 DUE = re.compile(r"\[due::\s*(\d{4}-\d{2}-\d{2})\s*\]", re.IGNORECASE)
-# Who wrote a line (Now writer spec §3.1): no field means a session or the owner; mail, chat and watch are machines.
+# Who wrote a line (Now writer spec §3.1): no field means a session or the owner; mail, chat, watch and digest (a
+# session digest's follow-up, #476) are machines.
 VIA = re.compile(r"\s*\[via::\s*([A-Za-z]+)\s*\]", re.IGNORECASE)
-WRITERS = ("mail", "chat", "watch", "brief", "session")
-MACHINE = ("mail", "chat", "watch")
+WRITERS = ("mail", "chat", "watch", "brief", "session", "digest")
+MACHINE = ("mail", "chat", "watch", "digest")
 FIELD_KEY = re.compile(r"\[(?:rec|due|via)::", re.IGNORECASE)
 MARKER = re.compile(r"\[(REDACTED:\w+|PRIVATE)\]")   # what redact_credentials writes in place of a secret
 # A line now.py wrote, with text appended after its parenthesis by hand (#211): it no longer parses.

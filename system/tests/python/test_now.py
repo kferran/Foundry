@@ -1047,6 +1047,30 @@ def test_add_writes_the_writer_and_a_repeat_keeps_it(vault):
     assert now.add(vault, "work", "owed", "Reply to Blake", TODAY) == ("exists", line)
 
 
+DIGEST = "raw/work/archive/2026-10-02-0900-a1b2c3d4-release.md"
+
+
+def test_digest_is_a_writer_and_a_machine_line(vault):
+    prepare(vault)
+    assert now.via("x [via:: digest]") == "digest"
+    line = now.add(vault, "work", "owed", "Write the release notes", TODAY, evidence=DIGEST, via="digest")[1]
+    assert line.endswith(f"[via:: digest] (since {TODAY}, {DIGEST})")
+
+
+def test_an_untouched_digest_line_expires_after_7_days_and_a_noted_one_stays(vault, tmp_path):
+    prepare(vault)
+    since = "2026-10-02"
+    for statement in ("Write the release notes", "Book the venue review", "r" * 400):
+        now.add(vault, "work", "owed", statement, since, evidence=DIGEST, fit=True, via="digest")
+    now.note(vault, "work", "venue", "asked for a quote", since)
+    assert now.check(vault, TODAY, lambda m: None, gh_stub(tmp_path)) == 2
+    lines = page(vault).split("\n")
+    closed = [line for line in lines if line.startswith("- [-] ")]
+    assert len(closed) == 2
+    assert all(line.endswith(f"_(closed: expired {TODAY})_") and "[via:: digest]" in line for line in closed)
+    assert any(line.startswith("- [ ] owed: Book the venue review") for line in lines)
+
+
 def test_set_hands_the_line_to_the_session(vault):
     prepare(vault)
     now.add(vault, "work", "owed", "Reply to Blake", TODAY, via="mail")
