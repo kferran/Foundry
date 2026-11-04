@@ -1,0 +1,1 @@
+- Changed: `.claude/settings.json` allows `sed` without a prompt, `sed -i` included; a `sed -i` under `system/scripts/` or `extensions/` no longer asks, as an Edit there does. (#PR)
