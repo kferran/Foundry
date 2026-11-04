@@ -1,0 +1,1 @@
+- Changed: an unexpected failure in the unattended template update now exits 70 and raises one `[update] foundry-update crashed: …` alert a day; a hand run of `update_template.sh` does not. (#436)

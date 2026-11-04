@@ -369,6 +369,20 @@ upstream_pr() {
   alerts | grep -qF '[update] template update skipped: another run held run.lock'
 }
 
+@test "--unattended turns an unexpected failure into exit 70 and one crash alert; a hand run does not alert (#436, F6 gap)" {
+  template_setup
+  upstream_commit new.txt hello
+  fails_on mktemp '*'   # the merge's attributes file, outside any || list
+  run "$UT" --unattended
+  [ "$status" -eq 70 ]
+  [ "$(alerts | grep -c '\[update\] foundry-update crashed: ')" -eq 1 ]
+  [ ! -e .git/MERGE_HEAD ]
+  run "$UT"
+  [ "$status" -ne 0 ]
+  [ "$status" -ne 70 ]
+  [ "$(alerts | grep -c 'crashed: ')" -eq 1 ]
+}
+
 # gh_template: the template remote is https://github.com/acme/tpl.git, fetched from UP through insteadOf, and curl is
 # a stub that logs its arguments to CURL_ARGS and answers the check-runs request with the case CURL_CASE names.
 gh_template() {
