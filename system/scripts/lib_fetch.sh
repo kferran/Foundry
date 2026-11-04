@@ -37,11 +37,16 @@ alert_once() {  # <key> <text>: "- HH:MM:SS [FETCH_TAG] <key> <text>", at most o
   local f="system/logs/alerts_$(date +%F).md"
   grep -qF -- "[$FETCH_TAG] $1" "$f" 2>/dev/null || printf -- '- %s [%s] %s %s\n' "$(date +%H:%M:%S)" "$FETCH_TAG" "$1" "$2" >> "$f"
 }
-crash_trap() {  # <unit>: a crash exits 70, which fails the unit, and alerts once a day (#436 S3)
-  set -E   # functions inherit the trap; an `||` list never fires it
+crash_trap() {  # [--exit-only] <unit>: a crash exits 70, which fails the unit, and alerts once a day (#436 S3)
+  # --exit-only: no ERR trap, for a script without set -e that reads failed commands' exits itself (brief, sync).
+  local exit_only=0
+  if [[ "$1" == --exit-only ]]; then exit_only=1; shift; fi
   crash_unit="$1" crash_signal=0
-  # A subshell (a process substitution) carries on; its failure reaches the script only through its reader.
-  trap 'rc=$?; if (( BASHPID == $$ )); then crash_exit "exit $rc at line $LINENO"; fi' ERR
+  if (( ! exit_only )); then
+    set -E   # functions inherit the trap; an `||` list never fires it
+    # A subshell (a process substitution) carries on; its failure reaches the script only through its reader.
+    trap 'rc=$?; if (( BASHPID == $$ )); then crash_exit "exit $rc at line $LINENO"; fi' ERR
+  fi
   # A stop is no crash: the EXIT trap can read a failed command's exit then, so it is flagged and re-sent as TERM.
   # The re-sent TERM kills the shell before its EXIT trap runs, so the cleanup runs here first (the #40 /tmp rule).
   trap 'crash_signal=1; eval "${exit_cleanup:-}" || true; exit_cleanup=; trap - TERM INT HUP; kill -TERM $$' TERM INT HUP

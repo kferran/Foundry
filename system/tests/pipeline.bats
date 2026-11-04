@@ -11,8 +11,6 @@ setup() {
 
 # <node> <rule> <issue>  # what is missing
 PIPELINE_GAPS='
-brief P3 #436  # brief_run.sh: no crash_trap; a failure before run_headless.sh alerts nothing
-sync P3 #436  # vault_sync.sh: no crash_trap; "not a git repository" exits 1 silently
 '
 
 gaps_file() { printf '%s\n' "$PIPELINE_GAPS" > "$BATS_TEST_TMPDIR/gaps"; echo "$BATS_TEST_TMPDIR/gaps"; }
