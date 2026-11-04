@@ -1,0 +1,1 @@
+- Added: each `## Follow-ups` bullet of a session digest becomes a proposed owed line on its partition's Now page (`[via:: digest]`, the digest as evidence), unless an open line already covers it; one you leave for 7 days expires, and a note under it keeps it. (#PR)
