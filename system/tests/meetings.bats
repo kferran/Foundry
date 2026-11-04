@@ -528,3 +528,15 @@ token = [REDACTED:assignment]'
   [ "$status" -eq 0 ]
   [ "$(git cat-file blob HEAD:meetings/drop/work/notes.txt)" = 'Avery: see Doc now' ]
 }
+
+@test "fetch: an unexpected failure exits 70 and alerts once as a crash; --check does not alert (#436, F6 gap)" {
+  search_says
+  fails_on cp '*listing.json*'   # the copy of the search's output, outside any || list
+  run "$MF"
+  [ "$status" -eq 70 ]
+  [ "$(cat system/logs/alerts_*.md | grep -c '\[meetings\] foundry-meetings crashed: ')" -eq 1 ]
+  rm -f system/logs/alerts_*.md
+  run "$MF" --check
+  [ "$status" -ne 70 ]
+  [ -z "$(cat system/logs/alerts_*.md 2>/dev/null | grep 'crashed:')" ]
+}

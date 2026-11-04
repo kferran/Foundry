@@ -13,11 +13,7 @@ setup() {
 PIPELINE_GAPS='
 brief P3 #436  # brief_run.sh: no crash_trap; a failure before run_headless.sh alerts nothing
 debrief P3 #436  # run_headless.sh: set -e and no crash_trap; an unexpected failure exits with no alert
-intake P3 #436  # intake.py: no alerts.guard; an uncaught exception fails the unit with a traceback only
-meetings P3 #436  # meetings_fetch.sh: no crash_trap; a search timeout (exit 4) and exit 127 are silent
-notify P3 #436  # notify.sh: no crash_trap; and [notify] never reaches Slack (S6)
 sync P3 #436  # vault_sync.sh: no crash_trap; "not a git repository" exits 1 silently
-triage P3 #436  # triage_fetch.sh: no crash_trap; exit 127 is not in FETCH_ALERTS
 update P3 #436  # update_template.sh: set -e and no crash_trap
 '
 

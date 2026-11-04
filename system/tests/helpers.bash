@@ -84,3 +84,15 @@ use_extension() {
   sed -i '$d' "$V/system/config.md"
   printf 'extensions: [%s]\n---\n' "$list" >> "$V/system/config.md"
 }
+
+# fails_on <command> <glob>: a <command> on PATH that exits 5 when its arguments match <glob> and runs the real one
+# otherwise, so a script's unguarded call fails the way an unexpected crash would (#436, the F6 crash gaps).
+fails_on() {
+  local real
+  real="$(command -v "$1")"
+  mkdir -p "$BATS_TEST_TMPDIR/failbin"
+  printf '#!/bin/bash\nif [[ " $* " == %s ]]; then exit 5; fi\nexec %q "$@"\n' "$2" "$real" > "$BATS_TEST_TMPDIR/failbin/$1"
+  chmod +x "$BATS_TEST_TMPDIR/failbin/$1"
+  PATH="$BATS_TEST_TMPDIR/failbin:$PATH"
+}
+jq_fails_logline() { fails_on jq '*" --arg time "*'; }   # logline's call: its --arg time
