@@ -12,9 +12,7 @@ setup() {
 # <node> <rule> <issue>  # what is missing
 PIPELINE_GAPS='
 brief P3 #436  # brief_run.sh: no crash_trap; a failure before run_headless.sh alerts nothing
-debrief P3 #436  # run_headless.sh: set -e and no crash_trap; an unexpected failure exits with no alert
 sync P3 #436  # vault_sync.sh: no crash_trap; "not a git repository" exits 1 silently
-update P3 #436  # update_template.sh: set -e and no crash_trap
 '
 
 gaps_file() { printf '%s\n' "$PIPELINE_GAPS" > "$BATS_TEST_TMPDIR/gaps"; echo "$BATS_TEST_TMPDIR/gaps"; }
@@ -92,6 +90,16 @@ GOOD='nodes:
   fixture "${GOOD/busy: retry-next-tick/busy: alert:nosuch, x: pager, y: caller:zz}"
   run python3 "$CHECK" "$R"
   [ "$output" = "$(printf '%s\n' 'a: alert:nosuch is not a known tag' 'a: x has unknown edge pager' 'a: y names no node zz')" ]
+}
+
+@test "P3: a ledger catch-all passes with the entry's write_ledger trap and fails without it (#436, PR B)" {
+  fixture "${GOOD/other: alert:intake/other: ledger}"
+  printf '#!/bin/bash\ntrap write_ledger EXIT\nflock 9 system/run.lock\n' > "$R/system/scripts/a.sh"
+  run python3 "$CHECK" "$R"
+  [ -z "$output" ]
+  printf '#!/bin/bash\nflock 9 system/run.lock\n' > "$R/system/scripts/a.sh"
+  run python3 "$CHECK" "$R"
+  [ "$output" = 'a: other is ledger but system/scripts/a.sh writes no ledger line on exit' ]
 }
 
 @test "P5: retry-next-tick on a unit with no timer fails" {

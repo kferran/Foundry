@@ -18,7 +18,8 @@ import yaml
 LOCKS = ("run", "intake", "nightshift", "meetings", "notify", "index", "stage")
 # A lock file name as text: `intake.lock` followed by `(` is vaultlib's intake.lock() helper, not a lock file.
 LOCK_RE = re.compile(r"(?<![\w.])(" + "|".join(LOCKS) + r")\.lock(?![\w(])")
-EDGE_RE = re.compile(r"^(alert:[a-z_]+|quarantine|retry-next-tick|caller:[a-z_-]+|unavailable|none)$")
+EDGE_RE = re.compile(r"^(alert:[a-z_]+|quarantine|retry-next-tick|caller:[a-z_-]+|unavailable|ledger|none)$")
+LEDGER_TRAP = "trap write_ledger EXIT"   # run_headless.sh: each exit is a ledger line; notify posts a failed one
 HANDLER = {".sh": "crash_trap ", ".py": "alerts.guard("}
 
 
@@ -100,6 +101,11 @@ def check(root, gaps):
             text = (root / entry).read_text(encoding="utf-8", errors="replace") if (root / entry).is_file() else ""
             if HANDLER.get(Path(entry).suffix, "\0") not in text:
                 out.append((name, "P3", f"{name}: other is {other} but {entry} installs no crash handler"))
+        elif other == "ledger":   # every exit is a run ledger line, which notify posts when it failed
+            entry = n.get("entry") or (scripts[0] if scripts else "")
+            text = (root / entry).read_text(encoding="utf-8", errors="replace") if (root / entry).is_file() else ""
+            if LEDGER_TRAP not in text:
+                out.append((name, "P3", f"{name}: other is ledger but {entry} writes no ledger line on exit"))
         for key, edge in failure.items():
             edge = str(edge)
             if not EDGE_RE.match(edge):

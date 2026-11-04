@@ -10,6 +10,8 @@ cd "$VAULT_ROOT"
 source system/scripts/lib_config.sh
 # shellcheck source=lib_git.sh
 source system/scripts/lib_git.sh
+# shellcheck source=lib_fetch.sh
+source system/scripts/lib_fetch.sh   # crash_trap, on_exit
 # The vault's own day names the alerts file the brief reads, whatever the host's timezone.
 TZ="$(config_get timezone UTC)"
 export TZ GIT_TERMINAL_PROMPT=0
@@ -29,6 +31,8 @@ case "${1:-}" in
   *) die 2 "usage: update_template.sh [--unattended]" ;;
 esac
 (( $# <= 1 )) || die 2 "usage: update_template.sh [--unattended]"
+FETCH_TAG=update
+if (( unattended )); then crash_trap foundry-update; fi   # the unit's run: a crash exits 70 and alerts (#436, F6 gap)
 # git children run with run.lock's fd 9 closed: a detached gc must not keep the lock.
 g() { git "$@" 9>&-; }
 
@@ -126,7 +130,8 @@ fi
 # The vault owns README.md (#90): for this merge only, an attributes file marks it merge=ours and the driver keeps
 # the vault's version, the first update included. Sync merges between machines define neither and merge it normally.
 attrs="$(mktemp)"
-trap 'rm -f -- "$attrs"' EXIT
+exit_cleanup='rm -f -- "$attrs"'   # run by on_exit, the one EXIT trap crash_trap keeps
+trap on_exit EXIT
 printf 'README.md merge=ours\n' > "$attrs"
 pre_merge="$(g rev-parse HEAD)"
 if ! out="$(g -c core.attributesFile="$attrs" -c merge.ours.driver=true merge --no-ff --no-edit "$ref" 2>&1)"; then
