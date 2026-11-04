@@ -54,23 +54,25 @@ def _words(text: str) -> set:
 
 
 def _candidates(vault, page: str, today: str) -> list:
-    """(normalized statement, evidence, since) of each open line, and each closed in the last CLOSED_DAYS, on the page
-    and in its archive months."""
+    """(normalized statement, evidence, since, writer) of each open line, and each closed in the last CLOSED_DAYS, on
+    the page and in its archive months."""
     cutoff = (date.fromisoformat(today) - timedelta(days=CLOSED_DAYS)).isoformat()
     out = []
     for text in [nowmod.read(vault, page), *nowmod.archived(vault, page, cutoff, today)]:
         for line in text.splitlines():
             m, stamp = nowmod.LINE.match(line.rstrip()), nowmod.STAMP.search(line)
             if m and (not stamp or stamp.group(1) >= cutoff):
-                out.append((_norm(nowmod.fields(m["statement"])[0]), m["evidence"] or "", m["since"]))
+                out.append((_norm(nowmod.fields(m["statement"])[0]), m["evidence"] or "", m["since"],
+                            nowmod.via(m["statement"])))
     return out
 
 
 def _matches(bullet: str, cands: list, created: str) -> bool:
     """Spec §3.5: equal or contained text, the line's own evidence named in the bullet, or enough shared words with a
-    line from the session's own day. A miss costs the owner one [-]; a false match loses a follow-up."""
+    line a session or the owner wrote on the session's own day (a machine line, a sibling bullet included, shares
+    words by chance). A miss costs the owner one [-]; a false match loses a follow-up."""
     b, day_before = _norm(bullet), (date.fromisoformat(created) - timedelta(days=1)).isoformat()
-    for text, evidence, since in cands:
+    for text, evidence, since, writer in cands:
         short, long_ = sorted((b, text), key=len)
         if b == text or (len(short) >= MIN_CONTAINED and short in long_):
             return True
@@ -78,7 +80,7 @@ def _matches(bullet: str, cands: list, created: str) -> bool:
             return True
         x, y = _words(b), _words(text)
         shared = x & y
-        if since >= day_before and len(shared) >= MIN_SHARED and len(shared) >= SHARED_SHARE * min(len(x), len(y)):
+        if writer in ("", "session") and since >= day_before and len(shared) >= MIN_SHARED and len(shared) >= SHARED_SHARE * min(len(x), len(y)):
             return True
     return False
 
@@ -106,7 +108,7 @@ def _propose(vault, rel: str, text: str, today: str, alert) -> bool:
             alert(f"digest {name}: a follow-up was skipped: {nowmod.refusal(exc)}")
             continue
         count += status == "added"
-        cands.append((_norm(item), rel, today))
+        cands.append((_norm(item), rel, today, "digest"))
     if len(items) > PER_DIGEST:
         alert(f"digest {name}: {len(items)} follow-ups, {PER_DIGEST} proposed")
     return True
@@ -128,7 +130,12 @@ def step(vault, today: str, alert) -> None:
         except (OSError, UnicodeDecodeError) as exc:
             alert(f"follow-ups of {rel} skipped: {exc.__class__.__name__}")
             continue
-        if not _propose(vault, rel, text, today, alert):
+        try:
+            if not _propose(vault, rel, text, today, alert):
+                left.append(rel)
+        except Exception as exc:  # noqa: BLE001 - an unreadable archive month or a failed write: the next tick tries
+            alert(f"follow-ups step failed for {rel}: {exc.__class__.__name__}; it waits for the next tick",
+                  key="follow-ups step failed")
             left.append(rel)
     if not left:
         path.unlink()

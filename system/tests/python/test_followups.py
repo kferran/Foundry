@@ -29,9 +29,14 @@ def fu(*bullets):
     return "## Outcome\nShipped it.\n\n## Follow-ups\n" + "".join(f"- {b}\n" for b in bullets)
 
 
-def step(vault, day=TODAY):
+def step(vault, day=TODAY, keys=None):
     got = []
-    followups.step(vault, day, got.append)
+
+    def sink(text, key=""):
+        got.append(text)
+        if keys is not None:
+            keys.append(key)
+    followups.step(vault, day, sink)
     return got
 
 
@@ -86,6 +91,32 @@ def test_shared_words_match_a_same_day_line_and_not_a_week_old_one(fv, since, ad
     digest(fv, "work", "d1", fu("Finish the budget proposal draft, quarterly numbers"))
     step(fv)
     assert len(proposed(fv)) == added
+
+
+def test_sibling_follow_ups_that_share_words_are_all_proposed(fv):
+    bullets = ("Update the billing service docs", "Update the billing service tests",
+               "Merge PR 504 after owner review", "Merge PR 501 after owner review")
+    digest(fv, "work", "d1", fu(*bullets))
+    step(fv)
+    assert statements(fv) == list(bullets)
+
+
+def test_a_same_day_machine_line_sharing_words_does_not_swallow_a_follow_up(fv):
+    now.add(fv, "work", "owed", "Reply to the vendor about the billing service outage", TODAY, via="mail")
+    digest(fv, "work", "d1", fu("Write the billing service outage postmortem"))
+    step(fv)
+    assert statements(fv) == ["Write the billing service outage postmortem"]
+
+
+def test_an_unreadable_archive_keeps_the_queue_and_alerts_with_a_key(fv):
+    (fv / "wiki/work/now-archive").mkdir(parents=True)
+    (fv / "wiki/work/now-archive/2026-10.md").write_bytes(b"\xff\xfe not text")
+    rel = digest(fv, "work", "d1", fu("Write the release notes"))
+    keys = []
+    got = step(fv, keys=keys)
+    assert got == ["follow-ups step failed for raw/work/archive/d1.md: UnicodeDecodeError; it waits for the next tick"]
+    assert keys == ["follow-ups step failed"]
+    assert queued(fv) == [rel]
 
 
 def test_a_line_dropped_within_14_days_skips_the_bullet_on_the_page_and_in_the_archive(fv):
