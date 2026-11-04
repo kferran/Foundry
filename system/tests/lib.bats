@@ -167,6 +167,21 @@ lib_config_setup() {
   [ "$(grep -c '\[smoke\] foundry-x crashed: exit 1; journalctl --user -u foundry-x' system/logs/alerts_*.md)" -eq 1 ]
 }
 
+@test "crash_trap --exit-only: a failed command is no crash; an unset variable is; an explicit exit stands (#436 S3)" {
+  mkdir -p system/logs
+  printf '%s\n' '#!/bin/bash' 'set -uo pipefail' 'source system/scripts/lib_fetch.sh' 'FETCH_TAG=smoke' \
+    'crash_trap --exit-only foundry-x' 'false' 'grep -q nothing /dev/null' 'case "${1:-}" in u) echo "$nope" ;; e) exit 3 ;; esac' \
+    'exit 0' > "$BATS_TEST_TMPDIR/c.sh"
+  run bash "$BATS_TEST_TMPDIR/c.sh"
+  [ "$status" -eq 0 ]
+  run bash "$BATS_TEST_TMPDIR/c.sh" e
+  [ "$status" -eq 3 ]
+  [ -z "$(ls system/logs/alerts_*.md 2>/dev/null)" ]
+  run bash "$BATS_TEST_TMPDIR/c.sh" u
+  [ "$status" -eq 70 ]
+  [ "$(grep -c '\[smoke\] foundry-x crashed: exit 1; journalctl --user -u foundry-x' system/logs/alerts_*.md)" -eq 1 ]
+}
+
 @test "crash_trap: a bad arithmetic expression exits 70 and alerts (no ERR fires)" {
   mkdir -p system/logs
   printf '%s\n' '#!/bin/bash' 'set -euo pipefail' 'source system/scripts/lib_fetch.sh' 'FETCH_TAG=smoke' \

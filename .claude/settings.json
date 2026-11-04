@@ -79,7 +79,8 @@
       "Bash(system/scripts/extensions.py smoke)",
       "Bash(system/scripts/nightshift.py list --json)",
       "Bash(system/scripts/discover_codebases.sh:*)",
-      "Bash(system/scripts/inspect_codebase.sh:*)"
+      "Bash(system/scripts/inspect_codebase.sh:*)",
+      "Bash(sed *)"
     ],
     "deny": [
       "Read(~/.ssh/**)", "Read(~/.gnupg/**)",

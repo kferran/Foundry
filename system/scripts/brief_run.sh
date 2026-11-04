@@ -5,6 +5,10 @@
 # the run as it is. Exit: the last brief's.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+# shellcheck source=lib_fetch.sh
+source system/scripts/lib_fetch.sh
+FETCH_TAG=intake
+crash_trap --exit-only foundry-brief   # a crash before run_headless.sh (an unset variable) alerts once a day
 for attempt in 1 2; do
   system/scripts/brief_prep.sh || true   # a failed prep never stops the brief, as ExecStartPre=- did
   rc=0

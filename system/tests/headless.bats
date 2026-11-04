@@ -473,6 +473,17 @@ brief_stubs() {
   [ "$(grep -c '^brief' "$BATS_TEST_TMPDIR/calls")" -eq 1 ]
 }
 
+@test "brief_run: a crash before the brief exits 70 and alerts once a day (#436 S3)" {
+  brief_stubs 0
+  mkdir -p system/logs
+  sed -i 's/^for attempt in 1 2; do$/: "$nope"\n&/' system/scripts/brief_run.sh
+  run system/scripts/brief_run.sh
+  [ "$status" -eq 70 ]
+  run system/scripts/brief_run.sh
+  [ "$(grep -c '\[intake\] foundry-brief crashed: exit 1; journalctl --user -u foundry-brief' system/logs/alerts_*.md)" -eq 1 ]
+  [ ! -e "$BATS_TEST_TMPDIR/calls" ]
+}
+
 @test "run_headless: a rejected brief with a retry pending raises no alert; without one it does (#299)" {
   BRIEF_RETRY_PENDING=1 STUB_MODE=nothing run "$RH" brief
   [ "$status" -eq 5 ]

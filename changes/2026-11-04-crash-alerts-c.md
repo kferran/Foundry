@@ -1,0 +1,1 @@
+- Changed: an unexpected failure in the brief unit (before or around the brief run) or in a plain `vault_sync.sh` run now exits 70 and raises one `[intake] foundry-brief crashed: …` or `[sync] foundry-sync crashed: …` alert a day. `vault_sync.sh --pre` and `--post` keep their exits. (#436)

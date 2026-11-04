@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=16900
+CORE_CAP=16920
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -170,7 +170,7 @@ core_problem() {
 }
 
 @test "interactive settings end with the routine-command rules a vault merges against, in order" {
-  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/triage_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(system/scripts/now.py review:*)","Bash(system/scripts/now.py overdue:*)","Bash(system/scripts/now.py --help)","Bash(system/scripts/extensions.py check)","Bash(system/scripts/extensions.py allow)","Bash(system/scripts/intake.py --quarantine)","Bash(systemctl --user status *)","Bash(systemctl --user is-active *)","Bash(systemctl --user is-enabled *)","Bash(journalctl --user *)","Bash(system/scripts/test.sh:*)","Bash(system/scripts/verify_setup.sh --require-suites)","Bash(python3 -m pytest:*)","Bash(bats:*)","Bash(shellcheck:*)","Bash(python3 .claude/skills/foundry-review/review_diff.py:*)","Bash(git checkout -b:*)","Bash(git switch -c:*)","Bash(git fetch origin:*)","Bash(git merge --no-edit origin/master)","Bash(system/scripts/calendar_fetch.sh)","Bash(system/scripts/calendar_fetch.sh --check)","Bash(system/scripts/extensions.py smoke)","Bash(system/scripts/nightshift.py list --json)","Bash(system/scripts/discover_codebases.sh:*)","Bash(system/scripts/inspect_codebase.sh:*)"]'
+  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/triage_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(system/scripts/now.py review:*)","Bash(system/scripts/now.py overdue:*)","Bash(system/scripts/now.py --help)","Bash(system/scripts/extensions.py check)","Bash(system/scripts/extensions.py allow)","Bash(system/scripts/intake.py --quarantine)","Bash(systemctl --user status *)","Bash(systemctl --user is-active *)","Bash(systemctl --user is-enabled *)","Bash(journalctl --user *)","Bash(system/scripts/test.sh:*)","Bash(system/scripts/verify_setup.sh --require-suites)","Bash(python3 -m pytest:*)","Bash(bats:*)","Bash(shellcheck:*)","Bash(python3 .claude/skills/foundry-review/review_diff.py:*)","Bash(git checkout -b:*)","Bash(git switch -c:*)","Bash(git fetch origin:*)","Bash(git merge --no-edit origin/master)","Bash(system/scripts/calendar_fetch.sh)","Bash(system/scripts/calendar_fetch.sh --check)","Bash(system/scripts/extensions.py smoke)","Bash(system/scripts/nightshift.py list --json)","Bash(system/scripts/discover_codebases.sh:*)","Bash(system/scripts/inspect_codebase.sh:*)","Bash(sed *)"]'
   run jq -c '.permissions.allow | .[index("Bash(system/scripts/vault_index.py recall:*)"):]' .claude/settings.json
   [ "$output" = "$want" ]
 }
@@ -578,8 +578,10 @@ sealed_problems() {
   # gate, review's unknown marks and the reopened-expired fix took core from 16,630 to 16,734 lines.
   # 16,740 -> 16,750 (#436 crash alerts PR B, docs/superpowers/specs/2026-11-03-crash-alerts-core-units-design.md, owner
   # to approve at merge): PR A's four traps took core to 16,738; the update unit's crash_trap took it to 16,743.
-  # 16,750 -> 16,900 (#476 digest follow-ups, docs/superpowers/specs/2026-11-03-digest-followups-design.md, owner to
-  # approve at merge): followups.py and the intake queue took core from 16,743 to 16,898 (the spec estimated 60 lines).
+  # 16,750 -> 16,770 (#436 crash alerts PR C, owner to approve at merge): crash_trap --exit-only and its use in the
+  # brief and sync units took core from 16,743 to 16,759.
+  # 16,770 -> 16,920 (#476 digest follow-ups, docs/superpowers/specs/2026-11-03-digest-followups-design.md, owner to
+  # approve at merge): followups.py and the intake queue took core from 16,759 to 16,914 (the spec estimated 60 lines).
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
