@@ -18,6 +18,7 @@ source system/scripts/lib_connector.sh
 source system/scripts/lib_fetch.sh
 
 TOOL=mcp__claude_ai_Google_Calendar__list_events
+FETCH_TAG=calendar   # alert_once's tag
 
 TZ="$(config_get timezone UTC)"
 export TZ
@@ -42,7 +43,8 @@ finish() {
   [[ -s "$summary" ]] && s="$(cat "$summary")"
   jq -cn --arg date "$day" --arg time "$(date -Iseconds)" --argjson exit "$1" --argjson s "$s" \
     '{date: $date, time: $time, exit: $exit, events: $s.events, cost_usd: $s.cost_usd, turns: $s.turns,
-      denials: $s.denials, tools: ($s.tools // []), unexpected_tools: ($s.unexpected_tools // [])}' >> "$log"
+      denials: $s.denials, tools: ($s.tools // []), unexpected_tools: ($s.unexpected_tools // []),
+      unverified: ($s.unverified // "")}' >> "$log"
   (( $1 == 0 )) || echo "calendar_fetch: $2" >&2
   exit "$1"
 }
@@ -73,6 +75,12 @@ if (( check && CONNECTOR_EXIT == 8 )); then
   finish 0 ""
 fi
 (( CONNECTOR_EXIT == 0 )) || finish "$CONNECTOR_EXIT" "$CONNECTOR_REASON"
+# Rows that disagree with the raw list_events results are still written; the brief marks them (#436 S8).
+unverified="$(jq -r '.unverified // ""' "$summary")"
+if [[ -n "$unverified" ]]; then
+  alert_once "calendar rows unverified:" "$unverified"
+  echo "calendar_fetch: unverified: $unverified" >&2
+fi
 if (( check )); then
   echo "calendar_fetch: the connector listed $(wc -l < "$work/events.tsv") events"
 else

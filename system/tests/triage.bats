@@ -251,3 +251,11 @@ triage_fetch: 1 chat messages need the owner (1 returned)" ]
   [ ! -e "$BATS_TEST_TMPDIR/args" ]
   grep -qF '[triage] Inbox triage failed (exit 2): triage_partition must be one of work, personal' "$ALERTS"
 }
+
+@test "an unexpected failure in a source exits 70 through the parent and alerts once as a crash (#436, F6 gap)" {
+  gmail_says "$G" "$Q" "$ITEM"
+  jq_fails_logline
+  run "$TF"
+  [ "$status" -eq 70 ]
+  [ "$(grep -c '\[triage\] foundry-triage crashed: ' "$ALERTS")" -eq 1 ]
+}

@@ -1,0 +1,1 @@
+- Changed: the brief can only add Now lines, never tick or drop one; a reopened expired line stays open (#478)

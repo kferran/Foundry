@@ -5,14 +5,17 @@ Usage: calendar_tsv.py YYYY-MM-DD --summary FILE < claude-stream-json
 Exit: 0 ok, 1 claude error result (or an ok reply from a session that found the tool and never called it), 2 usage,
 3 no connector (or an ok reply from a session that never found the tool), 5 invalid list, 6 connector error or a page
 over the harness's result limit, 7 unexpected tool use, 8 more than 100 events. A non-zero exit writes one reason line
-to stderr. FILE always receives {events, reason, cost_usd, turns, denials, tools, unexpected_tools}.
+to stderr. FILE always receives {events, reason, cost_usd, turns, denials, tools, unexpected_tools, unverified}; rows
+that disagree with the raw list_events results still exit 0, with unverified set and printed on stderr.
 """
 import datetime
 import json
+import os
 import re
 import sys
+import zoneinfo
 
-from vaultlib.connector import Fail, too_large, walk
+from vaultlib.connector import Fail, structured, text_json, too_large, walk
 from vaultlib.stream import messages as read_stream
 
 TOOL = "mcp__claude_ai_Google_Calendar__list_events"
@@ -64,9 +67,46 @@ def rows(events, day):
             raise Fail(5, f"an event has an invalid time: {st}-{et}")
         if st and start == end and et < st:
             raise Fail(5, f"an event ends before it starts: {st}-{et}")
-        title = CONTROL.sub(" ", e["title"]).strip()[:MAX_TITLE]
-        out.append((e["start_date"], st, e["end_date"], et, title))
+        out.append((e["start_date"], st, e["end_date"], et, clean(e["title"])))
     return sorted(out, key=lambda r: (r[0], r[1] != "", r[1], r[4]))
+
+
+def clean(title):
+    return CONTROL.sub(" ", title).strip()[:MAX_TITLE]
+
+
+def verify(results, table, tz):
+    """"" when the raw list_events events and the rows hold the same (start date, start time, title) triples, else the
+    first difference, without event text (#436 S8). An all-day start.date is a midnight-UTC time whose first 10
+    characters are the date (spike 2026-11-03); a timed start converts to tz. A failed page is skipped, a page read
+    twice counts once, and an empty page may leave out its events."""
+    pages = [structured(b, m) or text_json(b, m) for _, b, m in results if not b.get("is_error")]
+    if not pages or not all(pages):
+        return "the connector's results could not be read"
+    if pages[-1].get("nextPageToken"):
+        return "the session did not read every page"
+    try:
+        raw, ids = [], set()
+        for p in pages:
+            for e in p.get("events", []):
+                if e.get("id") is not None and e["id"] in ids:
+                    continue
+                ids.add(e.get("id"))
+                s, title = e["start"], clean(e.get("summary", ""))
+                if "dateTime" in s:
+                    t = datetime.datetime.fromisoformat(s["dateTime"]).astimezone(zoneinfo.ZoneInfo(tz))
+                    raw.append((t.date().isoformat(), t.strftime("%H:%M"), title))
+                else:
+                    raw.append((real_date(s["date"][:10]).isoformat(), "", title))
+    except Exception:   # any page this cannot read is a loud alert, never a crash that loses the day's rows
+        return "the connector's results could not be read"
+    if len(raw) != len(table):
+        return f"the connector listed {len(raw)} events, the rows hold {len(table)}"
+    # Plain tuple order matches rows()' order: "" (all day) sorts before any HH:MM.
+    for k, (a, r) in enumerate(zip(sorted(raw), sorted((r[0], r[1], r[4]) for r in table)), 1):
+        if a != r:
+            return f"row {k} ({r[0]} {r[1] or 'all day'}) differs from the connector's results"
+    return ""
 
 
 def main(argv):
@@ -76,7 +116,7 @@ def main(argv):
     day = real_date(argv[1])
     summary_path = argv[3]
     summary = {"events": None, "reason": "", "cost_usd": None, "turns": None, "denials": None,
-               "tools": [], "unexpected_tools": []}
+               "tools": [], "unexpected_tools": [], "unverified": ""}
     code, text = 0, ""
     try:
         if day is None:
@@ -122,6 +162,9 @@ def main(argv):
             raise Fail(1, f"the session never called {TOOL}") if w.named else Fail(3, "no Google Calendar connector reachable")
         table = rows(output["events"], day)
         summary["events"] = len(table)
+        summary["unverified"] = verify(w.results, table, os.environ.get("TZ") or "UTC")
+        if summary["unverified"]:
+            print(f"calendar_tsv: unverified: {summary['unverified']}", file=sys.stderr)
         text = "".join("\t".join(r) + "\n" for r in table)
     except Fail as f:
         code = f.code

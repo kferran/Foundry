@@ -1,0 +1,1 @@
+- Changed: an unexpected failure in the intake, meetings, notify or triage unit now exits 70 and raises one alert a day, `<unit> crashed: …; journalctl --user -u <unit>`, under the unit's own tag; a `--check` and a person's `intake.py` command do not. A stopped fetch or smoke check removes its temporary files again. (#436)

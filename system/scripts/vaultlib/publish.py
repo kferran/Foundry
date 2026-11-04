@@ -11,7 +11,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from . import frontmatter, held as heldmod, links as linkmod, now as nowmod, schema as schemamod
+from . import frontmatter, held as heldmod, links as linkmod, now as nowmod, now_states, schema as schemamod
 from .index import PRIVATE, Index, name_excluded, walled
 
 RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift|digest-backfill)-[0-9a-f]{4}$")
@@ -391,7 +391,34 @@ def _check(vault: Path, run_id, target, snap, decided, command, schemas, ctx, re
                     out.append(Problem(target, "a Now line the check would redact or cut: run now.py fit-staged before publish"))
             except ValueError as exc:
                 out.append(Problem(target, f"a Now line: {exc}"))
+    if NOW_PAGE.match(target) and command == "brief":
+        out += [Problem(target, p) for p in _brief_states(vault, old.body if old is not None else "", new.body)]
     out += _conflict(vault, target, snap, now)
+    return out
+
+
+def _brief_states(vault, old: str, new: str) -> list:
+    """The brief adds open lines and changes no other line's state (factory F7 spec §3, T1). Lines pair as the merge
+    driver pairs them, by key and then a rewritten open line by its fields, so a rewrite that ticks is no add."""
+    try:
+        base = [b for b in nowmod._version(old) if isinstance(b, nowmod.Block)]
+    except ValueError:
+        return []   # a page the driver cannot read is the owner's to fix
+    try:
+        side = [b for b in nowmod._version(new) if isinstance(b, nowmod.Block)]
+    except ValueError as exc:
+        return [f"now: {exc}"]
+    pairs = nowmod._pair(base, side)
+    moves = [(b, pairs[k]) for k, b in enumerate(base) if k in pairs]
+    moves += [(None, s) for s in side if s not in pairs.values()]
+    out = []
+    for b, s in moves:
+        frm, to = now_states.state(b.raw) if b else None, now_states.state(s.raw)
+        if frm != to and not now_states.allowed("brief", frm, to):
+            now_states.transition(b.raw if b else None, "brief", to, vault=vault)   # refused: this logs it
+            m = nowmod.parse((b or s).raw)
+            what = nowmod.fields(m.group("statement"))[0] if m else (b or s).key.strip()
+            out.append(f"now: the brief changed {what}: {frm or 'none'} to {to}")
     return out
 
 

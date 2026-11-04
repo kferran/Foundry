@@ -13,7 +13,7 @@ from functools import partial
 from pathlib import Path
 
 from . import briefings, frontmatter, index, links as linkmod, nightshift_item
-from . import redact
+from . import now_states, redact
 
 redact_credentials = partial(redact.redact_credentials, prose=True)   # a Now line is prose (#386)
 
@@ -136,13 +136,16 @@ def open_lines(text: str) -> list:
 
 def stamp(text: str, today: str) -> str:
     """Stamp a ticked or dropped line that has no close date; a reopened line loses its old stamp. Closed lines stay
-    until archive() moves them (phase A spec §3.4)."""
+    until archive() moves them (phase A spec §3.4). A reopened expired line also loses its writer, so it is the owner's
+    and never expires again (factory F7 spec Goal 4)."""
     out = []
     for line in text.split("\n"):
-        if line.startswith("- [ ] "):
-            line = STAMP.sub("", line).rstrip()
-        elif CLOSED.match(line) and not STAMP.search(line):
-            line = f"{line.rstrip()} _(closed: ticked {today})_"
+        st = now_states.state(line)
+        if st == "open stamped":
+            new = now_states.transition(line, "stamp", "open")
+            line = strip_via(new) if STAMP.search(line).group(0).startswith("_(closed: expired ") else new
+        elif st in ("done", "dropped"):
+            line = now_states.transition(line, "stamp", f"{st} stamped", "ticked", today)
         out.append(line)
     return "\n".join(out)
 
@@ -634,22 +637,23 @@ def check(vault, today: str, alert, gh: str = "gh") -> int:
     """Close each open line whose evidence shows it is finished, and expire each untouched machine line. Returns the
     lines closed.
 
-    A page is written only when a line closes, and from a fresh read, so a tick made while gh ran is kept.
-    The first failed pull-request check skips the others until the next tick; expiry runs regardless."""
+    A page is written only when a line closes, and from a fresh read, so a tick made while gh ran is kept. Each read
+    is stamped first, so a reopened line is judged without its old stamp. The first failed pull-request check skips
+    the others until the next tick; expiry runs regardless."""
     closed = 0
-    pages = {partition: open_lines(read(vault, partition)) for partition in PARTITIONS}
+    pages = {partition: open_lines(stamp(read(vault, partition), today)) for partition in PARTITIONS}
     found = closures(vault, [line for lines in pages.values() for line in lines], gh,
                      lambda line, reason: _failed(vault, today, line, reason, alert))
     for partition in PARTITIONS:
-        lines, before = read(vault, partition).split("\n"), closed
+        lines, before = stamp(read(vault, partition), today).split("\n"), closed
         for i, line in enumerate(lines):
-            key = line.rstrip()
-            if key in found:
-                lines[i], closed = f"- [x]{key[5:]} _(closed: {found[key]} {today})_", closed + 1
-            elif expires(lines, i, today):
-                lines[i], closed = f"- [-]{key[5:]} _(closed: expired {today})_", closed + 1
+            to, how = (("done stamped", found[line.rstrip()]) if line.rstrip() in found else
+                       ("dropped stamped", "expired") if expires(lines, i, today) else (None, ""))
+            new = to and now_states.transition(line, "check", to, how, today, vault)
+            if new:
+                lines[i], closed = new, closed + 1
         if closed > before:
-            write(vault, partition, stamp("\n".join(lines), today))
+            write(vault, partition, "\n".join(lines))
     return closed
 
 
@@ -690,8 +694,10 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
     close reason), "stale" (open more than stale_days with no evidence) and "duplicate" (the same bare statement after
     lowercasing, whatever the kind and clock), in page order. A hand-written line that does not parse has no date or
     evidence and is left out of those groups; one that holds a [rec::] or [due::] field it cannot read (written after
-    the parenthesis) is listed under "unreadable" for the Foreman to fix by hand."""
-    lines = [line.rstrip() for line in open_lines(read(vault, partition))]  # an editor's trailing space (C12)
+    the parenthesis) is listed under "unreadable" for the Foreman to fix by hand, and a line whose mark is no state
+    ([/]) under "unknown" (factory F7 spec Goal 5)."""
+    body = frontmatter.parse(read(vault, partition)).body.splitlines()
+    lines = [line.rstrip() for line in body if line.startswith("- [ ] ")]  # an editor's trailing space (C12)
     cutoff = (date.fromisoformat(today) - timedelta(days=stale_days)).isoformat()
     parsed = [(line, LINE.match(line)) for line in lines]
     found = closures(vault, lines, gh, on_fail)
@@ -703,6 +709,7 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
             "stale": [line for line, m in parsed if m and not m.group("evidence") and m.group("since") < cutoff],
             "duplicate": [line for group in statements.values() if len(group) > 1 for line in group],
             "unreadable": [line for line, m in parsed if not m and (FIELD_KEY.search(line) or SCRIPT_META.search(line))],
+            "unknown": [line.rstrip() for line in body if now_states.state(line) == "unknown"],
             "long": [line for line in lines if len(line) > MAX_LINE and parse(line)],   # set and note split each
             "page_bytes": page_path(vault, partition).stat().st_size if page_path(vault, partition).is_file() else 0}
 
