@@ -26,10 +26,12 @@ nodes:
     unit: foundry-intake
     entry: system/scripts/intake.py
     scripts: [system/scripts/intake_daemon.sh, system/scripts/intake.py, system/scripts/vaultlib/intake.py,
-              system/scripts/run_headless.sh, system/scripts/vaultlib/publish.py, system/scripts/vaultlib/now.py]
-    reads: [raw/inbox/, raw/*/notes/, raw/meetings/, meetings/drop/, briefings/, wiki/*/Now.md]
+              system/scripts/run_headless.sh, system/scripts/vaultlib/publish.py, system/scripts/vaultlib/now.py,
+              system/scripts/vaultlib/followups.py]
+    reads: [raw/inbox/, raw/*/notes/, raw/*/archive/, raw/meetings/, meetings/drop/, briefings/, wiki/*/Now.md,
+            system/logs/followups_queue.txt]
     writes: [raw/inbox/, raw/archive/, raw/*/archive/, system/quarantine/, wiki/, wiki/*/Now.md,
-             system/logs/runs/, system/logs/inputs/, system/logs/alerts_*.md]
+             system/logs/runs/, system/logs/inputs/, system/logs/alerts_*.md, system/logs/followups_queue.txt]
     locks: [intake.lock, run.lock, stage.lock]
     failure:
       input: quarantine
