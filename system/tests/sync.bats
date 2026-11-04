@@ -278,6 +278,20 @@ conflicting_merge() {  # leave the server vault mid-merge on Kafka.md
   [ ! -e .git/MERGE_HEAD ]
 }
 
+@test "a crash exits 70 and alerts once a day; --pre and --post set no crash trap (#436 S3)" {
+  sed -i 's/^remote_mode=/: "$nope"\n&/' "$VS"
+  run "$VS" --pre
+  [ "$status" -ne 70 ]
+  run "$VS" --post
+  [ "$status" -ne 70 ]
+  run alerts
+  [[ "$output" != *"crashed:"* ]]
+  run "$VS"
+  [ "$status" -eq 70 ]
+  run "$VS"
+  [ "$(alerts | grep -c '\[sync\] foundry-sync crashed: exit 1; journalctl --user -u foundry-sync')" -eq 1 ]
+}
+
 @test "remote_mode none, a template origin and a missing upstream exit 1 with the reason" {
   sed -i 's/^remote_mode: .*/remote_mode: "none"/' system/config.md
   run "$VS"

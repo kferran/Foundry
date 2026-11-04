@@ -9,6 +9,8 @@ cd "$VAULT_ROOT"
 source system/scripts/lib_config.sh
 # shellcheck source=lib_git.sh
 source system/scripts/lib_git.sh
+# shellcheck source=lib_fetch.sh
+source system/scripts/lib_fetch.sh   # crash_trap and on_exit; this script's own fail is defined below and wins
 
 mode=default
 (( $# <= 1 )) || { echo "usage: vault_sync.sh [--pre | --post]" >&2; exit 2; }
@@ -18,6 +20,9 @@ case "${1:-}" in
   --post) mode=post ;;
   *) echo "usage: vault_sync.sh [--pre | --post]" >&2; exit 2 ;;
 esac
+FETCH_TAG=sync
+# A crash (an unset variable) exits 70 with one alert a day; --pre and --post keep their exit mapping (§5.1 Modes).
+if [[ "$mode" == default ]]; then crash_trap --exit-only foundry-sync; fi
 
 export GIT_TERMINAL_PROMPT=0
 # Every git child runs with run.lock's fd 9 closed: a daemon or a detached gc it starts must not keep the lock.
@@ -93,6 +98,7 @@ block() {
 }
 
 on_signal() {
+  crash_signal=1   # a stop is no crash (lib_fetch.sh on_exit)
   [[ ! -e "$git_dir/MERGE_HEAD" ]] || git merge --abort 2>/dev/null
   exit "$1"
 }
@@ -133,7 +139,8 @@ while IFS= read -r line; do
 done <<< "$GIT_SYNC_SECRETS"
 # Now.md merges line by line (#436 S5) in this merge only: a hand merge and the update's merge stay textual.
 attrs="$(mktemp)"
-trap 'rm -f -- "$attrs"' EXIT
+exit_cleanup='rm -f -- "$attrs"'
+trap on_exit EXIT
 printf 'wiki/*/Now.md merge=now\n' > "$attrs"
 driver="'${VAULT_ROOT//\'/\'\\\'\'}/system/scripts/now.py' merge-driver %O %A %B"
 for attempt in 1 2; do
