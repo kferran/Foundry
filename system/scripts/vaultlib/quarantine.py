@@ -9,11 +9,12 @@ from pathlib import Path
 
 STAMP = re.compile(r"(\d{8})T\d{6}")   # a run id or a telemetry backup name starts with %Y%m%dT%H%M%S
 SIDECARS = (".origin.json", ".reason.txt")
+SAFE = ("run", "telemetry_state")   # the kinds whose way out is "safe to delete"; the daily prune takes them at 30 days
 
 
 @dataclass
 class Row:
-    kind: str       # poisoned | meeting | run | telemetry_state
+    kind: str       # poisoned | meeting | backfill | run | telemetry_state
     path: str       # vault-relative
     origin: str     # where a poisoned input came from, else ""
     since: date
@@ -50,13 +51,14 @@ def _poisoned(vault: Path, folder: Path):
         yield "poisoned", item, str(info.get("origin") or ""), since, "", way
 
 
-def _meetings(vault: Path, folder: Path):
+def _held(folder: Path, kind: str, way: str):
+    """A meeting source or a backfill marker, each with its .reason.txt."""
     for item in sorted(p for p in folder.iterdir() if p.is_file() and not p.name.endswith(SIDECARS)):
         try:
             reason = (folder / f"{item.name}.reason.txt").read_text(encoding="utf-8").strip().splitlines()[0]
         except (OSError, IndexError):
             reason = ""
-        yield "meeting", item, "", _mtime(item), reason, "fix the source; the next fetch or drop imports it"
+        yield kind, item, "", _mtime(item), reason, way
 
 
 def _ledger(vault: Path) -> list:
@@ -96,7 +98,9 @@ def items(vault, today: date) -> list:
         if entry.is_dir() and entry.name == "poisoned":
             found += _poisoned(vault, entry)
         elif entry.is_dir() and entry.name == "meetings":
-            found += _meetings(vault, entry)
+            found += _held(entry, "meeting", "fix the source; the next fetch or drop imports it")
+        elif entry.is_dir() and entry.name == "backfill":   # recall R1 (#438)
+            found += _held(entry, "backfill", "move it back to system/logs/memory/sessions/ to retry")
         elif entry.is_dir():   # a held-back run's staging: its input is retried or poisoned on its own
             ledger = _ledger(vault) if ledger is None else ledger
             later = _published_later(ledger, entry.name)

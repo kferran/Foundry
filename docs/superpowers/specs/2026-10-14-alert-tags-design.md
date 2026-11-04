@@ -6,7 +6,7 @@
 
 ## 1. Problem
 
-Every alert is one line, `- HH:MM:SS [tag] text`, appended to `system/logs/alerts_<date>.md` by thirteen writers: `run_headless.sh` (`[intake]`), `intake.py` (`[intake]`), `update_template.sh` (`[update]`), `vault_sync.sh` (`[sync]`), `commit_runs.py` (`[commit_runs]`), `telemetry_run.py` (`[telemetry]`), `dtcc_run.py` (`[dtcc]`), `nightshift_run.py` (`[orders]`), `lib_memory.sh` (`[memory]`), and the `alert_once` helpers in `calendar_fetch.sh`, `meetings_fetch.sh`, `jira_fetch.sh` (`[handoffs]`), `triage_fetch.sh`, `rca_file.sh`, `notify.sh`, `smoke_check.sh`. Nothing lists the tags; a new script picks one. Three once-a-day mechanisms exist (`grep -F` on a key, a marker file, the notice cursor). Two readers route: `notify.py` sends every new line to Slack at the next 5-minute tick except `[notify]` lines, with `[triage]` lines as a count; the brief's prompt lists every line under Blockers, Pipeline. So a smoke failure and a sync block reach Slack the same way, and a session that wants to tell the owner something has no line to write.
+Every alert is one line, `- HH:MM:SS [tag] text`, appended to `system/logs/alerts_<date>.md` by thirteen writers: `run_headless.sh` (`[intake]`), `intake.py` (`[intake]`), `update_template.sh` (`[update]`), `vault_sync.sh` (`[sync]`), `commit_runs.py` (`[commit_runs]`), `telemetry_run.py` (`[telemetry]`), `clearinghouse_run.py` (`[clearinghouse]`), `nightshift_run.py` (`[orders]`), `lib_memory.sh` (`[memory]`), and the `alert_once` helpers in `calendar_fetch.sh`, `meetings_fetch.sh`, `jira_fetch.sh` (`[handoffs]`), `triage_fetch.sh`, `rca_file.sh`, `notify.sh`, `smoke_check.sh`. Nothing lists the tags; a new script picks one. Three once-a-day mechanisms exist (`grep -F` on a key, a marker file, the notice cursor). Two readers route: `notify.py` sends every new line to Slack at the next 5-minute tick except `[notify]` lines, with `[triage]` lines as a count; the brief's prompt lists every line under Blockers, Pipeline. So a smoke failure and a sync block reach Slack the same way, and a session that wants to tell the owner something has no line to write.
 
 The simplification review (2026-10-11, item 9) counted the eleven writers and proposed one alert writer; the owner left that out of step 2 (2026-10-13). This spec does not reopen it: the writers stay, the readers learn the tags.
 
@@ -25,7 +25,7 @@ The simplification review (2026-10-11, item 9) counted the eleven writers and pr
 | `rca` | a ticket filed, or a filing that stopped | now |
 | `intake` | a failed brief or debrief, a publish refused, an input quarantined | now |
 | `commit_runs` | a run the hook refused | brief |
-| `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `dtcc`, `memory` | a fetch or check that failed | brief |
+| `smoke`, `calendar`, `meetings`, `handoffs`, `telemetry`, `clearinghouse`, `memory` | a fetch or check that failed | brief |
 | `triage` | mail that needs the owner | now, as a count (unchanged) |
 | `notify` | the notifier itself | never |
 

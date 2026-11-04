@@ -79,8 +79,8 @@ session_deny() { awk -v n="$1" '$0 == "--end--" { s++; p = 0; next } s == n - 1 
 @test "fetch: at the usage ceiling no session starts, the hold is logged and alerted once a day (usage ceiling)" {
   search_says "$(doc FAKE-doc-0001)"
   read_says FAKE-doc-0001
-  mkdir -p system/logs/nightshift
-  jq -cn --arg at "$(date -u -Iseconds)" '{usage5: 0.7, usage5_at: $at}' > system/logs/nightshift/health-2099-01-01.json
+  mkdir -p "$BATS_TEST_TMPDIR/ws/state"
+  jq -cn --arg at "$(date -u -Iseconds)" '{usage5: 0.7, usage5_at: $at}' > "$BATS_TEST_TMPDIR/ws/state/health-2099-01-01.json"
   run "$MF"
   [ "$status" -eq 0 ]
   run "$MF"
@@ -527,4 +527,16 @@ token = [REDACTED:assignment]'
   hook_commit meetings/drop/work/notes.txt 'Avery: see [Doc](https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit) now\n'
   [ "$status" -eq 0 ]
   [ "$(git cat-file blob HEAD:meetings/drop/work/notes.txt)" = 'Avery: see Doc now' ]
+}
+
+@test "fetch: an unexpected failure exits 70 and alerts once as a crash; --check does not alert (#436, F6 gap)" {
+  search_says
+  fails_on cp '*listing.json*'   # the copy of the search's output, outside any || list
+  run "$MF"
+  [ "$status" -eq 70 ]
+  [ "$(cat system/logs/alerts_*.md | grep -c '\[meetings\] foundry-meetings crashed: ')" -eq 1 ]
+  rm -f system/logs/alerts_*.md
+  run "$MF" --check
+  [ "$status" -ne 70 ]
+  [ -z "$(cat system/logs/alerts_*.md 2>/dev/null | grep 'crashed:')" ]
 }

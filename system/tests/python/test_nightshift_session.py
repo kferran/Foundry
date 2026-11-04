@@ -200,3 +200,32 @@ def test_parse_collects_denied_writes(tmp_path):
     f.write_text(json.dumps({"type": "result", "subtype": "success", "permission_denials": denials}) + "\n")
     assert ss.parse_stream(f)["denied"] == ["/w/out/A.md", "/w/out/B.md"]
     assert ss.parse_stream(FX / "ok.jsonl")["denied"] == []
+
+
+def test_profiles_use_anchored_env_globs():
+    # confinement spec §3.3 (#326): on Linux a deny glob that starts with a wildcard masks nothing; ~/** masks
+    home = str(Path.home())
+    for kind in ("plan", "research"):
+        raw = json.loads((REPO / "system" / "nightshift" / f"{kind}.settings.json").read_text())["sandbox"]["filesystem"]["denyRead"]
+        assert {"~/**/.env", "~/**/.env.*"} <= set(raw)
+        assert not [d for d in raw if d.startswith("**") or d.startswith("/**")]
+        p = ss.profile(REPO, kind, [], cwd=REPO)
+        assert f"{home}/**/.env" in p["sandbox"]["filesystem"]["denyRead"]
+        assert f"Read(/{home}/**/.env.*)" in p["permissions"]["deny"]
+
+
+def test_profile_fences_the_workspace(tmp_path):
+    # §3.3 (#319): the sandbox denies the whole workspace and re-opens the session's own folder; the Read tool is kept
+    # in that folder by --restricted, and a mirrored Read deny would refuse the folder itself (probe, 2026-10-30)
+    ws = tmp_path / "ws"
+    (ws / "nightshift-x").mkdir(parents=True)
+    p = ss.profile(REPO, "plan", [], cwd=ws / "nightshift-x", fence=ws)
+    fs = p["sandbox"]["filesystem"]
+    assert str(ws) in fs["denyRead"]
+    assert fs["allowRead"] == [str(ws / "nightshift-x")]
+    assert not [r for r in p["permissions"]["deny"] if r.startswith(f"Read(/{ws}")]
+    (tmp_path / "link").symlink_to(ws)
+    fs = ss.profile(REPO, "plan", [], cwd=tmp_path / "link" / "nightshift-x", fence=tmp_path / "link")["sandbox"]["filesystem"]
+    assert {str(tmp_path / "link"), str(ws)} <= set(fs["denyRead"])
+    assert set(fs["allowRead"]) == {str(tmp_path / "link" / "nightshift-x"), str(ws / "nightshift-x")}
+    assert "allowRead" not in ss.profile(REPO, "plan", [], cwd=ws / "nightshift-x")["sandbox"]["filesystem"]

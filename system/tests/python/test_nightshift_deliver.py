@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from helpers import concept, write
-from vaultlib import nightshift_deliver as nd
+from helpers import REPO, concept, write
+from vaultlib import nightshift_deliver as nd, now
 
 
 def git(repo, *a):
@@ -458,8 +458,8 @@ def test_no_protected_files_keeps_the_commit(tmp_path):
     assert nd.apply_protected(tmp_path / "runner.git", sha, "master", [], tmp_path) == (True, sha)
 
 
-def test_research_stale_claims_become_one_digest_input_for_ingest(vault: Path, tmp_path):
-    """#85: a findings note's Stale claims reach ingest as a one-section session digest."""
+def test_research_stale_claims_wait_in_held_with_one_owed_line(vault: Path, tmp_path):
+    """#85, confinement spec §3.7: Stale claims wait in held/ as a one-section digest, with one owed Now line."""
     from vaultlib import frontmatter, schema
     findings = tmp_path / "A.md"
     findings.write_text(concept("work", "Answer", "Found it.\n\n## Stale claims\n"
@@ -468,7 +468,8 @@ def test_research_stale_claims_become_one_digest_input_for_ingest(vault: Path, t
     fm = {"output": "wiki/work/concepts/A.md", "partition": "work", "id": "2026-10-10-retry-check"}
     ok, detail = nd.publish_research(vault, fm, findings)
     assert ok, detail
-    path = vault / "raw/work/notes/2026-10-10-retry-check.stale-claims.md"
+    path = vault / "raw/work/held/2026-10-10-retry-check.stale-claims.md"
+    assert not (vault / "raw/work/notes").exists()
     note = frontmatter.parse(path.read_text())
     assert note.body == "## Stale claims\n- [[Kafka]]: retries 3 times → retries 5 times (src/app/retry.py:12)\n"
     ntype, issues = schema.validate_note(schema.load_schemas(vault), path.relative_to(vault).as_posix(), note,
@@ -476,6 +477,9 @@ def test_research_stale_claims_become_one_digest_input_for_ingest(vault: Path, t
     assert ntype == "session_digest"
     assert [i.message for i in issues if i.severity == "error"] == []
     assert note.data["work_order"] == "2026-10-10-retry-check"
+    (line,) = [l for l in now.open_lines(now.read(vault, "work")) if "held/" in l]
+    assert line.startswith("- [ ] owed: Review 1 stale claims from a research Work Order before they reach the wiki: "
+                           "raw/work/held/2026-10-10-retry-check.stale-claims.md")
 
 
 def test_research_without_stale_claims_writes_no_digest(vault: Path, tmp_path):
@@ -484,6 +488,12 @@ def test_research_without_stale_claims_writes_no_digest(vault: Path, tmp_path):
     ok, _ = nd.publish_research(vault, {"output": "wiki/work/concepts/A.md", "partition": "work", "id": "x"}, findings)
     assert ok
     assert not (vault / "raw/work/notes").exists()
+
+
+@pytest.fixture(autouse=True)
+def _now_template(vault: Path):
+    """A held file's owed line needs the Now page template, which a real vault has (confinement spec §3.7)."""
+    shutil.copytree(REPO / "system" / "templates", vault / "system" / "templates", dirs_exist_ok=True)
 
 
 def stale_findings(tmp_path):
@@ -497,16 +507,55 @@ def test_the_stale_claims_input_is_headless_and_names_the_repo(vault: Path, tmp_
     from vaultlib import frontmatter
     fm = {"output": "wiki/work/concepts/A.md", "partition": "work", "id": "2026-10-10-x", "repo": "shop"}
     assert nd.publish_research(vault, fm, stale_findings(tmp_path))[0]
-    data = frontmatter.parse((vault / "raw/work/notes/2026-10-10-x.stale-claims.md").read_text()).data
+    data = frontmatter.parse((vault / "raw/work/held/2026-10-10-x.stale-claims.md").read_text()).data
     assert data["provenance"] == ["headless"]
     assert data["codebase"] == "shop"
 
 
-def test_a_second_delivery_after_ingest_writes_no_second_input(vault: Path, tmp_path):
+@pytest.mark.parametrize("folder", ["archive", "notes", "held"])
+def test_a_second_delivery_writes_no_second_held_file(vault: Path, tmp_path, folder):
     fm = {"output": "wiki/work/concepts/A.md", "partition": "work", "id": "2026-10-10-x"}
-    write(vault, "raw/work/archive/2026-10-10-x.stale-claims.md", "compiled\n")
+    write(vault, f"raw/work/{folder}/2026-10-10-x.stale-claims.md", "earlier\n")
     assert nd.stale_claims_input(vault, fm, stale_findings(tmp_path).read_text()) is None
-    assert not (vault / "raw/work/notes").exists()
+    assert [p.name for p in (vault / "raw/work").rglob("*.stale-claims.md")] == ["2026-10-10-x.stale-claims.md"]
+
+
+def test_a_line_added_twice_is_one_line(vault: Path, tmp_path):
+    # intake retries a failed add on every tick: the second add of the same statement is "exists"
+    from vaultlib import held
+    fm = {"output": "wiki/work/concepts/A.md", "partition": "work", "id": "2026-10-10-x"}
+    assert nd.publish_research(vault, fm, stale_findings(tmp_path))[0]
+    held.add_line(vault, vault / "raw/work/held/2026-10-10-x.stale-claims.md", 1, "2026-10-11")
+    assert len([l for l in now.open_lines(now.read(vault, "work")) if "held/" in l]) == 1
+
+
+def test_a_shared_orders_line_goes_on_work(vault: Path, tmp_path):
+    findings = tmp_path / "A.md"
+    findings.write_text(concept("shared", "Answer", "Found it.\n\n## Stale claims\n- Kafka retries: a → b (doc)\n",
+                                provenance='["headless"]'))
+    fm = {"output": "wiki/shared/concepts/A.md", "partition": "shared", "id": "2026-10-10-s"}
+    assert nd.publish_research(vault, fm, findings)[0]
+    assert (vault / "raw/shared/held/2026-10-10-s.stale-claims.md").is_file()
+    assert [l for l in now.open_lines(now.read(vault, "work")) if "raw/shared/held/2026-10-10-s.stale-claims.md" in l]
+
+
+def test_a_long_id_keeps_the_whole_path_in_the_line(vault: Path, tmp_path):
+    long_id = "2026-10-10-" + "a" * 70
+    fm = {"output": "wiki/work/concepts/A.md", "partition": "work", "id": long_id}
+    assert nd.publish_research(vault, fm, stale_findings(tmp_path))[0]
+    assert [l for l in now.open_lines(now.read(vault, "work")) if f"raw/work/held/{long_id}.stale-claims.md" in l]
+
+
+def test_a_line_that_cannot_be_added_leaves_the_held_file(vault: Path, tmp_path, monkeypatch):
+    from vaultlib import held
+    def busy(*a, **k):
+        raise TimeoutError("run.lock busy")
+    monkeypatch.setattr(held, "add_line", busy)
+    ok, detail = nd.publish_research(vault, {"output": "wiki/work/concepts/A.md", "partition": "work", "id": "2026-10-10-x"},
+                                     stale_findings(tmp_path))
+    assert ok
+    assert "its stale claims are held without a Now line yet" in detail
+    assert (vault / "raw/work/held/2026-10-10-x.stale-claims.md").is_file()
 
 
 def test_a_failed_handoff_still_reports_the_published_findings(vault: Path, tmp_path, monkeypatch):
@@ -516,5 +565,5 @@ def test_a_failed_handoff_still_reports_the_published_findings(vault: Path, tmp_
     ok, detail = nd.publish_research(vault, {"output": "wiki/work/concepts/A.md", "partition": "work", "id": "x"},
                                      stale_findings(tmp_path))
     assert ok
-    assert detail.startswith("wiki/work/concepts/A.md (its stale claims did not reach ingest: OSError")
+    assert detail.startswith("wiki/work/concepts/A.md (its stale claims were not held: OSError")
     assert (vault / "wiki/work/concepts/A.md").is_file()

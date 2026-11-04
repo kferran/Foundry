@@ -54,7 +54,7 @@ def test_report_json_matches_build_and_writes_no_file(vault: Path, capsys):
 
 def test_record_usage_creates_merges_and_skips_without_a_reading(vault: Path):
     import json
-    hp = vault / nr.DIR / "health-2026-10-07.json"
+    hp = nr.state_dir(vault) / "health-2026-10-07.json"
     nr.record_usage(vault, "2026-10-07", {}, "2026-10-07T05:00:00+00:00")
     assert not hp.exists()
     nr.write_health(vault, "2026-10-07", {"claude": "ok"})
@@ -116,4 +116,15 @@ def test_health_writes_from_parallel_workers_stay_whole(vault: Path):
     for t in threads:
         t.join()
     assert errors == []
-    assert json.loads((vault / nr.DIR / "health-2026-10-16.json").read_text())["n"] in range(8)
+    assert json.loads((nr.state_dir(vault) / "health-2026-10-16.json").read_text())["n"] in range(8)
+
+
+def test_a_requeued_runs_archive_is_left_out_of_the_report(vault: Path):
+    # review of PR B: requeue moves items/<id>/ to items/<id>.1/; its old Needs-you line must not stay in the report
+    import json
+    old = outcome(state="blocked", result="", needs=["the base moved; run nightshift.py requeue 2026-10-06-a"])
+    write(nr.state_dir(vault), "items/2026-10-06-a.1/outcome.json", json.dumps(old))
+    nr.write_outcome(vault, outcome(run=2))
+    text = nr.build(vault, "2026-10-07")
+    assert "run nightshift.py requeue" not in text
+    assert "Review and merge: https://github.com/o/r/pull/7 (2026-10-06-a)" in text

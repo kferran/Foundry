@@ -10,7 +10,7 @@ import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
-from . import frontmatter, guard, publish, recall as recallmod, retrieve, schema as schemamod, scope as scopemod
+from . import frontmatter, guard, publish, recall as recallmod, recall_log, retrieve, schema as schemamod, scope as scopemod
 from .index import ISSUE_ROWS, NOT_INDEXED, PRIVATE, Index, citation_issues, cited
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
@@ -335,7 +335,12 @@ def cmd_recall(args, vault, sc):
     if scopemod.caller_scope(vault, cwd) != sc:
         raise UsageError("--cwd is not in the caller's scope")
     budget = recallmod.budget_for(vault, args.budget_chars)
-    sys.stdout.write(recallmod.build(vault, sc, budget, workcell_session=recallmod.workcell_session_env()))
+    workcell = recallmod.workcell_session_env()
+    text, stats = recallmod.build(vault, sc, budget, workcell_session=workcell)
+    sys.stdout.write(text)
+    sys.stdout.flush()
+    if not workcell and recall_log.SID.match(args.session_id or ""):   # the push line goes after the block (§3.2)
+        recall_log.write(vault, {"kind": "push", "session": args.session_id, "source": args.source, **stats})
     return EXIT_OK
 
 
@@ -522,6 +527,8 @@ def build_parser():
     p = add("recall", cmd_recall, "build the SessionStart recall block")
     p.add_argument("--cwd", required=True)
     p.add_argument("--budget-chars", type=int)
+    p.add_argument("--session-id")
+    p.add_argument("--source")
     add("rebuild", cmd_rebuild, "drop and rebuild the index")
     return parser
 

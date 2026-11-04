@@ -142,17 +142,6 @@ def test_now_flow_counts_inflow_against_closures_and_evidence(run, vault):
     assert text == "2 closed against 3 added (1 on evidence)"
 
 
-def test_dismissed_share_per_evidence_host_with_five_closed(run, vault):
-    mail = "https://mail.google.com/mail/u/0/#all/abc"
-    lines = [f"- [-] owed: Mail {i} (since 2026-10-19, {mail}{i}) _(closed: ticked 2026-10-2{i})_" for i in range(3)]
-    lines += [f"- [x] owed: Mail done {i} (since 2026-10-19, {mail}x{i}) _(closed: ticked 2026-10-2{i})_" for i in range(2)]
-    lines += ["- [-] owed: Slack (since 2026-10-19, https://x.slack.com/archives/C1/p1) _(closed: ticked 2026-10-20)_"]
-    archive(vault, "work", *lines)
-    value, text, _, state = run("dismissed")
-    assert value == {"guess:mail": 60}   # slack has 1 closed: below the 5 a host needs
-    assert state == "breach" and text == "guess:mail 60%"
-
-
 def test_dismissed_share_is_keyed_by_writer(run, vault):
     lines = [f"- [-] owed: Watch {i} [via:: watch] (since 2026-10-19) _(closed: expired 2026-10-2{i})_" for i in range(3)]
     lines += [f"- [x] owed: Watch done {i} [via:: watch] (since 2026-10-19) _(closed: ticked 2026-10-2{i})_" for i in range(2)]
@@ -222,3 +211,22 @@ def test_headroom_reads_the_caps_from_the_tests(run, vault, h):
 def test_headroom_without_its_tests_is_unavailable(run, h):
     with pytest.raises(h.Unavailable):
         run("headroom")
+
+
+def test_dismissed_share_per_evidence_host_with_five_closed(run, vault):
+    # An old mail or chat line from before tag-writers keeps its guess from the evidence link.
+    mail = "https://mail.google.com/mail/u/0/#all/abc"
+    lines = [f"- [-] owed: Mail {i} (since 2026-10-19, {mail}{i}) _(closed: ticked 2026-10-2{i})_" for i in range(3)]
+    lines += [f"- [x] owed: Mail done {i} (since 2026-10-19, {mail}x{i}) _(closed: ticked 2026-10-2{i})_" for i in range(2)]
+    lines += ["- [-] owed: Slack (since 2026-10-19, https://x.slack.com/archives/C1/p1) _(closed: ticked 2026-10-20)_"]
+    archive(vault, "work", *lines)
+    value, text, _, state = run("dismissed")
+    assert value == {"guess:mail": 60}   # slack has 1 closed: below the 5 a host needs
+    assert state == "breach" and text == "guess:mail 60%"
+
+
+def test_dismissed_counts_a_line_with_no_writer_and_no_mail_or_chat_link_as_the_sessions(run, vault):
+    lines = [f"- [-] owed: Mine {i} (since 2026-10-19, https://github.com/o/r/pull/{i}) _(closed: ticked 2026-10-2{i})_" for i in range(3)]
+    lines += [f"- [x] owed: Done {i} (since 2026-10-19) _(closed: ticked 2026-10-2{i})_" for i in range(2)]
+    archive(vault, "work", *lines)
+    assert run("dismissed")[0] == {"session": 60}

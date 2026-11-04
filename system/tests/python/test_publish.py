@@ -654,3 +654,106 @@ def test_a_staged_hard_link_is_refused(vault):
 
 def test_the_gate_passes_an_added_brief_line_that_names_its_writer(vault):
     assert brief_run(vault, [OLD_LONG, "- [ ] owed: New objective [via:: brief] (since 2026-10-01)"]) == []
+
+
+HELD = ("- [ ] owed: Review 1 stale claims from a research Work Order before they reach the wiki: "
+        "raw/work/held/2026-10-01-r.stale-claims.md [due:: 2026-10-31] (since 2026-10-01)")
+OTHER = "- [ ] owed: Send the draft (since 2026-10-01)"
+HELD_REFUSAL = "a Now line naming raw/<p>/held/ changes only by hand"
+
+
+def held_run(vault, live, staged):
+    """A brief run staging wiki/work/Now.md with `staged` lines over a live page holding `live` (confinement §3.7)."""
+    write(vault, "wiki/work/Now.md", NOW_HEAD + "\n".join(live) + "\n")
+    os.utime(vault / "wiki/work/Now.md", (time.time() - 600, time.time() - 600))
+    publish.snapshot(vault, BID, ["wiki/work/**"])
+    publish.record_stage(vault, BID, "wiki/work/Now.md")
+    stage_new(vault, "wiki/work/Now.md", NOW_HEAD + "\n".join(staged) + "\n", run_id=BID)
+    return [r for r in reasons(publish.validate_run(vault, BID, now=LATER)[2]) if "Now line" in r]
+
+
+@pytest.mark.parametrize("staged", [
+    [OTHER, HELD.replace("- [ ] ", "- [x] ", 1)],                       # ticked
+    [OTHER],                                                             # removed
+    [OTHER, HELD, HELD.replace("2026-10-01-r", "2026-10-01-q")],        # added
+    [OTHER, HELD.replace("Review 1", "Review 2")],                       # reworded
+], ids=["ticked", "removed", "added", "reworded"])
+def test_the_gate_refuses_a_brief_that_changes_a_held_line(vault, staged):
+    assert held_run(vault, [OTHER, HELD], staged) == [HELD_REFUSAL]
+
+
+def test_the_gate_passes_a_brief_that_keeps_held_lines_and_moves_others(vault):
+    assert held_run(vault, [OTHER, HELD], [HELD, OTHER, "- [ ] owed: A new line (since 2026-10-02)"]) == []
+
+
+def state_run(vault, live, staged):
+    """held_run, returning the gate's state-change refusals (factory F7 spec §4)."""
+    held_run(vault, live, staged)
+    return [r for r in reasons(publish.validate_run(vault, BID, now=LATER)[2]) if "the brief changed" in r]
+
+
+BOOK = "- [ ] owed: Book the venue [due:: 2026-10-31] (Ann Sample, since 2026-10-01, EX-4)"
+TICKED = OTHER.replace("[ ]", "[x]")
+
+
+@pytest.mark.parametrize("live, staged, want", [
+    ([OTHER, BOOK], [TICKED, BOOK], "Send the draft: open to done"),
+    ([OTHER], [OTHER.replace("[ ]", "[-]") + " _(closed: ticked 2026-10-02)_"], "Send the draft: open to dropped stamped"),
+    ([TICKED], [OTHER], "Send the draft: done to open"),
+    # Review focus 2: a rewrite that also ticks pairs by its fields, as the merge driver pairs it; no removal plus add
+    ([OTHER, BOOK], [OTHER, BOOK.replace("[ ] owed: Book the venue", "[x] owed: Book the hall")],
+     "Book the venue: open to done"),
+    ([OTHER], [OTHER, "- [x] call the bank (since 2026-10-02)"], "call the bank (since 2026-10-02): none to done"),
+], ids=["ticked", "dropped", "reopened", "rewritten-and-ticked", "added-closed"])
+def test_the_gate_refuses_a_brief_that_changes_a_lines_state(vault, live, staged, want):
+    # Factory F7 spec Goal 3: the brief adds open lines and changes no line's state; the refusal is logged.
+    assert state_run(vault, live, staged) == [f"now: the brief changed {want}"]
+    assert '"writer": "brief"' in next((vault / "system/logs").glob("now-*.jsonl")).read_text()
+
+
+def test_the_gate_passes_a_brief_that_only_adds_open_lines(vault):
+    done = TICKED + " _(closed: ticked 2026-10-02)_"
+    assert state_run(vault, [done, BOOK], [done, BOOK, "- [ ] owed: A new line (since 2026-10-02)", "- [ ] by hand"]) == []
+
+
+def test_the_state_screen_is_for_brief_runs_only(vault):
+    debrief = "20261001T170000-debrief-ab12"
+    write(vault, "wiki/work/Now.md", NOW_HEAD + OTHER + "\n")
+    os.utime(vault / "wiki/work/Now.md", (time.time() - 600, time.time() - 600))
+    publish.snapshot(vault, debrief, ["wiki/work/**"])
+    publish.record_stage(vault, debrief, "wiki/work/Now.md")
+    stage_new(vault, "wiki/work/Now.md", NOW_HEAD + TICKED + "\n", run_id=debrief)
+    assert not [r for r in reasons(publish.validate_run(vault, debrief, now=LATER)[2]) if "the brief changed" in r]
+
+
+
+def test_an_ingest_never_writes_the_now_archive(run):
+    # review of PR C: intake reads ticked held lines from now-archive too, so ingest must not forge one there
+    target = "wiki/work/now-archive/2026-10.md"
+    stage_new(run, target, NOW_HEAD + HELD.replace("- [ ] ", "- [x] ", 1) + "\n")
+    decide(run, rec(target))
+    assert "the Now archive is written only by now.py" in reasons(publish.validate_run(run, RID, now=LATER)[2])
+
+
+# -- recall R1 (#438): a digest-backfill run publishes one exact raw/<p>/notes/ digest --
+DBID = "20261103T120000-digest-backfill-ab12"
+BACKFILLED = "raw/work/notes/2026-11-03-0900-bf000001-backfill.md"
+DIGEST = ('---\ntype: session_digest\npartition: "work"\ncodebase: "vault"\nsession_id: "bf000001-aaaa"\n'
+          'created_at: "2026-11-03T09:00:00-07:00"\nredactions: "0"\n---\n## Outcome\nTidied the export job.\n')
+
+
+def test_digest_backfill_run_id_validates():
+    assert publish.check_run_id(DBID) == "digest-backfill"
+
+
+def test_a_backfill_run_rejects_a_file_outside_its_target(vault):
+    publish.snapshot(vault, DBID, [BACKFILLED])
+    stage_new(vault, BACKFILLED, DIGEST, run_id=DBID)
+    assert publish.validate_run(vault, DBID, now=LATER)[2] == []
+    stage_new(vault, "raw/work/notes/other.md", DIGEST, run_id=DBID)
+    stage_new(vault, "wiki/work/concepts/Extra.md", concept("work", "Extra", "[[Index]]"), run_id=DBID)
+    report = publish.commit_run(vault, DBID, now=LATER)
+    assert report["status"] != "published"
+    assert sorted(p["path"] for p in report["problems"]) == ["raw/work/notes/other.md", "wiki/work/concepts/Extra.md"]
+    assert set(report_reasons(report)) == {"not a publishable target"}
+    assert not (vault / BACKFILLED).exists() and not (vault / "raw/work/notes/other.md").exists()

@@ -19,7 +19,7 @@ A new user today installs test tools and a desktop dependency, answers about 25 
 - **A codebase is one confirmation.** Setup drafts `system/codebases/<name>.md` from the inspection and shows the whole draft once; the user accepts it or names the fields to change.
 - **The first brief runs at the end of setup** on a standalone machine or a server (a client gets the server's brief through sync).
 - **A vault path with spaces is refused in phase 0**, before anything is written: the memory hooks refuse such a path, and the units accept it. `install_units.sh` keeps accepting spaces, so an existing vault at such a path is not broken by its next update.
-- **#117: the template update runs at `brief_time` minus 45 minutes** (05:15 for a 06:00 brief), rendered like the DTCC watcher's time (`brief_time` minus 30). A fixed 05:15 would run after the watcher, or after the brief, for an early `brief_time`.
+- **#117: the template update runs at `brief_time` minus 45 minutes** (05:15 for a 06:00 brief), rendered like the clearing-house watcher's time (`brief_time` minus 30). A fixed 05:15 would run after the watcher, or after the brief, for an early `brief_time`.
 - **`bwrap` is a runtime dependency** on a standalone machine and a server: `headless.settings.json` turns the sandbox on.
 
 ## 3. Changes
@@ -34,7 +34,7 @@ Remove `system/scripts/track_obsidian.sh`, `system/scripts/focus_stats.sh`, `sys
 
 ### 3.2 Stagger the template update (#117)
 
-`foundry-update.timer.in` uses a new `{{UPDATE_TIME}}` placeholder, `brief_time` minus 45 minutes, computed beside `dtcc_time`. `units.bats`, `FOUNDRY.md` and `setup.md` stop saying 05:30.
+`foundry-update.timer.in` uses a new `{{UPDATE_TIME}}` placeholder, `brief_time` minus 45 minutes, computed beside `clearinghouse_time`. `units.bats`, `FOUNDRY.md` and `setup.md` stop saying 05:30.
 
 **Existing vault:** the next update re-renders the timer at the new time.
 

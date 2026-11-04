@@ -44,7 +44,7 @@ fi
 # The merge writes into these containers; anything else in their place is refused up front.
 SHAPE='
   [ ([["hooks"], "object"], [["hooks", "SessionStart"], "array"], [["hooks", "Stop"], "array"],
-     [["hooks", "PostToolUse"], "array"], [["hooks", "PreCompact"], "array"], [["hooks", "SessionEnd"], "array"],
+     [["hooks", "PostToolUse"], "array"], [["hooks", "PostToolUseFailure"], "array"], [["hooks", "PreCompact"], "array"], [["hooks", "SessionEnd"], "array"],
      [["hooks", "UserPromptSubmit"], "array"], [["hooks", "PreToolUse"], "array"], [["permissions"], "object"], [["permissions", "allow"], "array"]) as [$p, $t]
     | (try getpath($p) catch null) as $x
     | select($x != null and ($x | type) != $t) | $p | join(".") ] | join(", ")'
@@ -56,7 +56,7 @@ fi
 # The containers an install may have to create. Those it did create are recorded per settings file in
 # $RECORD, so --uninstall removes exactly them and leaves a container the user already had, even an empty one.
 LIB='
-  def containers: [["hooks"], ["hooks", "SessionStart"], ["hooks", "Stop"], ["hooks", "PostToolUse"],
+  def containers: [["hooks"], ["hooks", "SessionStart"], ["hooks", "Stop"], ["hooks", "PostToolUse"], ["hooks", "PostToolUseFailure"],
                    ["hooks", "PreCompact"], ["hooks", "SessionEnd"], ["hooks", "UserPromptSubmit"], ["hooks", "PreToolUse"],
                    ["permissions"], ["permissions", "allow"]];
   def at($p): try getpath($p) catch null;'
@@ -87,6 +87,9 @@ ADD='
   .hooks.SessionStart = ((.hooks.SessionStart // []) + [{hooks: [{type: "command", command: ($v + "/system/hooks/memory_recall.sh"), timeout: 5}]}])
   | .hooks.Stop = ((.hooks.Stop // []) + [{hooks: [{type: "command", command: ($v + "/system/hooks/memory_capture.sh"), timeout: 10}]}])
   | .hooks.PostToolUse = ((.hooks.PostToolUse // []) + [{matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash",
+      hooks: [{type: "command", command: ($v + "/system/hooks/memory_activity.sh"), timeout: 5}]}])
+  # A Bash call that exits non-zero fires PostToolUseFailure instead; the recall log records it as a miss.
+  | .hooks.PostToolUseFailure = ((.hooks.PostToolUseFailure // []) + [{matcher: "Bash",
       hooks: [{type: "command", command: ($v + "/system/hooks/memory_activity.sh"), timeout: 5}]}])
   # timeout 30 also raises the SessionEnd budget (1.5 s by default) so a large transcript finishes copying.
   | .hooks.PreCompact = ((.hooks.PreCompact // []) + [{hooks: [{type: "command", command: ($v + "/system/hooks/memory_keep.sh"), timeout: 30}]}])

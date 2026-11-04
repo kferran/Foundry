@@ -23,7 +23,7 @@ Owner, 2026-10-19:
 5. **Capture through the connector, read-only.** The same confined Slack connector session as notices and triage reads the capture channel since the last tick and writes one `raw/inbox/` drop. No Slack app, no bot token and no ✅ reaction; the intake archiving the file is the receipt.
 6. **Commitments become `owed` lines, from Slack and sent mail.** Each new commitment in the owner's own Slack messages or sent mail becomes an `owed` Now line (who, what, by when) with the message link as evidence. It is skipped when a Now line or a calendar event already covers it. A meeting commitment also gets the owner's free slots before its deadline. Nothing is sent, and no invite is created.
 7. **A `blocked` watch kind.** A watched message saying work is stuck or waiting on someone, and naming the owner or the owner's team, becomes a `waiting` Now line.
-8. **The partner mail guard is out.** It needs an unattended Gmail write and names vendors. It becomes a vault-only extension later, like `dtcc`. Core's `triage_watch_senders` already lists partner mail archived unread on the Now page.
+8. **The partner mail guard is out.** It needs an unattended Gmail write and names vendors. It becomes a vault-only extension later, like `clearinghouse`. Core's `triage_watch_senders` already lists partner mail archived unread on the Now page.
 
 Decided while specifying (for the owner's review):
 

@@ -182,6 +182,23 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "the brief runs when ingest has reached the daily cap (#436 S4)" {
+  mkdir -p system/logs
+  today="$(TZ=America/Denver date +%F)"
+  for i in 1 2; do printf '{"run_id":"r%s","command":"ingest","started_at":"%sT01:00:00-06:00","exit":1}\n' "$i" "$today" >> "$LEDGER"; done
+  HEADLESS_MAX_RUNS_PER_DAY=2 STUB_MODE=brief run "$RH" brief
+  [ "$status" -eq 0 ]
+  [ ! -e "system/logs/.cap-alerted-$today" ]
+}
+
+@test "brief and debrief runs do not count toward the ingest cap (#436 S4)" {
+  mkdir -p system/logs
+  today="$(TZ=America/Denver date +%F)"
+  for c in brief debrief; do printf '{"run_id":"%s","command":"%s","started_at":"%sT01:00:00-06:00","exit":0}\n' "$c" "$c" "$today" >> "$LEDGER"; done
+  HEADLESS_MAX_RUNS_PER_DAY=2 STUB_MODE=noop run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+}
+
 @test "an account usage limit exits 4, alerts once, and is not reported as a failed input" {
   STUB_MODE=usage_limit run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 4 ]
@@ -198,18 +215,18 @@ EOF
   [ "$status" -eq 0 ]
   grep -qx 'stream-json' "$STUB_ARGS"
   grep -qx -- '--verbose' "$STUB_ARGS"
-  [ ! -d system/logs/nightshift ]
+  [ ! -d "$BATS_TEST_TMPDIR/ws/state" ]
   # The full stream is kept only for a run that failed; a good run keeps its result line in claude.json.
   run ls system/logs/runs/*/stream.jsonl
   [ "$status" -ne 0 ]
   ls system/logs/runs/*/claude.json
   STUB_MODE=brief STUB_USAGE=0.7 run "$RH" brief
   [ "$status" -eq 0 ]
-  [ "$(jq -r .usage5 system/logs/nightshift/health-*.json)" = "0.7" ]
-  [ "$(jq -r .usage7 system/logs/nightshift/health-*.json)" = "0.2" ]
+  [ "$(jq -r .usage5 "$BATS_TEST_TMPDIR"/ws/state/health-*.json)" = "0.7" ]
+  [ "$(jq -r .usage7 "$BATS_TEST_TMPDIR"/ws/state/health-*.json)" = "0.2" ]
   STUB_MODE=usage_limit STUB_USAGE=1 run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 4 ]
-  [ "$(jq -r .usage5 system/logs/nightshift/health-*.json)" = "1" ]
+  [ "$(jq -r .usage5 "$BATS_TEST_TMPDIR"/ws/state/health-*.json)" = "1" ]
   ls system/logs/runs/*/stream.jsonl
 }
 
@@ -283,6 +300,19 @@ EOF
   [ "$(wc -l < "$LEDGER")" -eq 1 ]
   [ "$(jq -r .exit "$LEDGER")" = "6" ]
   wait
+}
+
+@test "ingest gives up on a busy run.lock with exit 6 and no alert; the intake tick retries it (#299)" {
+  mkdir -p system/logs
+  exec 8> system/run.lock   # the test's own shell holds the lock: no background process to race
+  flock 8
+  INGEST_LOCK_WAIT=0 run "$RH" ingest raw/work/notes/d1.md
+  exec 8>&-
+  [ "$status" -eq 6 ]
+  [ "$(jq -r .exit "$LEDGER")" = "6" ]
+  run grep -c 'run.lock busy' system/logs/alerts_*.md
+  [ "$output" != 1 ]
+  [ -f raw/work/notes/d1.md ]
 }
 
 @test "brief and debrief wait 1400 s for run.lock by default" {
@@ -400,4 +430,202 @@ EOF
   grep -qx 'raw/work/notes/d1.md' "$STUB_ARGS"
   grep -qx 'raw/work/notes/two words.md' "$STUB_ARGS"
   grep -qE '[0-9]{8}T[0-9]{6}-ingest-[0-9a-f]{4}$' "$STUB_ARGS"
+}
+
+
+# brief_stubs <exit…>: brief_prep.sh and run_headless.sh stubs; each run_headless call takes the next exit in turn and
+# records the BRIEF_RETRY_PENDING it saw (#299).
+brief_stubs() {
+  printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/exits"
+  printf '#!/bin/bash\necho prep >> "%s/calls"\n' "$BATS_TEST_TMPDIR" > system/scripts/brief_prep.sh
+  printf '#!/bin/bash\necho "brief ${BRIEF_RETRY_PENDING:-0}" >> "%s/calls"\nexit "$(sed -n "$(grep -c "^brief" "%s/calls")p" "%s/exits")"\n' \
+    "$BATS_TEST_TMPDIR" "$BATS_TEST_TMPDIR" "$BATS_TEST_TMPDIR" > system/scripts/run_headless.sh
+  chmod +x system/scripts/brief_prep.sh system/scripts/run_headless.sh
+  export BRIEF_RETRY_WAIT=0
+}
+
+@test "brief_run: a rejected brief runs once more, its prep first, and publishes with no alert (#299)" {
+  brief_stubs 5 0
+  run system/scripts/brief_run.sh
+  [ "$status" -eq 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/calls")" = "$(printf '%s\n' prep 'brief 1' prep 'brief 0')" ]
+  run grep -c 'rejected twice' system/logs/alerts_*.md
+  [ "$output" != 1 ]
+}
+
+@test "brief_run: a brief rejected twice raises one alert and runs no third time (#299)" {
+  brief_stubs 5 5 0
+  run system/scripts/brief_run.sh
+  [ "$status" -eq 5 ]
+  [ "$(grep -c '^brief' "$BATS_TEST_TMPDIR/calls")" -eq 2 ]
+  [ "$(cat system/logs/alerts_*.md | grep -c '\[intake\] the brief was rejected twice')" -eq 1 ]
+}
+
+@test "brief_run: a brief that exits 4 or 1 is not retried (#299)" {
+  brief_stubs 4 0
+  run system/scripts/brief_run.sh
+  [ "$status" -eq 4 ]
+  [ "$(grep -c '^brief' "$BATS_TEST_TMPDIR/calls")" -eq 1 ]
+  rm "$BATS_TEST_TMPDIR/calls"
+  brief_stubs 1 0
+  run system/scripts/brief_run.sh
+  [ "$status" -eq 1 ]
+  [ "$(grep -c '^brief' "$BATS_TEST_TMPDIR/calls")" -eq 1 ]
+}
+
+@test "run_headless: a rejected brief with a retry pending raises no alert; without one it does (#299)" {
+  BRIEF_RETRY_PENDING=1 STUB_MODE=nothing run "$RH" brief
+  [ "$status" -eq 5 ]
+  run grep -c 'rejected or empty' system/logs/alerts_*.md
+  [ "$output" != 1 ]
+  STUB_MODE=nothing run "$RH" brief
+  [ "$status" -eq 5 ]
+  [ "$(cat system/logs/alerts_*.md | grep -c 'rejected or empty')" -eq 1 ]
+}
+
+@test "a failed run whose outage check fails exits 7, alerts once a day, and is no attempt (#436 S1)" {
+  STUB_MODE=fail STUB_CHECK=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 7 ]
+  STUB_MODE=fail STUB_CHECK=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 7 ]
+  [ "$(grep -c 'claude is not working' system/logs/alerts_*.md)" -eq 1 ]
+  run grep -c 'failed (exit' system/logs/alerts_*.md
+  [ "$output" = "0" ]
+  STUB_MODE=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 1 ]
+  [ "$(jq -s 'map(.exit) | join(",")' "$LEDGER")" = '"7,7,1"' ]
+  [ "$(jq -s 'last | .attempt' "$LEDGER")" -eq 1 ]
+}
+
+@test "a timeout whose outage check fails exits 7 (#436 S1)" {
+  HEADLESS_TIMEOUT=1 STUB_MODE=sleep STUB_CHECK=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 7 ]
+}
+
+@test "an outage check that hangs ends at its timeout and counts as an outage (#436 S1)" {
+  HEADLESS_CHECK_TIMEOUT=1 STUB_MODE=fail STUB_CHECK=hang run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 7 ]
+  [ "$(grep -c 'claude is not working (exit 124)' system/logs/alerts_*.md)" -eq 1 ]
+}
+
+@test "the outage check runs only after exit 1 or 124, with no tools (#436 S1)" {
+  export STUB_CHECK_ARGS="$BATS_TEST_TMPDIR/check"
+  STUB_MODE=noop run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+  [ ! -e "$STUB_CHECK_ARGS" ]
+  STUB_MODE=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 1 ]
+  grep -qx 'Reply with the word ok.' "$STUB_CHECK_ARGS"
+  [ "$(grep -A1 -x -- '--tools' "$STUB_CHECK_ARGS" | tail -n 1)" = "" ]
+  grep -qx -- --restricted "$STUB_CHECK_ARGS"
+  [ "$(grep -A1 -x -- '--settings' "$STUB_CHECK_ARGS" | tail -n 1)" = system/headless.settings.json ]
+}
+
+@test "a usage limit runs no outage check (#436 S1)" {
+  export STUB_CHECK_ARGS="$BATS_TEST_TMPDIR/check"
+  STUB_MODE=usage_limit run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 4 ]
+  [ ! -e "$STUB_CHECK_ARGS" ]
+}
+
+@test "outage runs do not count toward the daily cap (#436 S1)" {
+  mkdir -p system/logs
+  today="$(TZ=America/Denver date +%F)"
+  for i in 1 2; do printf '{"run_id":"r%s","command":"ingest","started_at":"%sT01:00:00-06:00","exit":7}\n' "$i" "$today" >> "$LEDGER"; done
+  HEADLESS_MAX_RUNS_PER_DAY=2 STUB_MODE=noop run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 0 ]
+}
+
+@test "a raw exit 7 from claude goes through the outage check like any failure (#473)" {
+  STUB_MODE=fail7 STUB_CHECK=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 7 ]
+  [ "$(grep -c 'claude is not working (exit 1' system/logs/alerts_*.md)" -eq 1 ]
+  STUB_MODE=fail7 run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 1 ]
+}
+
+@test "a brief or debrief that fails on an outage says so in its own alert, marker or not (#473)" {
+  STUB_MODE=fail STUB_CHECK=fail run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 7 ]
+  STUB_MODE=fail STUB_CHECK=fail run "$RH" brief
+  [ "$status" -eq 7 ]
+  STUB_MODE=fail STUB_CHECK=fail run "$RH" debrief
+  [ "$status" -eq 7 ]
+  [ "$(grep -c '\] brief .* failed: claude is not working (exit 1' system/logs/alerts_*.md)" -eq 1 ]
+  [ "$(grep -c '\] debrief .* failed: claude is not working (exit 1' system/logs/alerts_*.md)" -eq 1 ]
+  [ "$(grep -c 'intake holds its inputs' system/logs/alerts_*.md)" -eq 1 ]
+}
+
+@test "pin: a rejected publish runs no outage check (#473)" {
+  export STUB_CHECK_ARGS="$BATS_TEST_TMPDIR/check"
+  STUB_MODE=nothing run "$RH" brief
+  [ "$status" -eq 5 ]
+  [ ! -e "$STUB_CHECK_ARGS" ]
+}
+
+@test "pin: a timeout whose outage check passes stays 124 (#473)" {
+  export STUB_CHECK_ARGS="$BATS_TEST_TMPDIR/check"
+  HEADLESS_TIMEOUT=1 STUB_MODE=sleep run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 124 ]
+  grep -qx 'Reply with the word ok.' "$STUB_CHECK_ARGS"
+}
+
+# --- digest-backfill (#438, recall R1 spec §4.5): one staged excerpt in, one digest out ---
+BF="raw/inbox/.staging/2026-11-03-0900-bf000001-backfill.md"
+excerpt() {  # excerpt <path> <partition>: a staged excerpt as the intake tick writes it
+  printf -- '---\ntype: session_digest\npartition: "%s"\ncodebase: "vault"\nsession_id: "bf000001-aaaa"\ncreated_at: "2026-11-03T09:00:00-07:00"\nredactions: "0"\n---\n[2026-11-03T16:00:00.000Z] user: tidy the export job\n' "$2" > "$1"
+}
+
+@test "digest-backfill: takes exactly one staged -backfill.md input (#438)" {
+  excerpt "$BF" work
+  run "$RH" digest-backfill; [ "$status" -eq 2 ]
+  run "$RH" digest-backfill "$BF" "$BF"; [ "$status" -eq 2 ]
+  run "$RH" digest-backfill raw/work/notes/d1.md; [ "$status" -eq 2 ]
+  excerpt raw/inbox/.staging/2026-11-03-0900-bf000001.md work
+  run "$RH" digest-backfill raw/inbox/.staging/2026-11-03-0900-bf000001.md; [ "$status" -eq 2 ]
+  mkdir -p raw/inbox/.staging/sub
+  excerpt raw/inbox/.staging/sub/x-backfill.md work
+  run "$RH" digest-backfill raw/inbox/.staging/sub/x-backfill.md; [ "$status" -eq 2 ]
+  excerpt "$BF" other
+  run "$RH" digest-backfill "$BF"; [ "$status" -eq 2 ]
+  [ ! -e "$LEDGER" ]
+  [ ! -e "$STUB_ARGS" ]
+}
+
+@test "digest-backfill: its snapshot target is that one file (#438)" {
+  excerpt "$BF" work
+  STUB_MODE=backfill run "$RH" digest-backfill "$BF"
+  [ "$status" -eq 0 ]
+  d="raw/work/notes/2026-11-03-0900-bf000001-backfill.md"
+  grep -qx 'provenance: \["headless"\]' "$d"
+  grep -qx 'session_id: "bf000001-aaaa"' "$d"
+  [ "$(jq -r '.command + " " + .partition + " " + .inputs[0]' "$LEDGER")" = "digest-backfill work $BF" ]
+  rm "$d"
+  STUB_MODE=backfill_extra run "$RH" digest-backfill "$BF"
+  [ "$status" -eq 5 ]
+  [ ! -e raw/work/notes/other.md ]
+  [ ! -e "$d" ]
+}
+
+@test "digest-backfill: its tool list is Read,Write with one allow rule (#438)" {
+  excerpt "$BF" personal
+  STUB_MODE=backfill run "$RH" digest-backfill "$BF"
+  [ "$status" -eq 0 ]
+  grep -qx -- 'Read,Write' "$STUB_ARGS"
+  grep -qE -- '^Edit\(/wiki/\.staging/[0-9]{8}T[0-9]{6}-digest-backfill-[0-9a-f]{4}/\*\*\)$' "$STUB_ARGS"
+  run grep -c -E '^(Bash|Edit)\(' "$STUB_ARGS"
+  [ "$output" -eq 1 ]
+  [ -f raw/personal/notes/2026-11-03-0900-bf000001-backfill.md ]
+}
+
+@test "digest-backfill: it counts toward the daily cap (#438)" {
+  mkdir -p system/logs
+  today="$(TZ=America/Denver date +%F)"
+  for i in 1 2; do printf '{"run_id":"r%s","command":"digest-backfill","started_at":"%sT01:00:00-06:00","exit":0}\n' "$i" "$today" >> "$LEDGER"; done
+  HEADLESS_MAX_RUNS_PER_DAY=2 run "$RH" ingest raw/work/notes/d1.md
+  [ "$status" -eq 4 ]
+  excerpt "$BF" work
+  HEADLESS_MAX_RUNS_PER_DAY=2 STUB_MODE=backfill run "$RH" digest-backfill "$BF"
+  [ "$status" -eq 4 ]
+  [ ! -e "$STUB_ARGS" ]
 }

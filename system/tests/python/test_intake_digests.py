@@ -1,7 +1,13 @@
 import json
+import os
+import time
+from pathlib import Path
+
+import pytest
 
 from helpers import write
 from test_intake import calls, iv, ledger_month, later  # noqa: F401  (iv is a fixture)
+from vaultlib import backfill, frontmatter
 from vaultlib.intake import Intake
 
 
@@ -174,3 +180,256 @@ def test_retry_midway_oserror_still_records_ledger(iv, monkeypatch):
     monkeypatch.setenv("STUB_RC", "5")
     Intake(iv, now=later()).run()
     assert (iv / "raw/inbox/a.md").exists()  # one failure since retry, not poisoned
+
+
+# -- recall R1 (#438): the excerpt a backfilled digest is written from (recall spec §4.3) --
+def prompt(ts, text, **extra):
+    return {"type": "user", "isSidechain": False, "timestamp": ts, "message": {"role": "user", "content": text}, **extra}
+
+
+def reply(ts, *blocks, **extra):
+    return {"type": "assistant", "isSidechain": False, "timestamp": ts,
+            "message": {"role": "assistant", "content": list(blocks)}, **extra}
+
+
+def tool_result(ts, text):
+    return {"type": "user", "isSidechain": False, "timestamp": ts, "toolUseResult": {"stdout": text},
+            "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": text}]}}
+
+
+def transcript(path, *entries, raw_lines=()):
+    lines = [json.dumps(e) for e in entries]
+    for at, line in raw_lines:
+        lines.insert(at, line)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+T1, T2, T3, T4 = (f"2026-11-03T13:49:1{n}.026Z" for n in range(4))
+
+
+def test_excerpt_keeps_prompts_text_and_tool_lines_in_order(tmp_path):
+    path = transcript(
+        tmp_path / "s.jsonl",
+        {"type": "permission-mode", "permissionMode": "default"},
+        prompt(T1, "Tidy the export job"),
+        reply(T2, {"type": "thinking", "thinking": "private reasoning"}, {"type": "text", "text": "Reading it now."},
+              {"type": "tool_use", "name": "Read", "input": {"file_path": "/x/export.py"}},
+              {"type": "tool_use", "name": "Bash", "input": {"command": "pytest -q\n" + "y" * 300, "description": "d"}}),
+        {"type": "attachment", "timestamp": T3, "attachment": {"content": "attached text"}},
+        reply(T4, {"type": "text", "text": "Done."}))
+    text, cut, last = backfill.excerpt(path)
+    assert text.split("\n") == [
+        f"[{T1}] user: Tidy the export job",
+        f"[{T2}] assistant: Reading it now.",
+        f"[{T2}] tool Read /x/export.py",
+        f"[{T2}] tool Bash " + ("pytest -q " + "y" * 300)[:200],
+        f"[{T4}] assistant: Done."]
+    assert (cut, last) == (0, T4)
+
+
+def test_excerpt_drops_sidechain_and_tool_results(tmp_path):
+    path = transcript(tmp_path / "s.jsonl", prompt(T1, "Go"), tool_result(T2, "secret tool output"),
+                      prompt(T3, "subagent prompt", isSidechain=True), reply(T4, {"type": "text", "text": "ok"}))
+    text, _, _ = backfill.excerpt(path)
+    assert text == f"[{T1}] user: Go\n[{T4}] assistant: ok"
+
+
+def test_excerpt_keeps_the_newest_100000_with_a_marker(tmp_path):
+    entries = [prompt(T1, f"turn {i} " + "z" * 990) for i in range(150)] + [reply(T4, {"type": "text", "text": "the end"})]
+    whole = "\n".join(f"[{T1}] user: turn {i} " + "z" * 990 for i in range(150)) + f"\n[{T4}] assistant: the end"
+    text, cut, last = backfill.excerpt(transcript(tmp_path / "s.jsonl", *entries))
+    marker, kept = text.split("\n", 1)
+    assert cut == len(whole) - backfill.EXCERPT_CAP > 0
+    assert marker == f"[… {cut} earlier characters left out …]"
+    assert kept == whole[cut:] and len(kept) == backfill.EXCERPT_CAP
+    assert last == T4
+
+
+def test_excerpt_skips_bad_and_huge_lines(tmp_path):
+    huge = json.dumps(prompt(T2, "h" * (backfill.LINE_CAP + 1)))
+    path = transcript(tmp_path / "s.jsonl", prompt(T1, "before"), reply(T4, {"type": "text", "text": "after"}),
+                      raw_lines=[(1, "not json {"), (2, huge), (3, '["a list"]')])
+    text, cut, _ = backfill.excerpt(path)
+    assert text == f"[{T1}] user: before\n[{T4}] assistant: after" and cut == 0
+
+
+def test_excerpt_header_is_the_digest_frontmatter():
+    state = {"partition": "work", "codebase": "vault"}
+    head = backfill.header(state, "bf000001-aaaa", "2026-11-03T06:49:13-07:00", 2)
+    data = frontmatter.parse(head + "body\n").data
+    assert data == {"type": "session_digest", "partition": "work", "codebase": "vault", "session_id": "bf000001-aaaa",
+                    "created_at": "2026-11-03T06:49:13-07:00", "redactions": "2"}
+
+
+# -- recall R1 (#438): the tick's backfill step (recall spec §4.2, §4.4, §4.6) --
+SID = "bf000001-aaaa-bbbb"
+NAME = "2026-11-03-0649-bf000001-backfill"   # T4 (13:49:13Z) in America/Denver
+STAGED = f"raw/inbox/.staging/{NAME}.md"
+DIGEST = f"raw/work/notes/{NAME}.md"
+
+
+@pytest.fixture
+def bv(iv, tmp_path, monkeypatch):
+    """A vault with one ended session queued: its state, its marker and its kept transcript (the default keep dir)."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    queue(iv, SID)
+    return iv
+
+
+def queue(vault, sid, partition="work"):
+    sessions = vault / "system/logs/memory/sessions"
+    write(vault, f"system/logs/memory/sessions/{sid}.json", json.dumps(
+        {"scope": "vault", "partition": partition, "codebase": "vault", "tz": "America/Denver", "last_digest_at": 0}))
+    (sessions / f"{sid}.backfill").touch()
+    keep = Path(os.environ["XDG_STATE_HOME"]) / "foundry/transcripts"
+    keep.mkdir(parents=True, exist_ok=True)
+    transcript(keep / f"{sid}.jsonl", prompt(T1, "Tidy the export job, password: hunter2"),
+               reply(T4, {"type": "text", "text": "Done."}))
+    return sessions / f"{sid}.backfill"
+
+
+def backfills(vault):
+    return [c for c in calls(vault) if c["args"][0] == "digest-backfill"]
+
+
+def rlog(vault):
+    return [json.loads(l) for p in sorted((vault / "system/logs").glob("recall-*.jsonl"))
+            for l in p.read_text().splitlines() if '"backfill"' in l]
+
+
+MARKER = f"system/logs/memory/sessions/{SID}.backfill"
+
+
+def test_backfill_writes_one_digest_from_a_marker(bv):
+    Intake(bv, now=later()).run()
+    [call] = backfills(bv)
+    assert call["args"] == ["digest-backfill", STAGED]
+    staged = call["staged"][STAGED]
+    assert staged.startswith(f'---\ntype: session_digest\npartition: "work"\ncodebase: "vault"\nsession_id: "{SID}"\n'
+                             f'created_at: "2026-11-03T06:49:13-07:00"\nredactions: "1"\n---\n')
+    assert f"[{T1}] user: Tidy the export job" in staged and "hunter2" not in staged
+    assert 'provenance: ["headless"]' in (bv / DIGEST).read_text()
+    assert not (bv / MARKER).exists() and not (bv / STAGED).exists()
+    [line] = rlog(bv)
+    assert (line["session"], line["result"], line["cut"]) == (SID, "written", 0)
+    assert line["run_id"].startswith("stub-") and line["chars"] > 0
+    Intake(bv, now=later()).run()
+    assert len(backfills(bv)) == 1
+
+
+@pytest.mark.parametrize("folder", ["raw/work/notes", "raw/personal/archive", "system/quarantine/poisoned"])
+def test_a_late_stop_digest_drops_the_marker(bv, folder):
+    digest(bv, "work", "x")  # placeholder content; renamed below into the folder under test
+    (bv / folder).mkdir(parents=True, exist_ok=True)
+    (bv / "raw/work/notes/x.md").rename(bv / folder / "2026-11-03-0700-bf000001-shipped-it.md")
+    Intake(bv, now=later()).run()
+    assert backfills(bv) == [] and not (bv / MARKER).exists()
+    assert [(l["result"], l["why"]) for l in rlog(bv)] == [("skipped", "has a digest")]
+
+
+def test_backfill_without_state_or_transcript_drops_the_marker(bv, tmp_path):
+    (tmp_path / "state/foundry/transcripts" / f"{SID}.jsonl").unlink()
+    other = queue(bv, "bf000002-cccc")
+    (bv / "system/logs/memory/sessions/bf000002-cccc.json").unlink()
+    Intake(bv, now=later()).run()
+    assert backfills(bv) == [] and not (bv / MARKER).exists() and not other.exists()
+    assert sorted(l["why"] for l in rlog(bv)) == ["no kept transcript", "no session state"]
+
+
+def test_backfill_waits_at_the_ceiling(bv, monkeypatch):
+    monkeypatch.setattr(Intake, "held", lambda self: True)
+    Intake(bv, now=later()).run()
+    assert backfills(bv) == [] and (bv / MARKER).exists()
+
+
+def test_backfill_exit_2_quarantines_the_marker(bv, monkeypatch):
+    monkeypatch.setenv("STUB_RC", "2")
+    Intake(bv, now=later()).run()
+    assert not (bv / MARKER).exists()
+    assert (bv / f"system/quarantine/backfill/{SID}.backfill").is_file()
+    assert "exit 2" in (bv / f"system/quarantine/backfill/{SID}.backfill.reason.txt").read_text()
+    assert alerts(bv).count(f"backfill of session {SID[:8]} quarantined") == 1
+
+
+@pytest.mark.parametrize("rc", [3, 4, 6, 7])
+def test_backfill_stop_tick_keeps_the_marker(bv, monkeypatch, rc):
+    queue(bv, "bf000002-cccc")
+    monkeypatch.setenv("STUB_RC", str(rc))
+    Intake(bv, now=later()).run()
+    assert len(backfills(bv)) == 1 and (bv / MARKER).exists()
+    assert not (bv / "system/quarantine/backfill").exists()
+
+
+def test_backfill_retries_then_quarantines_after_three(bv, monkeypatch):
+    monkeypatch.setenv("STUB_RC", "5")
+    for n in (1, 2):
+        Intake(bv, now=later()).run()
+        assert (bv / MARKER).exists() and alerts(bv).count("will retry") == n
+    Intake(bv, now=later()).run()
+    assert len(backfills(bv)) == 3 and not (bv / MARKER).exists()
+    assert (bv / f"system/quarantine/backfill/{SID}.backfill").is_file()
+
+
+@pytest.mark.parametrize("field, env", [
+    ("session_id", {"STUB_BACKFILL_SUB": json.dumps([[f'session_id: "{SID}"', 'session_id: "bf000001-zzzz"']])}),
+    ("provenance", {"STUB_BACKFILL_SUB": json.dumps([['["headless"]', '["session", "headless"]']])}),
+    ("Corrections", {"STUB_BACKFILL_BODY": "Done.\n## Corrections\n- use tabs"}),
+    ("redaction", {"STUB_BACKFILL_BODY": "Set password: hunter2 on the job."}),
+])
+def test_backfill_read_back_poisons_a_mismatch(bv, monkeypatch, field, env):
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    Intake(bv, now=later()).run()
+    assert not (bv / DIGEST).exists() and (bv / f"system/quarantine/poisoned/{NAME}.md").is_file()
+    assert f"backfill read-back failed ({field})" in alerts(bv)
+    assert not (bv / MARKER).exists()
+
+
+def test_backfill_shares_max_runs_with_digests(bv):
+    digest(bv, "work", "w1")
+    digest(bv, "personal", "p1")
+    Intake(bv, now=later(), max_runs=2).run()
+    assert backfills(bv) == [] and (bv / MARKER).exists()
+    Intake(bv, now=later(), max_runs=2).run()
+    assert len(backfills(bv)) == 1
+
+
+def test_a_fresh_marker_waits(bv):
+    Intake(bv, now=time.time()).run()
+    assert backfills(bv) == [] and (bv / MARKER).exists()
+
+
+# -- final review fixes --
+def test_a_backfill_that_raises_quarantines_its_marker_and_the_queue_moves_on(bv, tmp_path):
+    other = queue(bv, "bf000002-cccc")
+    os.utime(bv / MARKER, (time.time() - 600, time.time() - 600))   # the stuck one is oldest
+    (tmp_path / "state/foundry/transcripts" / f"{SID}.jsonl").chmod(0)
+    Intake(bv, now=later()).run()
+    assert (bv / f"system/quarantine/backfill/{SID}.backfill").is_file() and not (bv / MARKER).exists()
+    assert "PermissionError" in (bv / f"system/quarantine/backfill/{SID}.backfill.reason.txt").read_text()
+    assert [c["args"][1] for c in backfills(bv)] == ["raw/inbox/.staging/2026-11-03-0649-bf000002-backfill.md"]
+    assert not other.exists()
+
+
+def test_backfill_survives_a_lone_surrogate_in_the_transcript(bv, tmp_path):
+    keep = tmp_path / "state/foundry/transcripts" / f"{SID}.jsonl"
+    keep.write_text(json.dumps(prompt(T1, "x")).replace('"x"', '"bad \\ud83d here"') + "\n"
+                    + json.dumps(reply(T4, {"type": "text", "text": "Done."})) + "\n")
+    Intake(bv, now=later()).run()
+    [call] = backfills(bv)
+    assert "bad ? here" in call["staged"][STAGED] and (bv / DIGEST).is_file()
+
+
+def test_excerpt_tool_paths_are_relative_to_the_session_cwd(tmp_path):
+    path = transcript(tmp_path / "s.jsonl", reply(T2, *(
+        {"type": "tool_use", "name": "Read", "input": {"file_path": f}}
+        for f in ("/work/a-project/system/scripts/vaultlib/intake.py", "/elsewhere/notes.md"))))
+    text, _, _ = backfill.excerpt(path, "/work/a-project")
+    assert text == f"[{T2}] tool Read system/scripts/vaultlib/intake.py\n[{T2}] tool Read /elsewhere/notes.md"
+
+
+def test_backfill_read_back_passes_prose_that_only_names_a_token(bv, monkeypatch):
+    monkeypatch.setenv("STUB_BACKFILL_BODY", "The refresh token: expires after an hour.")
+    Intake(bv, now=later()).run()
+    assert (bv / DIGEST).is_file() and "read-back failed" not in alerts(bv)

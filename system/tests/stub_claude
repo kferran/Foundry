@@ -1,5 +1,15 @@
 #!/bin/bash
 # Test double for claude -p. Behaviour via STUB_MODE; records argv to $STUB_ARGS and stdin target to $STUB_STDIN.
+# run_headless.sh's outage check (#436 S1): argv to $STUB_CHECK_ARGS, behaviour via STUB_CHECK (ok, fail, hang).
+if printf '%s\n' "$@" | grep -qx 'Reply with the word ok.'; then
+  printf '%s\n' "$@" > "${STUB_CHECK_ARGS:-/dev/null}"
+  case "${STUB_CHECK:-ok}" in
+    fail) echo "Not logged in" >&2; exit 1 ;;
+    hang) exec sleep 5 ;;
+  esac
+  printf '{"type":"result","is_error":false,"result":"ok"}\n'
+  exit 0
+fi
 printf '%s\n' "$@" > "${STUB_ARGS:-/dev/null}"
 readlink /proc/self/fd/0 > "${STUB_STDIN:-/dev/null}"
 # STUB_USAGE=<five-hour utilization>: the rate_limit_event line stream-json prints at the start of a session.
@@ -24,9 +34,17 @@ case "${STUB_MODE:-write}" in
     printf -- '---\ntype: briefing\ndate: "%s"\n---\n# Brief\n' "$(date +%F)" > "$s/briefings/$(date +%F).md"
     printf -- '---\ntype: concept\ntags: [now]\ncompiled_at: "%s"\npartition: work\n---\n# Now\n\n## Needs you\n- [ ] owed: %s (since %s)\n\n## Waiting\n' \
       "$(date +%F)" "${STUB_NOW:-New objective}" "$(date +%F)" > "$s/wiki/work/Now.md" ;;
+  backfill|backfill_extra)  # digest-backfill: the input's frontmatter, then STUB_DIGEST; _extra adds a second file
+    in="$(printf '%s\n' "$@" | grep -o 'raw/inbox/\.staging/[0-9][^ ]*-backfill\.md' | head -1)"
+    p="$(sed -n 's/^partition: "\{0,1\}\([a-z]*\)"\{0,1\}$/\1/p' "$in" | head -1)"
+    mkdir -p "$s/raw/$p/notes"
+    { awk 'NR == 1 {print; next} {print} $0 == "---" {exit}' "$in" | sed "${STUB_FM_SED:-}"
+      printf '## Outcome\n%b\n' "${STUB_DIGEST:-Tidied the export job.}"; } > "$s/raw/$p/notes/${in##*/}"
+    if [ "$STUB_MODE" = backfill_extra ]; then cp "$s/raw/$p/notes/${in##*/}" "$s/raw/$p/notes/other.md"; fi ;;
   nothing) ;;
   fail) exit 1 ;;
   fail2) exit 2 ;;
+  fail7) exit 7 ;;
   usage_limit)  # the account's spend or usage limit: claude -p reports it as an error result and exits 1
     printf '{"type":"result","subtype":"success","is_error":true,"result":"You'"'"'ve hit your org'"'"'s monthly spend limit · run /usage-credits to raise it · your weekly limit resets Oct 7, 12pm (America/Denver)"}\n'
     exit 1 ;;

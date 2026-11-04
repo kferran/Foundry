@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=15320
+CORE_CAP=16740
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -79,10 +79,32 @@ core_problem() {
   for f in .claude/settings.json system/headless.settings.json; do
     jq empty "$f"
     [ "$(jq '.permissions.blockReadsOutsideWorkingDirectories' "$f")" = "true" ]
-    for rule in 'Read(~/.ssh/**)' 'Read(~/.gnupg/**)' 'Read(~/.claude/.credentials.json)' 'Read(~/.claude.json)' 'Read(~/.claude/settings*.json)' 'Read(~/.config/gcalcli/**)' 'Read(//**/.env)' 'Read(//**/.env.*)'; do
+    for rule in 'Read(~/.ssh/**)' 'Read(~/.gnupg/**)' 'Read(~/.claude/.credentials.json)' 'Read(~/.claude.json)' 'Read(~/.claude/settings*.json)' 'Read(~/.config/gcalcli/**)'; do
       jq -e --arg r "$rule" '.permissions.deny | index($r)' "$f" >/dev/null
     done
   done
+  # .env (#326): a sandbox deny whose first segment is a wildcard masks nothing on Linux; the Read tool honours the //** form
+  # (#314) and the ~/** form (the 2026-10-30 probe), so headless keeps the //** pair for a vault outside home and adds ~/**.
+  # The interactive file is the owner's to change: either form passes.
+  jq -e '.permissions.deny | (index("Read(//**/.env)") or index("Read(~/**/.env)"))' .claude/settings.json >/dev/null
+  for rule in 'Read(~/**/.env)' 'Read(~/**/.env.*)' 'Read(//**/.env)' 'Read(//**/.env.*)'; do
+    jq -e --arg r "$rule" '.permissions.deny | index($r)' system/headless.settings.json >/dev/null
+  done
+}
+
+@test "a research order, a requeue and a tool write to what steers the runner ask first (#317, #321)" {
+  for rule in 'Bash(system/scripts/nightshift.py research:*)' 'Bash(system/scripts/nightshift.py requeue:*)' \
+      'Edit(/raw/*/nightshift/**)' 'Edit(/system/codebases/**)' 'Edit(/system/nightshift/**)'; do
+    jq -e --arg r "$rule" '.permissions.ask | index($r)' .claude/settings.json >/dev/null
+  done
+  # The units run the vault's scripts outside any sandbox, so a tool write to them asks too (#433, owner 2026-11-02).
+  for rule in 'Edit(/system/scripts/**)' 'Edit(/extensions/**)'; do
+    jq -e --arg r "$rule" '.permissions.ask | index($r)' .claude/settings.json >/dev/null
+  done
+  # Edit rules cover the Write tool too; a Write(...) rule never matches and Claude Code warns of it at every session start.
+  [ "$(jq '[.permissions[] | arrays[] | select(startswith("Write("))] | length' .claude/settings.json)" = 0 ]
+  # The sandbox cannot let only the CLI through (probe 2026-10-31): no excluded command and no write deny for it.
+  [ "$(jq '.sandbox.excludedCommands // [] | length' .claude/settings.json)" = 0 ]
 }
 
 @test "a commit that skips the pre-commit secret scan asks first, though git commit -m is allowed (#298)" {
@@ -132,9 +154,10 @@ core_problem() {
     jq -e --arg r "Read($p)" '.permissions.deny | index($r)' "$f" > /dev/null
   done
   for p in '~/.ssh' '~/.gnupg' '~/.config/foundry' '~/.config/gh' '~/.git-credentials' '~/.netrc' '~/.azure' '~/.aws' \
-      '~/.claude/projects' '~/.claude/.credentials.json' '~/.claude.json' '**/.env*'; do
+      '~/.claude/projects' '~/.claude/.credentials.json' '~/.claude.json' '~/**/.env' '~/**/.env.*'; do
     jq -e --arg p "$p" '.sandbox.filesystem.denyRead | index($p)' "$f" > /dev/null
   done
+  [ "$(jq '[.sandbox.filesystem.denyRead[] | select(startswith("**") or startswith("/**"))] | length' "$f")" = 0 ]
 }
 
 @test "interactive settings allow only staging-free vault edits and read-only index commands" {
@@ -147,7 +170,7 @@ core_problem() {
 }
 
 @test "interactive settings end with the routine-command rules a vault merges against, in order" {
-  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/triage_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(system/scripts/now.py review:*)","Bash(system/scripts/now.py overdue:*)","Bash(system/scripts/now.py --help)","Bash(system/scripts/extensions.py check)","Bash(system/scripts/extensions.py allow)","Bash(system/scripts/intake.py --quarantine)","Bash(systemctl --user status *)","Bash(systemctl --user is-active *)","Bash(systemctl --user is-enabled *)","Bash(journalctl --user *)","Bash(system/scripts/test.sh:*)","Bash(system/scripts/verify_setup.sh --require-suites)","Bash(python3 -m pytest:*)","Bash(bats:*)","Bash(shellcheck:*)","Bash(python3 .claude/skills/foundry-review/review_diff.py:*)","Bash(git checkout -b:*)","Bash(git switch -c:*)","Bash(git fetch origin:*)","Bash(git merge --no-edit origin/master)"]'
+  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(systemctl --user list-timers *)","Edit(/docs/**)","Edit(/.scratch/**)","Bash(date +%F)","Bash(system/scripts/now.py check)","Bash(system/scripts/now.py seed:*)","Bash(system/scripts/nightshift.py add:*)","Bash(system/scripts/nightshift.py check:*)","Bash(system/scripts/nightshift.py cancel:*)","Bash(system/scripts/nightshift.py report:*)","Bash(system/scripts/commit_runs.py)","Bash(system/scripts/vault_sync.sh)","Bash(system/scripts/check_deps.sh:*)","Bash(system/scripts/install_units.sh --dry-run)","Bash(system/scripts/install_hooks.sh --dry-run)","Bash(system/scripts/setup_remote.sh --detect)","Bash(system/scripts/meetings_fetch.sh --check)","Bash(system/scripts/triage_fetch.sh --check)","Bash(bats system/tests/system_health.bats)","Bash(git status:*)","Bash(git add -A)","Bash(git commit -m:*)","Bash(git push)","Bash(git push -u origin HEAD)","Bash(git branch -r --list:*)","Bash(git remote get-url:*)","Bash(git config user.name)","Bash(git config user.email)","Bash(git fetch -q template:*)","Bash(system/scripts/now.py review:*)","Bash(system/scripts/now.py overdue:*)","Bash(system/scripts/now.py --help)","Bash(system/scripts/extensions.py check)","Bash(system/scripts/extensions.py allow)","Bash(system/scripts/intake.py --quarantine)","Bash(systemctl --user status *)","Bash(systemctl --user is-active *)","Bash(systemctl --user is-enabled *)","Bash(journalctl --user *)","Bash(system/scripts/test.sh:*)","Bash(system/scripts/verify_setup.sh --require-suites)","Bash(python3 -m pytest:*)","Bash(bats:*)","Bash(shellcheck:*)","Bash(python3 .claude/skills/foundry-review/review_diff.py:*)","Bash(git checkout -b:*)","Bash(git switch -c:*)","Bash(git fetch origin:*)","Bash(git merge --no-edit origin/master)","Bash(system/scripts/calendar_fetch.sh)","Bash(system/scripts/calendar_fetch.sh --check)","Bash(system/scripts/extensions.py smoke)","Bash(system/scripts/nightshift.py list --json)","Bash(system/scripts/discover_codebases.sh:*)","Bash(system/scripts/inspect_codebase.sh:*)"]'
   run jq -c '.permissions.allow | .[index("Bash(system/scripts/vault_index.py recall:*)"):]' .claude/settings.json
   [ "$output" = "$want" ]
 }
@@ -495,7 +518,7 @@ sealed_problems() {
 }
 
 # Task 10: core names no vendor or customer outside a shrinking allowlist (extensions spec §6; plan task 10).
-@test "core stays inside its budget: 14 schemas, 15,320 lines over scripts, hooks and commands (extensions spec §2.2, §5; F3 §3.5)" {
+@test "core stays inside its budget: 14 schemas, 15,510 lines over scripts, hooks and commands (extensions spec §2.2, §5; F3 §3.5)" {
   # Set once at the end of phase 4 (2026-10-16: 12,270 lines, 14 schemas). A feature that needs more moves code into an
   # extension, or raises the budget in its own pull request, with the reason.
   # 12,500 -> 12,750 (#222): parallel Work Orders (#229) and chat triage, which extends core inbox triage and would
@@ -524,6 +547,35 @@ sealed_problems() {
   # lines and the one-time tag-writers verb took core from 15,150 to 15,240 lines.
   # 15,300 -> 15,320 (#299, owner to approve at merge): the 2026-10-28 audit fixes took core to 15,297; a brief drops a
   # Now line it cannot screen, with an alert, in place of losing the whole brief, which took it to 15,306.
+  # 15,320 -> 15,350 (#332, owner to approve at merge): a finished Work Order adds the owner's Now line (review and
+  # merge, answer, or fix), which took core from 15,309 to 15,340.
+  # 15,350 -> 15,470 (#353, owner to approve at merge): status_refs.py, the brief prep's check of each pull request,
+  # issue and Work Order its inputs name, took core from 15,340 to 15,466.
+  # 15,470 -> 15,510 (#299, owner to approve at merge): brief_run.sh retries a rejected brief once, the smoke check's
+  # budget skips rows it cannot hold, and ingest's lock wait ends the tick, which took core from 15,466 to 15,503.
+  # 15,510 -> 15,590 (#318, #319, #320, #326, Work Order confinement PR A, owner to approve at merge): runner state
+  # under order_workspace with a one-time move, the DNS check at add and at session start, the .env globs outside home
+  # and the workspace fence took core to 15,582.
+  # 15,590 -> 15,690 (#317, #321, Work Order confinement PR B, owner to approve at merge): the research subcommand,
+  # base_sha at add with its check at the first clone, requeue and its review fixes took core to 15,680.
+  # 15,690 -> 15,780 (#301 S9, Work Order confinement PR C, owner to approve at merge): held stale claims (held.py),
+  # their release in intake's Now step, the publish gate's held-line rules and the review fixes took core to 15,770.
+  # 15,780 -> 15,830 (#436 S3, owner to approve at merge): a crash exits 70 and alerts once a day (alerts.guard for the
+  # Python units, crash_trap for the shell ones) and the review fixes took core from 15,774 to 15,812.
+  # 15,830 -> 15,850 (#436 S1, owner to approve at merge): the outage check after a failed or timed-out run, exit 7,
+  # its daily alert, intake holding on it and the review fix took core from 15,812 to 15,829.
+  # 15,850 -> 16,080 (#436 S2, S5-S8, owner to approve at merge): the Now.md merge driver (S5), the update's CI gate
+  # (S2), the notice hold's lift (S6), the 30-day prune (S7) and the calendar check (S8); S5 took core from 15,837 to 15,966.
+  # 16,080 -> 16,480 (#449, recall R0 and R1 spec §5, owner to approve at merge): the one raise of 400 lines for recall R0
+  # to R5 (Q6); R0's push and pull logs (recall_log.py, the counts recall.build returns, the hooks' lines and the
+  # PostToolUseFailure entry, then the final review's fixes) took 202 lines.
+  # 16,480 -> 16,700 (#436 S7 and S8, recall R2, owner approved 2026-11-03): recall R1 took 222 lines (16,184 to
+  # 16,406, the plan aimed at 130), S2 37 and S6 8, which left 29; the raise covers the 30-day prune (S7), the
+  # calendar check (S8) and recall R2.
+  # S7 took 114 lines (16,451 to 16,565): vaultlib/prune.py and the intake tick's once-a-day step.
+  # 16,700 -> 16,740 (factory F7 PR 1, docs/superpowers/specs/2026-11-03-factory-f7-now-line-states-design.md, owner
+  # to approve at merge): the Now line's state table (vaultlib/now_states.py), the brief's state screen in the publish
+  # gate, review's unknown marks and the reopened-expired fix took core from 16,630 to 16,734 lines.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
@@ -550,7 +602,7 @@ sealed_problems() {
   allow="$BATS_TEST_DIRNAME/core_clean.allow"
   want="$BATS_TEST_TMPDIR/hits.txt"
   # Every tracked file outside docs/, changes/CHANGELOG.md (history, like docs/), extensions/, system/tests/ and the loader.
-  pattern='dtcc|sentry|kusto|azure|\bjira\b|atlassian|dtcclearning\.com|atlassian\.net|sentry\.io'
+  pattern='clearinghouse|sentry|kusto|azure|\bjira\b|atlassian|clearinghouselearning\.com|atlassian\.net|sentry\.io'
   git ls-files -z -- . ':(exclude)docs' ':(exclude)changes/CHANGELOG.md' ':(exclude)extensions' ':(exclude)system/tests' ':(exclude)system/scripts/extensions.py' \
     | xargs -0 grep -I -o -i -E "$pattern" /dev/null 2>/dev/null \
     | awk -F: '{ term = tolower($NF); sub(/:[^:]*$/, ""); print $0 ":" term }' | sort -u > "$want" || true

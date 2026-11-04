@@ -1,0 +1,1 @@
+- Changed: FOUNDRY.md now says that a headless run can read every partition and that template updates are unsigned, with the trigger for revisiting signing. (#301)

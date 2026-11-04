@@ -4,7 +4,7 @@
 
 ## Directory Map
 - `raw/inbox/`: manual drops (unstructured) and Slack captures. `raw/archive/`: compiled drops. `raw/telemetry/`: production-error notes (not ingested).
-- `raw/<partition>/nightshift/`: Work Order queue notes (tracked; never ingested). `raw/<partition>/notes/`: pending session digests; `raw/<partition>/archive/`: compiled digests.
+- `raw/<partition>/nightshift/`: Work Order queue notes (tracked; never ingested). `raw/<partition>/notes/`: pending session digests; `raw/<partition>/archive/`: compiled digests; `raw/<partition>/held/`: research stale claims awaiting the owner's tick on their Now line.
 - `wiki/work/`, `wiki/personal/`, `wiki/shared/`: compiled notes in `concepts/`, `entities/`, `summaries/` (and `preferences/` outside `shared`). `wiki/Index.md` is the cross-partition index. `wiki/<partition>/Now.md`: the Now page, one checklist of open loops per partition (`work`, `personal`). `wiki/<partition>/rca/`: root-cause analyses from the telemetry extension's `/rca`.
 - `wiki/<partition>/meetings/`: meeting notes and their `.transcript.md` notes, written only by the meeting import (tick an action item's checkbox to close it). `meetings/drop/<partition>/`: drop meeting transcripts here (`.vtt`, `.srt`, `.txt`, `.md`); the server imports and removes them. `raw/meetings/`: fetched Gemini notes awaiting import.
 - `wiki/.staging/<run_id>/`: headless output awaiting publish. Never edit it by hand.
@@ -16,7 +16,7 @@
 ## Vault Rules
 - **Agents:** The Foreman is the only role you address; read `system/agents/foreman.md` for the Workcells and routing.
 - **Codebases:** Codebases are defined in `system/codebases/`. Read the relevant file before touching code.
-- **Approvals:** Do the work you were asked to do without asking to proceed. Ask the user only for what is theirs to decide: a choice of scope or taste with no sensible default, an outward action (send, post, file, merge, deploy, delete) not already authorized, or an exception to a safety rule. Batch the questions into one ask, each with your recommendation, and keep working on everything that does not depend on the answer. An approved plan needs no further approval to run.
+- **Approvals:** Do the work you were asked to do without asking to proceed. Ask the user only for what is theirs to decide: a choice of scope or taste with no sensible default, an outward action (send, post, file, merge, deploy, delete) not already authorized, or an exception to a safety rule. Batch the questions into one ask, each with your recommendation, and keep working on everything that does not depend on the answer. An approved plan needs no further approval to run. Building anything beyond a one-sentence fix needs that plan first: with the superpowers plugin installed, a spec from `superpowers:brainstorming` and a plan from `superpowers:writing-plans`, before the first build commit.
 - **Invocation:** Run vault scripts exactly as `system/scripts/<name> …` from the vault root. Read configuration with `system/scripts/vault_index.py field system/config.md <key>`; headless runs do not expand `@`-imports.
 - **Index first:** Before reading notes to find context, query the index (`system/scripts/vault_index.py related|query|backlinks`). Read only the notes it returns. Never grep or read all of `wiki/`.
 - **Schemas:** Every note's frontmatter must match its type's schema note: `system/schemas/<type>.md`, or `extensions/<name>/schemas/<type>.md` for an extension's type. A new note type requires a new schema note.

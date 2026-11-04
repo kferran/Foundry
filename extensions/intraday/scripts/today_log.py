@@ -63,7 +63,8 @@ def _plain(line: str) -> str:
 
 def digest_entry(body: str) -> list:
     outcome = " ".join(_plain(x) for x in section(body, OUTCOME) if x.strip())
-    first = re.split(r"(?<=[.!?])\s", outcome, maxsplit=1)[0] if outcome else "a session ended"
+    # No Outcome usually means the session stopped early (a limit, a crash, a kill), so it must not read as done (#411).
+    first = re.split(r"(?<=[.!?])\s", outcome, maxsplit=1)[0] if outcome else "session ended with no outcome"
     lines = [clean(first)]
     lines += [f"  - delivered: {clean(_plain(x))}" for x in section(body, DELIVERED) if x.strip().startswith("- ")]
     return lines

@@ -1,0 +1,15 @@
+{
+  "//": "The @ alias (src/), so Steiger resolves imports between slices; Nuxt and Vitest set the same alias themselves.",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] },
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "strict": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*", "server/**/*", "tests/**/*"]
+}

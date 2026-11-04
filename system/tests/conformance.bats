@@ -232,12 +232,17 @@ grace.listing system/scripts/lib_confine.sh timeout -k ([0-9]+) [0-9]+ "\$\{CLAU
 listing system/scripts/lib_confine.sh timeout -k [0-9]+ ([0-9]+) "\$\{CLAUDE_BIN
 headless system/scripts/run_headless.sh \{HEADLESS_TIMEOUT:-([0-9]+m)\}
 headless.lock system/scripts/run_headless.sh \{HEADLESS_LOCK_WAIT:-([0-9]+)\}
+ingest.lock system/scripts/run_headless.sh \{INGEST_LOCK_WAIT:-([0-9]+)\}
+brief.retry system/scripts/brief_run.sh \{BRIEF_RETRY_WAIT:-([0-9]+)\}
 calendar system/scripts/calendar_fetch.sh \{CALENDAR_TIMEOUT:-([0-9]+)\}
 now.seed system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}" system/scripts/now\.py seed
 now.archive.work system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}" system/scripts/now\.py archive --partition work
 now.archive.personal system/scripts/brief_prep.sh NOW_LOCK_WAIT="\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}" system/scripts/now\.py archive --partition personal
 archive.lock system/scripts/brief_prep.sh flock -w "\$\{ARCHIVE_LOCK_WAIT:-([0-9]+)\}"
 gh system/scripts/debrief_prep.sh \{GH_TIMEOUT:-([0-9]+)\}
+status.list system/scripts/brief_prep.sh timeout ([0-9]+) system/scripts/nightshift\.py list --json
+status.max system/scripts/status_refs.py ^MAX = ([0-9]+)$
+status.timeout system/scripts/status_refs.py "STATUS_TIMEOUT", "([0-9]+)"
 intake.lock system/scripts/vaultlib/intake.py self\.lock\("run\.lock", timeout=([1-9][0-9]*)\)
 intake.runs system/scripts/vaultlib/intake.py "INTAKE_MAX_RUNS", "([0-9]+)"
 meetings system/scripts/meetings_fetch.sh \{MEETINGS_TIMEOUT:-([0-9]+)\}
@@ -249,6 +254,7 @@ triage.chat system/scripts/triage_fetch.sh \{TRIAGE_CHAT_TIMEOUT:-([0-9]+)\}
 triage.lock system/scripts/triage.py intake\.lock\("run\.lock", timeout=([0-9]+)\)
 update.lock system/scripts/update_template.sh \{UPDATE_LOCK_WAIT:-([0-9]+)\}
 update.fetch system/scripts/update_template.sh \{UPDATE_FETCH_TIMEOUT:-([0-9]+)\}
+update.checks system/scripts/update_template.sh \{UPDATE_CHECKS_TIMEOUT:-([0-9]+)\}
 smoke.version system/scripts/smoke_check.sh \{SMOKE_VERSION_TIMEOUT:-([0-9]+)\}
 smoke.extensions system/scripts/smoke_check.sh timeout ([0-9]+) system/scripts/extensions\.py smoke
 smoke.units system/scripts/smoke_check.sh \{SMOKE_UNITS_TIMEOUT:-([0-9]+)\}
@@ -265,22 +271,26 @@ row.triage_chat system/scripts/smoke_check.sh \{SMOKE_TRIAGE_TIMEOUT:-([0-9]+)\}
 # grace. Every claude process counts, the server listing (`claude mcp list`, once per process and again after each
 # `unset CONFINE_SETTINGS`) included, and so do sessions a script runs through another script.
 # Out of the table: the Work Order unit (foundry-nightshift: per-order sessions under its 14 h limit, budgeted in Python
-# by the runner). Unbounded waits no sum can hold: ingest's run.lock (`flock 9` with no -w in
-# run_headless.sh), tracked with intake's overrun in #299. The server drop-ins (install_units.sh DROPIN_TIMEOUT) add
+# by the runner). brief_run.sh runs the prep and the brief twice when the first is rejected (#299). The server drop-ins (install_units.sh DROPIN_TIMEOUT) add
 # 15 min to intake, brief, debrief and update for vault_sync.sh's two sync deadlines; the table holds the templates.
 TIMING_STEPS='
-brief 1 grace.listing listing  # brief_prep.sh: calendar_fetch.sh, its own process
-brief 1 grace.connector calendar
-brief 1 - now.seed
-brief 1 - now.archive.work
-brief 1 - now.archive.personal
-brief 1 - archive.lock
-brief 1 - headless.lock  # run_headless.sh brief
-brief 1 grace.headless headless
+brief 2 grace.listing listing  # brief_run.sh: brief_prep.sh runs calendar_fetch.sh, its own process, per run
+brief 2 grace.connector calendar
+brief 2 - now.seed
+brief 2 - now.archive.work
+brief 2 - now.archive.personal
+brief 2 - archive.lock
+brief 2 - status.list  # the live status step (#353): the order list, then one gh call per reference, per run
+brief status.max - status.timeout
+brief status.max - status.timeout  # the prep of the second run (#299)
+brief 2 - headless.lock  # run_headless.sh brief, twice when the first is rejected
+brief 2 grace.headless headless
+brief 1 - brief.retry
 debrief 3 - gh  # debrief_prep.sh: three gh searches
 debrief 1 - headless.lock
 debrief 1 grace.headless headless
 intake 1 - intake.lock  # the briefing Notes extract waits for run.lock
+intake intake.runs - ingest.lock  # each ingest waits for run.lock; a busy lock ends the tick (#299)
 intake intake.runs grace.headless headless  # inbox files and digest batches, at most INTAKE_MAX_RUNS a tick
 meetings 1 grace.listing listing
 meetings 1 grace.connector meetings  # the search
@@ -301,6 +311,7 @@ triage 1 grace.connector triage.chat
 triage 2 - triage.lock  # triage.py record, once per source
 update 1 - update.lock
 update 1 - update.fetch
+update 1 - update.checks  # the check runs of the template head (#436 S2)
 smoke/calendar 1 grace.listing listing
 smoke/calendar 1 grace.connector calendar
 smoke/meetings 1 grace.listing listing  # --check runs the search only
@@ -314,11 +325,6 @@ smoke/triage_chat 1 grace.connector triage.chat
 # Units over their limit today: "<unit> <issue>  # by how much". The list may only shrink: a unit that fits fails until
 # its line goes.
 TIMING_OVERRUNS='
-intake #299  # 7,270 s against 90 min, and ingest run.lock wait is unbounded
-smoke #299  # 3,000 s against 35 min with one telemetry source, 120 s more per further source
-watch #299  # 1,815 s against 29 min: the five server listings are not in watch_fetch.sh budget comment
-smoke/calendar #299  # 235 s against 210: the server listing
-smoke/watch #299  # 1,225 s against 1,140: three server listings
 '
 TIMING_OUT='foundry-nightshift'  # an extension's unit with no session says so in its manifest's budget.out
 
@@ -419,6 +425,14 @@ timing_problems() (
     fi
   done
 )
+
+@test "the smoke unit's SMOKE_BUDGET is its limit less the 120 s its timer and unit rows need (#299)" {
+  f=system/systemd/foundry-smoke.service.in
+  limit="$(secs "$(sed -n 's/^TimeoutStartSec=//p' "$f")")"
+  budget="$(sed -n 's/^Environment="SMOKE_BUDGET=\([0-9]*\)"$/\1/p' "$f")"
+  [ -n "$budget" ]
+  [ "$(( limit - budget ))" -eq 120 ]
+}
 
 @test "every unit's sessions fit its time limit (factory F0 spec §3.6, F3 §3.4)" {
   run timing_problems "$VAULT_ROOT"

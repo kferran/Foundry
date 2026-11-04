@@ -73,17 +73,26 @@
       "Bash(git checkout -b:*)",
       "Bash(git switch -c:*)",
       "Bash(git fetch origin:*)",
-      "Bash(git merge --no-edit origin/master)"
+      "Bash(git merge --no-edit origin/master)",
+      "Bash(system/scripts/calendar_fetch.sh)",
+      "Bash(system/scripts/calendar_fetch.sh --check)",
+      "Bash(system/scripts/extensions.py smoke)",
+      "Bash(system/scripts/nightshift.py list --json)",
+      "Bash(system/scripts/discover_codebases.sh:*)",
+      "Bash(system/scripts/inspect_codebase.sh:*)"
     ],
     "deny": [
       "Read(~/.ssh/**)", "Read(~/.gnupg/**)",
       "Read(~/.claude/.credentials.json)", "Read(~/.claude.json)", "Read(~/.claude/settings*.json)",
-      "Read(~/.config/gcalcli/**)", "Read(//**/.env)", "Read(//**/.env.*)",
+      "Read(~/.config/gcalcli/**)", "Read(//**/.env)", "Read(//**/.env.*)", "Read(~/**/.env)", "Read(~/**/.env.*)",
       "Read(/wiki/*/private/**)", "Edit(/wiki/*/private/**)",
       "Read(/.scratch/**/wiki/*/private/**)", "Edit(/.scratch/**/wiki/*/private/**)"
     ],
     "ask": [
-      "Bash(git commit *--no-verify*)", "Bash(git commit -n*)", "Bash(git commit * -n*)"
+      "Bash(git commit *--no-verify*)", "Bash(git commit -n*)", "Bash(git commit * -n*)",
+      "Bash(system/scripts/nightshift.py research:*)", "Bash(system/scripts/nightshift.py requeue:*)",
+      "Edit(/raw/*/nightshift/**)", "Edit(/system/codebases/**)", "Edit(/system/nightshift/**)",
+      "Edit(/system/scripts/**)", "Edit(/extensions/**)"
     ]
   }
 }

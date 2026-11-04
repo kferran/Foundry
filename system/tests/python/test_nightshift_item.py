@@ -10,7 +10,7 @@ NOW = datetime(2026, 10, 6, 21, 0, tzinfo=timezone.utc)
 
 
 def plan_fm(**extra):
-    fm = {"type": "nightshift_item", "id": "2026-10-06-dtcc-watcher", "partition": "work", "kind": "plan",
+    fm = {"type": "nightshift_item", "id": "2026-10-06-clearinghouse-watcher", "partition": "work", "kind": "plan",
           "state": "queued", "queued_at": NOW.isoformat(), "start": "window", "budget": "4h", "model": "sonnet",
           "repo": "template", "base": "feat/x", "pr_base": "master", "plan": "docs/p.md", "tasks": "1-8",
           "verify": ["python3 -m pytest -q"]}
@@ -19,14 +19,14 @@ def plan_fm(**extra):
 
 
 def test_ids_and_budgets():
-    assert ni.new_id("DTCC watcher (phase 1)", NOW) == "2026-10-06-dtcc-watcher-phase-1"
+    assert ni.new_id("clearing-house watcher (phase 1)", NOW) == "2026-10-06-clearing-house-watcher-phase-1"
     assert ni.budget_seconds("4h") == 14400 and ni.budget_seconds("90m") == 5400
     with pytest.raises(ValueError):
         ni.budget_seconds("4 hours")
 
 
 def test_render_validates_and_round_trips(vault: Path):
-    path = ni.note_path(vault, "work", "2026-10-06-dtcc-watcher")
+    path = ni.note_path(vault, "work", "2026-10-06-clearinghouse-watcher")
     ni.save(path, plan_fm(), "free note\n")
     schemas = schema.load_schemas(vault)
     rel = path.relative_to(vault).as_posix()

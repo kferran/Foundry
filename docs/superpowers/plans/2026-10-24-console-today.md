@@ -82,8 +82,8 @@
 ### Task 4: the app skeleton and CI job
 
 **Files:**
-- Create: `extensions/console/app/` (`package.json`, `package-lock.json`, `mise.toml` pinning Node LTS, `nuxt.config.ts` with `ssr: true` and `nitro.preset: node-server`, `app.vue`, `vitest.config.ts`)
-- Modify: `.github/workflows/gate.yml` (a `console` job: checkout, `jdx/mise-action`, `npm ci`, `npx vitest run`, `npx nuxi build`, working directory `extensions/console/app`)
+- Create: `extensions/console/app/` (`package.json`, `package-lock.json`, `mise.toml` pinning Node LTS, `nuxt.config.ts` with `ssr: false` (a single-page app; the Nitro server serves it and the two routes) and `nitro.preset: node-server`, `app.vue`, `vitest.config.ts`)
+- Modify: `.github/workflows/gate.yml` (a `console` job: checkout, `actions/setup-node` with the major from `mise.toml`, `npm ci`, `npx vitest run`, `npx nuxi build`, working directory `extensions/console/app`)
 
 - [ ] Step 1: a trivial Vitest test passes locally; `npx nuxi build` succeeds. Confirm the Node version mise pins runs on bookworm (`mise install` on a bookworm container or the server) and record it in the PR body.
 - [ ] Step 2: commit.
@@ -99,8 +99,10 @@
 
 ### Task 6: the Today page
 
+> Superseded on layout by `docs/superpowers/plans/2026-10-24-console-fsd-refactor.md` (#377 Q12): the page now lives in `app/src/pages/today/` under `extensions/console/ARCHITECTURE.md`. The behaviour below still holds.
+
 **Files:**
-- Create: `extensions/console/app/pages/index.vue` and components for the header, tiles, focus cards, Today list, calendar, meeting actions, Now table (TanStack Vue Table for the filters), Work Orders and Pipeline; `composables/useToday.ts` (TanStack Vue Query, `refetchInterval: 60000`, `refetchIntervalInBackground: false`)
+- Create: `extensions/console/app/pages/index.vue` and components for the header, tiles, focus cards, Today list, calendar, meeting actions, Now table (its five filters are one computed list, so TanStack Vue Table is not needed, #377 Q10), Work Orders and Pipeline; `composables/useToday.ts` (TanStack Vue Query, `refetchInterval: 60000`, `refetchIntervalInBackground: false`)
 - Test: `extensions/console/app/tests/pages/*.test.ts` with fixture JSON from Task 3's test vault
 
 - [ ] Step 1: failing tests: the page renders every mockup section from the fixture; the Work tab shows only work lines and Personal only personal; the Overdue filter shows only lines with a `band`; stale flags and "Also active" hide when the keys are absent; `errors` show in the strip; the Refresh button refetches; the stamps print.

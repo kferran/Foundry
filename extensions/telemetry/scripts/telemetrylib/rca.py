@@ -5,7 +5,8 @@ import re
 import subprocess
 from pathlib import Path
 
-from vaultlib.api import Fail, Intake, blocks, check_stream, cli, config, frontmatter, now as nowmod, set_scalar, walk
+from vaultlib.api import (Fail, Intake, blocks, check_stream, cli, config, frontmatter, now as nowmod, now_states,
+                          set_scalar, walk)
 
 TOOL = "mcp__claude_ai_Atlassian__createJiraIssue"
 PROJECT = re.compile(r"^[A-Z][A-Z0-9_]{0,30}$")
@@ -166,13 +167,18 @@ def rejected_create(stream):
 
 def reopen(vault, partition: str, stem: str, reason: str, today: str) -> None:
     """Under run.lock, after a rejected create: the note goes back to draft and its Now line is unticked with the
-    reason in its statement, so nothing retries until you tick it again (#175)."""
+    reason in its statement, so nothing retries until you tick it again (#175). An open line is left as it is and the
+    refusal logged (factory F7 spec §3, T15)."""
     set_scalar(note_path(vault, partition, stem), "status", "draft")
     why, refused = " ".join(re.sub(r"[()]", "", reason).split())[:160], None
-    lines = nowmod.read(vault, partition).split("\n")
+    text = nowmod.read(vault, partition)
+    lines = text.split("\n")
     for i, line in enumerate(lines):
         m = nowmod.LINE.match(line)
         if m and m.group("evidence") == f"rca:{stem}":
+            unticked = now_states.transition(line, "filer", "open", day=today, vault=vault)
+            if unticked is None:
+                continue
             # The reason joins the bare statement; the Now clock's fields stay after it (Now clock spec §3). The
             # reason is outside text: redacted and cut by the Now check (factory F5 spec §4.1).
             bare, rec, due = nowmod.fields(m.group("statement"))
@@ -184,23 +190,24 @@ def reopen(vault, partition: str, stem: str, reason: str, today: str) -> None:
                     nowmod.via(m.group("statement"))),
                     fit=True)
             except ValueError as exc:   # unticked as it stands, without the reason, so nothing retries the filing
-                lines[i], refused = f"- [ ] {nowmod.STAMP.sub('', line)[6:].rstrip()}", exc
-    nowmod.write(vault, partition, "\n".join(lines))
+                lines[i], refused = unticked, exc
+    if "\n".join(lines) != text:
+        nowmod.write(vault, partition, "\n".join(lines))
     if refused:
         raise refused
 
 
 def filed(vault, partition: str, stem: str, key: str, today: str) -> None:
     """Under run.lock: the note records the ticket and its status in one write (#106), and its Now line's stamp
-    names it."""
+    names it when it is ticked (factory F7 spec §3, T14; any other line is left and the refusal logged)."""
     path = note_path(vault, partition, stem)
     text = cli.set_scalar_text(path.read_text(encoding="utf-8"), "ticket", key)
     cli.write_atomic(path, cli.set_scalar_text(text, "status", "filed"))
     lines = nowmod.read(vault, partition).split("\n")
     for i, line in enumerate(lines):
         m = nowmod.LINE.match(line)
-        if m and m.group("evidence") == f"rca:{stem}" and m.group("mark") in "xX":
-            lines[i] = f"{nowmod.STAMP.sub('', line).rstrip()} _(closed: filed {key} {today})_"
+        if m and m.group("evidence") == f"rca:{stem}":
+            lines[i] = now_states.transition(line, "filer", "done stamped", f"filed {key}", today, vault) or line
     nowmod.write(vault, partition, "\n".join(lines))
 
 

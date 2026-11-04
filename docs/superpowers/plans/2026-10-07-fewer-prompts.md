@@ -53,7 +53,7 @@ Replace with:
 }
 
 @test "interactive settings end with the read-only status rules a vault merges against, in order" {
-  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(system/scripts/telemetry_fetch.py --list)","Bash(system/scripts/telemetry_fetch.py --check *)","Bash(system/scripts/dtcc_watch.py --check)","Bash(systemctl --user list-timers *)"]'
+  want='["Bash(system/scripts/vault_index.py recall:*)","Bash(system/scripts/verify_setup.sh)","Bash(system/scripts/verify_setup.sh --health)","Bash(system/scripts/nightshift.py list)","Bash(system/scripts/telemetry_fetch.py --list)","Bash(system/scripts/telemetry_fetch.py --check *)","Bash(system/scripts/clearinghouse_watch.py --check)","Bash(systemctl --user list-timers *)"]'
   run jq -c '.permissions.allow[-8:]' .claude/settings.json
   [ "$output" = "$want" ]
 ````
@@ -81,7 +81,7 @@ Replace with:
       "Bash(system/scripts/nightshift.py list)",
       "Bash(system/scripts/telemetry_fetch.py --list)",
       "Bash(system/scripts/telemetry_fetch.py --check *)",
-      "Bash(system/scripts/dtcc_watch.py --check)",
+      "Bash(system/scripts/clearinghouse_watch.py --check)",
       "Bash(systemctl --user list-timers *)"
 ````
 
@@ -120,7 +120,7 @@ Write `.scratch/msg-1.txt`:
 feat(settings): read-only status rules and the Bash line
 
 Seven read-only allow rules (the gate, the Nightshift list, the
-telemetry and DTCC checks, the timer list) and the CLAUDE.md Bash line,
+telemetry and clearing-house checks, the timer list) and the CLAUDE.md Bash line,
 byte for byte as in the owner's vault, so a vault's template merge is
 clean. A test pins the end of the allow list.
 ```

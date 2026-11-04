@@ -83,7 +83,7 @@ def test_a_workspace_inside_the_vault_is_not_ready(vault_repo, tmp_path):
     assert "order_workspace is inside the vault" in nc.check(vault_repo, plan_fm(tasks="1-2"), "")
     cfg.write_text(head + f'order_workspace: "{tmp_path / "ws"}"\n---\n')
     assert "order_workspace is inside the vault" not in nc.check(vault_repo, plan_fm(tasks="1-2"), "")
-    assert nc.workspace({}) == Path("~/code/worktrees").expanduser()
+    assert nc.workspace({}) == Path(nc.DEFAULT_WORKSPACE).expanduser()   # ~/code/worktrees outside tests (conftest)
 
 
 def test_template_base_must_be_on_the_template_remote(vault_repo):
@@ -194,7 +194,7 @@ def test_research_may_name_a_repository_and_commit(vault_repo, tmp_path):
 
 
 def test_research_brief(vault_repo):
-    fm = plan_fm(kind="research", output="wiki/work/concepts/Answer.md", hosts=["www.dtcc.com"])
+    fm = plan_fm(kind="research", output="wiki/work/concepts/Answer.md", hosts=["www.clearinghouse.example"])
     assert nc.check(vault_repo, fm, BRIEF) == []
     assert any("## Done when" in e for e in nc.check(vault_repo, fm, BRIEF.replace("## Done when", "## Done")))
     assert any("output" in e for e in nc.check(vault_repo, {**fm, "output": "wiki/personal/x.md"}, BRIEF))
@@ -306,3 +306,27 @@ def test_an_unreadable_config_gives_defaults_and_refuses_a_template_order(vault_
     (vault_repo / "system" / "config.md").write_bytes(b"\xff\xfe")
     assert nc.config(vault_repo) == {}
     assert nc.check(vault_repo, plan_fm(tasks="1-2"), "") == ["config has no template_remote"]
+
+
+def resolver(monkeypatch, table):
+    """socket.getaddrinfo answering from table: host -> addresses, or None for a name that does not resolve."""
+    def fake(host, port, *a, **k):
+        if table.get(host) is None:
+            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+        return [(socket.AF_INET6 if ":" in a_ else socket.AF_INET, socket.SOCK_STREAM, 6, "", (a_, 0)) for a_ in table[host]]
+    monkeypatch.setattr(nc.socket, "getaddrinfo", fake)
+
+
+@pytest.mark.parametrize("addr", ["127.0.0.1", "10.0.0.1", "169.254.169.254", "::1", "::ffff:127.0.0.1", "224.0.0.1"])
+def test_internal_addresses_are_refused(monkeypatch, addr):
+    # confinement spec §3.2 (#318): the name passes the HOST rule; the address it resolves to does not
+    resolver(monkeypatch, {"docs.example.com": ["93.184.216.34"], "evil.example.com": ["93.184.216.34", addr]})
+    assert nc.resolve_problems(["docs.example.com"]) == ([], [])
+    internal, unresolved = nc.resolve_problems(["docs.example.com", "evil.example.com"])
+    assert internal == [f"host evil.example.com resolves to {addr}, an internal address"]
+    assert unresolved == []
+
+
+def test_unresolvable_host(monkeypatch):
+    resolver(monkeypatch, {})
+    assert nc.resolve_problems(["gone.example.com"]) == ([], ["host gone.example.com does not resolve"])

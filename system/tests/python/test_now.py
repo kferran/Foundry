@@ -127,11 +127,11 @@ def test_add_writes_the_default_clock(vault):
 
 
 def test_only_a_named_date_within_30_days_gives_the_short_clock():
-    # #166 clock spec §4, review ruling: a date gives since + 3 only when it falls within 30 days of since (a DTCC
+    # #166 clock spec §4, review ruling: a date gives since + 3 only when it falls within 30 days of since (a clearing-house
     # deadline months out keeps since + 30); a date inside a URL or a path does not count; a date with a time does.
     short, long = "2026-10-18", "2026-11-14"
-    for statement, want in (("DTCC: Release notes ([[dtcc-r]]) — Production 2026-10-25 (a1)", short),
-                            ("DTCC: Release notes ([[dtcc-r]]) — Production 2027-01-13 (a1)", long),
+    for statement, want in (("clearing-house: Release notes ([[clearinghouse-r]]) — Production 2026-10-25 (a1)", short),
+                            ("clearing-house: Release notes ([[clearinghouse-r]]) — Production 2027-01-13 (a1)", long),
                             ("Follow up on 2026-10-01", long), ("Due 2026-11-14", short), ("on 2026-10-20.", short),
                             ("Call at 2026-10-20T09:00", short), ("See https://x.example/blog/2026-10-20/post", long),
                             ("Read briefings/2026-10-20.md", long), ("Open 2026-10-20.md", long),
@@ -305,6 +305,31 @@ def test_check_keeps_a_tick_made_while_gh_runs(vault, tmp_path):
     assert "_(closed: PR merged 2026-10-09)_" in text
 
 
+def test_check_keeps_a_hand_drop_made_while_gh_runs_and_closes_through_the_table(vault, tmp_path, monkeypatch):
+    # Factory F7 spec §3, T7 and T8: check's closes come from now_states.transition(writer="check"); a line the owner
+    # closed by hand while gh ran keeps the owner's mark (the table has no done or dropped to done for check).
+    from vaultlib import now_states
+    calls, real = [], now_states.transition
+    monkeypatch.setattr(now_states, "transition", lambda line, writer, to, *a, **k: (
+        calls.append((writer, to)), real(line, writer, to, *a, **k))[1])
+    prepare(vault)
+    now.add(vault, "work", "owed", "Dropped PR", TODAY, evidence="https://github.com/acme/shop/pull/7")
+    now.add(vault, "work", "owed", "Merged PR", TODAY, evidence="https://github.com/acme/shop/pull/8")
+    now.add(vault, "work", "owed", "Old mail", "2026-10-01", via="mail")
+    stub = tmp_path / "gh"
+    stub.write_text(f"#!/bin/bash\nsed -i 's/- \\[ \\] owed: Dropped PR/- [-] owed: Dropped PR/' "
+                    f"{vault}/wiki/work/Now.md\necho MERGED\n")
+    stub.chmod(0o755)
+    calls.clear()
+    assert now.check(vault, TODAY, [].append, str(stub)) == 2
+    lines = page(vault).split("\n")
+    assert any(x.startswith("- [-] owed: Dropped PR") and x.endswith(f"_(closed: ticked {TODAY})_") for x in lines)
+    assert any(x.startswith("- [x] owed: Merged PR") and x.endswith(f"_(closed: PR merged {TODAY})_") for x in lines)
+    assert any(x.startswith("- [-] owed: Old mail") and x.endswith(f"_(closed: expired {TODAY})_") for x in lines)
+    assert ("check", "done stamped") in calls and ("check", "dropped stamped") in calls
+    assert not (vault / "system/logs/now-2026-10.jsonl").exists()   # nothing refused
+
+
 def test_check_and_the_stamp_keep_both_fields(vault, tmp_path):
     prepare(vault)  # Now clock spec §5: check rewrites a line by prefix, so the fields survive a close
     now.add(vault, "work", "owed", "Pick it", TODAY, "vendor", "https://github.com/acme/shop/pull/7", rec="CSV: it loads")
@@ -349,13 +374,13 @@ def test_review_groups_closed_stale_and_duplicate_lines_and_writes_nothing(vault
         "stale": ["- [ ] owed: Old one [due:: 2026-10-24] (since 2026-09-24)"],
         "duplicate": ["- [ ] owed: Send the  report [due:: 2026-10-31] (since 2026-10-01)",
                       "- [ ] draft: send the report [due:: 2026-11-08] (since 2026-10-09)"],
-        "unreadable": [], "long": [], "page_bytes": len(before.encode())}
+        "unreadable": [], "unknown": [], "long": [], "page_bytes": len(before.encode())}
     assert now.review(vault, "work", TODAY, stale_days=13, gh=gh_stub(tmp_path, "OPEN"))["stale"] == [
         "- [ ] owed: Old one [due:: 2026-10-24] (since 2026-09-24)",
         "- [ ] owed: Fourteen days [due:: 2026-10-25] (since 2026-09-25)"]
     assert path.read_text() == before
     assert not (vault / "system/logs").exists()
-    assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": [], "unreadable": [],
+    assert now.review(vault, "personal", TODAY) == {"closed": [], "stale": [], "duplicate": [], "unreadable": [], "unknown": [],
                                                     "long": [], "page_bytes": 0}
 
 
@@ -455,6 +480,17 @@ def test_review_lists_a_line_with_a_field_after_the_parenthesis_as_unreadable(va
     assert page(vault) == before
 
 
+def test_review_lists_a_line_with_an_unknown_mark(vault):
+    # Factory F7 spec Goal 5: a mark that is no state ([/]) is listed for the owner to fix by hand.
+    prepare(vault)
+    bad = "- [/] owed: x (since 2026-11-01)"
+    write(vault, "wiki/work/Now.md", "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n"
+          f"---\n# Now\n\n## Needs you\n{bad}\n- [x] owed: Done (since 2026-10-01)\n\n## Waiting\n")
+    assert now.review(vault, "work", TODAY)["unknown"] == [bad]
+    r = cli(vault, "review", "--partition", "work")
+    assert r.stdout == f"## Unreadable marks (1): tick, drop or reopen it by hand\n{bad}\n"
+
+
 def test_review_lists_a_line_with_an_update_appended_after_the_parenthesis(vault):
     # #211: a live page had 48 of 95 lines like this; review and check skipped them without a word
     prepare(vault)
@@ -481,22 +517,22 @@ def test_a_reopened_line_loses_its_stamp():
 
 def test_seed_turns_wikilinks_into_plain_text(vault):
     prepare(vault)
-    write(vault, "briefings/2026-10-08.md", "### 1. Objectives\n- [ ] DTCC: Change ([[dtcc-c1|C1]]) and [[Plan]]\n### 2.\n")
+    write(vault, "briefings/2026-10-08.md", "### 1. Objectives\n- [ ] clearing-house: Change ([[clearinghouse-c1|C1]]) and [[Plan]]\n### 2.\n")
     now.seed(vault, "work", TODAY)
-    assert now.open_lines(page(vault)) == ["- [ ] owed: DTCC: Change (C1) and Plan (since 2026-10-08)"]
+    assert now.open_lines(page(vault)) == ["- [ ] owed: clearing-house: Change (C1) and Plan (since 2026-10-08)"]
 
 
 def test_seed_takes_the_previous_briefs_open_objectives_once(vault):
     prepare(vault)
     write(vault, "briefings/archive/2026-10/2026-10-07.md",
           "---\ntype: briefing\n---\n### 1. Active Objectives\n- [ ] **Ask** about the 409 _(open since 2026-10-01, 6 days)_\n"
-          "- [ ] **stale** **Old** thing _(open since 2026-09-20)_\n- [x] **Done**\n- [ ] DTCC: Change ([[c1]])\n"
+          "- [ ] **stale** **Old** thing _(open since 2026-09-20)_\n- [x] **Done**\n- [ ] clearing-house: Change ([[c1]])\n"
           "### 2. Unavailable Sources\n- [ ] not an objective\n")
     assert now.seed(vault, "work", "2026-10-09") == 3
     assert now.open_lines(page(vault)) == [
         "- [ ] owed: **Ask** about the 409 (since 2026-10-01)",
         "- [ ] owed: **Old** thing (since 2026-09-20)",
-        "- [ ] owed: DTCC: Change (c1) (since 2026-10-07)"]
+        "- [ ] owed: clearing-house: Change (c1) (since 2026-10-07)"]
     assert now.seed(vault, "work", "2026-10-09") == 0
 
 
@@ -656,11 +692,13 @@ def test_a_hand_written_line_is_listed_and_left_alone(vault, tmp_path):
 
 def test_cli_add_seeds_the_missing_default_page_first(vault):
     prepare(vault)
-    write(vault, "briefings/2026-10-01.md", "### 1. Objectives\n- [ ] **Old objective**\n### 2.\n")
+    # the CLI reads the real day, so the briefing is dated inside its 30-day lookback
+    old = datetime.now(ZoneInfo("America/Denver")).date() - timedelta(days=1)
+    write(vault, f"briefings/{old}.md", "### 1. Objectives\n- [ ] **Old objective**\n### 2.\n")
     r = cli(vault, "add", "--partition", "work", "--kind", "owed", "--statement", "New")
     assert r.returncode == 0, r.stderr
     lines = now.open_lines(page(vault))
-    assert lines[0] == "- [ ] owed: **Old objective** (since 2026-10-01)"
+    assert lines[0] == f"- [ ] owed: **Old objective** (since {old})"
     assert lines[1].startswith("- [ ] owed: New [due:: ")
 
 
@@ -1086,6 +1124,37 @@ def test_expiry_review_findings(vault, tmp_path):
     assert all(line in lines for line in stay)
 
 
+def test_the_stamp_goes_through_the_state_table(monkeypatch):
+    # Factory F7 spec §3, T9 and T10: the stamp's marks and stamps come from now_states.transition().
+    from vaultlib import now_states
+    calls, real = [], now_states.transition
+    monkeypatch.setattr(now_states, "transition", lambda line, writer, to, *a, **k: (
+        calls.append((writer, to)), real(line, writer, to, *a, **k))[1])
+    text = ("- [-] owed: Dropped (since 2026-10-01)\n- [x] owed: Ticked (since 2026-10-01)\n"
+            "- [ ] owed: Reopened (since 2026-10-01) _(closed: ticked 2026-10-02)_\n- [ ] owed: Open (since 2026-10-01)")
+    assert now.stamp(text, TODAY) == (
+        f"- [-] owed: Dropped (since 2026-10-01) _(closed: ticked {TODAY})_\n"
+        f"- [x] owed: Ticked (since 2026-10-01) _(closed: ticked {TODAY})_\n"
+        "- [ ] owed: Reopened (since 2026-10-01)\n- [ ] owed: Open (since 2026-10-01)")
+    assert calls == [("stamp", "dropped stamped"), ("stamp", "done stamped"), ("stamp", "open")]
+
+
+def test_a_reopened_expired_line_loses_its_writer_and_stays_open(vault, tmp_path):
+    # Factory F7 spec Goal 4: the owner unticks an expired machine line; it becomes the owner's and never expires again.
+    prepare(vault)
+    expired = f"- [-] owed: Old mail [via:: mail] (since 2026-10-01) _(closed: expired {TODAY})_"
+    reopened = "- [ ] " + expired[6:]
+    assert now.stamp(reopened, "2026-10-10") == "- [ ] owed: Old mail (since 2026-10-01)"
+    write(vault, "wiki/work/Now.md", f"---\ntype: concept\n---\n# Now\n\n## Needs you\n{reopened}\n")
+    for day in ("2026-10-10", "2026-10-11"):
+        assert now.check(vault, day, lambda m: None, gh_stub(tmp_path)) == 0
+        assert now.open_lines(page(vault)) == [reopened]   # check wrote nothing
+    now.add(vault, "work", "owed", "Another", "2026-10-11")
+    assert now.open_lines(page(vault))[0] == "- [ ] owed: Old mail (since 2026-10-01)"
+    assert now.check(vault, "2026-10-12", lambda m: None, gh_stub(tmp_path)) == 0
+    assert "- [ ] owed: Old mail (since 2026-10-01)" in page(vault).split("\n")
+
+
 def test_tag_writers_skips_a_line_it_cannot_tag_whole(vault):
     prepare(vault)
     mail = "https://mail.google.com/mail/#all/a1"
@@ -1118,3 +1187,132 @@ def test_tag_writers_dry_run_then_once(vault):
     r = cli(vault, "tag-writers", "--dry-run")
     assert r.returncode == 0, r.stderr
     assert "tag-writers work: 0 tagged, 0 expire at the next check, 1 skipped" in r.stdout
+
+
+def test_a_repeat_fit_add_cut_differently_matches_the_first(vault):
+    # The cut depends on who, evidence, rec and due, so the stored statement can differ from the repeat's cut.
+    prepare(vault)
+    long = "Reply about the rollout " + "and its many details " * 14
+    assert now.add(vault, "work", "owed", long, TODAY, rec="Yes: it is quick", fit=True)[0] == "added"
+    assert now.add(vault, "work", "owed", long, TODAY, fit=True)[0] in ("exists", "updated")
+    assert page(vault).count("Reply about the rollout") == 1
+
+
+def test_overdue_leaves_the_writer_tag_out(vault):
+    prepare(vault)
+    write(vault, "wiki/work/Now.md", HEAD.format(p="work") +
+          "- [ ] owed: Tagged [via:: mail] [due:: 2026-10-19] (since 2026-10-01)\n\n## Waiting\n")
+    assert now.overdue(vault, "2026-10-20").splitlines()[1] == "- owed: Tagged [due:: 2026-10-19] (since 2026-10-01)"
+
+
+# --- now.merge, the Now.md merge driver (#436 S5) ---
+
+MHEAD = HEAD.format(p="work")
+MA = "- [ ] owed: Review the export PR [due:: 2026-10-12] (Blake, since 2026-10-09, https://github.com/acme/shop/pull/7)"
+MA2 = MA.replace("the export PR", "the export PR and its docs")
+MB = "- [ ] owed: Send the invoice [due:: 2026-11-08] (since 2026-10-09)"
+MC = "- [ ] draft: Reply to the vendor [due:: 2026-10-12] (vendor, since 2026-10-09)"
+MW = "- [ ] waiting: Access to the logs [due:: 2026-10-12] (Sam, since 2026-10-09, EX-12)"
+CLOSE = "PR merged 2026-10-10"
+
+
+def pg(*needs, waiting=()):
+    return MHEAD + "".join(f"{x}\n" for x in needs) + "\n## Waiting\n" + "".join(f"{x}\n" for x in waiting)
+
+
+def tick(line, mark="x", how=""):
+    return f"- [{mark}]{line[5:]}" + (f" _(closed: {how})_" if how else "")
+
+
+def test_merge_tick_against_close():
+    base, server, client = pg(MA, MB), pg(tick(MA, how=CLOSE), MB), pg(tick(MA), MB)
+    assert now.merge(base, server, client) == server
+    assert now.merge(base, client, server) == server
+    assert now.merge(base, pg(tick(MA, "-", "expired 2026-10-16"), MB), client) == client   # [x] beats [-]
+    assert now.merge(base, server, pg(tick(MA) + "  ", MB)) == server   # a trailing space pairs by key
+
+
+def test_merge_rewrite_and_tick():
+    base, server = pg(MA, MB), pg(MA2, MB)
+    client = pg(tick(MA), "  - 2026-10-10: asked about the docs", MB)
+    want = pg(tick(MA2), "  - 2026-10-10: asked about the docs", MB)
+    assert now.merge(base, server, client) == want
+    assert now.merge(base, client, server) == want
+
+
+def test_merge_adds_on_both_sides():
+    assert now.merge(pg(MA), pg(MA, MB), pg(MA, MC, waiting=(MW,))) == pg(MA, MC, MB, waiting=(MW,))
+    assert now.merge(pg(MA), pg(MA, MB), pg(MA, MB)) == pg(MA, MB)
+    notes = ("  - 2026-10-10: one", "  - 2026-10-10: two")
+    assert now.merge(pg(MA, notes[0]), pg(MA, notes[0], notes[1]), pg(MA, "  - 2026-10-11: three")) \
+        == pg(MA, notes[1], "  - 2026-10-11: three")   # a note the client removed goes; both new ones stay
+
+
+def test_merge_archived_against_ticked():
+    base, server, client = pg(MA, MB), pg(MB), pg(tick(MA), MB)
+    assert now.merge(base, server, client) == server
+    assert now.merge(base, client, server) == server
+    stamped = pg(tick(MA, how="ticked 2026-10-10"), MB)
+    assert now.merge(stamped, server, stamped) == server
+
+
+def test_merge_empty_base():
+    assert now.merge("", pg(MA), pg(MB)) == pg(MB, MA)   # theirs' new line goes first in its section
+
+
+def test_merge_layout_from_one_side():
+    no_waiting = MHEAD + f"{MA}\n"   # the server's add writes the missing heading
+    assert now.merge(no_waiting, pg(MA, waiting=(MW,)), MHEAD + f"{tick(MA)}\n") == pg(tick(MA), waiting=(MW,))
+
+
+MD = "- [ ] owed: Call the bank [due:: 2026-10-12] (Blake, since 2026-10-09)"
+MN = "  - 2026-10-10: one"
+TOP = MHEAD.replace("## Needs you\n", "") + "x\n"   # a page with no heading yet
+TWO = ("- [ ] owed: Review the first part (Blake, since 2026-10-09)",
+       "- [ ] owed: Review the second part (Blake, since 2026-10-09)")
+
+
+@pytest.mark.parametrize("base, ours, theirs, reason", [
+    (pg(MA), pg(MA2), pg(MA.replace("PR", "pull request")), "changed on both sides"),          # two rewrites
+    (pg(MA), pg(MB), pg(MA, "  - 2026-10-10: a note"), "gone on one side"),                    # gone vs a note
+    (pg(MA), pg(MB), pg(MA.replace("PR", "pull request")), "gone on one side"),                # gone vs a rewrite
+    (pg(MA), pg(*TWO), pg(tick(MA)), "gone on one side"),                                      # two candidates
+    (pg(tick(MA, how="ticked 2026-10-10")), pg(), pg(MA), "gone on one side"),                 # gone vs reopened
+    (pg(MA), pg(MA, MB), pg(MB, waiting=(MA,)), "different section"),                          # a moved line
+    (pg(MA), pg(MA, MA), pg(MA, MB), "twice"),                                                 # a key twice
+    (pg(MA), pg(MA, "  - 2026-10-10: n", "  - 2026-10-10: n"), pg(MA, MB), "twice"),           # a note twice
+    ("<<<<<<< ours\n" + pg(MA), pg(MA, MB), pg(MA), "conflict marker"),                        # a criss-cross base
+    (pg(MA), pg(MA).replace("# Now", "# Now page"), pg(MA).replace("# Now", "# Open loops"), "layout"),
+    (pg(MA), pg(MA).replace("\n## Waiting\n", "\n"), pg(MA, waiting=(MW,)), 'no "## Waiting" section'),
+    # final review: a look-alike line (same kind, since and who) added where the line went never takes its tick or note
+    (pg(tick(MA, how="ticked 2026-10-10"), MB), pg(MB, MD), pg(tick(MA, how="ticked 2026-10-10"), MN, MB), "gone on one"),
+    (pg(MA, MB), pg(MB, MD), pg(tick(MA), MB), "gone on one side"),
+    (pg(MA, MB), pg(MB, MD), pg(MA, MN, MB), "gone on one side"),
+    (pg("- [ ] buy milk"), pg("- [ ] buy oat milk"), pg("- [x] buy milk"), "gone on one side"),    # a hand-written line
+    (pg(MB), pg(MB.replace("invoice", "invoice and receipt")), pg(tick(MB)), "no evidence"),       # rewrite vs tick
+    (TOP, TOP + f"{MA}\n", TOP.replace("x\n", "y\n"), "above the first heading"),
+], ids=["two-rewrites", "gone-vs-note", "gone-vs-rewrite", "two-candidates", "gone-vs-reopened", "moved", "key-twice",
+        "note-twice", "conflict-marker", "layout-both", "no-section", "archived-vs-note-lookalike", "lookalike-vs-tick",
+        "lookalike-vs-note", "hand-rewrite-vs-tick", "rewrite-no-evidence-vs-tick", "above-headings"])
+def test_merge_blocks(base, ours, theirs, reason):
+    with pytest.raises(ValueError, match=reason):
+        now.merge(base, ours, theirs)
+
+
+def test_merge_driver_writes_ours_or_exits_1(vault, tmp_path):
+    base, ours, theirs = (tmp_path / name for name in ("o", "a", "b"))
+    server = pg(tick(MA, how=CLOSE), MB)
+    base.write_text(pg(MA, MB), encoding="utf-8")
+    ours.write_text(pg(tick(MA), MB), encoding="utf-8")
+    theirs.write_text(server, encoding="utf-8")
+    r = cli(vault, "merge-driver", str(base), str(ours), str(theirs))
+    assert (r.returncode, r.stderr, ours.read_text(encoding="utf-8")) == (0, "", server)
+    theirs.write_bytes(b"\xff\xfe- [x] owed")
+    r = cli(vault, "merge-driver", str(base), str(ours), str(theirs))
+    assert (r.returncode, r.stderr) == (1, "now merge: a version is not UTF-8\n")
+    assert ours.read_text(encoding="utf-8") == server
+    theirs.write_text(pg(MA2), encoding="utf-8")
+    ours.write_text(pg(MA.replace("PR", "pull request")), encoding="utf-8")
+    r = cli(vault, "merge-driver", str(base), str(ours), str(theirs))
+    assert r.returncode == 1
+    assert r.stderr.startswith('now merge: the line "owed: Review the export') and r.stderr.count("\n") == 1

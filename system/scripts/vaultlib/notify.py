@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
-from . import alerts as alertsmod, now as nowmod, state as statemod
+from . import alerts as alertsmod, nightshift_report as rep, now as nowmod, state as statemod
 from .config import config
 from .connector import Fail, walk
 from .redact import redact
@@ -240,15 +240,18 @@ def collect(vault, now: datetime) -> tuple:
                 continue
             sent.append(_sans_time(event))
             alerts.append(event)
-    for path in sorted((logs / "nightshift" / "items").glob("*/outcome.json")):
+    for path in sorted((rep.state_dir(vault) / "items").glob("*/outcome.json")):
         try:
             out = json.loads(path.read_text())
         except (OSError, ValueError):
             continue
-        oid = str(out.get("id") or path.parent.name)
-        if oid in cursor["outcomes"]:
+        if "." in path.parent.name:   # items/<id>.<n>/: a run requeue set aside, already sent (ids hold no dot)
             continue
-        cursor["outcomes"].append(oid)
+        oid = str(out.get("id") or path.parent.name)
+        key = oid if int(out.get("run") or 1) == 1 else f"{oid}#{out['run']}"   # a requeued run is its own notice
+        if key in cursor["outcomes"]:
+            continue
+        cursor["outcomes"].append(key)
         if not first:
             detail = str(out.get("result") or next(iter(out.get("needs") or []), "") or out.get("reason") or "")
             # The id is written by a script in a fixed shape: never redacted (#157).

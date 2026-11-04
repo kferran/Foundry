@@ -265,6 +265,7 @@ EOF
 }
 
 @test "an older vault's claude_version file is taken over, so a change since its last health check is reported" {
+  need_user_systemd
   mkdir -p system/logs
   printf '0.9.0 (Claude Code)\n' > system/logs/claude_version
   run "$SC"
@@ -426,6 +427,17 @@ EOF
   [ "$status" -eq 0 ]
   grep -qx 'demo: ok' <<< "$output"
   [ "$(jq -r 'select(.source == "demo") | .exit' "$LOG")" = "0" ]
+}
+
+@test "an extension row the smoke budget cannot hold is skipped with its line; the units row still runs (#299)" {
+  need_user_systemd
+  use_extension demo
+  SMOKE_BUDGET=1 run "$SC"
+  grep -qx 'smoke: time left too short for demo; skipped' <<< "$output"
+  run grep -c '^demo: ok' <<< "$output"
+  [ "$output" = 0 ]
+  SMOKE_BUDGET=1 run "$SC"
+  grep -qE '^units: ' <<< "$output"
 }
 
 @test "an expired credential from a manifest names it and its renewal" {

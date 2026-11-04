@@ -1,36 +1,9 @@
 """today.py --json and --check (console C1 spec §4, plan Task 3)."""
 import ast
-from datetime import date, timedelta
 from pathlib import Path
 
-from console_today_fixtures import EXT, active, now_page, order, project, run, today_json, write
-
-
-def fixture(vault: Path, day: str) -> None:
-    past = (date.fromisoformat(day) - timedelta(days=4)).isoformat()
-    later = (date.fromisoformat(day) + timedelta(days=5)).isoformat()
-    now_page(vault, "work", [
-        f"- [ ] owed: Reply on the cap for [[Alpha]] [due:: {past}] (Blake Sample, since 2026-10-01, "
-        "https://github.com/acme/shop/pull/7)",
-        f"- [ ] waiting: Rollback owner for alpha cutover [due:: {later}] (Jordan Example, since 2026-10-02)",
-        "- [ ] owed: Unrelated chore (since 2026-10-03)",
-    ])
-    now_page(vault, "personal", ["- [ ] draft: Note to the garden club (since 2026-10-03)"])
-    active(vault, "work", "- [[Alpha]]: cutover plan\n- [[Beta]]\n")
-    project(vault, "work", "Alpha", "- [ ] Write the runbook\n- [ ] Confirm the owner\n")
-    project(vault, "work", "Beta", "Nothing open.\n")
-    order(vault, "2026-10-23-queued-one", "queued")
-    order(vault, "2026-10-22-done-one", "done")
-    prep = f"system/logs/inputs/{day}"
-    write(vault, f"{prep}/calendar.tsv", f"{day}\t09:30\t{day}\t10:00\tStandup\n")
-    write(vault, f"{prep}/actions.md", f"# Meeting actions for {day}\n\n## Yours\n"
-          "- [Blake Sample] Send the metrics ([[2026-10-21 Billing sync]], 2 days open)\n"
-          "- [Blake Sample] Plant the bulbs ([[2026-10-20 Garden]], 3 days open)\n\n## Waiting on\nNone.\n")
-    write(vault, "wiki/work/meetings/2026-10-21 Billing sync.md", "---\ntype: meeting\n---\n")
-    write(vault, "wiki/personal/meetings/2026-10-20 Garden.md", "---\ntype: meeting\n---\n")
-    write(vault, f"{prep}/sources.md", "- calendar: ok\n- triage: failed: auth: expired\n")
-    write(vault, f"{prep}/quarantine.md", "none\n")
-    write(vault, f"system/logs/alerts_{day}.md", "- 09:00 [smoke] one\n- 09:05 [sync] two\n")
+from console_today_fixtures import EXT, active, project, run, today_json, write
+from console_today_fixtures import today_vault as fixture
 
 
 def test_today_has_every_part_for_each_partition(vault, day):

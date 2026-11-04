@@ -1,0 +1,1 @@
+- Fixed: inbox triage skips a mail thread that lacks an id, a link or its messages, counts it and raises one `[triage]` alert a day, where one such thread failed every tick and left the Now page with no mail lines. A search whose every thread is malformed still fails. (#502)

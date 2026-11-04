@@ -46,7 +46,7 @@ class Fake:
 def research(vault, tmp, title):
     brief = tmp / f"{title}.md"
     brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
-    assert nr.main(["add", "--kind", "research", "--title", title, "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", title, "--partition", "work", "--brief-file", str(brief),
                     "--output", f"wiki/work/concepts/{title}.md", "--now"], vault, NOW) == 0
 
 
@@ -192,7 +192,7 @@ class Timed(Fake):
 def research_at(vault, tmp, title, at):
     brief = tmp / f"{title}.md"
     brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
-    assert nr.main(["add", "--kind", "research", "--title", title, "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", title, "--partition", "work", "--brief-file", str(brief),
                     "--output", f"wiki/work/concepts/{title}.md", "--at", at], vault, NOW) == 0
 
 

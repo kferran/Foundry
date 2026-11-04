@@ -16,11 +16,13 @@ prep_sources_init
 
 # The calendar comes from the Google Calendar connector through a narrow claude session
 # (calendar_fetch.sh, calendar spec §4); its reason line on failure lands in prep_errors.log.
-rc=0
+rc=0 seen=0   # seen: the error log's lines before this run's fetch, so an earlier run's line never counts
+[[ ! -f "$PREP_DIR/prep_errors.log" ]] || seen="$(wc -l < "$PREP_DIR/prep_errors.log")"
 prep_write calendar.tsv system/scripts/calendar_fetch.sh "$PREP_DATE" || rc=$?
 if (( rc == 0 )); then prep_source calendar ok; else prep_source calendar failed "$(prep_reason calendar_fetch "$rc")"; fi
 case "$rc" in
-  0) ;;
+  0) u="$(tail -n "+$((seen + 1))" "$PREP_DIR/prep_errors.log" | sed -n 's/^calendar_fetch: unverified: //p' | tail -n 1)"
+     [[ -z "$u" ]] || prep_unavailable "calendar: rows unverified: $u (check today's events in Google Calendar)" ;;
   3) prep_unavailable "calendar: no Google Calendar connector reachable (connect it at claude.ai with the account this machine's claude is logged in with, then re-run /setup phase 6)" ;;
   4) prep_unavailable "calendar: the connector timed out" ;;
   5) prep_unavailable "calendar: the connector returned an unreadable event list (see system/logs/calendar_fetch-${PREP_DATE:0:7}.jsonl)" ;;
@@ -104,6 +106,13 @@ if ! prep_write away.md system/scripts/away.py "$PREP_DATE" "${repos[@]}"; then
   : > "$PREP_DIR/away.md"
   prep_unavailable "away: away.py failed (see $PREP_DIR/prep_errors.log)"
 fi
+# Live status (#353): each pull request, issue and Work Order the inputs above name, marked in place when it is no
+# longer open; its row joins sources.md, so a check that could not run shows on the Sources line.
+timeout 30 system/scripts/nightshift.py list --json > "$PREP_DIR/orders.json" 2>> "$PREP_DIR/prep_errors.log" \
+  || echo '{"items": []}' > "$PREP_DIR/orders.json"
+if row="$(system/scripts/status_refs.py "$PREP_DIR" "$PREP_DIR/orders.json" "${repos[@]}" 2>> "$PREP_DIR/prep_errors.log")"
+then printf '%s\n' "$row" >> "$PREP_DIR/sources.md"
+else prep_unavailable "status: status_refs.py failed (see $PREP_DIR/prep_errors.log)"; fi
 
 # Briefings and debriefs dated before today move to briefings/archive/<YYYY-MM>/, after the Now seed and the
 # extension sections are written (now.py seed and a section's prep may read the archive too). The sync commit records

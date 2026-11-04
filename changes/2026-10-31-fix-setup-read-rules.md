@@ -1,0 +1,1 @@
+- Changed: `/setup` no longer prompts for `discover_codebases.sh` and `inspect_codebase.sh`, which only read. (#302)

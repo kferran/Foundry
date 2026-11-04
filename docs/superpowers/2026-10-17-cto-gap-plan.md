@@ -96,7 +96,7 @@ Spec and plan exist (`specs/2026-10-11-ingest-evals-design.md`, `plans/2026-10-1
 
 ### Phase C: step 4 budgets
 
-Step 3 is complete on master: DTCC moved to a vault-only `extensions/dtcc/` (`9e3d45c`), and `vault_integrity.bats` pins core at 13,200 script lines and 14 schemas (`f2a99d7`). What remains is step 4. Spec: `specs/2026-10-11-claude-md-prune-design.md`, revised for the 45-line target.
+Step 3 is complete on master: clearing-house moved to a vault-only `extensions/clearinghouse/` (`9e3d45c`), and `vault_integrity.bats` pins core at 13,200 script lines and 14 schemas (`f2a99d7`). What remains is step 4. Spec: `specs/2026-10-11-claude-md-prune-design.md`, revised for the 45-line target.
 
 - `CLAUDE.md` to about 45 lines (77 today); the Agents block moves to the `order` skill, per the prune spec.
 - Schemas in core to 12 (14 today), and the budget test lowered to match.

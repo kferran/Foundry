@@ -113,8 +113,8 @@ ITEM='{"items": [{"thread_id": "a1", "who": "Blake", "ask": "asks how to proceed
   [ "$status" -eq 0 ]
   TRIAGE_CLOCK="3 18" run "$TF"
   [ "$status" -eq 0 ]
-  mkdir -p system/logs/nightshift
-  printf '{"usage5": 0.9, "usage5_at": "%s"}\n' "$(date -Iseconds)" > "system/logs/nightshift/health-$(date +%F).json"
+  mkdir -p "$BATS_TEST_TMPDIR/ws/state"
+  printf '{"usage5": 0.9, "usage5_at": "%s"}\n' "$(date -Iseconds)" > "$BATS_TEST_TMPDIR/ws/state/health-$(date +%F).json"
   run "$TF"
   [ "$status" -eq 0 ]
   [ ! -e "$BATS_TEST_TMPDIR/args" ]
@@ -250,4 +250,12 @@ triage_fetch: 1 chat messages need the owner (1 returned)" ]
   [ "$status" -eq 2 ]
   [ ! -e "$BATS_TEST_TMPDIR/args" ]
   grep -qF '[triage] Inbox triage failed (exit 2): triage_partition must be one of work, personal' "$ALERTS"
+}
+
+@test "an unexpected failure in a source exits 70 through the parent and alerts once as a crash (#436, F6 gap)" {
+  gmail_says "$G" "$Q" "$ITEM"
+  jq_fails_logline
+  run "$TF"
+  [ "$status" -eq 70 ]
+  [ "$(grep -c '\[triage\] foundry-triage crashed: ' "$ALERTS")" -eq 1 ]
 }

@@ -1,0 +1,1 @@
+- Changed: the today file writes "session ended with no outcome" for a session digest without an Outcome section, where it wrote "a session ended", so a session that stopped early no longer reads like one that finished. (#411)

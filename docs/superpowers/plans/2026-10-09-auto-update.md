@@ -87,14 +87,14 @@ Replace with:
 Edit 4 in `system/tests/units.bats`. Find:
 
 ````text
-  grep -q 'enable --now .*foundry-dtcc-watch.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -q 'enable --now .*foundry-clearinghouse-watch.timer' "$STUB_SYSTEMCTL_LOG"
 }
 ````
 
 Replace with:
 
 ````text
-  grep -q 'enable --now .*foundry-dtcc-watch.timer' "$STUB_SYSTEMCTL_LOG"
+  grep -q 'enable --now .*foundry-clearinghouse-watch.timer' "$STUB_SYSTEMCTL_LOG"
 }
 
 @test "standalone and server get the template update every morning at 05:30, a server with its sync drop-in (#87)" {

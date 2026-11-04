@@ -44,9 +44,20 @@ with open(calls, "a") as fh:
 ledger = vault / "system/logs" / f"runs-{datetime.now(TZ).strftime('%Y-%m')}.jsonl"
 ledger.parent.mkdir(parents=True, exist_ok=True)
 with open(ledger, "a") as fh:
-    fh.write(json.dumps({"run_id": f"stub-{time.time_ns()}", "command": "ingest",
+    fh.write(json.dumps({"run_id": f"stub-{time.time_ns()}", "command": args[0],
                          "started_at": datetime.now(TZ).isoformat(), "inputs": args[1:],
                          "input_sha256": os.environ.get("FOUNDRY_ORIGINAL_SHA256", "").split(), "exit": rc}) + "\\n")
+if args[:1] == ["digest-backfill"] and rc == 0:  # the gate publishes the one target, provenance stamped
+    import re
+    src = staged[args[1]]
+    part = re.search(r'^partition: "?([a-z]+)', src, re.M).group(1)
+    out = (src.split("\\n---\\n", 1)[0] + '\\nprovenance: ["headless"]\\n---\\n## Outcome\\n'
+           + os.environ.get("STUB_BACKFILL_BODY", "Tidied the export job.") + "\\n")
+    for old, new in json.loads(os.environ.get("STUB_BACKFILL_SUB", "[]")):
+        out = out.replace(old, new)
+    dest = vault / "raw" / part / "notes" / Path(args[1]).name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(out)
 sys.exit(rc)
 """
 
@@ -159,10 +170,40 @@ def test_daily_cap_leaves_inputs_and_stops(iv, monkeypatch):
     assert (iv / "raw/inbox/a.md").exists() and (iv / "raw/inbox/b.md").exists()
 
 
+def test_a_busy_run_lock_ends_the_tick_with_inputs_kept_and_no_retry_alert(iv, monkeypatch):
+    # #299: ingest's run.lock wait is bounded; exit 6 (busy) ends the tick like the cap, and the next tick retries.
+    write(iv, "raw/inbox/a.md", "a")
+    write(iv, "raw/inbox/b.md", "b")
+    write(iv, "raw/work/notes/d1.md", "---\ntype: session_digest\npartition: work\n---\none\n")
+    write(iv, "raw/work/notes/d2.md", "---\ntype: session_digest\npartition: work\n---\ntwo\n")
+    monkeypatch.setenv("STUB_RC", "6")
+    Intake(iv, now=later()).run()
+    assert len(calls(iv)) == 1
+    assert (iv / "raw/inbox/a.md").exists() and (iv / "raw/inbox/b.md").exists()
+    assert (iv / "raw/work/notes/d1.md").exists() and (iv / "raw/work/notes/d2.md").exists()
+    alerts = "".join(p.read_text() for p in (iv / "system/logs").glob("alerts_*.md"))
+    assert "will retry" not in alerts and "one at a time" not in alerts
+
+
+def test_an_outage_ends_the_tick_and_never_poisons(iv, monkeypatch):
+    # #436 S1: exit 7 (claude itself fails) ends the tick like the cap; no attempt, no retry alert.
+    write(iv, "raw/inbox/a.md", "a")
+    write(iv, "raw/work/notes/d1.md", "---\ntype: session_digest\npartition: work\n---\none\n")
+    monkeypatch.setenv("STUB_RC", "7")
+    for _ in range(3):
+        Intake(iv, now=later()).run()
+    assert len(calls(iv)) == 3
+    assert (iv / "raw/inbox/a.md").exists() and (iv / "raw/work/notes/d1.md").exists()
+    assert not (iv / "system/quarantine/poisoned").exists()
+    alerts = "".join(p.read_text() for p in (iv / "system/logs").glob("alerts_*.md"))
+    assert "will retry" not in alerts and "one at a time" not in alerts
+
+
 def usage_reading(vault, five_hour, hours_ago=0.0):
     from datetime import timedelta, timezone
     at = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
-    write(vault, "system/logs/nightshift/health-2099-01-01.json", json.dumps({"usage5": five_hour, "usage5_at": at}))
+    from vaultlib import nightshift_report as rep
+    write(rep.state_dir(vault), "health-2099-01-01.json", json.dumps({"usage5": five_hour, "usage5_at": at}))
 
 
 def test_usage_ceiling_holds_inbox_and_digests_and_alerts_once_a_day(iv):
@@ -365,7 +406,7 @@ def test_settings_and_busy_exits_do_not_poison(iv, monkeypatch):
 def test_failures_since_retry_ignores_nonfault_exits(iv):
     import hashlib
     sha = hashlib.sha256(b"a").hexdigest()
-    for rc in (3, 4, 6, None, "x", 0):
+    for rc in (3, 4, 6, 7, None, "x", 0):
         ledger_line(iv, command="ingest", input_sha256=[sha], exit=rc)
     assert Intake(iv).failures_since_retry(sha) == 0
     ledger_line(iv, command="ingest", input_sha256=[sha], exit=5)
@@ -626,6 +667,17 @@ def test_each_intake_tick_closes_now_lines_on_finished_work_orders(iv):
     assert f"_(closed: Work Order done {today()})_" in (iv / "wiki/work/Now.md").read_text()
 
 
+def test_the_now_step_releases_a_ticked_held_file(iv):
+    # confinement spec §3.7: the intake tick reads the owner's tick and hands the held stale claims to ingest
+    write(iv, "raw/work/held/2026-10-08-r.stale-claims.md", "---\ntype: session_digest\n---\n## Stale claims\n- a → b\n")
+    write(iv, "wiki/work/Now.md", '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-08"\npartition: work\n---\n'
+          "# Now\n\n## Needs you\n- [x] owed: Review 1 stale claims from a research Work Order before they reach the "
+          "wiki: raw/work/held/2026-10-08-r.stale-claims.md (since 2026-10-08)\n\n## Waiting\n")
+    Intake(iv, now=later()).check_now()
+    assert (iv / "raw/work/notes/2026-10-08-r.stale-claims.md").is_file()
+    assert not (iv / "raw/work/held/2026-10-08-r.stale-claims.md").exists()
+
+
 def test_a_busy_run_lock_skips_the_now_check(iv):
     write(iv, "wiki/work/Now.md", '---\ntype: concept\ntags: [now]\ncompiled_at: "2026-10-08"\npartition: work\n---\n'
           "# Now\n\n## Needs you\n- [x] owed: A (since 2026-10-08)\n\n## Waiting\n")
@@ -767,3 +819,164 @@ def test_a_failing_or_stuck_tick_is_one_alert_and_the_intake_tick_goes_on(iv):
     alerts = next((iv / "system/logs").glob("alerts_*.md")).read_text()
     assert "[intake] ticker tick failed (exit 2: no settings); will retry" in alerts
     assert "[intake] ticker tick did not finish (TimeoutExpired); will retry" in alerts
+
+
+# -- one prune a day (#436 S7) -------------------------------------------------
+def days_ago(n):
+    from datetime import timedelta
+    return datetime.now(TZ).date() - timedelta(days=n)
+
+
+def cutoff():
+    return days_ago(30)
+
+
+def run_folder(iv, day, name, files=None):
+    rd = iv / "system/logs/runs" / f"{day:%Y%m%d}T100000-{name}"
+    rd.mkdir(parents=True)
+    for rel, text in (files or {}).items():
+        (rd / rel).write_text(text)
+    return rd
+
+
+def test_prune_runs_settled_only(iv):
+    from vaultlib import prune
+    write(iv, "system/logs/commit_runs.since", f"{days_ago(45):%Y%m%d}T000000\n")
+    published = {"publish.json": json.dumps({"published": ["wiki/work/concepts/x.md"]})}
+    committed = run_folder(iv, days_ago(40), "ingest-aaaa", {"committed": "{}", **published})
+    before_since = run_folder(iv, days_ago(50), "brief-a1a1", published)
+    no_report = run_folder(iv, days_ago(40), "meeting-a2a2")
+    nothing = run_folder(iv, days_ago(40), "ingest-a3a3", {"publish.json": json.dumps({"published": []})})
+    journal = run_folder(iv, days_ago(42), "brief-bbbb", {"committed": "{}", "publish.journal":
+                         '{"staged": "s", "target": "wiki/a.md", "expected": null}\n'})
+    uncommitted = run_folder(iv, days_ago(35), "ingest-cccc", published)
+    young = run_folder(iv, days_ago(10), "ingest-dddd", {"committed": "{}"})
+    backfill = run_folder(iv, days_ago(40), "digest-backfill-a4a4", published)   # commit_runs.py never commits one
+    (iv / "system/logs/runs/notes").mkdir()
+    held = write(iv, f"system/quarantine/{journal.name}/staged/wiki/a.md", "x").parents[2]
+    done = prune.prune(iv, cutoff())
+    assert held.is_dir()   # a kept run's held-back staging stays with it
+    for gone in (committed, before_since, no_report, nothing, backfill):
+        assert not gone.exists()
+    for kept in (journal, uncommitted, young, iv / "system/logs/runs/notes"):
+        assert kept.is_dir()
+    assert done["runs"] == 5
+    assert done["unsettled"] == 2
+    assert done["oldest"] == journal.name
+
+
+def test_prune_inputs_and_safe_quarantine_only(iv):
+    from vaultlib import prune
+    old_inputs = iv / "system/logs/inputs" / days_ago(31).isoformat()
+    young_inputs = iv / "system/logs/inputs" / days_ago(29).isoformat()
+    write(iv, f"system/logs/inputs/{old_inputs.name}/calendar.tsv", "x")
+    write(iv, f"system/logs/inputs/{young_inputs.name}/calendar.tsv", "x")
+    staging = write(iv, f"system/quarantine/{days_ago(31):%Y%m%d}T100000-ingest-eeee/staged/a.md", "x").parents[1]
+    young_staging = write(iv, f"system/quarantine/{days_ago(10):%Y%m%d}T100000-ingest-ffff/staged/a.md", "x").parents[1]
+    state = write(iv, f"system/quarantine/telemetry_state-{days_ago(40):%Y%m%d}T100000.json", "{}")
+    poisoned = write(iv, "system/quarantine/poisoned/bad.md", "x")
+    write(iv, "system/quarantine/poisoned/bad.md.origin.json",
+          json.dumps({"origin": "raw/inbox/bad.md", "poisoned_at": f"{days_ago(40)}T10:00:00"}))
+    meeting = write(iv, "system/quarantine/meetings/sync.vtt", "x")
+    backfill = write(iv, "system/quarantine/backfill/s1.backfill", "x")
+    old = time.time() - 40 * 86400
+    for path in (meeting, backfill):
+        os.utime(path, (old, old))
+    done = prune.prune(iv, cutoff())
+    for gone in (old_inputs, staging, state):
+        assert not gone.exists()
+    for kept in (young_inputs, young_staging, poisoned, meeting, backfill):
+        assert kept.exists()
+    assert (done["inputs"], done["quarantine"]) == (1, 2)
+
+
+def test_prune_keeps_a_quarantine_folder_not_named_as_a_run(iv):
+    from vaultlib import prune
+    other = write(iv, "system/quarantine/kept-by-hand/note.md", "x").parent
+    old = time.time() - 40 * 86400
+    os.utime(other, (old, old))
+    done = prune.prune(iv, cutoff())
+    assert other.exists()
+    assert done["quarantine"] == 0
+
+
+def test_prune_entries_of_archived_briefings_only(iv):
+    from vaultlib import prune
+    archived, kept_here, young, nowhere = days_ago(31), days_ago(32), days_ago(29), days_ago(33)
+    for day in (archived, kept_here, young):
+        write(iv, f"briefings/archive/{day:%Y-%m}/{day}.md", "x")
+    write(iv, f"briefings/{kept_here}.md", "x")
+    lines = [{"kind": "block", "briefing": f"briefings/{archived}.md", "hash": "h"},
+             {"kind": "alert", "briefing": f"briefings/{archived}.md", "reason": "r", "date": str(archived)},
+             {"kind": "notes", "briefing": f"briefings/{kept_here}.md"},
+             {"kind": "notes", "briefing": f"briefings/{young}.md"},
+             {"kind": "notes", "briefing": f"briefings/{nowhere}.md"}]
+    write(iv, "system/logs/extracted_blocks.jsonl", "".join(json.dumps(r) + "\n" for r in lines) + "torn\n")
+    done = prune.prune(iv, cutoff())
+    assert done["entries"] == 2
+    assert blocks_log_raw(iv) == [json.dumps(r) for r in lines[2:]] + ["torn"]
+
+
+def blocks_log_raw(iv):
+    return (iv / "system/logs/extracted_blocks.jsonl").read_text().splitlines()
+
+
+def test_restored_briefing_drops_a_duplicate(iv):
+    from vaultlib import prune
+    day = days_ago(40)
+    path = dated(iv, str(day), "#wiki-ingest-start\nan old idea\n#wiki-ingest-end\n")
+    at(iv, 6).run()
+    assert len(calls(iv)) == 1
+    archived = iv / f"briefings/archive/{day:%Y-%m}/{day}.md"
+    archived.parent.mkdir(parents=True)
+    shutil.copy2(path, archived)
+    path.unlink()
+    assert prune.prune(iv, cutoff())["entries"] == 2   # its block and its notes record
+    shutil.copy2(archived, path)
+    at(iv, 6).run()
+    assert len(calls(iv)) == 1
+    assert len(list((iv / "raw/archive").glob("daily_note_drop_*-dup-*.md"))) == 1
+    assert list((iv / "raw/inbox").glob("daily_note_drop_*.md")) == []
+
+
+def pruned(iv):
+    path = iv / "system/logs/.pruned"
+    return path.read_text().strip() if path.exists() else ""
+
+
+def alerts_text(iv):
+    return (iv / f"system/logs/alerts_{today()}.md").read_text()
+
+
+def test_prune_once_a_day_and_lock_busy(iv, monkeypatch):
+    from vaultlib import prune
+    first = run_folder(iv, days_ago(40), "ingest-aaaa", {"committed": "{}"})
+    pending = run_folder(iv, days_ago(41), "brief-bbbb", {"publish.journal":
+                         '{"staged": "s", "target": "wiki/a.md", "expected": null}\n'})
+    Intake(iv, now=later()).run()
+    assert not first.exists()
+    assert pruned(iv) == today()
+    second = run_folder(iv, days_ago(40), "ingest-cccc", {"committed": "{}"})
+    Intake(iv, now=later()).run()
+    assert second.is_dir()
+    assert alerts_text(iv).count("run folder(s) older than 30 days") == 1
+    assert (f"[intake] 1 run folder(s) older than 30 days are not settled (oldest {pending.name}); they stay\n"
+            in alerts_text(iv))
+    (iv / "system/logs/.pruned").unlink()
+    with open(iv / "system/run.lock", "a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        Intake(iv, now=later()).prune()
+    assert pruned(iv) == ""
+    assert second.is_dir()
+    tries = []
+
+    def boom(vault, cutoff):   # the pass raises part way, after the run folders
+        tries.append(cutoff)
+        raise OSError("disk went away")
+    monkeypatch.setattr(prune, "_entries", boom)
+    Intake(iv, now=later()).run()
+    assert not second.exists()
+    Intake(iv, now=later()).run()
+    assert len(tries) == 2
+    assert pruned(iv) == ""
+    assert alerts_text(iv).count("[intake] prune failed (OSError: disk went away); will retry\n") == 1

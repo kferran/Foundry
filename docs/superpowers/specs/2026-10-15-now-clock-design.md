@@ -33,7 +33,7 @@ The fields sit before the parenthesis because the current `LINE` pattern ends at
 ## 4. Writing the clock: `now.py add`
 
 - New flags: `--rec "<option>: <why>"` and `--due YYYY-MM-DD`. Both optional.
-- **Default clock**, when `--due` is absent, in calendar days from `since`: **3** when `--who` is not empty, or when the bare statement holds an ISO date that is not part of a longer token and falls within 30 days of `since` (a Work Order id such as `2026-10-08-export-fix`, a file name such as `2026-10-08.md` and a date inside a URL or a path do not count; a date with a time, `2026-10-20T09:00`, does; a date in the past or more than 30 days out, such as a DTCC deadline months away, gives 30, refining owner decision 2 at review); otherwise **30**. The test reads only the arguments, so `now.py` makes no judgement. Triage passes the sender as `who`, so every inbox line gets 3 days.
+- **Default clock**, when `--due` is absent, in calendar days from `since`: **3** when `--who` is not empty, or when the bare statement holds an ISO date that is not part of a longer token and falls within 30 days of `since` (a Work Order id such as `2026-10-08-export-fix`, a file name such as `2026-10-08.md` and a date inside a URL or a path do not count; a date with a time, `2026-10-20T09:00`, does; a date in the past or more than 30 days out, such as a clearing-house deadline months away, gives 30, refining owner decision 2 at review); otherwise **30**. The test reads only the arguments, so `now.py` makes no judgement. Triage passes the sender as `who`, so every inbox line gets 3 days.
 - `--due` replaces the default on a new line. It may be any valid date; a writer that knows a deadline names it.
 - `add` always writes `[due:: …]` on a new line, so the page shows the clock and every reader reads one value.
 
@@ -49,7 +49,7 @@ Hand edits in Obsidian are not checked: the owner may move a clock. A writer tha
 
 ## 6. Writing the clock: the brief
 
-Interactive, the brief already runs `now.py add` per line, which applies §4. Headless, the brief Edits the staged `Now.md` itself, so `brief_prep.sh` writes one more prep file, `clock.md`, with two lines from `date -d`: `short: <date+3>` and `long: <date+30>`. `brief.md` tells the run to end each line it adds (new objectives, DTCC changes, Work Order decisions) with `[due:: <long>]`, or `<short>` when the statement holds an ISO date, before `(since <date>)`. The run copies a date; it does no arithmetic. A line written without it is only clockless. The brief's "none repeating an open line in `now.md`" compares bare statements: it ignores the two fields, as `add` does.
+Interactive, the brief already runs `now.py add` per line, which applies §4. Headless, the brief Edits the staged `Now.md` itself, so `brief_prep.sh` writes one more prep file, `clock.md`, with two lines from `date -d`: `short: <date+3>` and `long: <date+30>`. `brief.md` tells the run to end each line it adds (new objectives, clearing-house changes, Work Order decisions) with `[due:: <long>]`, or `<short>` when the statement holds an ISO date, before `(since <date>)`. The run copies a date; it does no arithmetic. A line written without it is only clockless. The brief's "none repeating an open line in `now.md`" compares bare statements: it ignores the two fields, as `add` does.
 
 ## 7. The Overdue block
 

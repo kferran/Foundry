@@ -22,16 +22,18 @@ setup() {
 }
 
 # calendar_says <structured output json> [tool…]: what the stubbed calendar session returns (default tools: ToolSearch
-# and list_events).
+# and list_events, ids t0, t1, …), with a list_events result listing the same events (or PAGE_ROWS, #436 S8).
 calendar_says() {
-  local out="$1" t
+  local out="$1" t n=0
   shift
   {
     printf '{"type":"system","subtype":"init","tools":[]}\n'
     (( $# )) || set -- ToolSearch mcp__claude_ai_Google_Calendar__list_events
     for t in "$@"; do
-      printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"%s","input":{}}]}}\n' "$t"
+      printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t%d","name":"%s","input":{}}]}}\n' "$n" "$t"
+      n=$((n + 1))
     done
+    calendar_page "${PAGE_ROWS:-$(jq -c .events <<< "$out")}"
     printf '{"type":"result","subtype":"success","is_error":false,"num_turns":4,"total_cost_usd":0.2,"permission_denials":[],"structured_output":%s}\n' "$out"
   } > "$STUB_STREAM"
 }
@@ -56,6 +58,20 @@ codebase() {  # <name> <path>
   [ "$status" -eq 0 ]
   [ "$(cat "$IN/calendar.tsv")" = "$(printf '2026-10-01\t09:00\t2026-10-01\t09:30\tStandup')" ]
   [ ! -e "$IN/unavailable.md" ]
+}
+
+@test "brief_prep: an unverified calendar adds one unavailable line; a verified one adds none (#436 S8)" {
+  PAGE_ROWS='[]' calendar_says '{"status":"ok","reason":"","events":[{"start_date":"2026-10-01","start_time":"09:00","end_date":"2026-10-01","end_time":"09:30","title":"Standup"}]}'
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  [ "$(cat "$IN/calendar.tsv")" = "$(printf '2026-10-01\t09:00\t2026-10-01\t09:30\tStandup')" ]
+  [ "$(grep -c -- '- brief_prep: calendar:' "$IN/unavailable.md")" -eq 1 ]
+  grep -qxF -- "- brief_prep: calendar: rows unverified: the connector listed 0 events, the rows hold 1 (check today's events in Google Calendar)" "$IN/unavailable.md"
+  calendar_says '{"status":"ok","reason":"","events":[{"start_date":"2026-10-01","start_time":"09:00","end_date":"2026-10-01","end_time":"09:30","title":"Standup"}]}'
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  run grep -c -- '- brief_prep: calendar:' "$IN/unavailable.md"
+  [ "$output" = 0 ]
 }
 
 @test "brief_prep: a failed calendar fetch is recorded, leaves no partial file, and still exits 0" {
@@ -101,6 +117,20 @@ codebase() {  # <name> <path>
   calendar_says '{"status":"ok","reason":"","events":[]}'
   run "$BP" 2026-10-01
   grep -qxF -- '- calendar: ok' "$IN/sources.md"
+}
+
+@test "brief_prep: a PR the last debrief calls open is marked merged, and the status row joins sources.md (#353)" {
+  mkdir -p briefings
+  printf -- '---\ntype: debrief\ndate: "2026-09-30"\n---\n- PR https://github.com/o/r/pull/5 is open and needs a check\n' \
+    > briefings/2026-09-30.debrief.md
+  printf '%s\n' '#!/bin/bash' 'case "$*" in "api repos/o/r/issues/5") echo '"'"'{"state":"closed","closed_at":"2026-09-30T20:00:00Z","pull_request":{"merged_at":"2026-09-30T20:00:00Z"}}'"'"' ;; *) exit 1 ;; esac' \
+    > "$STUBS/gh"
+  chmod +x "$STUBS/gh"
+  calendar_says '{"status":"ok","reason":"","events":[]}'
+  run "$BP" 2026-10-01
+  [ "$status" -eq 0 ]
+  grep -qF 'https://github.com/o/r/pull/5 (merged 2026-09-30 14:00) is open' "$IN/yesterday.md"
+  grep -qxF -- '- status: ok (1 checked, 1 closed)' "$IN/sources.md"
 }
 
 @test "brief_prep: the default date is today in the configured timezone" {
@@ -236,7 +266,7 @@ codebase() {  # <name> <path>
   digest raw/work/notes/w1.md work 2026-10-01T09:00:00-06:00 "## Outcome
 Done."
   printf -- '- 10:00:00 [sync] one\n- 11:00:00 [intake] two\n' > system/logs/alerts_2026-10-01.md
-  # Runs are counted as run_headless.sh counts them for the daily cap: no retry, meeting or usage-error run, any
+  # Runs are counted as the daily cap counted them before #436 S4: no retry, meeting or usage-error run, any
   # spacing, a bad line skipped (PR #253 review).
   {
     printf '{"run_id":"a","command":"ingest","started_at":"2026-10-01T09:00:00-06:00"}\n'
@@ -484,6 +514,7 @@ Done."
 }
 
 @test "brief_prep: an unreadable debrief is an unavailable input and the prep still exits 0 (#179)" {
+  need_non_root
   mkdir -p briefings
   printf -- '---\ntype: debrief\n---\n# Evening Debrief\n' > briefings/2026-09-30.debrief.md
   chmod 000 briefings/2026-09-30.debrief.md

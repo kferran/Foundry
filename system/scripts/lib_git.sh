@@ -24,6 +24,11 @@ git_url_normalize() {
 
 git_url_same() { [[ -n "${1-}" && -n "${2-}" && "$(git_url_normalize "$1")" == "$(git_url_normalize "$2")" ]]; }
 
+# git_github_slug <url>: owner/repo for a github.com remote, else nothing (status 0).
+git_github_slug() {
+  [[ ! "$(git_url_normalize "${1-}")" =~ ^github\.com/([^/]+/[^/]+)$ ]] || printf '%s\n' "${BASH_REMATCH[1]}"
+}
+
 # The sync's commit step (two-machines spec §4.1, §5.1), shared by vault_sync.sh and the unattended update.
 # Every git child runs with run.lock's fd 9 closed: a daemon or a detached gc it starts must not keep the lock.
 

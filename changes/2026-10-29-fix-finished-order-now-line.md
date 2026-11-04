@@ -1,0 +1,1 @@
+- Added: a Work Order that ends needing you adds its `owed` line to the Now page as it finishes, so a day with no brief still shows it: review and merge (closed when the pull request merges), answer a blocked order (closed when the order moves on), or fix a failed one (you tick it). (#332)

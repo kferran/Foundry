@@ -34,7 +34,7 @@ input_partition() {
 
 cmd="${1:-}"
 (( $# )) && shift
-case "$cmd" in ingest|brief|debrief) ;; *) die 2 "unknown command: ${cmd:-<none>}" ;; esac
+case "$cmd" in ingest|brief|debrief|digest-backfill) ;; *) die 2 "unknown command: ${cmd:-<none>}" ;; esac
 LOG="system/logs/headless/${cmd}_${TODAY}.log"
 
 inputs=() shas=() partition=""
@@ -57,6 +57,15 @@ if [[ "$cmd" == ingest ]]; then
     read -r -a shas <<< "$FOUNDRY_ORIGINAL_SHA256"
     (( ${#shas[@]} == ${#inputs[@]} )) || die 2 "FOUNDRY_ORIGINAL_SHA256 has ${#shas[@]} entries for ${#inputs[@]} inputs"
   fi
+elif [[ "$cmd" == digest-backfill ]]; then  # one excerpt the intake tick staged (recall spec §4.5)
+  (( $# == 1 )) || die 2 "digest-backfill takes one staged -backfill.md path"
+  relpath="$(args_vault_path "$1")" || die 2 "not a file inside the vault: $1"
+  name="${relpath#raw/inbox/.staging/}"
+  [[ "$relpath" == raw/inbox/.staging/*-backfill.md && "$name" != */* ]] || die 2 "not a staged -backfill.md: $relpath"
+  args_raw_filename "$name" || die 2 "unsafe input filename: $relpath"
+  partition="$(system/scripts/vault_index.py field "$relpath" partition 2>/dev/null || true)"
+  case "$partition" in work|personal|shared) ;; *) die 2 "no work, personal or shared partition: $relpath" ;; esac
+  inputs=("$relpath") shas=("$(sha256sum -- "$relpath" | cut -d' ' -f1)")
 else
   (( $# == 0 )) || die 2 "$cmd takes no arguments"
 fi
@@ -75,7 +84,7 @@ write_ledger() {
   if (( ${#shas[@]} )); then
     prevname="system/logs/runs-$(date -d "$(date +%Y-%m-01) -1 day" +%Y-%m).jsonl"
     failures="$( { cat "$prevname" "$LEDGER" 2>/dev/null || true; } | jq -R --argjson s "$(json_list "${shas[@]}")" \
-      'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and ([0,3,4,6,129,130,143] | index($e) | not) and ([.input_sha256[]? | strings] | any(. as $x | $s | index($x)))) | 1' | wc -l)"
+      'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and ([0,3,4,6,7,129,130,143] | index($e) | not) and ([.input_sha256[]? | strings] | any(. as $x | $s | index($x)))) | 1' | wc -l)"
     attempt=$(( failures + 1 ))
   fi
   if [[ -n "$run_id" ]]; then
@@ -112,8 +121,9 @@ if [[ ! -f "$cmdfile" ]]; then
 fi
 
 exec 9>system/run.lock
-if [[ "$cmd" == ingest ]]; then
-  flock 9
+if [[ "$cmd" == ingest || "$cmd" == digest-backfill ]]; then
+  # A short wait: the intake tick ends on exit 6 and its inputs stay for the next tick (#299, plan ruling 2).
+  flock -w "${INGEST_LOCK_WAIT:-60}" 9 || die 6 "run.lock busy"
 elif ! flock -w "$LOCK_WAIT" 9; then
   alert "$cmd skipped: run.lock busy for ${LOCK_WAIT}s"
   die 6 "run.lock busy"
@@ -132,14 +142,18 @@ else
   [[ -z "$recovery_failed" ]] || alert "publish recovery failed for run(s): $recovery_failed (see system/logs/runs/<run_id>/publish.json)"
 fi
 
-runs_today=0
-if [[ -f "$LEDGER" ]]; then
-  runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select(.command != "retry" and .command != "meeting" and ([2,3,4,6] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
-fi
-if (( runs_today >= MAX_PER_DAY )); then
-  marker="system/logs/.cap-alerted-$TODAY"
-  [[ -e "$marker" ]] || { alert "daily headless cap ($MAX_PER_DAY) reached; inputs left in place"; : > "$marker"; }
-  die 4 "daily cap reached"
+# The cap is the intake tick's spend limit (ingest and digest-backfill): the brief and debrief neither count toward it
+# nor wait on it (#436 S4).
+if [[ "$cmd" == ingest || "$cmd" == digest-backfill ]]; then
+  runs_today=0
+  if [[ -f "$LEDGER" ]]; then
+    runs_today="$(jq -R --arg d "$TODAY" 'fromjson? | objects | (.exit // 0) as $e | select((.command == "ingest" or .command == "digest-backfill") and ([2,3,4,6,7] | index($e) | not) and (((.started_at | strings) // "") | startswith($d))) | 1' "$LEDGER" | wc -l)"
+  fi
+  if (( runs_today >= MAX_PER_DAY )); then
+    marker="system/logs/.cap-alerted-$TODAY"
+    [[ -e "$marker" ]] || { alert "daily headless cap ($MAX_PER_DAY) reached; inputs left in place"; : > "$marker"; }
+    die 4 "daily cap reached"
+  fi
 fi
 
 run_id="$RUN_TS-$cmd-$(od -An -N2 -tx1 /dev/urandom | tr -d ' \n')"
@@ -147,6 +161,7 @@ case "$cmd" in
   ingest) if [[ "$partition" == shared ]]; then targets=("wiki/shared/**"); else targets=("wiki/$partition/**" "wiki/shared/**"); fi ;;
   brief) targets=("briefings/$TODAY.md" "wiki/work/Now.md" "wiki/personal/Now.md") ;;  # new objectives go to Now
   debrief) targets=("briefings/$TODAY.debrief.md") ;;
+  digest-backfill) targets=("raw/$partition/notes/${inputs[0]##*/}") ;;
 esac
 started="$(date -Iseconds)"
 if ! system/scripts/publish_staged.py snapshot "$run_id" --targets "${targets[@]}" >/dev/null 2>> "$LOG"; then
@@ -163,7 +178,12 @@ prompt="${body//\$ARGUMENTS/$argstr}"
 
 vi="system/scripts/vault_index.py"
 allow=("Edit(/wiki/.staging/$run_id/**)")
-for sub in query related show backlinks orphans issues validate field stage tags; do allow+=("Bash($vi $sub:*)"); done
+tools="Read,Glob,Grep,Edit,Write,Bash"
+if [[ "$cmd" == digest-backfill ]]; then
+  tools="Read,Write"  # the digest summarizes its excerpt: no Bash and no index (recall spec §4.5)
+else
+  for sub in query related show backlinks orphans issues validate field stage tags; do allow+=("Bash($vi $sub:*)"); done
+fi
 
 out="system/logs/runs/$run_id/claude.json" stream="system/logs/runs/$run_id/stream.jsonl"
 printf '\n===== %s %s %s\n' "$(date -Iseconds)" "$run_id" "${inputs[*]:-}" >> "$LOG"
@@ -173,7 +193,7 @@ set +e
 # result line, which every check below reads (usage ceiling spec).
 timeout -k 30s "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --append-system-prompt-file CLAUDE.md \
   --restricted --settings system/headless.settings.json --strict-mcp-config --no-session-persistence \
-  --permission-mode dontAsk --output-format stream-json --verbose --tools "Read,Glob,Grep,Edit,Write,Bash" \
+  --permission-mode dontAsk --output-format stream-json --verbose --tools "$tools" \
   --allowedTools "${allow[@]}" < /dev/null > "$stream" 2>> "$LOG" 9>&- &
 cpid=$!
 wait "$cpid"
@@ -189,6 +209,20 @@ set -e
 if (( rc != 0 )) && [[ -s "$out" ]] && jq -e '.is_error == true and ((.result // "") | tostring | test("(spend|usage|rate) limit|limit resets|usage-credits"; "i"))' "$out" > /dev/null 2>&1; then
   rc=4
 fi
+# A failure or a timeout from claude itself (an outage, an expired login) is not the input's fault either: a short
+# run with no tools tells them apart, and exit 7 holds intake without an attempt (#436 S1).
+claude_works() {
+  local o crc=0
+  o="$(timeout -k 10s "${HEADLESS_CHECK_TIMEOUT:-60s}" "$CLAUDE_BIN" -p "Reply with the word ok." --restricted \
+    --settings system/headless.settings.json --tools "" --strict-mcp-config --no-session-persistence \
+    --output-format json < /dev/null 2>> "$LOG" 9>&-)" || crc=$?
+  (( crc == 0 )) && [[ -n "$o" ]] && jq -e '.is_error == false' <<< "$o" > /dev/null 2>&1 && return 0
+  check_reason="exit $crc$(jq -r '.result // empty | tostring | " (" + .[0:160] + ")"' <<< "$o" 2>/dev/null || true)"
+  return 1
+}
+check_reason=""
+(( rc == 7 )) && rc=1   # exit 7 is ours: a raw 7 from claude goes through the check like any failure
+if (( rc == 1 || rc == 124 )) && ! claude_works; then rc=7; fi
 denials="$(jq -r '(.permission_denials // []) | length' "$out" 2>/dev/null || true)"
 [[ "$denials" =~ ^[0-9]+$ ]] || denials=0
 
@@ -204,7 +238,11 @@ if (( rc == 0 )); then
   set -e
   if (( prc != 0 )); then
     rc=5
-    alert "$cmd $run_id: publish rejected or empty (system/logs/runs/$run_id/publish.json)"
+    if [[ "$cmd" == brief && "${BRIEF_RETRY_PENDING:-}" == 1 ]]; then   # brief_run.sh runs it once more (#299)
+      echo "$cmd $run_id: publish rejected or empty; brief_run.sh retries once" >> "$LOG"
+    else
+      alert "$cmd $run_id: publish rejected or empty (system/logs/runs/$run_id/publish.json)"
+    fi
   elif [[ -n "$held" ]]; then
     alert "$cmd $run_id: published $held (changed during the run; staged copies in system/quarantine/$run_id/staged/)"
   fi
@@ -213,6 +251,11 @@ else
   if (( rc == 4 )); then
     marker="system/logs/.usage-limit-alerted-$TODAY"
     [[ -e "$marker" ]] || { alert "account usage limit reached ($(jq -r '.result | tostring | .[0:160]' "$out" 2>/dev/null)); inputs left in place"; : > "$marker"; }
+  elif (( rc == 7 )) && [[ "$cmd" == brief || "$cmd" == debrief ]]; then
+    alert "$cmd $run_id failed: claude is not working ($check_reason)"
+  elif (( rc == 7 )); then
+    marker="system/logs/.outage-alerted-$TODAY"
+    [[ -e "$marker" ]] || { alert "claude is not working ($check_reason); intake holds its inputs until it does"; : > "$marker"; }
   else
     alert "$cmd $run_id failed (exit $rc)"
   fi

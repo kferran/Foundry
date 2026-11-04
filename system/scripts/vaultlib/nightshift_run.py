@@ -22,6 +22,8 @@ from . import nightshift_item as ni
 from . import nightshift_report as rep
 from . import nightshift_sched as ns
 from . import nightshift_session as ss
+from . import now as nowmod
+from .intake import Intake
 
 LOCK = "system/nightshift.lock"
 POLL = 30            # seconds between session checks
@@ -46,39 +48,51 @@ NO_START = ("the self-test session did not start (an expired login; a login held
 SELFTEST_TRIES = 3
 
 
+def _date_arg(text: str) -> str:
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+            return date.fromisoformat(text).isoformat()
+    except ValueError:
+        pass
+    raise argparse.ArgumentTypeError(f"not a YYYY-MM-DD date: {text!r}")
+
+
 def _parser():
-    p = argparse.ArgumentParser(prog="nightshift.py")
+    # No abbreviations (confinement spec §3.1): an ask or allow rule matches the subcommand and flags as typed.
+    p = argparse.ArgumentParser(prog="nightshift.py", allow_abbrev=False)
     sub = p.add_subparsers(dest="cmd")
-    sub.add_parser("tick")
-    sub.add_parser("record-usage").add_argument("stream")
-    a = sub.add_parser("add")
+    cmd = lambda name: sub.add_parser(name, allow_abbrev=False)
+    cmd("tick")
+    cmd("record-usage").add_argument("stream")
+    a, r = cmd("add"), cmd("research")   # research is its own subcommand so it can have its own ask rule (#317)
     a.add_argument("--kind", choices=["plan", "research"], required=True)
-    a.add_argument("--title", required=True)
-    a.add_argument("--partition", required=True)
-    a.add_argument("--repo")
-    a.add_argument("--base")
+    for s in (a, r):
+        s.add_argument("--title", required=True)
+        s.add_argument("--partition", required=True)
+        s.add_argument("--repo")
+        s.add_argument("--base")
+        g = s.add_mutually_exclusive_group()
+        g.add_argument("--now", action="store_true")
+        g.add_argument("--at", metavar="HH:MM")
+        g.add_argument("--window", action="store_true")
+        s.add_argument("--budget")
+        s.add_argument("--model", default="sonnet")
     a.add_argument("--pr-base", default="master")
     a.add_argument("--plan")
     a.add_argument("--tasks")
     a.add_argument("--verify", action="append", default=[])
-    a.add_argument("--brief-file")
-    a.add_argument("--output")
-    a.add_argument("--host", action="append", default=[])
-    g = a.add_mutually_exclusive_group()
-    g.add_argument("--now", action="store_true")
-    g.add_argument("--at", metavar="HH:MM")
-    g.add_argument("--window", action="store_true")
-    a.add_argument("--budget")
-    a.add_argument("--model", default="sonnet")
-    c = sub.add_parser("check")
-    c.add_argument("note")
-    sub.add_parser("list").add_argument("--json", action="store_true")
-    x = sub.add_parser("cancel")
-    x.add_argument("id")
-    r = sub.add_parser("report")
-    r.add_argument("date", nargs="?")
-    r.add_argument("--json", action="store_true")
-    sub.add_parser("selftest")
+    for s in (r, a):   # add parses them so an old `add --kind research …` gets its refusal, not a usage error
+        s.add_argument("--brief-file")
+        s.add_argument("--output")
+        s.add_argument("--host", action="append", default=[])
+    cmd("check").add_argument("note")
+    cmd("list").add_argument("--json", action="store_true")
+    cmd("cancel").add_argument("id")
+    cmd("requeue").add_argument("id")   # behind its own ask rule (§3.6)
+    rp = cmd("report")
+    rp.add_argument("date", nargs="?", type=_date_arg)   # report:* is allowed: the date must never become a path
+    rp.add_argument("--json", action="store_true")
+    cmd("selftest")
     return p
 
 
@@ -105,7 +119,7 @@ class Ctx:
 
     def alert(self, key: str, msg: str) -> None:
         day = self.local.date().isoformat()
-        seen = self.vault / rep.DIR / "alerts.json"
+        seen = rep.state_dir(self.vault) / "alerts.json"
         with SHARED:
             data = json.loads(seen.read_text()) if seen.is_file() else {}
             if data.get(key) == day:
@@ -114,6 +128,7 @@ class Ctx:
             seen.parent.mkdir(parents=True, exist_ok=True)
             seen.write_text(json.dumps(data))
             path = self.vault / "system" / "logs" / f"alerts_{day}.md"
+            path.parent.mkdir(parents=True, exist_ok=True)
             with open(path, "a", encoding="utf-8") as f:
                 f.write(f"- {self.local.strftime('%H:%M:%S')} [orders] {msg}\n")
 
@@ -228,13 +243,42 @@ class CloneError(RuntimeError):
     """A template item's base could not be fetched from the template remote."""
 
 
+class BaseMoved(Exception):
+    """The plan's base resolves to another commit than the one recorded when the owner queued it (#321)."""
+
+
+def _base_sha(ctx: Ctx, fm: dict) -> str:
+    """The commit a plan order's base names now: in its codebase, or on template_remote for `template`; "" when it
+    cannot be read."""
+    if fm.get("repo") == "template":
+        url = str(nc.config(ctx.vault).get("template_remote") or "")
+        if not url or url.startswith("-"):
+            return ""
+        opts, env = nc.remote_git(url)
+        try:
+            r = subprocess.run(["git", *opts, "ls-remote", url, f"refs/heads/{fm['base']}"], capture_output=True,
+                               text=True, env=env, timeout=120)
+        except subprocess.TimeoutExpired:
+            return ""
+        return r.stdout.split()[0] if r.returncode == 0 and r.stdout.split() else ""
+    src = nc.source(ctx.vault, fm.get("repo"))
+    return nc.git(src, "rev-parse", "--verify", "--quiet", f"{fm['base']}^{{commit}}").stdout.strip() if src else ""
+
+
 def _clone(ctx: Ctx, fm: dict) -> Path:
     clone = ctx.workspace / f"nightshift-{fm['id']}"
     template = fm["repo"] == "template"
     if clone.exists():
         if not template or nc.git(clone, "rev-parse", "--verify", "--quiet", "refs/remotes/base").returncode == 0:
-            return clone
+            return clone   # a reused clone is not checked again (§3.5)
         shutil.rmtree(clone)   # half-built by a killed tick: start again
+
+    def pinned(got: str) -> None:
+        """The commit the clone starts from must be the one the owner queued (§3.5); a note without one runs as before."""
+        if fm.get("base_sha") and got != fm["base_sha"]:
+            shutil.rmtree(clone, ignore_errors=True)
+            raise BaseMoved(f"the base {fm['base']} moved since {fm['id']} was queued ({fm['base_sha'][:7]} → "
+                            f"{got[:7]}); read the plan at the new base, then run nightshift.py requeue {fm['id']}")
     ctx.workspace.mkdir(parents=True, exist_ok=True)
     branch = f"order/{fm['id']}"
     if template:
@@ -249,10 +293,12 @@ def _clone(ctx: Ctx, fm: dict) -> Path:
             shutil.rmtree(clone, ignore_errors=True)   # the next tick starts from an empty workspace again
             why = (f.stderr.strip().splitlines() or ["no error text"])[-1]
             raise CloneError(f"fetch {fm['base']} from {nc.shown(url)}: {why}")
+        pinned(nc.git(clone, "rev-parse", "refs/remotes/base").stdout.strip())   # what was fetched, not a second read
         subprocess.run(["git", "-C", str(clone), "checkout", "-q", "-b", branch, "refs/remotes/base"], check=True)
     else:
         src = nc.source(ctx.vault, fm["repo"])
         sha = nc.git(src, "rev-parse", f"{fm['base']}^{{commit}}").stdout.strip()
+        pinned(sha)
         subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", str(src), str(clone)], check=True)
         subprocess.run(["git", "-C", str(clone), "checkout", "-q", "-b", branch, sha], check=True)
     with open(clone / ".git" / "info" / "exclude", "a") as f:
@@ -319,11 +365,18 @@ def _deny(ctx: Ctx, fm: dict) -> list:
     out = [str(ctx.vault)]
     # A plan item works in its own codebase; a research item reads code/, so even its own checkout stays denied.
     own = nc.source(ctx.vault, fm.get("repo")) if fm.get("kind") == "plan" and fm.get("repo") != "template" else None
+    roots = [ctx.workspace]   # .env files where the profiles' ~/** globs do not reach (confinement spec §3.3, #326)
     for p in sorted((ctx.vault / "system" / "codebases").glob("*.md")):
         cb = nc.codebase(ctx.vault, p.stem) or {}
         path = Path(str(cb.get("path") or "")).expanduser()
         if cb.get("path") and path != own:
             out.append(str(path))
+        if cb.get("path"):
+            roots.append(path)
+    home = Path.home().resolve()
+    for r in dict.fromkeys(f for r in roots for f in ss.forms(r)):   # as given and resolved: bwrap binds real paths
+        if not Path(r).resolve().is_relative_to(home):
+            out += [f"{r}/**/.env", f"{r}/**/.env.*"]
     return out
 
 
@@ -372,7 +425,9 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
     hosts = list(nc.setting(cb, "order_hosts", "nightshift_hosts") or [])
     web = list(fm.get("hosts") or []) if kind == "research" else []
     settings = idir / "settings.json"
-    settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm), cwd=cwd)))
+    own = nc.source(ctx.vault, fm.get("repo")) if kind == "plan" else None   # its clone's objects (git clone --shared)
+    settings.write_text(json.dumps(ss.profile(ctx.vault, kind, hosts, web, deny=_deny(ctx, fm), cwd=cwd,
+                                              fence=ctx.workspace, reopen=[own] if own else [])))
     plugins = [p for p in [ss.superpowers_dir()] if p] + [Path(str(p)).expanduser() for p in nc.setting(cb, "order_plugins", "nightshift_plugins") or []]
     code = nc.git(cwd / "code", "log", "-1", "--format=%h (%cs)").stdout.strip() if kind == "research" and fm.get("repo") else ""
     prompt = (ss.plan_prompt(fm) if kind == "plan" else
@@ -569,8 +624,37 @@ def _finish(ctx: Ctx, path: Path, fm: dict, idir: Path, cwd, out: dict) -> int:
               finished_at=finished if final else None)
     if final:
         _report_outcome(ctx, fm, out, finished)
+        _now_line(ctx, fm, out)
     ctx.log({"item": fm["id"], "state": out["state"], "reason": out.get("reason", "")})
     return 0 if out["state"] in ("done", "cancelled", "delivering") else 1
+
+
+def _owed(fm: dict, out: dict):
+    """(statement, evidence) of the Now line a final outcome leaves the owner (#332), or None when it needs nothing.
+    The statement is the report's Needs-you line, so the brief, which adds those too, sees it open and skips it. Only
+    a GitHub pull request is evidence the Now check reads; a failed order's id is already closed, so its line carries
+    none, or the next check would tick it at once."""
+    if not out.get("needs") or (out["state"] == "done" and fm["kind"] != "plan"):
+        return None
+    statement = f"{out['needs'][0]} ({fm['id']})"
+    if out["state"] == "done":
+        return statement, out.get("result") if nowmod.PR_URL.match(out.get("result") or "") else ""
+    return (statement, fm["id"] if out["state"] == "blocked" else "") if out["state"] in ("blocked", "failed") else None
+
+
+def _now_line(ctx: Ctx, fm: dict, out: dict) -> None:
+    """Add the owed line under run.lock; a busy lock or a refused line is one alert, never a failed order."""
+    owed = _owed(fm, out)
+    if owed is None:
+        return
+    try:
+        with Intake(ctx.vault).lock("run.lock", timeout=60):
+            nowmod.add(ctx.vault, fm.get("partition") or "work", "owed", owed[0], ctx.local.date().isoformat(),
+                       evidence=owed[1], fit=True)
+    except (TimeoutError, ValueError, OSError) as exc:   # TimeoutError is an OSError: the busy lock
+        why = nowmod.refusal(exc) if isinstance(exc, ValueError) else "run.lock busy" \
+            if isinstance(exc, TimeoutError) else f"{exc.__class__.__name__}: {exc.strerror or exc}"
+        ctx.alert(f"now/{fm['id']}", f"{fm['id']}: its Now line was not added ({why})")
 
 
 def _report_outcome(ctx: Ctx, fm: dict, out: dict, finished: str) -> None:
@@ -579,7 +663,8 @@ def _report_outcome(ctx: Ctx, fm: dict, out: dict, finished: str) -> None:
                                       "reason": out.get("reason", ""), "started_at": fm.get("started_at") or ctx.clock_now().isoformat(),
                                       "finished_at": finished, "report_date": ctx.date,
                                       "needs": out.get("needs", []), "notes": out.get("notes", ""),
-                                      "output": fm.get("output") or ""})  # a notice links it (#157)
+                                      "output": fm.get("output") or "",  # a notice links it (#157)
+                                      **({"run": int(fm["run"])} if fm.get("run") else {})})   # a requeued run is its own notice
         rep.write(ctx.vault, ctx.date)
 
 
@@ -589,6 +674,14 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     if fm.get("state") == "delivering":
         return _finish(ctx, path, fm, idir, None, _deliver(ctx, fm, idir))
     _stop_stale(idir)
+    if fm["kind"] == "research":   # before the attempt counts: a DNS outage leaves the order as it was (§3.2)
+        internal, unresolved = nc.resolve_problems(fm.get("hosts") or [])
+        if internal:
+            return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "host", "needs": [
+                f"{internal[0]}: queue the brief again with nightshift.py research, without that host"]})
+        if unresolved:
+            ctx.log({"item": fm["id"], "state": fm.get("state"), "reason": "host does not resolve"})
+            return 0
     resume = fm.get("state") in ("waiting_reset", "running")
     attempts = int(fm.get("attempts") or 0) + 1
     started = fm.get("started_at") or ctx.clock_now().isoformat()   # read now: a slot can free hours into the tick
@@ -596,14 +689,16 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
     fm = {**fm, "started_at": started}   # the outcome and the report carry the same stamp
     if nc.workspace_inside_vault(ctx.vault, ctx.workspace):   # the session's profile denies the vault root
         return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "workspace", "needs": [
-            f"Move order_workspace outside the vault ({ctx.workspace} is inside it), then queue {fm['id']} again"]})
+            f"Move order_workspace outside the vault ({ctx.workspace} is inside it), then run nightshift.py requeue {fm['id']}"]})
     before = {}
     if fm["kind"] == "plan":
         try:
             cwd = _clone(ctx, fm)
+        except BaseMoved as exc:
+            return _finish(ctx, path, fm, idir, None, {"state": "blocked", "reason": "base moved", "needs": [str(exc)]})
         except CloneError as exc:   # ends now, with a report row and a Needs-you line, and frees the queue
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
-                f"Push {fm['base']} to the template remote, then queue {fm['id']} again ({exc})"]})
+                f"Push {fm['base']} to the template remote, then run nightshift.py requeue {fm['id']} ({exc})"]})
         before = _before(ctx, fm, idir)
         gone = nc.toolchain_errors(fm["repo"], nc.codebase(ctx.vault, fm["repo"]) or {})
         if gone:   # a directory that passed readiness is gone: block now, before the session spends its budget
@@ -613,7 +708,7 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
             cwd = _research_dir(ctx, fm)
         except CloneError as exc:
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
-                f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then queue {fm['id']} again ({exc})"]})
+                f"Make {fm.get('base') or 'the default branch'} of {fm['repo']} readable, then run nightshift.py requeue {fm['id']} ({exc})"]})
     run = _run_session(ctx, path, fm, body, cwd, idir, resume)
     with SHARED:
         rep.record_usage(ctx.vault, ctx.date, run.get("usage") or {}, ctx.clock_now().isoformat())
@@ -741,7 +836,7 @@ class _Pool:
 
 def _day_health(ctx: Ctx, entries) -> tuple:
     """The day's checks on its first tick, and this tick's stamp. Returns (health, Held line it cleared)."""
-    hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+    hfile = rep.state_dir(ctx.vault) / f"health-{ctx.date}.json"
     try:
         h = json.loads(hfile.read_text()) if hfile.is_file() else {}
     except (OSError, ValueError):
@@ -749,7 +844,7 @@ def _day_health(ctx: Ctx, entries) -> tuple:
     # The day's checks run on its first tick. A usage reading run_headless.sh recorded can create the file
     # first (usage ceiling spec), so the test is the sandbox key, not the file; that newer reading is kept.
     if "sandbox" not in h:
-        prev = ctx.vault / rep.DIR / f"health-{(date.fromisoformat(ctx.date) - timedelta(days=1)).isoformat()}.json"
+        prev = rep.state_dir(ctx.vault) / f"health-{(date.fromisoformat(ctx.date) - timedelta(days=1)).isoformat()}.json"
         try:   # the last 5-hour reading outlives the report day, so the ceiling holds right after the brief too
             old = json.loads(prev.read_text()) if prev.is_file() else {}
         except (OSError, ValueError):
@@ -780,7 +875,7 @@ def _claim(ctx: Ctx, fm: dict) -> bool:
 
 def _set_held(ctx: Ctx, held: str) -> None:
     """Write the Held line ("" clears it) when it changed; the brief and the debrief copy the report, so it is in it."""
-    hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+    hfile = rep.state_dir(ctx.vault) / f"health-{ctx.date}.json"
     with SHARED:
         h = json.loads(hfile.read_text()) if hfile.is_file() else {}
         if (h.get("held") or "") == held:
@@ -800,6 +895,9 @@ def tick(ctx: Ctx) -> int:
     """Up to MAX_PARALLEL items at once (parallel orders spec §3). Delivering items first, then running ones resume,
     then queued and waiting items in pick order; each finish refills its slot until nothing runs or can start.
     Each pass reads the clock again: a tick lives for hours, and due times, the window and the ceiling move with it."""
+    moved = rep.migrate_state(ctx.vault)   # once, after the update that moved state out of the vault (#320)
+    if moved:
+        ctx.log({"state": "moved", "to": str(rep.state_dir(ctx.vault)), "names": moved})
     entries, refused = _screen(ctx)
     if refused:
         return 2
@@ -842,7 +940,7 @@ def tick(ctx: Ctx) -> int:
                         continue
                     if chosen[1].get("state") == "queued":
                         # The 5-hour ceiling holds only a new start, read afresh: a finished worker may have raised it.
-                        hfile = ctx.vault / rep.DIR / f"health-{ctx.date}.json"
+                        hfile = rep.state_dir(ctx.vault) / f"health-{ctx.date}.json"
                         with SHARED:
                             fresh = json.loads(hfile.read_text()) if hfile.is_file() else day[0]
                         held = ns.five_hour_hold(fresh, now, ctx.max_five_hour)
@@ -866,23 +964,28 @@ def tick(ctx: Ctx) -> int:
     return pool.rc
 
 
-def _add(ctx: Ctx, a) -> int:
+def _add(ctx: Ctx, a, kind: str) -> int:
     item_id = ni.new_id(a.title, ctx.local)
-    fm = {"type": "nightshift_item", "id": item_id, "partition": a.partition, "kind": a.kind, "state": "queued",
+    fm = {"type": "nightshift_item", "id": item_id, "partition": a.partition, "kind": kind, "state": "queued",
           "queued_at": ctx.local.isoformat(), "start": "at" if a.at else ("window" if a.window else "now"),
-          "budget": a.budget or ("4h" if a.kind == "plan" else "1h"), "model": a.model}
+          "budget": a.budget or ("4h" if kind == "plan" else "1h"), "model": a.model}
     if a.at:
         hh, mm = (int(x) for x in a.at.split(":"))
         start = ctx.local.replace(hour=hh, minute=mm, second=0, microsecond=0)
         fm["start_at"] = (start if start > ctx.local else start + timedelta(days=1)).isoformat()
-    if a.kind == "plan":
+    if kind == "plan":
         fm.update(repo=a.repo, base=a.base, pr_base=a.pr_base, plan=a.plan, tasks=a.tasks, verify=a.verify)
         body = ""
     else:
         fm.update(output=a.output, hosts=a.host, repo=a.repo, base=a.base)
         body = Path(a.brief_file).read_text(encoding="utf-8") if a.brief_file else ""
-    fm = {k: v for k, v in fm.items() if v not in (None, "", [])} | ({"verify": a.verify} if a.kind == "plan" else {})
+    fm = {k: v for k, v in fm.items() if v not in (None, "", [])} | ({"verify": a.verify} if kind == "plan" else {})
     errs = nc.check(ctx.vault, fm, body)
+    if not errs and kind == "research":   # owner-set order_hosts are config and are not resolved (§3.2)
+        errs = [e for problems in nc.resolve_problems(fm.get("hosts") or []) for e in problems]
+    if not errs and kind == "plan":   # the commit the owner approves; the first clone checks it (§3.5)
+        fm["base_sha"] = _base_sha(ctx, fm)
+        errs = [] if fm["base_sha"] else [f"cannot read the commit {fm.get('base')} names; try again"]
     if errs:
         for e in errs:
             print(f"not ready: {e}")
@@ -896,6 +999,42 @@ def _add(ctx: Ctx, a) -> int:
     return 0
 
 
+def _requeue(ctx: Ctx, item_id: str) -> int:
+    """Start a blocked or failed order fresh (confinement spec §3.6): its clones go, its items folder is kept aside as
+    items/<id>.<n>/, and a plan order records its base's commit again, which the owner approves by running this.
+    ponytail: no runner lock, like cancel; no tick starts a blocked or failed order."""
+    hits = [(p, fm) for p, fm, _ in ni.items(ctx.vault) if fm.get("id") == item_id]
+    if not hits:
+        print(f"no item {item_id}")
+        return 2
+    path, fm = hits[0]
+    if nc.identifiers(fm):   # the id names the folders removed and moved below
+        print(f"not requeued: {item_id}: {'; '.join(nc.identifiers(fm))}")
+        return 2
+    if fm.get("state") not in ("blocked", "failed"):
+        print(f"not requeued: {item_id} is {fm.get('state')}; only a blocked or failed order can be requeued")
+        return 2
+    if fm.get("reason") == "delivery":   # its branch may be pushed already: a fresh run's push would be refused
+        print(f"not requeued: {item_id} failed in delivery; deliver it by hand as its Needs-you line says")
+        return 2
+    sha = _base_sha(ctx, fm) if fm.get("kind") == "plan" else ""
+    if fm.get("kind") == "plan" and not sha:
+        print(f"not requeued: cannot read the commit {fm.get('base')} names; try again")
+        return 2
+    for d in (ctx.workspace / f"nightshift-{item_id}", ctx.workspace / f"nightshift-{item_id}-verify"):
+        shutil.rmtree(d, ignore_errors=True)
+    idir = rep.item_dir(ctx.vault, item_id)
+    if idir.exists():
+        n = 1
+        while idir.with_name(f"{item_id}.{n}").exists():
+            n += 1
+        idir.rename(idir.with_name(f"{item_id}.{n}"))
+    ni.update(path, state="queued", attempts=None, session_id=None, reason=None, result=None, started_at=None,
+              finished_at=None, reset_at=None, run=str(int(fm.get("run") or 1) + 1), **({"base_sha": sha} if sha else {}))
+    print(f"requeued {item_id}" + (f" at {sha[:7]}" if sha else ""))
+    return 0
+
+
 def main(argv: list, vault: Path, now: datetime | None = None) -> int:
     vault, now = Path(vault), now or datetime.now(timezone.utc)
     try:
@@ -904,8 +1043,11 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
         return 0 if exc.code == 0 else 2
     ctx = Ctx(vault, now)
     cmd = a.cmd or "tick"
-    if cmd == "add":
-        return _add(ctx, a)
+    if cmd == "add" and a.kind == "research":
+        print("not ready: use nightshift.py research for a research order")
+        return 2
+    if cmd in ("add", "research"):
+        return _add(ctx, a, "plan" if cmd == "add" else "research")
     if cmd == "check":
         fm, body = ni.load(a.note)
         errs = nc.check(vault, fm, body, Path(a.note).resolve())
@@ -921,6 +1063,8 @@ def main(argv: list, vault: Path, now: datetime | None = None) -> int:
         for p, fm, _ in ni.items(vault):
             print(f"{fm.get('id')}  {fm.get('kind')}  {fm.get('state')}  {fm.get('start')}  {fm.get('result') or fm.get('reason') or ''}")
         return 0
+    if cmd == "requeue":
+        return _requeue(ctx, a.id)
     if cmd == "cancel":
         hits = [p for p, fm, _ in ni.items(vault) if fm.get("id") == a.id]
         if not hits:

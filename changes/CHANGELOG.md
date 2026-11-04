@@ -102,8 +102,8 @@ What changed in The Foundry up to 2026-10-26, newest first. This file is frozen:
   - Action: on a second (client) machine, add the extensions the update turned on to that machine's `extensions:` list (or re-run `/setup`), then run `system/scripts/extensions.py link`.
 - Jira handoffs move to the `handoffs` extension. The update turns it on once for vaults that use handoffs. (#232)
 - Telemetry and root-cause analysis (`/rca`) move to the `telemetry` extension. The update turns it on once for vaults with a telemetry source. (#235)
-- The template no longer ships the DTCC watcher. (#237)
-  - Action: a vault that uses the DTCC watcher keeps it as its own extension. Before taking this update, stop the update timer. After it, restore the folder from the template's history (`git checkout 9e3d45c -- extensions/dtcc`), add `dtcc` to `extensions:` on every machine, then run `system/scripts/extensions.py check`, `allow --write`, `link` and `system/scripts/install_units.sh`.
+- The template no longer ships the clearing-house watcher. (#237)
+  - Action: a vault that uses the clearing-house watcher keeps it as its own extension. Before taking this update, stop the update timer. After it, restore the folder from the template's history (`git checkout 9e3d45c -- extensions/clearinghouse`), add `clearinghouse` to `extensions:` on every machine, then run `system/scripts/extensions.py check`, `allow --write`, `link` and `system/scripts/install_units.sh`.
 - The debrief drops the Agent Health section, which nothing ever filled. (#230)
 - A new production error posts an `[incident]` line to Slack. (#223)
 - A notes Doc that arrives after a dropped transcript fills the meeting note's empty sections. (#224)
@@ -176,7 +176,7 @@ What changed in The Foundry up to 2026-10-26, newest first. This file is frozen:
 - Fewer permission prompts for read-only status commands. (#68)
 - The brief shows the next actions and waiting decisions of each active project. (#66)
 - The brief gets a Notes section, and past briefings move to an archive. (#53)
-- A DTCC change watcher reports changes that affect a registered codebase. (#51)
+- A clearing-house change watcher reports changes that affect a registered codebase. (#51)
 
 ## 2026-10-06
 - Unattended plan and research runs overnight. (#49)

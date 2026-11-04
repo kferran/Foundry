@@ -22,6 +22,7 @@ MAX_READS=10
 
 FETCH_NAME=meetings_fetch FETCH_TAG=meetings
 fetch_check_arg "$@"
+(( check )) || crash_trap foundry-meetings   # the unit's own run: a crash exits 70 and alerts (#436, F6 gap)
 case "$(config_get machine_role standalone)" in server|standalone) ;; *) exit 0 ;; esac
 [[ "$(config_get meetings_enabled false)" == true ]] || exit 0
 TZ="$(config_get timezone UTC)"

@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from helpers import REPO, call, stream, write
-from vaultlib import connector, notify
+from vaultlib import connector, notify, nightshift_report as rep
 
 NOW = datetime(2026, 10, 12, 6, 30)
 TOOL = "mcp__plugin_slack_slack__slack_send_message"
@@ -217,7 +217,7 @@ def test_paths_and_run_ids_pass_and_a_secret_beside_them_is_redacted(vault):
 
 def test_a_work_order_is_sent_once(vault):
     prepare(vault)
-    write(vault, "system/logs/nightshift/items/2026-10-12-x/outcome.json",
+    write(rep.state_dir(vault), "items/2026-10-12-x/outcome.json",
           json.dumps({"id": "2026-10-12-x", "state": "done", "result": "https://github.com/owner/repo/pull/7", "needs": []}))
     got, cursor = lines(vault)
     assert got == ["Work Order 2026-10-12-x done: https://github.com/owner/repo/pull/7"]
@@ -232,10 +232,10 @@ def test_a_work_order_shows_its_id_and_a_link_to_its_findings_note(vault):
     oid = "2026-10-13-vendor-billing-dashboards-review-prep-2026-10"
     write(vault, "wiki/personal/summaries/ReviewPrep.md", "---\ntype: summary\n---\n")
     write(vault, "wiki/work/summaries/ReviewPrep.md", "---\ntype: summary\n---\n")
-    write(vault, f"system/logs/nightshift/items/{oid}/outcome.json",
+    write(rep.state_dir(vault), f"items/{oid}/outcome.json",
           json.dumps({"id": oid, "state": "done", "result": "[[ReviewPrep]]", "output": "wiki/work/summaries/ReviewPrep.md",
                       "needs": []}))
-    write(vault, "system/logs/nightshift/items/2026-10-13-y/outcome.json",
+    write(rep.state_dir(vault), "items/2026-10-13-y/outcome.json",
           json.dumps({"id": "2026-10-13-y", "state": "done", "result": "[[Missing]]", "needs": []}))
     assert lines(vault)[0] == [
         f"Work Order {oid} done: ReviewPrep https://github.com/owner/vault/blob/master/wiki/work/summaries/ReviewPrep.md",
@@ -431,3 +431,16 @@ def test_an_unreadable_config_gives_defaults(tmp_path):
     (tmp_path / "system").mkdir()
     (tmp_path / "system" / "config.md").write_bytes(b"\xff\xfe")
     assert notify.config(tmp_path) == {}
+
+
+def test_a_requeued_work_order_is_sent_again(vault):
+    # review of PR B: the fresh run after a requeue has the same id; its outcome carries run 2 and gets its own notice
+    prepare(vault)
+    write(rep.state_dir(vault), "items/2026-10-12-x/outcome.json",
+          json.dumps({"id": "2026-10-12-x", "state": "blocked", "result": "", "needs": ["the base moved"]}))
+    got, cursor = lines(vault)
+    notify.commit(vault, cursor)
+    (rep.state_dir(vault) / "items/2026-10-12-x").rename(rep.state_dir(vault) / "items/2026-10-12-x.1")
+    write(rep.state_dir(vault), "items/2026-10-12-x/outcome.json",
+          json.dumps({"id": "2026-10-12-x", "run": 2, "state": "done", "result": "https://github.com/owner/repo/pull/8", "needs": []}))
+    assert lines(vault)[0] == ["Work Order 2026-10-12-x done: https://github.com/owner/repo/pull/8"]

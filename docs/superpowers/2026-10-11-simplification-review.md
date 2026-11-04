@@ -6,14 +6,14 @@
 
 ## 1. Verdict
 
-The repository holds two systems. One is the template the goal describes: a wiki that compiles itself behind a publish gate, a morning brief, an evening debrief, session memory, a Now page, and timers that run it. That system is sound, well tested and about half the code. The other is the owner's own operating system and its maintenance process: Sentry and Azure Data Explorer telemetry, the DTCC watcher, Jira handoffs, Gemini meeting import, Hyprland focus tracking, a two-machine sync, Work Orders built around one GitHub setup, and a spec-plan-review process with 114 design documents. The second system is what a new user meets first, in the dependency list, in the setup interview and in `CLAUDE.md`.
+The repository holds two systems. One is the template the goal describes: a wiki that compiles itself behind a publish gate, a morning brief, an evening debrief, session memory, a Now page, and timers that run it. That system is sound, well tested and about half the code. The other is the owner's own operating system and its maintenance process: Sentry and Azure Data Explorer telemetry, the clearing-house watcher, Jira handoffs, Gemini meeting import, Hyprland focus tracking, a two-machine sync, Work Orders built around one GitHub setup, and a spec-plan-review process with 114 design documents. The second system is what a new user meets first, in the dependency list, in the setup interview and in `CLAUDE.md`.
 
 The core is not over-engineered. The packaging is. The brittleness is real and concentrated: every connector fetch and the Work Order runner depend on exact `claude` flags, stream-json shapes and connector tool names, in five separate copies.
 
 | Measure | Today | Target shape |
 |---|---|---|
 | Lines under `system/` (scripts, vaultlib, units, hooks) | 11,097 | about 5,500 in core |
-| Of which owner-specific (DTCC, telemetry, Jira, meetings, focus) | about 3,170 (29%) | 0 in core |
+| Of which owner-specific (clearing-house, telemetry, Jira, meetings, focus) | about 3,170 (29%) | 0 in core |
 | Required packages, standalone | 13, including `bats`, `pytest`, `hyprctl`, `systemd-analyze` | 8 |
 | Setup decisions, standalone, every integration declined | about 25, 40 with per-field confirmations | 3 to 5 |
 | Units enabled by default, standalone | 7 (intake, brief, debrief, focus, nightshift, update, and sync on a server) | 3 |
@@ -43,7 +43,7 @@ The core is not over-engineered. The packaging is. The brittleness is real and c
 | Work Orders | 1,626 | 15% |
 | Sync, two machines, install and update | 981 | 9% |
 | Telemetry (Sentry, ADX, http) | 924 | 8% |
-| DTCC watcher | 831 | 8% |
+| clearing-house watcher | 831 | 8% |
 | Meetings | 809 | 7% |
 | Setup (hooks install, deps, verify, codebase discovery) | 579 | 5% |
 | Brief and debrief prep | 305 | 3% |
@@ -55,17 +55,17 @@ The core is not over-engineered. The packaging is. The brittleness is real and c
 
 Feature code also sits inside core: the meeting import is 216 lines of `intake.py:450-665`, and telemetry rules live in `index.py:306-345` and `intake.py:332`.
 
-9. **Six ways to read config, eleven ways to raise an alert, three ways to remember "already alerted today".** Config: `lib_config.sh:12`, `commit_runs.py:28`, `intake.py:96`, `nightshift_check.py:31`, `jira_handoffs.py:35`, and `nightshift_run`'s own dict. Alerts: bash `alert` in four scripts, bash `alert_once` in two, Python `alert` in two, once-a-day state in `dtcc_run.py:45`, `telemetry_run.py:33` and `nightshift_run.py:87`, and `now.py:149`. The same Python flock loop is copied five times.
+9. **Six ways to read config, eleven ways to raise an alert, three ways to remember "already alerted today".** Config: `lib_config.sh:12`, `commit_runs.py:28`, `intake.py:96`, `nightshift_check.py:31`, `jira_handoffs.py:35`, and `nightshift_run`'s own dict. Alerts: bash `alert` in four scripts, bash `alert_once` in two, Python `alert` in two, once-a-day state in `clearinghouse_run.py:45`, `telemetry_run.py:33` and `nightshift_run.py:87`, and `now.py:149`. The same Python flock loop is copied five times.
 10. **Three copies of the confined connector pipeline.** `calendar_fetch.sh:47-73`, `jira_fetch.sh:61-88` and `meetings_fetch.sh:70-93` each confine, run `timeout claude -p`, check tool use and map exit codes the same way; their three checkers repeat the "ToolSearch plus one tool" rule, and `calendar_tsv.py:39` re-implements `stream.messages`.
 11. **The `claude` surface is wide and scattered.** Flags in `run_headless.sh:172-175`, three fetch scripts, `nightshift_session.py:38-45`; output shapes in `calendar_tsv.py:107-125`, `meetings_extract.py:42-76`, `jira_handoffs.py:55-90`, `nightshift_session.py:86-100` (an undocumented `rate_limit_event`), `run_headless.sh:184-187` (a regex over the result text for usage-limit wording); `claude mcp list` parsed with awk in `lib_confine.sh:59-60`; 40 Atlassian tool names listed in `jira_fetch.sh:16-27`. A CLI change can break five features at once, and the smoke check in the review branch would only report it.
 12. **`gh` is a hidden dependency** of the debrief (`debrief_prep.sh:92-94`), the Now page (`now.py:132`) and Work Orders (`nightshift_deliver.py:172`, `nightshift_check.py:61`).
 
 ### 2.3 Prompts, schemas and process
 
-13. **`CLAUDE.md` carries rules nothing enforces.** Capability routing (no dispatcher reads `capabilities`; `grep capabilit system/scripts` finds one hard-coded value in `dtcc_run.py:78`), the Intent Shaper section (no `plan_gate` note has ever been written), the fail-fast loop (metric files only a Workcell that nothing invokes would write), and four friction rules. The Writing section bans the vocabulary the lower sections use.
+13. **`CLAUDE.md` carries rules nothing enforces.** Capability routing (no dispatcher reads `capabilities`; `grep capabilit system/scripts` finds one hard-coded value in `clearinghouse_run.py:78`), the Intent Shaper section (no `plan_gate` note has ever been written), the fail-fast loop (metric files only a Workcell that nothing invokes would write), and four friction rules. The Writing section bans the vocabulary the lower sections use.
 14. **The Foreman and Workcells are prose.** Three persona files, 27 lines. `FOUNDRY_WORKCELL_SESSION` is set by nothing outside tests. What runs is a `capability` tag on concept notes, a Dataview group, and tests that keep the three files consistent. The owner's binding rule (2026-10-05: one addressed role, workers found by capability) is a design intent for Foreman v2, carried today as rules a new user has to learn with no behaviour behind them.
-15. **The brief prompt is 44% conditional.** 646 of 1,458 words in `brief.md` apply only when meetings, projects, DTCC, Work Orders, Jira, telemetry or a chat connector are on; another 19% handles the headless versus interactive split. Every feature adds a branch and a pinned grep.
-16. **Nine of eighteen schemas serve optional or owner-specific features**: `meeting`, `meeting_transcript`, `meeting_input`, `nightshift_item`, `production_error`, `telemetry_source`, `dtcc_change`, `plan_gate`, `workcell`.
+15. **The brief prompt is 44% conditional.** 646 of 1,458 words in `brief.md` apply only when meetings, projects, clearing-house, Work Orders, Jira, telemetry or a chat connector are on; another 19% handles the headless versus interactive split. Every feature adds a branch and a pinned grep.
+16. **Nine of eighteen schemas serve optional or owner-specific features**: `meeting`, `meeting_transcript`, `meeting_input`, `nightshift_item`, `production_error`, `telemetry_source`, `clearinghouse_change`, `plan_gate`, `workcell`.
 17. **Headless runs load the full humanizer skill** (4,589 words) for a self-edit pass, on top of the condensed ten rules already in `CLAUDE.md`.
 18. **Tests pin sentences.** `commands.bats` has 71 tests and 224 exact-substring greps over prompt text. A user who rewords their own brief fails `verify_setup.sh`. This is also why the owner needed a fast lane.
 19. **The maintainer process ships with the clone.** 114 design documents and a Development section that tells every reader to brainstorm, grill, spec and plan before changing anything.
@@ -97,7 +97,7 @@ Ordered so each step stands alone and the first ones change the user's first hou
 ### Step 3: extensions (two to three weeks, can run as Work Orders)
 
 - A folder `extensions/<name>/` holding `units/*.in`, `scripts/`, `schemas/`, an optional `brief_section.sh` that prints one Markdown section or nothing, and `skills/`. `extensions:` in `system/config.md` turns one on; `install_units.sh` globs enabled extensions' units instead of its per-feature `if` blocks; `brief_prep.sh` runs each extension's section script into `system/logs/inputs/<date>/sections/`; the schema loader reads extension schemas; intake gets one importer hook so the meeting import leaves core. About 40 lines of mechanism replacing about 60 lines of special cases.
-- Move out, in this order: DTCC (831 lines plus skill and schema), telemetry (924 plus the index rules), Jira handoffs (243), meetings (809 plus the 216 in intake). Focus is deleted in step 1, not moved. The owner installs four folders once; they can live in a private repository.
+- Move out, in this order: clearing-house (831 lines plus skill and schema), telemetry (924 plus the index rules), Jira handoffs (243), meetings (809 plus the 216 in intake). Focus is deleted in step 1, not moved. The owner installs four folders once; they can live in a private repository.
 - Two-machine sync becomes an extension too (about 560 lines), with standalone the only built-in role. The server and client roles stay exactly as they are for the owner.
 - **Work Orders stay in core, opt-in.** The agent review proposed moving them out because their CLI coupling is the deepest. They are also the owner's stated next value (Foreman v1) and the only generic unattended-execution path. Keep them in core, off by default, and isolate their CLI surface in step 2.
 
@@ -116,7 +116,7 @@ Ordered so each step stands alone and the first ones change the user's first hou
 |---|---|---|
 | 1 | A working vault in one sitting, a brief the same day, no Hyprland, no test tools, no surprise timers | Nothing; every feature is still one yes away |
 | 2 | One alert format, one lock, connectors that break in one place | A week of refactoring with the suites green at each commit |
-| 3 | A core that never names DTCC, Sentry, Jira or Gemini; a template half its size | Five extension folders to install; sync switched on as an extension |
+| 3 | A core that never names clearing-house, Sentry, Jira or Gemini; a template half its size | Five extension folders to install; sync switched on as an extension |
 | 4 | A prompt layer they can edit without failing the gate; sessions that load a third of the words | Some drift detection; the humanizer polish in headless notes |
 
 ## 6. Where this changes the review branch (#116)
@@ -126,7 +126,7 @@ Ordered so each step stands alone and the first ones change the user's first hou
 - `2026-10-11-usage-ceiling-design.md`: unchanged; it is core behaviour.
 - `2026-10-11-slack-bridge-design.md`: build it as the first extension under step 3's mechanism, so the mechanism is proven by a feature the owner wants.
 - The fast lane: still the first thing to ship.
-- Add to the roadmap: "Express install" (step 1) ahead of everything else dated 2026-10-11, and "Extensions" (step 3) as the row that absorbs the DTCC, telemetry, meetings and handoffs rows.
+- Add to the roadmap: "Express install" (step 1) ahead of everything else dated 2026-10-11, and "Extensions" (step 3) as the row that absorbs the clearing-house, telemetry, meetings and handoffs rows.
 
 ## 7. Facts checked during the review
 

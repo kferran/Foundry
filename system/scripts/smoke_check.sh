@@ -5,7 +5,7 @@
 # [smoke] alert a day per failure (per credential for an expired one), logged to
 # system/logs/smoke-<YYYY-MM>.jsonl. Runs daily from foundry-smoke.timer, 15 minutes before the brief, on a server
 # or standalone machine. At the usage ceiling the connector checks are held; the local checks still run.
-# Exit: 0 every configured source passed, 1 a source failed, 2 usage.
+# Exit: 0 every configured source passed, 1 a source failed, 2 usage, 70 a crash (alerted).
 set -euo pipefail
 VAULT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$VAULT_ROOT"
@@ -14,6 +14,7 @@ source system/scripts/lib_config.sh
 # shellcheck source=lib_fetch.sh
 source system/scripts/lib_fetch.sh   # alert_once; smoke logs its own rows with smoke_logline below
 FETCH_TAG=smoke
+crash_trap foundry-smoke   # a crash exits 70; 1 stays "a source failed" (#436 S3)
 
 (( $# == 0 )) || { echo "usage: smoke_check.sh" >&2; exit 2; }
 case "$(config_get machine_role standalone)" in
@@ -26,7 +27,7 @@ mkdir -p system/logs
 log="system/logs/smoke-$(date +%Y-%m).jsonl"
 failed=0
 out="$(mktemp)"
-trap 'rm -f -- "$out"' EXIT
+exit_cleanup='rm -f -- "$out"'   # run by crash_trap's EXIT trap
 
 smoke_logline() {  # <source> <exit> <reason>
   jq -cn --arg time "$(date -Iseconds)" --arg source "$1" --argjson exit "$2" --arg reason "$3" \
@@ -116,7 +117,7 @@ connector() {
   fi
 }
 
-connector calendar "${SMOKE_CALENDAR_TIMEOUT:-210}" system/scripts/calendar_fetch.sh --check
+connector calendar "${SMOKE_CALENDAR_TIMEOUT:-240}" system/scripts/calendar_fetch.sh --check
 if [[ "$(config_get meetings_enabled false)" == true ]]; then
   connector meetings "${SMOKE_MEETINGS_TIMEOUT:-210}" system/scripts/meetings_fetch.sh --check
 else echo "meetings: off"; fi
@@ -143,6 +144,7 @@ each() {
   [[ -n "$items" ]] || { echo "$source: off"; return 0; }
   while IFS=$'\t' read -r item _; do
     [[ -n "$item" ]] || continue
+    fits "$source/$item" "$t" || continue
     if [[ "$conn" == 1 && -n "$held" ]]; then
       smoke_logline "$source/$item" 0 "held: $held"
       echo "$source/$item: held: $held"
@@ -156,6 +158,14 @@ each() {
     report "$source/$item" "$rc" "$r"
   done <<< "$items"
 }
+# fits <source> <timeout>: true while SMOKE_BUDGET (the unit's limit less the timer and unit rows after the
+# extensions) still holds the row's timeout; a row it cannot hold is skipped with one line, so more extension
+# rows never outgrow the unit (#299).
+fits() {
+  if [[ -z "${SMOKE_BUDGET:-}" ]] || (( SMOKE_BUDGET - SECONDS >= $2 )); then return 0; fi
+  echo "smoke: time left too short for $1; skipped"
+  return 1
+}
 # Extensions (extensions spec §3): each enabled extension's smoke entries, as source, timeout, connector flag,
 # command and, for a row checked per item, its list command. A loader failure is one failed source, never "no
 # extensions".
@@ -166,6 +176,7 @@ if (( erc != 0 )); then
 else
   while IFS=$'\t' read -r src t conn cmd list; do
     [[ -n "$src" ]] || continue
+    fits "$src" "$t" || continue
     read -ra words <<< "$cmd"
     if [[ -n "$list" ]]; then each "$src" "$t" "$conn" "$list" "${words[@]}"
     elif [[ "$conn" == 1 ]]; then connector "$src" "$t" "${words[@]}"
@@ -223,7 +234,7 @@ done
 # Unit drift (#166): each unit and drop-in install_units.sh --dry-run renders against its installed copy. A unit not
 # installed (one the owner never installed, or removed) is left out; with none installed the line reads off.
 rdir="$(mktemp -d)"
-trap 'rm -rf -- "$out" "$rdir"' EXIT
+exit_cleanup='rm -rf -- "$out" "$rdir"'
 urc=0
 timeout "${SMOKE_UNITS_TIMEOUT:-60}" system/scripts/install_units.sh --dry-run > "$rdir/all" 2> "$out" < /dev/null || urc=$?
 if (( urc != 0 )); then

@@ -7,12 +7,13 @@ import json
 import os
 import re
 import subprocess
+from collections import namedtuple
 from datetime import date, timedelta
 from functools import partial
 from pathlib import Path
 
 from . import briefings, frontmatter, index, links as linkmod, nightshift_item
-from . import redact
+from . import now_states, redact
 
 redact_credentials = partial(redact.redact_credentials, prose=True)   # a Now line is prose (#386)
 
@@ -135,13 +136,16 @@ def open_lines(text: str) -> list:
 
 def stamp(text: str, today: str) -> str:
     """Stamp a ticked or dropped line that has no close date; a reopened line loses its old stamp. Closed lines stay
-    until archive() moves them (phase A spec §3.4)."""
+    until archive() moves them (phase A spec §3.4). A reopened expired line also loses its writer, so it is the owner's
+    and never expires again (factory F7 spec Goal 4)."""
     out = []
     for line in text.split("\n"):
-        if line.startswith("- [ ] "):
-            line = STAMP.sub("", line).rstrip()
-        elif CLOSED.match(line) and not STAMP.search(line):
-            line = f"{line.rstrip()} _(closed: ticked {today})_"
+        st = now_states.state(line)
+        if st == "open stamped":
+            new = now_states.transition(line, "stamp", "open")
+            line = strip_via(new) if STAMP.search(line).group(0).startswith("_(closed: expired ") else new
+        elif st in ("done", "dropped"):
+            line = now_states.transition(line, "stamp", f"{st} stamped", "ticked", today)
         out.append(line)
     return "\n".join(out)
 
@@ -153,6 +157,112 @@ def _block_end(lines: list, i: int) -> int:
         while j < len(lines) and lines[j].startswith("  ") and lines[j].strip():
             j += 1
     return j
+
+
+# The Now.md merge driver (#436 S5). A line pairs by its key, the line less its mark and close stamp; what the driver
+# cannot place is a ValueError, and the sync blocks as before.
+Block = namedtuple("Block", "section key mark suffix notes raw")
+CHECKBOX, SUFFIX = re.compile(r"^- \[.\]"), re.compile(r" _\(closed: .*\)_$")
+CONFLICT_MARK = re.compile(r"^(?:<{7}|={7}|>{7}|\|{7})(?: |$)")
+RANK = {" ": 0, "-": 1, "x": 2, "X": 2}   # closed beats open, [x] beats [-]
+
+
+def _version(text: str) -> list:
+    """The page's layout lines and its Blocks, in page order."""
+    lines, items, section, i = text.split("\n"), [], None, 0
+    while i < len(lines):
+        line, j = lines[i], _block_end(lines, i)
+        if CONFLICT_MARK.match(line):
+            raise ValueError("a conflict marker in one version")
+        if CHECKBOX.match(line):
+            head = line.rstrip()
+            suffix = s.group(0) if (s := SUFFIX.search(head)) else ""
+            items.append(Block(section, head[5:len(head) - len(suffix)], head[3], suffix, tuple(lines[i + 1:j]), line))
+        else:
+            section, j = (line.rstrip() if line.startswith("## ") else section), i + 1
+            items.append(line)
+        i = j
+    blocks = [b for b in items if isinstance(b, Block)]
+    if len({b.key for b in blocks}) < len(blocks) or any(len(set(b.notes)) < len(b.notes) for b in blocks):
+        raise ValueError("a line, or a note under one line, is twice in one version")
+    return items
+
+
+def _pair(base: list, side: list) -> dict:
+    """{base index: side Block}: by key, then an open base line missing on the side takes the one new line there of
+    the same kind, since, who, evidence and section (set rewrites open lines only), unless another line claims it."""
+    def ident(blk):
+        m = parse(blk.raw)
+        return m and (m.group("kind"), m.group("since"), m.group("who"), m.group("evidence"), blk.section)
+    keys, old = {s.key: s for s in side}, {b.key for b in base}
+    pairs = {k: keys[b.key] for k, b in enumerate(base) if b.key in keys}
+    claims = {k: [s for s in side if s.key not in old and ident(b) and ident(b) == ident(s)]
+              for k, b in enumerate(base) if k not in pairs and b.mark == " "}
+    taken = [s for ss in claims.values() for s in ss]
+    pairs.update({k: ss[0] for k, ss in claims.items() if len(ss) == 1 and taken.count(ss[0]) == 1})
+    return pairs
+
+
+def _merge_block(b, o, t, o_added: bool, t_added: bool):
+    """One line merged three-way, None when it goes; b, o or t is None where that version lacks it. x_added: that side
+    has a new line in b's section, so a line gone there may have been rewritten."""
+    if o is None or t is None:
+        y, added = (t, o_added) if o is None else (o, t_added)
+        if y is None or b is None:
+            return y
+        if y.key == b.key and y.notes == b.notes and (y.mark == b.mark or (y.mark in "xX-" and not added)):
+            return None   # unchanged, or only closed where the other side archived it
+        raise ValueError(f'the line "{b.key[1:61]}" is gone on one side and changed on the other')
+    for y, z in ((o, t), (t, o)) if b else ():
+        if y.key != b.key and (z.mark, z.notes) != (b.mark, b.notes) and not parse(b.raw).group("evidence"):
+            raise ValueError(f'the line "{b.key[1:61]}" was rewritten on one side and changed on the other, '
+                             'and it has no evidence to pair it by')
+    if o.section != t.section:
+        raise ValueError(f'the line "{o.key[1:61]}" is in a different section on each side')
+    bk, bm, bn = (b.key, b.mark, b.notes) if b else (None, None, ())
+    if o.key != t.key and bk not in (o.key, t.key):
+        raise ValueError(f'the line "{b.key[1:61]}" was changed on both sides')
+    if not (t.mark in (o.mark, bm) or o.mark == bm or {o.mark, t.mark} <= RANK.keys()):
+        raise ValueError(f'the line "{o.key[1:61]}" was marked differently on both sides')
+    key = t.key if o.key == bk else o.key
+    mark = o.mark if t.mark in (o.mark, bm) else t.mark if o.mark == bm else max(o.mark, t.mark, key=RANK.get)
+    suffix = "" if mark == " " else next((s.suffix for s in (o, t) if s.mark == mark and s.suffix), "")
+    notes = tuple(x for x in o.notes if x in t.notes or x not in bn) + tuple(x for x in t.notes if x not in o.notes + bn)
+    raw = next((s.raw for s in (o, t) if (s.key, s.mark, s.suffix) == (key, mark, suffix)), f"- [{mark}]{key}{suffix}")
+    return Block(o.section, key, mark, suffix, notes, raw)
+
+
+def merge(base: str, ours: str, theirs: str) -> str:
+    """The Now page merged line by line (spec §3); ValueError names what it cannot place."""
+    versions = [_version(text) for text in (base, ours, theirs)]
+    (lb, lo, lt), (bb, bo, bt) = ([[x for x in v if isinstance(x, cls)] for v in versions] for cls in (str, Block))
+    if lo != lt and lb not in (lo, lt):
+        raise ValueError("the page layout changed on both sides")
+    po, pt = _pair(bb, bo), _pair(bb, bt)
+    new_o, new_t = [s for s in bo if s not in po.values()], {s.key: s for s in bt if s not in pt.values()}
+    so, st = {s.section for s in new_o}, {s.section for s in new_t.values()}
+    ents = [(b, po.get(k), pt.get(k), b.section in so, b.section in st) for k, b in enumerate(bb)]
+    ents += [(None, s, new_t.pop(s.key, None), False, False) for s in new_o]
+    ents += [(None, None, s, False, False) for s in new_t.values()]
+    merged = [_merge_block(*ent) for ent in ents]
+    # The side whose layout won gives the order; the other's new lines go after their predecessor, or open their section.
+    s, x, skel, other = (1, 2, versions[1], bt) if lo == lt or lt == lb else (2, 1, versions[2], bo)
+    at_s, at_x = ({ent[i].key: e for e, ent in enumerate(ents) if ent[i] is not None} for i in (s, x))
+    order, prev = [at_s[i.key] if isinstance(i, Block) else i for i in skel], {}
+    for blk in other:
+        if merged[e := at_x[blk.key]] is not None:
+            if ents[e][s] is None:
+                at = order.index(prev[blk.section]) if blk.section in prev else next(
+                    (n for n, i in enumerate(order) if isinstance(i, str) and i.rstrip() == blk.section), None)
+                if at is None:
+                    where = f'no "{blk.section}" section' if blk.section else "it sits above the first heading"
+                    raise ValueError(f'nowhere to place "{blk.key[1:61]}": {where}')
+                order.insert(at + 1, e)
+            prev[blk.section] = e
+    text = "\n".join(y for i in order for y in (
+        [i] if isinstance(i, str) else [merged[i].raw, *merged[i].notes] if merged[i] else []))
+    _version(text)   # a line twice in the result refuses too
+    return text
 
 
 def archive_path(vault, partition: str, month: str) -> Path:
@@ -336,6 +446,7 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
     validate(partition, kind, statement, who, evidence, rec, due)
     over = len(render(kind, statement, today, who, evidence, rec, due or default_due(statement, today, who),
                       writer)) - MAX_LINE
+    full = statement
     if fit and over > 0:
         statement = _cut(statement, over)
     text = read(vault, partition) or new_page(vault, partition, today)
@@ -344,7 +455,9 @@ def add(vault, partition: str, kind: str, statement: str, today: str, who: str =
         if not (m and m.group("kind") == kind):
             continue
         bare, old_rec, old_due = fields(m.group("statement"))
-        if bare != fields(statement)[0]:
+        # A stored line may hold a different cut of the same statement (the cut depends on the other fields).
+        want = fields(full)[0]
+        if bare != want and not (bare.endswith("…") and want.startswith(bare[:-1])):
             continue
         if due and old_due and due > old_due:
             raise ValueError(f"would loosen the clock (due {old_due})")
@@ -524,22 +637,23 @@ def check(vault, today: str, alert, gh: str = "gh") -> int:
     """Close each open line whose evidence shows it is finished, and expire each untouched machine line. Returns the
     lines closed.
 
-    A page is written only when a line closes, and from a fresh read, so a tick made while gh ran is kept.
-    The first failed pull-request check skips the others until the next tick; expiry runs regardless."""
+    A page is written only when a line closes, and from a fresh read, so a tick made while gh ran is kept. Each read
+    is stamped first, so a reopened line is judged without its old stamp. The first failed pull-request check skips
+    the others until the next tick; expiry runs regardless."""
     closed = 0
-    pages = {partition: open_lines(read(vault, partition)) for partition in PARTITIONS}
+    pages = {partition: open_lines(stamp(read(vault, partition), today)) for partition in PARTITIONS}
     found = closures(vault, [line for lines in pages.values() for line in lines], gh,
                      lambda line, reason: _failed(vault, today, line, reason, alert))
     for partition in PARTITIONS:
-        lines, before = read(vault, partition).split("\n"), closed
+        lines, before = stamp(read(vault, partition), today).split("\n"), closed
         for i, line in enumerate(lines):
-            key = line.rstrip()
-            if key in found:
-                lines[i], closed = f"- [x]{key[5:]} _(closed: {found[key]} {today})_", closed + 1
-            elif expires(lines, i, today):
-                lines[i], closed = f"- [-]{key[5:]} _(closed: expired {today})_", closed + 1
+            to, how = (("done stamped", found[line.rstrip()]) if line.rstrip() in found else
+                       ("dropped stamped", "expired") if expires(lines, i, today) else (None, ""))
+            new = to and now_states.transition(line, "check", to, how, today, vault)
+            if new:
+                lines[i], closed = new, closed + 1
         if closed > before:
-            write(vault, partition, stamp("\n".join(lines), today))
+            write(vault, partition, "\n".join(lines))
     return closed
 
 
@@ -580,8 +694,10 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
     close reason), "stale" (open more than stale_days with no evidence) and "duplicate" (the same bare statement after
     lowercasing, whatever the kind and clock), in page order. A hand-written line that does not parse has no date or
     evidence and is left out of those groups; one that holds a [rec::] or [due::] field it cannot read (written after
-    the parenthesis) is listed under "unreadable" for the Foreman to fix by hand."""
-    lines = [line.rstrip() for line in open_lines(read(vault, partition))]  # an editor's trailing space (C12)
+    the parenthesis) is listed under "unreadable" for the Foreman to fix by hand, and a line whose mark is no state
+    ([/]) under "unknown" (factory F7 spec Goal 5)."""
+    body = frontmatter.parse(read(vault, partition)).body.splitlines()
+    lines = [line.rstrip() for line in body if line.startswith("- [ ] ")]  # an editor's trailing space (C12)
     cutoff = (date.fromisoformat(today) - timedelta(days=stale_days)).isoformat()
     parsed = [(line, LINE.match(line)) for line in lines]
     found = closures(vault, lines, gh, on_fail)
@@ -593,6 +709,7 @@ def review(vault, partition: str, today: str, stale_days: int = STALE_DAYS, gh: 
             "stale": [line for line, m in parsed if m and not m.group("evidence") and m.group("since") < cutoff],
             "duplicate": [line for group in statements.values() if len(group) > 1 for line in group],
             "unreadable": [line for line, m in parsed if not m and (FIELD_KEY.search(line) or SCRIPT_META.search(line))],
+            "unknown": [line.rstrip() for line in body if now_states.state(line) == "unknown"],
             "long": [line for line in lines if len(line) > MAX_LINE and parse(line)],   # set and note split each
             "page_bytes": page_path(vault, partition).stat().st_size if page_path(vault, partition).is_file() else 0}
 
@@ -649,7 +766,7 @@ def overdue(vault, day: str) -> str:
                 continue
             group = band((date.fromisoformat(day) - date.fromisoformat(due.group(1))).days)
             if group is not None:
-                groups[group].append((due.group(1), f"- {line.rstrip()[6:]}"))
+                groups[group].append((due.group(1), f"- {strip_via(line.rstrip())[6:]}"))
     # One block per group and one for the count, joined by a blank line, so Markdown keeps each bold label on its own
     # line and the count out of the last bullet.
     # At most MAX_OVERDUE lines, the fewest days over first, then one count line (phase A follow-up).

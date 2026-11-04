@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from helpers import REPO, write
-from test_nightshift_check import PLAN
+from test_nightshift_check import PLAN, resolver
 from vaultlib import nightshift_item as ni
 from vaultlib import nightshift_report as rep
 from vaultlib import nightshift_run as nr
@@ -54,6 +54,7 @@ def env(vault: Path, tmp_path: Path, monkeypatch):
     (bin_dir / "gh").chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     monkeypatch.setattr(nr, "health", lambda vault, now, entries: {"claude": "ok", "sandbox": "ok", "usage7": 0.4})
+    resolver(monkeypatch, {"docs.example.com": ["93.184.216.34"]})   # research hosts resolve to a public address (§3.2)
     return vault, tmp_path
 
 
@@ -69,7 +70,7 @@ def stub(tmp, **settings):
 
 
 def add(vault, *extra):
-    return nr.main(["add", "--kind", "plan", "--title", "dtcc watcher", "--partition", "work", "--repo", "template",
+    return nr.main(["add", "--kind", "plan", "--title", "clearinghouse watcher", "--partition", "work", "--repo", "template",
                     "--base", "feat/x", "--plan", "docs/p.md", "--tasks", "1-2", "--verify", "test -f done.txt", *extra],
                    vault, NOW)
 
@@ -114,7 +115,7 @@ def test_now_item_runs_verifies_pushes_and_reports(env):
     report = (vault / "system/logs/nightshift/2026-10-07.md").read_text()
     assert "Review and merge: https://github.com/o/r/pull/1" in report
     assert not list((tmp / "ws").glob("nightshift-2026*"))  # clone removed after delivery
-    body = (vault / "system/logs/nightshift/items" / fm["id"] / "pr_body.md").read_text()
+    body = (rep.item_dir(vault, fm["id"]) / "pr_body.md").read_text()
     assert body.endswith(f"Queued as Work Order `{fm['id']}`.\n")
 
 
@@ -127,7 +128,7 @@ def test_first_tick_checks_health_even_when_a_usage_reading_made_the_file(env, m
     rep.record_usage(vault, day, {"five_hour": 0.3, "seven_day": 0.2}, NOW.isoformat())
     assert add(vault, "--now") == 0
     assert nr.main(["tick"], vault, NOW) == 1
-    h = json.loads((vault / rep.DIR / f"health-{day}.json").read_text())
+    h = json.loads((rep.state_dir(vault) / f"health-{day}.json").read_text())
     assert h["sandbox"] == "FAILED: canary read" and h["usage5"] == 0.3
     assert only_item(vault)[1]["state"] == "queued"
 
@@ -231,7 +232,7 @@ def test_a_finished_session_stores_the_five_hour_usage(env, monkeypatch, tmp_pat
     stub(tmp, SHELL="true")
     assert add(vault) == 0
     nr.main(["tick"], vault, NOW)
-    h = json.loads((vault / "system/logs/nightshift/health-2026-10-07.json").read_text())
+    h = json.loads((rep.state_dir(vault) / "health-2026-10-07.json").read_text())
     assert (h["usage5"], h["usage7"]) == (0.12, 0.48)
     assert NOW <= datetime.fromisoformat(h["usage5_at"]) < NOW + timedelta(minutes=5)
 
@@ -452,8 +453,40 @@ def test_a_template_base_gone_from_the_remote_fails_at_once_with_a_needs_you_lin
     assert nr.main(["tick"], vault, NOW) == 1
     _, fm = only_item(vault)
     assert (fm["state"], fm["reason"]) == ("failed", "base")
-    out = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
-    assert out["needs"][0].startswith(f"Push feat/x to the template remote, then queue {fm['id']} again")
+    out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
+    assert out["needs"][0].startswith(f"Push feat/x to the template remote, then run nightshift.py requeue {fm['id']}")
+
+
+def test_state_lives_under_the_workspace(env):
+    # spec §3.4 (#320): what the runner reads back sits outside the vault; the report the brief copies stays in it
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    git(tmp / "remote.git", "branch", "-D", "feat/x")
+    assert nr.main(["tick"], vault, NOW) == 1
+    _, fm = only_item(vault)
+    state = tmp / "ws" / "state"
+    assert (state / "items" / fm["id"] / "outcome.json").is_file()
+    assert list(state.glob("health-*.json"))
+    assert (vault / "system/logs/nightshift/2026-10-07.md").is_file()
+    assert not (vault / "system/logs/nightshift/items").exists()
+    assert not list((vault / "system/logs/nightshift").glob("health-*.json"))
+
+
+def test_first_tick_moves_old_state(env):
+    # spec §3.4: orders in flight across the update carry on; a name state/ already holds is left where it is
+    vault, tmp = env
+    old = vault / "system/logs/nightshift"
+    write(vault, "system/logs/nightshift/items/2026-10-01-x/outcome.json", '{"id": "2026-10-01-x"}')
+    write(vault, "system/logs/nightshift/health-2026-10-01.json", '{"usage5": 0.1}')
+    write(vault, "system/logs/nightshift/alerts.json", '{"old": "2026-10-01"}')
+    write(tmp, "ws/state/alerts.json", '{"new": "2026-10-02"}')
+    assert nr.main(["tick"], vault, NOW) == 0
+    state = tmp / "ws" / "state"
+    assert (state / "items/2026-10-01-x/outcome.json").read_text() == '{"id": "2026-10-01-x"}'
+    assert (state / "health-2026-10-01.json").read_text() == '{"usage5": 0.1}'
+    assert not (old / "items").exists() and not (old / "health-2026-10-01.json").exists()
+    assert (state / "alerts.json").read_text() == '{"new": "2026-10-02"}'
+    assert (old / "alerts.json").read_text() == '{"old": "2026-10-01"}'
 
 
 def set_workspace(vault, ws):
@@ -472,10 +505,10 @@ def test_add_refuses_a_workspace_inside_the_vault_and_a_tick_fails_a_queued_one(
     assert nr.main(["tick"], vault, NOW) == 1
     _, fm = only_item(vault)
     assert (fm["state"], fm["reason"]) == ("failed", "workspace")
-    out = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
+    out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
     assert out["needs"][0].startswith("Move order_workspace outside the vault")
-    assert f"then queue {fm['id']} again" in out["needs"][0]
-    assert not (vault / ".scratch" / "ws").exists()
+    assert f"then run nightshift.py requeue {fm['id']}" in out["needs"][0]
+    assert not list((vault / ".scratch" / "ws").glob("nightshift-*"))   # no clone; state/ follows the workspace
 
 
 @pytest.mark.skipif(not shutil.which("bwrap"), reason="bwrap not installed")
@@ -493,7 +526,7 @@ def test_resume_stops_a_session_left_running(needs_bwrap, env):
     assert add(vault, "--now") == 0
     path, fm = only_item(vault)
     stale = subprocess.Popen(["sleep", "300"], start_new_session=True)
-    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir = rep.item_dir(vault, fm["id"])
     idir.mkdir(parents=True)
     (idir / "session.pid").write_text(str(stale.pid))
     ni.update(path, state="running", attempts="1", session_id="old")
@@ -509,7 +542,7 @@ def test_a_running_item_failed_by_the_reconciler_writes_its_outcome(env):
     ni.update(path, state="running", attempts="3", session_id="old")
     nr.main(["tick"], vault, NOW)
     assert only_item(vault)[1]["state"] == "failed"
-    out = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
+    out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
     assert out["state"] == "failed" and out["reason"] == "no result"
 
 
@@ -518,7 +551,7 @@ def test_cancel_stops_a_live_session(env):
     assert add(vault, "--now") == 0
     path, fm = only_item(vault)
     live = subprocess.Popen(["sleep", "300"], start_new_session=True)
-    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir = rep.item_dir(vault, fm["id"])
     idir.mkdir(parents=True)
     (idir / "session.pid").write_text(str(live.pid))
     ni.update(path, state="cancelled")
@@ -532,7 +565,7 @@ def test_budget_spans_attempts(env, monkeypatch):
     stub(tmp, SHELL="sleep 4")
     assert add(vault, "--now") == 0
     _, fm = only_item(vault)
-    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir = rep.item_dir(vault, fm["id"])
     idir.mkdir(parents=True)
     (idir / "elapsed").write_text(str(4 * 3600 - 2))
     assert nr.main(["tick"], vault, NOW) == 1
@@ -593,13 +626,13 @@ def test_research_runs_on_a_context_copy_and_publishes(env, monkeypatch, tmp_pat
     stub(tmp, STREAM=str(tmp_path / "r.jsonl"))
     brief = tmp_path / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
-    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
                     "--output", "wiki/work/concepts/Answer.md", "--now"], vault, NOW) == 0
     assert nr.main(["tick"], vault, NOW) == 0
     assert only_item(vault)[1]["state"] == "done"
     assert (vault / "wiki/work/concepts/Answer.md").is_file()
     assert "--add-dir" not in (tmp_path / "args.txt").read_text()
-    out = json.loads((vault / "system/logs/nightshift/items" / only_item(vault)[1]["id"] / "outcome.json").read_text())
+    out = json.loads((rep.item_dir(vault, only_item(vault)[1]["id"]) / "outcome.json").read_text())
     assert out["output"] == "wiki/work/concepts/Answer.md"  # the notice links the item's own note (#157)
 
 
@@ -615,13 +648,13 @@ def test_an_item_finishes_after_it_starts(env, tmp_path):
     stub(tmp, STREAM=str(tmp_path / "r.jsonl"))
     brief = tmp_path / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
-    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
                     "--output", "wiki/work/concepts/Answer.md", "--now"], vault, NOW) == 0
     assert nr.main(["tick"], vault, NOW) == 0
     fm = only_item(vault)[1]
     assert fm["state"] == "done"
     assert datetime.fromisoformat(fm["finished_at"]) > datetime.fromisoformat(fm["started_at"])
-    out = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
+    out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
     assert out["started_at"] == fm["started_at"]
     assert datetime.fromisoformat(out["finished_at"]) > datetime.fromisoformat(out["started_at"])
 
@@ -654,7 +687,7 @@ def test_a_run_denies_the_vault_root_and_not_only_its_four_folders(needs_bwrap, 
     assert add(vault, "--now") == 0
     nr.main(["tick"], vault, NOW)
     _, fm = only_item(vault)
-    settings = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "settings.json").read_text())
+    settings = json.loads((rep.item_dir(vault, fm["id"]) / "settings.json").read_text())
     deny = settings["sandbox"]["filesystem"]["denyRead"]
     assert str(vault) in deny
     assert not any(d.startswith(str(vault) + "/") for d in deny)   # the root alone, none of the four folders
@@ -776,7 +809,7 @@ def test_a_codebase_item_runs_its_install_before_verify_and_the_session_sees_the
     assert nr.main(["tick"], vault, NOW) == 0
     _, fm = only_item(vault)
     assert fm["state"] == "done", fm
-    log = (vault / "system/logs/nightshift/items" / fm["id"] / "verify.log").read_text()
+    log = (rep.item_dir(vault, fm["id"]) / "verify.log").read_text()
     assert log.index("$ hello-tool > installed\n") < log.index("$ test -f done.txt\n")
     assert (tmp_path / "path.txt").read_text().startswith(f"{tools}:")
 
@@ -808,7 +841,7 @@ def test_a_research_session_on_the_same_codebase_keeps_its_own_path(env, monkeyp
     stub(tmp, WRITE=str(empty), SHELL=f'echo "$PATH" > {tmp_path}/path.txt')
     brief = tmp_path / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nCode.\n## Done when\nAnswered.\n## Output\nA note.\n")
-    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
                     "--output", "wiki/work/concepts/Answer.md", "--repo", "shop", "--now"], vault, NOW) == 0
     nr.main(["tick"], vault, NOW)
     assert (tmp_path / "path.txt").read_text().strip() == os.environ["PATH"]   # the service PATH, unchanged
@@ -827,7 +860,7 @@ def test_a_toolchain_dir_gone_at_run_time_blocks_before_the_session_starts(env, 
     assert nr.main(["tick"], vault, NOW) == 1
     _, fm = only_item(vault)
     assert (fm["state"], fm["reason"]) == ("blocked", "toolchain"), fm
-    out = json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
+    out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
     assert out["needs"] == [f"codebase shop: order_toolchain {tools} is not a directory"]
     assert not (tmp_path / "session-ran").exists()
 
@@ -884,7 +917,7 @@ def test_delivery_runs_no_git_inside_the_session_clone(env, monkeypatch):
     path, fm = only_item(vault)
     ctx = nr.Ctx(vault, NOW)
     clone = nr._clone(ctx, fm)
-    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir = rep.item_dir(vault, fm["id"])
     idir.mkdir(parents=True)
     before = nr._before(ctx, fm, idir)
     assert before["base_sha"] == git(tmp / "remote.git", "rev-parse", "feat/x").strip()
@@ -912,7 +945,7 @@ def test_a_clone_made_before_the_rename_delivers_its_nightshift_branch(env, monk
     ctx = nr.Ctx(vault, NOW)
     clone = nr._clone(ctx, fm)
     git(clone, "branch", "-m", f"nightshift/{fm['id']}")   # an item already running when the vault updated
-    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir = rep.item_dir(vault, fm["id"])
     idir.mkdir(parents=True)
     before = nr._before(ctx, fm, idir)
     (clone / "done.txt").write_text("yes")
@@ -961,11 +994,11 @@ def run_research_with_denials(env, tmp_path, writes_text, denied):
     stub(tmp, WRITE=str(writes), STREAM=str(stream), SHELL=f'sed "s#@W@#$PWD#g" "{tpl}" > "{stream}"')
     brief = tmp_path / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
-    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
                     "--output", "wiki/work/concepts/Answer.md", "--now"], vault, NOW) == 0
     nr.main(["tick"], vault, NOW)
     fm = only_item(vault)[1]
-    return fm, json.loads((vault / "system/logs/nightshift/items" / fm["id"] / "outcome.json").read_text())
+    return fm, json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
 
 
 def test_research_out_write_denied_is_its_own_reason(env, tmp_path):
@@ -996,7 +1029,7 @@ def test_research_result_json_denied_names_it(env, tmp_path):
 def add_research(vault, tmp, *extra):
     brief = tmp / "brief.md"
     brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
-    assert nr.main(["add", "--kind", "research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+    assert nr.main(["research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
                     "--output", "wiki/work/concepts/Answer.md", "--host", "docs.example.com", "--now", *extra],
                    vault, NOW) == 0
     return only_item(vault)
@@ -1006,7 +1039,7 @@ def refused_at_tick(vault, path, fm, prefix):
     assert nr.main(["tick"], vault, NOW) == 2
     now, _ = ni.load(path)
     assert now["state"] == "failed" and now["reason"].startswith(prefix), now
-    assert not (vault / "system/logs/nightshift/items" / fm["id"] / "settings.json").exists()   # no session ran
+    assert not (rep.item_dir(vault, fm["id"]) / "settings.json").exists()   # no session ran
     alerts = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
     assert f"[orders] {path.name} refused: " in alerts
     assert nr.main(["tick"], vault, NOW) == 0   # refused once; the next tick skips it
@@ -1078,7 +1111,7 @@ def test_a_refused_running_note_stops_its_session_and_gets_its_clean_up(env):
     leader = subprocess.Popen(["sh", "-c", "sleep 60 >/dev/null 2>&1 &"], start_new_session=True)
     leader.wait()   # reaped, so only the orphan holds the group
     pgid = leader.pid
-    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir = rep.item_dir(vault, fm["id"])
     idir.mkdir(parents=True)
     (idir / "session.pid").write_text(str(pgid))
     work = tmp / "ws" / f"nightshift-{fm['id']}"
@@ -1171,7 +1204,7 @@ def test_delivery_after_a_repo_edit_pushes_to_the_recorded_repo(env, monkeypatch
     path, fm = only_item(vault)
     ctx = nr.Ctx(vault, NOW)
     clone = nr._clone(ctx, fm)
-    idir = vault / "system/logs/nightshift/items" / fm["id"]
+    idir = rep.item_dir(vault, fm["id"])
     idir.mkdir(parents=True)
     before = nr._before(ctx, fm, idir)
     (clone / "done.txt").write_text("yes")
@@ -1187,3 +1220,390 @@ def test_delivery_after_a_repo_edit_pushes_to_the_recorded_repo(env, monkeypatch
     edited = ni.update(path, repo="shop", pr_base="main")
     assert nr._deliver(ctx, edited, idir)["state"] == "done"
     assert urls == [str(tmp / "remote.git")] * 2 and bases == ["master"]
+
+
+NOW_PAGE = "---\ntype: concept\ntags: [now]\ncompiled_at: \"2026-10-01\"\npartition: work\n---\n# Now\n\n## Needs you\n"
+
+
+def test_a_finished_order_leaves_the_owner_one_owed_line(env):
+    # #332: done with a GitHub PR -> review and merge, closed by the PR; blocked -> answer, closed by the order;
+    # failed -> fix, with no evidence (its id is already closed); research done and cancelled -> nothing.
+    vault, tmp = env
+    write(vault, "wiki/work/Now.md", NOW_PAGE)
+    ctx = nr.Ctx(vault, NOW)
+    plan, research = {"id": "2026-10-07-a", "kind": "plan", "partition": "work"}, {"id": "2026-10-07-r", "kind": "research"}
+    done = {"state": "done", "result": "https://github.com/o/r/pull/1", "needs": ["Review and merge: https://github.com/o/r/pull/1"]}
+    nr._now_line(ctx, plan, done)
+    nr._now_line(ctx, plan, done)   # a rerun adds no second line
+    nr._now_line(ctx, {**plan, "id": "2026-10-07-b"}, {"state": "blocked", "needs": ["Answer: which base?"]})
+    nr._now_line(ctx, {**plan, "id": "2026-10-07-c"}, {"state": "failed", "needs": ["Deliver it by hand"]})
+    nr._now_line(ctx, research, {"state": "done", "result": "[[Findings]]", "needs": []})
+    nr._now_line(ctx, plan, {"state": "cancelled", "needs": []})
+    page = (vault / "wiki/work/Now.md").read_text(encoding="utf-8")
+    owed = [l for l in page.split("\n") if l.startswith("- [ ] owed: ")]
+    assert len(owed) == 3
+    assert "owed: Review and merge: https://github.com/o/r/pull/1 (2026-10-07-a)" in owed[0] and owed[0].endswith(", https://github.com/o/r/pull/1)")
+    assert "owed: Answer: which base? (2026-10-07-b)" in owed[1] and owed[1].endswith(", 2026-10-07-b)")
+    assert "owed: Deliver it by hand (2026-10-07-c) " in owed[2] and owed[2].endswith("(since 2026-10-06)")
+
+
+def test_a_now_line_that_cannot_be_added_is_an_alert_and_the_order_stands(env):
+    vault, tmp = env
+    write(vault, "wiki/work/Now.md", NOW_PAGE)
+    write(vault, "wiki/personal/concepts/diary.md", "---\ntype: concept\n---\n")
+    ctx = nr.Ctx(vault, NOW)
+    fm = {"id": "2026-10-07-d", "kind": "plan", "partition": "work"}
+    nr._now_line(ctx, fm, {"state": "failed", "needs": ["see [[diary]]"]})   # a link across the wall is refused
+    alerts = "".join(p.read_text() for p in (vault / "system" / "logs").glob("alerts_*.md"))
+    assert "2026-10-07-d: its Now line was not added (partition wall)" in alerts
+
+
+@pytest.mark.parametrize("host, why", [("docs.example.com", "resolves to 10.0.0.1, an internal address"),
+                                       ("gone.example.com", "does not resolve")])
+def test_add_refuses_internal_and_unresolvable_research_hosts(env, monkeypatch, capsys, host, why):
+    # confinement spec §3.2 (#318): checked at add, before a note is written
+    vault, tmp = env
+    brief = tmp / "brief.md"
+    brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
+    resolver(monkeypatch, {"docs.example.com": ["10.0.0.1"]})
+    assert nr.main(["research", "--title", "q", "--partition", "work", "--brief-file", str(brief),
+                    "--output", "wiki/work/concepts/Answer.md", "--host", host, "--now"], vault, NOW) == 2
+    assert f"not ready: host {host} {why}" in capsys.readouterr().out
+    assert ni.items(vault) == []
+
+
+def test_session_start_fails_internal_host(env, monkeypatch):
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    resolver(monkeypatch, {"docs.example.com": ["10.0.0.1"]})   # the name moved to an internal address after add
+    assert nr.main(["tick"], vault, NOW) == 1
+    now, _ = ni.load(path)
+    assert (now["state"], now["reason"]) == ("failed", "host")
+    out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
+    assert out["needs"][0].startswith("host docs.example.com resolves to 10.0.0.1, an internal address")
+    assert not (rep.item_dir(vault, fm["id"]) / "settings.json").exists()   # no session ran
+
+
+def test_session_start_leaves_unresolvable_queued(env, monkeypatch):
+    # a DNS outage never fails an approved order: it waits for the next tick (§3.2, my call in the spec's Grill)
+    vault, tmp = env
+    path, fm = add_research(vault, tmp)
+    resolver(monkeypatch, {})
+    assert nr.main(["tick"], vault, NOW) == 0
+    now, _ = ni.load(path)
+    assert now["state"] == "queued"
+    assert not now.get("attempts")
+    assert not (rep.item_dir(vault, fm["id"]) / "settings.json").exists()
+    ledger = (vault / "system/logs" / f"nightshift-{NOW:%Y-%m}.jsonl").read_text()
+    assert '"reason": "host does not resolve"' in ledger
+
+
+def test_order_hosts_are_not_resolved(env, monkeypatch, tmp_path):
+    # owner config may name wildcards or an internal registry on purpose (§3.2)
+    vault, tmp = env
+    codebase_item(vault, tmp_path, ["true"], order_hosts=["*.npmjs.org"])
+    monkeypatch.setattr(nr.nc.socket, "getaddrinfo", lambda *a, **k: pytest.fail("resolved an order_hosts entry"))
+    nr.main(["tick"], vault, NOW)
+    _, fm = only_item(vault)
+    assert (rep.item_dir(vault, fm["id"]) / "settings.json").is_file()   # the session started
+
+
+def test_deny_adds_env_globs_outside_home(env, monkeypatch, tmp_path):
+    # §3.3 (#326): the ~/** globs cover what lies under home; a codebase or workspace elsewhere gets its own pair
+    vault, tmp = env
+    from test_nightshift_check import registered
+    clone = registered(vault, tmp_path / "cb")
+    fm = {"id": "2026-10-08-q", "kind": "research", "partition": "work"}
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    deny = nr._deny(nr.Ctx(vault, NOW), fm)
+    for root in (clone, tmp / "ws"):
+        assert f"{root}/**/.env" in deny
+        assert f"{root}/**/.env.*" in deny
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert not [d for d in nr._deny(nr.Ctx(vault, NOW), fm) if d.endswith(".env") or d.endswith(".env.*")]
+
+
+def test_a_session_profile_fences_its_workspace(env):
+    # §3.3 (#319): the runner passes the workspace as the fence, so siblings, nightshift-runner.git and state/ are denied
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    nr.main(["tick"], vault, NOW)
+    _, fm = only_item(vault)
+    fs = json.loads((rep.item_dir(vault, fm["id"]) / "settings.json").read_text())["sandbox"]["filesystem"]
+    assert str(tmp / "ws") in fs["denyRead"]
+    assert str(tmp / "ws" / f"nightshift-{fm['id']}") in fs["allowRead"]
+
+
+def test_a_plan_order_on_a_codebase_inside_the_workspace_reads_its_objects(env):
+    # review of PR A: a plan clone is `git clone --shared`, so its objects live in the codebase; a codebase under
+    # order_workspace must stay readable through the fence (§3.3)
+    vault, tmp = env
+    from test_nightshift_check import registered, set_codebase
+    clone = registered(vault, tmp / "ws" / "code")
+    set_codebase(vault, "shop", order_pr="github:o/shop")
+    assert nr.main(["add", "--kind", "plan", "--title", "shop work", "--partition", "work", "--repo", "shop",
+                    "--base", "main", "--plan", "docs/p.md", "--tasks", "1-2", "--verify", "true", "--now"], vault, NOW) == 0
+    nr.main(["tick"], vault, NOW)
+    _, fm = only_item(vault)
+    fs = json.loads((rep.item_dir(vault, fm["id"]) / "settings.json").read_text())["sandbox"]["filesystem"]
+    assert str(tmp / "ws") in fs["denyRead"]
+    assert str(clone) in fs["allowRead"]
+
+
+def test_env_globs_name_a_symlinked_root_in_both_forms(env, monkeypatch, tmp_path):
+    # review of PR A: bwrap binds real paths, so a symlinked workspace gets its .env globs as given and as resolved
+    vault, tmp = env
+    (tmp_path / "real-ws").mkdir()
+    (tmp_path / "ws-link").symlink_to(tmp_path / "real-ws")
+    set_workspace(vault, tmp_path / "ws-link")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    deny = nr._deny(nr.Ctx(vault, NOW), {"id": "2026-10-08-q", "kind": "research", "partition": "work"})
+    for root in (tmp_path / "ws-link", tmp_path / "real-ws"):
+        assert f"{root}/**/.env" in deny
+        assert f"{root}/**/.env.*" in deny
+
+
+def brief_file(tmp):
+    brief = tmp / "brief.md"
+    brief.write_text("## Question\nQ\n## Scope\nNotes.\n## Done when\nAnswered.\n## Output\nA note.\n")
+    return brief
+
+
+RESEARCH = ["--title", "q", "--partition", "work", "--output", "wiki/work/concepts/Answer.md", "--host", "docs.example.com", "--now"]
+
+
+def test_add_refuses_research(env, capsys):
+    # confinement spec §3.1 (#317): a research order is its own subcommand, behind its own ask rule
+    vault, tmp = env
+    assert nr.main(["add", "--kind", "research", "--brief-file", str(brief_file(tmp)), *RESEARCH], vault, NOW) == 2
+    assert "use nightshift.py research for a research order" in capsys.readouterr().out
+    assert ni.items(vault) == []
+
+
+def test_research_writes_the_note_add_wrote(env):
+    vault, tmp = env
+    assert nr.main(["research", "--brief-file", str(brief_file(tmp)), *RESEARCH], vault, NOW) == 0
+    path, fm = only_item(vault)
+    assert {k: fm[k] for k in ("kind", "partition", "output", "hosts", "start", "budget", "model", "state")} == {
+        "kind": "research", "partition": "work", "output": "wiki/work/concepts/Answer.md", "hosts": ["docs.example.com"],
+        "start": "now", "budget": "1h", "model": "sonnet", "state": "queued"}
+    assert ni.load(path)[1].startswith("## Question")
+
+
+@pytest.mark.parametrize("flag", ["--tit", "--partit"])
+def test_abbreviated_flags_are_refused(env, flag):
+    # §3.1: an ask rule matches the typed prefix, so a flag must be spelled out; complete arguments otherwise
+    vault, tmp = env
+    full = {"--tit": "--title", "--partit": "--partition"}[flag]
+    plan = ["add", "--kind", "plan", "--title", "clearinghouse watcher", "--partition", "work", "--repo", "template", "--base",
+            "feat/x", "--plan", "docs/p.md", "--tasks", "1-2", "--verify", "true"]
+    research = ["research", "--brief-file", str(brief_file(tmp)), *RESEARCH]
+    for argv in (plan, research):
+        assert nr.main([flag if a == full else a for a in argv], vault, NOW) == 2
+    assert ni.items(vault) == []
+
+
+def test_the_order_skill_queues_research_with_its_own_subcommand():
+    text = (REPO / ".claude/skills/order/SKILL.md").read_text()
+    assert "nightshift.py research --title" in text
+    assert "--kind research" not in text
+
+
+def move_remote_base(tmp, branch="feat/x"):
+    """Push one more commit to the template remote's branch; returns the new commit."""
+    w = tmp / f"mover-{len(list(tmp.glob('mover-*')))}"
+    git(tmp, "clone", "-q", "-b", branch, str(tmp / "remote.git"), str(w))
+    git(w, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-q", "--allow-empty", "-m", "moved")
+    git(w, "push", "-q", "origin", branch)
+    return git(w, "rev-parse", "HEAD").strip()
+
+
+def test_add_records_base_sha(env, tmp_path):
+    # confinement spec §3.5 (#321): the commit the owner approved is the one the plan runs on
+    vault, tmp = env
+    assert add(vault, "--at", "22:00") == 0
+    assert only_item(vault)[1]["base_sha"] == git(tmp / "remote.git", "rev-parse", "feat/x").strip()
+    path, _ = only_item(vault)
+    path.unlink()
+    codebase_item(vault, tmp_path, ["true"])
+    assert only_item(vault)[1]["base_sha"] == git(tmp_path / "cb" / "shop", "rev-parse", "main").strip()
+
+
+def test_a_moved_base_blocks_the_order(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    new = move_remote_base(tmp)
+    assert nr.main(["tick"], vault, NOW) == 1
+    now, _ = ni.load(path)
+    assert (now["state"], now["reason"]) == ("blocked", "base moved")
+    out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
+    assert out["needs"][0] == (f"the base feat/x moved since {fm['id']} was queued ({fm['base_sha'][:7]} → {new[:7]}); "
+                               f"read the plan at the new base, then run nightshift.py requeue {fm['id']}")
+    assert not (tmp / "ws" / f"nightshift-{fm['id']}").exists()
+
+
+def test_a_note_without_base_sha_runs(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ni.update(path, base_sha=None)   # queued before this change
+    move_remote_base(tmp)
+    nr.main(["tick"], vault, NOW)
+    assert (rep.item_dir(vault, fm["id"]) / "settings.json").is_file()   # the session started
+
+
+def test_a_reused_clone_is_not_checked_again(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    nr._clone(nr.Ctx(vault, NOW), fm)   # attempt 1 made the clone
+    move_remote_base(tmp)
+    nr.main(["tick"], vault, NOW)
+    assert ni.load(path)[0].get("reason") != "base moved"
+    assert (rep.item_dir(vault, fm["id"]) / "settings.json").is_file()
+
+
+def test_requeue_a_blocked_order_records_the_new_base(env):
+    # confinement spec §3.6 (#321): the owner read the plan at the new base and approves it by requeueing
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    new = move_remote_base(tmp)
+    nr.main(["tick"], vault, NOW)
+    assert nr.main(["requeue", fm["id"]], vault, NOW) == 0
+    now, _ = ni.load(path)
+    assert (now["state"], now["base_sha"]) == ("queued", new)
+    assert not now.get("reason")
+    nr.main(["tick"], vault, NOW)
+    assert ni.load(path)[0].get("reason") != "base moved"
+
+
+def test_requeue_a_failed_order_starts_fresh(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    git(tmp / "remote.git", "branch", "-D", "feat/x")
+    nr.main(["tick"], vault, NOW)   # failed: the base is gone
+    git(vault, "push", "-q", str(tmp / "remote.git"), "feat/x")
+    for d in (f"nightshift-{fm['id']}", f"nightshift-{fm['id']}-verify"):
+        (tmp / "ws" / d).mkdir(parents=True, exist_ok=True)
+    ni.update(path, session_id="s-1")
+    assert nr.main(["requeue", fm["id"]], vault, NOW) == 0
+    now, _ = ni.load(path)
+    assert now["state"] == "queued"
+    for k in ("attempts", "session_id", "reason", "result", "started_at", "finished_at", "reset_at"):
+        assert k not in now, k
+    assert not (tmp / "ws" / f"nightshift-{fm['id']}").exists()
+    assert not (tmp / "ws" / f"nightshift-{fm['id']}-verify").exists()
+    assert (rep.state_dir(vault) / "items" / f"{fm['id']}.1" / "outcome.json").is_file()
+    assert not rep.item_dir(vault, fm["id"]).exists()
+
+
+def test_requeue_twice_counts_up(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    for n in (1, 2):
+        ni.update(path, state="failed")
+        rep.item_dir(vault, fm["id"]).mkdir(parents=True, exist_ok=True)
+        assert nr.main(["requeue", fm["id"]], vault, NOW) == 0
+        assert (rep.state_dir(vault) / "items" / f"{fm['id']}.{n}").is_dir()
+
+
+@pytest.mark.parametrize("state", ["queued", "running", "delivering", "done", "cancelled", "waiting_reset"])
+def test_requeue_refuses_other_states(env, capsys, state):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ni.update(path, state=state)
+    rep.item_dir(vault, fm["id"]).mkdir(parents=True, exist_ok=True)
+    before = path.read_text()
+    assert nr.main(["requeue", fm["id"]], vault, NOW) == 2
+    assert f"{fm['id']} is {state}" in capsys.readouterr().out
+    assert path.read_text() == before
+    assert rep.item_dir(vault, fm["id"]).is_dir()
+
+
+def test_requeue_an_unknown_id(env, capsys):
+    vault, tmp = env
+    assert nr.main(["requeue", "2026-10-01-nope"], vault, NOW) == 2
+    assert "no item 2026-10-01-nope" in capsys.readouterr().out
+
+
+def test_needs_you_lines_name_requeue(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    _, fm = only_item(vault)
+    git(tmp / "remote.git", "branch", "-D", "feat/x")
+    nr.main(["tick"], vault, NOW)
+    out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
+    assert f"then run nightshift.py requeue {fm['id']}" in out["needs"][0]
+
+
+@pytest.mark.parametrize("date", ["/tmp/x", "../x", "2026-10-07\nforged", "2026-13-01x"])
+def test_report_refuses_a_date_that_is_not_a_date(env, tmp_path, date):
+    # review of PR B (I2): report:* is allowed, so its argument must not become a path
+    vault, tmp = env
+    assert nr.main(["report", date], vault, NOW) == 2
+    assert nr.main(["report", "--json", date], vault, NOW) == 2
+    assert not list(tmp_path.rglob("x.md"))
+
+
+def test_add_refuses_a_plan_whose_base_commit_cannot_be_read(env, monkeypatch, capsys):
+    # review of PR B (I3): a new order is never queued unpinned
+    vault, tmp = env
+    monkeypatch.setattr(nr, "_base_sha", lambda ctx, fm: "")
+    assert add(vault, "--now") == 2
+    assert "not ready: cannot read the commit feat/x names" in capsys.readouterr().out
+    assert ni.items(vault) == []
+
+
+def test_the_pin_is_checked_against_what_the_clone_fetched(env, monkeypatch):
+    # review of PR B (I3): an unreadable ls-remote, or a move between the check and the fetch, still blocks
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    move_remote_base(tmp)
+    monkeypatch.setattr(nr, "_base_sha", lambda ctx, fm: "")
+    nr.main(["tick"], vault, NOW)
+    assert ni.load(path)[0]["reason"] == "base moved"
+    assert not (tmp / "ws" / f"nightshift-{fm['id']}").exists()
+
+
+def test_requeue_refuses_an_unsafe_id(env, capsys):
+    # review of PR B (I4): requeue removes and moves folders named from the id
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    bad = "2026-10-06-x/../../outside"
+    path.write_text(path.read_text().replace(f'id: "{fm["id"]}"', f'id: "{bad}"').replace("state: \"queued\"", "state: \"failed\""))
+    (tmp / "outside").mkdir()
+    assert nr.main(["requeue", bad], vault, NOW) == 2
+    assert "not requeued" in capsys.readouterr().out
+    assert (tmp / "outside").is_dir()
+
+
+def test_requeue_refuses_a_delivery_failure(env, capsys):
+    # review of PR B (I5): the branch may already be pushed; a fresh run's push would be refused after hours of work
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    ni.update(path, state="failed", reason="delivery")
+    assert nr.main(["requeue", fm["id"]], vault, NOW) == 2
+    assert "deliver it by hand" in capsys.readouterr().out
+    assert ni.load(path)[0]["state"] == "failed"
+
+
+def test_requeue_counts_the_run_and_the_outcome_carries_it(env):
+    vault, tmp = env
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    git(tmp / "remote.git", "branch", "-D", "feat/x")
+    nr.main(["tick"], vault, NOW)
+    git(vault, "push", "-q", str(tmp / "remote.git"), "feat/x")
+    assert nr.main(["requeue", fm["id"]], vault, NOW) == 0
+    assert ni.load(path)[0]["run"] == "2"
+    git(tmp / "remote.git", "branch", "-D", "feat/x")
+    nr.main(["tick"], vault, NOW)
+    assert json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())["run"] == 2

@@ -1,0 +1,3 @@
+- Changed: a research order is queued with `nightshift.py research`, which asks you first; `nightshift.py add --kind research` is refused, and no flag may be abbreviated. `/order ask` uses the new command. (#317)
+- Changed: a Claude session writes queue notes, codebase notes and session profiles only through the CLI or with a prompt. (#317)
+- Added: a plan order records its base's commit when queued and is blocked if the base moved before it first runs; `nightshift.py requeue <id>` (`/order requeue`) starts a blocked or failed order fresh. (#321)

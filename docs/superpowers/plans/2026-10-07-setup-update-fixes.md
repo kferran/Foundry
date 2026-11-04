@@ -27,7 +27,7 @@
 
 ## Review Focus
 
-1. **A vault that installed its units before a unit existed (Nightshift, telemetry, DTCC, meetings) runs `update_template.sh`.** Expected: owned units re-rendered, each new one listed as `new unit available`, nothing new written or enabled. Pinned by Task 2's first test.
+1. **A vault that installed its units before a unit existed (Nightshift, telemetry, clearing-house, meetings) runs `update_template.sh`.** Expected: owned units re-rendered, each new one listed as `new unit available`, nothing new written or enabled. Pinned by Task 2's first test.
 2. **A server vault with sync drop-ins runs `update_template.sh`.** Expected: the drop-ins of owned services are re-rendered, never dropped as stale. Pinned by Task 2's server test.
 3. **A vault that owns only a drop-in (no unit) runs `update_template.sh`.** Expected: exit 0, nothing to verify, no `systemctl enable` with an empty list. Pinned by the existing "re-renders units when only an owned drop-in is installed" test, which Task 2 keeps green (it now renders nothing).
 4. **An HTTPS origin whose SSH form also fails, or on an unknown host.** Expected: the warning only, no `hint:`. Pinned by Task 3's test (second and third runs).

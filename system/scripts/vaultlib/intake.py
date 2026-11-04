@@ -9,13 +9,14 @@ import shutil
 import signal
 import subprocess
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import alerts, cli, convert as convertmod, extensions as extmod, frontmatter, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
-from . import triage
+from . import alerts, cli, convert as convertmod, extensions as extmod, frontmatter, held as heldmod, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
+from . import backfill, prune as prunemod, recall_log, state as statemod, triage
 from .config import text
+from .state import append_jsonl as _append_jsonl
 
 FRESH_SECONDS = 60
 MAX_ATTEMPTS = 3
@@ -31,26 +32,16 @@ CAP_EXIT = 4
 INVALID_INPUT_EXIT = 2
 SETTINGS_EXIT = 3
 SIGNAL_EXITS = (129, 130, 143)  # SIGHUP/SIGINT/SIGTERM: a stop or shutdown, not the input
-NOT_INPUT_FAULT = (0, SETTINGS_EXIT, CAP_EXIT, 6, *SIGNAL_EXITS)  # 6 = busy lock
+BUSY_EXIT = 6   # run.lock busy: ingest waits INGEST_LOCK_WAIT, then the tick ends and the next one retries (#299)
+OUTAGE_EXIT = 7   # claude itself does not work (an outage, an expired login): held like the cap (#436 S1)
+NOT_INPUT_FAULT = (0, SETTINGS_EXIT, CAP_EXIT, BUSY_EXIT, OUTAGE_EXIT, *SIGNAL_EXITS)
+STOP_TICK = (CAP_EXIT, SETTINGS_EXIT, BUSY_EXIT, OUTAGE_EXIT)   # the tick ends and the inputs stay
 MEETING_PARTITIONS = ("work", "personal")
 DROP_SUFFIXES = (".vtt", ".srt", ".txt", ".md")
 DUPLICATE_SECONDS = 15 * 60
 # A meeting note with no summary, decisions or action items and a transcript under this many spoken lines is empty:
 # the reported case (#142) had 9 lines from a minute of talk before everyone left; a meeting that was held has dozens.
 EMPTY_TRANSCRIPT_LINES = 20
-
-
-def _append_jsonl(path, record) -> None:
-    """Append one JSON line; first terminate a torn last line so it cannot swallow this record."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "ab+") as fh:
-        fh.seek(0, os.SEEK_END)
-        if fh.tell():
-            fh.seek(-1, os.SEEK_END)
-            if fh.read(1) != b"\n":
-                fh.write(b"\n")
-        fh.write((json.dumps(record) + "\n").encode("utf-8"))
 
 
 def sha256_file(path) -> str:
@@ -94,8 +85,8 @@ class Intake:
     def today(self) -> str:
         return self.dt().strftime("%Y-%m-%d")
 
-    def alert(self, message: str) -> None:
-        alerts.alert(self.vault, self.today(), self.dt().strftime("%H:%M:%S"), "intake", message)
+    def alert(self, message: str, key: str = "") -> None:
+        alerts.alert(self.vault, self.today(), self.dt().strftime("%H:%M:%S"), "intake", message, key=key)
 
     def config(self, key: str, default: str) -> str:
         return text(self.vault, key, default)
@@ -173,10 +164,10 @@ class Intake:
         _append_jsonl(self.logs / f"intake_manifest-{self.dt().year}.jsonl",
                       {"sha256": sha, "name": name, "published_at": self.dt().isoformat()})
 
-    def headless(self, rel_paths, shas) -> int:
+    def headless(self, rel_paths, shas, command="ingest") -> int:
         self.runs += 1
         env = {**os.environ, "FOUNDRY_ORIGINAL_SHA256": " ".join(shas)}
-        return subprocess.run([str(self.vault / "system/scripts/run_headless.sh"), "ingest", *rel_paths],
+        return subprocess.run([str(self.vault / "system/scripts/run_headless.sh"), command, *rel_paths],
                               cwd=self.vault, env=env).returncode
 
     def poison(self, path: Path, origin: str, sha: str, reason: str = "") -> None:
@@ -283,12 +274,30 @@ class Intake:
                 _append_jsonl(record_path, {"kind": "alert", "briefing": rel, "reason": problem, "date": day})
         return not (problem and hits_notes)
 
+    # -- one prune a day (#436 S7) ---------------------------------------
+    def prune(self) -> None:
+        """Delete what has aged 30 days and is settled, once a day under run.lock (busy: the next tick tries)."""
+        marker = self.logs / ".pruned"
+        if marker.is_file() and marker.read_text(encoding="utf-8").strip() == self.today():
+            return
+        try:
+            with self.lock("run.lock", timeout=0):
+                done = prunemod.prune(self.vault, self.dt().date() - timedelta(days=30))
+                if done["unsettled"]:   # once a day: the next pass is tomorrow's
+                    self.alert(f"{done['unsettled']} run folder(s) older than 30 days are not settled "
+                               f"(oldest {done['oldest']}); they stay")
+                self.logs.mkdir(parents=True, exist_ok=True)
+                marker.write_text(self.today() + "\n", encoding="utf-8")
+        except TimeoutError:
+            pass
+
     # -- the Now page (Now page spec §3.4) -------------------------------
     def check_now(self) -> None:
-        """Close Now lines on checked evidence; a busy run.lock skips this tick."""
+        """Close Now lines on checked evidence, then release or archive held stale claims; a busy run.lock skips this tick."""
         try:
             with self.lock("run.lock", timeout=0):
                 nowmod.check(self.vault, self.today(), self.alert)
+                heldmod.step(self.vault, self.today(), self.alert)   # held stale claims follow their line (§3.7)
         except TimeoutError:
             pass
 
@@ -397,7 +406,7 @@ class Intake:
             archive.mkdir(parents=True, exist_ok=True)
             path.rename(unique(archive / path.name))
             return True
-        if rc in (CAP_EXIT, SETTINGS_EXIT):
+        if rc in STOP_TICK:
             return False  # cap or invalid settings: every later run would fail too
         if rc == INVALID_INPUT_EXIT:
             # run_headless.sh rejects before any ledger line, so attempts would never advance
@@ -458,7 +467,7 @@ class Intake:
                 rc = self.headless([p.relative_to(self.vault).as_posix() for p in batch], [shas[p] for p in batch])
                 if rc == 0:
                     self._archive_batch(partition, batch, shas, solo)
-                elif rc in (CAP_EXIT, SETTINGS_EXIT):
+                elif rc in STOP_TICK:
                     return False  # cap or invalid settings: every later run would fail too
                 elif len(batch) > 1:
                     # includes rc 2: one bad name must not poison its batch-mates
@@ -492,6 +501,106 @@ class Intake:
                 self.alert(f"digest {origin} failed (exit {rc}); will retry")
         except OSError as exc:
             self.alert(f"skipped {origin}: {exc.__class__.__name__}: {exc}")
+
+    # -- backfill: a digest for a session that ended without one (recall R1 spec §4) ---------------------------
+    def process_backfills(self) -> None:
+        """Each queued session at least FRESH_SECONDS old, oldest first, inside the tick's run budget and the ceiling."""
+        markers = [m for m in (self.logs / "memory" / "sessions").glob("*.backfill") if self.eligible(m)]
+        for marker in sorted(markers, key=lambda m: m.stat().st_mtime):
+            if self.runs >= self.max_runs or self.held():
+                return
+            try:
+                if not self._backfill(marker):
+                    return
+            except (OSError, ValueError) as exc:   # an unreadable transcript never comes right: it must not hold the queue
+                self._quarantine_backfill(marker, f"{exc.__class__.__name__}: {exc}")
+
+    def _keep_dir(self) -> Path:
+        """transcript_keep_dir as memory_keep.sh resolves it."""
+        state_home = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+        return Path(os.path.expanduser(self.config("transcript_keep_dir", "") or f"{state_home}/foundry/transcripts"))
+
+    def _backfill(self, marker: Path) -> bool:
+        """One queued session (spec §4.2 to §4.6). False ends the tick."""
+        sid = marker.name[:-len(".backfill")]
+        state = statemod.load(marker.with_suffix(".json"), None) if recall_log.SID.match(sid) else None
+        keep = self._keep_dir()
+        if not isinstance(state, dict):
+            return self._skip_backfill(marker, sid, "no session state")
+        if not (keep.is_absolute() and (keep / f"{sid}.jsonl").is_file()):
+            return self._skip_backfill(marker, sid, "no kept transcript")
+        id8 = sid[:8]
+        if any(any(self.vault.glob(f"{d}/*-{id8}-*.md")) for d in ("raw/*/notes", "raw/*/archive", "system/quarantine/poisoned")):
+            return self._skip_backfill(marker, sid, "has a digest")  # a Stop digest, even one written after the marker
+        text, cut, last = backfill.excerpt(keep / f"{sid}.jsonl", str(state.get("cwd") or ""))
+        try:
+            zone = ZoneInfo(str(state.get("tz")))
+        except (ZoneInfoNotFoundError, ValueError):
+            zone = self.tz
+        try:
+            end = datetime.fromisoformat(last.replace("Z", "+00:00")).astimezone(zone)
+        except ValueError:
+            return self._skip_backfill(marker, sid, "nothing to digest")
+        text, count = redactmod.redact(text)
+        head = backfill.header(state, sid, end.isoformat(timespec="seconds"), count)
+        name = f"{end:%Y-%m-%d-%H%M}-{id8}-backfill.md"
+        staged = self.vault / "raw" / "inbox" / ".staging" / name
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        staged.write_text(f"{head}{text}\n", encoding="utf-8", errors="replace")   # a lone surrogate becomes "?"
+        sha = sha256_file(staged)   # stable once the session ended: the run ledger counts attempts by it
+        try:
+            rc = self.headless([staged.relative_to(self.vault).as_posix()], [sha], "digest-backfill")
+        finally:
+            staged.unlink(missing_ok=True)
+        digest = self.vault / "raw" / str(state.get("partition")) / "notes" / name
+        if rc == 0 and digest.is_file():
+            wrong = self._read_back(digest, head)
+            if wrong:
+                self.poison(digest, digest.relative_to(self.vault).as_posix(), sha, f"backfill read-back failed ({wrong})")
+            else:
+                run_id = next((r.get("run_id") for r in reversed(list(self._ledgers()))
+                               if sha in (r.get("input_sha256") or [])), None)
+                recall_log.write(self.vault, {"kind": "backfill", "session": sid, "result": "written", "run_id": run_id,
+                                              "chars": len(text), "cut": cut})
+            marker.unlink(missing_ok=True)
+        elif rc in STOP_TICK:
+            return False
+        elif rc == 0:   # a held-back publish: nothing to read back
+            self._quarantine_backfill(marker, "the run published nothing")
+        elif rc == INVALID_INPUT_EXIT:
+            self._quarantine_backfill(marker, "rejected as invalid input (exit 2)")
+        elif self.failures_since_retry(sha) >= MAX_ATTEMPTS:
+            self._quarantine_backfill(marker, f"{MAX_ATTEMPTS} failed attempts, the last exit {rc}")
+        else:
+            self.alert(f"backfill of session {id8} failed (exit {rc}); will retry")
+        return True
+
+    def _skip_backfill(self, marker: Path, sid: str, why: str) -> bool:
+        recall_log.write(self.vault, {"kind": "backfill", "session": sid, "result": "skipped", "why": why})
+        marker.unlink(missing_ok=True)
+        return True
+
+    def _quarantine_backfill(self, marker: Path, why: str) -> None:
+        """Moving the marker back to system/logs/memory/sessions/ retries it (spec §4.6)."""
+        dest = unique(self.vault / "system" / "quarantine" / "backfill" / marker.name)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(marker), str(dest))
+        dest.with_name(dest.name + ".reason.txt").write_text(why + "\n", encoding="utf-8")
+        self.alert(f"backfill of session {marker.name[:8]} quarantined: {why}")
+
+    def _read_back(self, digest: Path, head: str) -> str:
+        """The first thing the published digest got wrong against the block it was given (spec §4.4), or ''."""
+        note, want = frontmatter.parse(digest.read_text(encoding="utf-8", errors="replace")), frontmatter.parse(head).data
+        data = note.data or {}
+        for key in ("session_id", "codebase", "partition", "created_at"):
+            if str(data.get(key)) != str(want[key]):
+                return key
+        if data.get("provenance") != ["headless"]:
+            return "provenance"
+        if re.search(r"^## Corrections\b", note.body, re.M):
+            return "Corrections"
+        # prose=True as the Now check: "the refresh token: expires" is prose, "password: hunter2" is a secret
+        return "redaction" if redactmod.redact(note.body, prose=True)[0] != note.body else ""
 
     # -- meetings (meetings spec §2.3) -------------------------------------
     def import_meetings(self) -> None:
@@ -608,14 +717,14 @@ class Intake:
                 # that tick stopped before its log line (#43): the brief's Notices read complete from it
                 self._meeting_log({"kind": "imported", "source": rel, "note": note, "complete": m.complete})
         else:
-            twin = next((p for p, d in known if d.get("status") != "deprecated" and self._same_meeting(m, d)), None)
             name = self._free_name(meetings.note_name(m))
+            empty = self._empty(meetings.render_meeting(m, name, partition), meetings.render_transcript(m, name, partition))
+            twin = next((p for p, d in known if d.get("status") != "deprecated" and self._same_meeting(m, empty, p, d)),
+                        None)
             retire = None
             if twin is not None:  # first source wins, unless it is empty and this one is not (#142)
                 local = twin.parent.parent.name == partition
-                if not (local and self._empty_note(twin)
-                        and not self._empty(meetings.render_meeting(m, name, partition),
-                                            meetings.render_transcript(m, name, partition))):
+                if not (local and self._empty_note(twin) and not empty):
                     # a first note with empty sections takes this source's notes (#215: a drop, then its Doc)
                     filled = meetings.fill_sections(twin.read_text(encoding="utf-8"), m) if local else None
                     if filled is None and local and m.source.startswith("drop:") and not self._empty_note(twin):
@@ -678,9 +787,12 @@ class Intake:
         except (OSError, UnicodeDecodeError):
             return False  # a note that cannot be read is kept
 
-    def _same_meeting(self, m, data) -> bool:
+    def _same_meeting(self, m, empty: bool, note: Path, data) -> bool:
         if m.source.startswith("gdoc:") and str(data.get("source", "")).startswith("gdoc:"):
-            return False  # one Gemini Doc per meeting (spec §1.1): two Docs are two meetings
+            # one Gemini Doc per meeting (spec §1.1), except that Meet can write an empty twin Doc about an hour
+            # apart (#457): the same slug on the same day with exactly one side empty is one meeting
+            return (meetings.slug(str(data.get("title", ""))) == meetings.slug(m.title)
+                    and str(data.get("date")) == f"{m.start:%Y-%m-%d}" and empty != self._empty_note(note))
         try:
             start = datetime.fromisoformat(str(data.get("start")))
             if start.tzinfo is None:  # the schema allows a start without an offset: it is local time
@@ -859,6 +971,10 @@ class Intake:
             with self.lock("intake.lock", timeout=0):
                 self.extract_briefing()
                 try:
+                    self.prune()
+                except Exception as exc:  # noqa: BLE001 - the tick goes on; .pruned is unwritten, so the next one retries
+                    self.alert(f"prune failed ({exc.__class__.__name__}: {exc}); will retry", key="prune failed (")
+                try:
                     self.check_now()
                 except Exception as exc:  # noqa: BLE001 - meetings, inbox and digests still run
                     self.alert(f"Now check failed ({exc.__class__.__name__}: {exc}); will retry")
@@ -870,8 +986,8 @@ class Intake:
                     self.import_meetings()
                 except Exception as exc:  # noqa: BLE001 - inbox and digests still run
                     self.alert(f"meeting import failed ({exc.__class__.__name__}: {exc}); will retry")
-                if self.process_inbox():
-                    self.process_digests()
+                if self.process_inbox() and self.process_digests():
+                    self.process_backfills()
         except TimeoutError:
             pass  # another daemon is running
 

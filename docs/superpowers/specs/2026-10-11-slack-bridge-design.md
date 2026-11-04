@@ -84,7 +84,7 @@ The ingest command needs no change: step 1 of `ingest.md` already reads the inpu
 ### 3.5 Units and `install_units.sh`
 
 - New `foundry-slack.service.in` (oneshot, `ExecStart=slack_bridge.py fetch`, `TimeoutStartSec=5min`, `SuccessExitStatus=1 4`) and `foundry-slack.timer.in` (`OnCalendar=*:0/15`, `Persistent=false`: a missed tick needs no catch-up, the next one reads the same cursor).
-- `install_units.sh` adds them on a server or standalone when `slack_capture_channel` is set, next to the telemetry and DTCC rules, so they follow the config across re-runs and disappear when the channel is cleared.
+- `install_units.sh` adds them on a server or standalone when `slack_capture_channel` is set, next to the telemetry and clearing-house rules, so they follow the config across re-runs and disappear when the channel is cleared.
 - The `ExecStopPost` lines in the brief and debrief units are unconditional; the script's empty-channel exit keeps them silent.
 
 ### 3.6 `/setup` phase 6d: Slack

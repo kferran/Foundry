@@ -1,0 +1,2 @@
+- Changed: `/setup`'s calendar fetch and its check, `extensions.py smoke` and `nightshift.py list --json` no longer prompt. (#302)
+- Changed: interactive sessions also deny `.env` files through `Read(~/**/.env)` and `Read(~/**/.env.*)`, beside the old `//**` rules. (#326)
