@@ -84,6 +84,21 @@ field() { system/scripts/vault_index.py field system/config.md "$1"; }
   [[ "$output" != *"hint:"* ]]
 }
 
+@test "the SSH form of an https origin replaces it, as the hint says" {
+  git init -q --bare "$BATS_TEST_TMPDIR/ssh/me/vault.git"
+  git config url."$BATS_TEST_TMPDIR/ssh/".insteadOf git@github.com:  # the SSH form, served locally
+  run "$SR" https://github.com/me/vault
+  [ "$status" -eq 0 ]
+  run "$SR" git@github.com:me/vault.git
+  [ "$status" -eq 0 ]
+  [ "$(git config --get remote.origin.url)" = git@github.com:me/vault.git ]  # get-url would apply the insteadOf
+  [[ "$output" == *"origin changed: https://github.com/me/vault -> git@github.com:me/vault.git"* ]]
+  [[ "$output" != *"not reachable"* ]]
+  run "$SR" git@github.com:me/vault.git  # a rerun under an insteadOf changes nothing
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"origin already git@github.com:me/vault.git"* ]]
+}
+
 @test "<url> that is reachable sets origin without a warning" {
   git init -q --bare "$BATS_TEST_TMPDIR/private.git"
   run "$SR" "$BATS_TEST_TMPDIR/private.git"
