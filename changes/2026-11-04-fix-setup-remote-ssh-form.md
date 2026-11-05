@@ -1,1 +1,1 @@
-- Fixed: `setup_remote.sh <url>` replaces an `origin` that holds another form of the same repository, so the SSH URL its own hint names takes effect, where it printed `origin already` and kept the https URL that automation cannot reach. (#515)
+- Fixed: `setup_remote.sh <url>` replaces an `origin` that holds another form of the same repository, so the SSH URL its own hint names takes effect, where it printed `origin already` and kept the https URL that automation cannot reach. (#517)
