@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from . import alerts, cli, convert as convertmod, extensions as extmod, frontmatter, held as heldmod, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
+from . import alerts, cli, convert as convertmod, extensions as extmod, followups, frontmatter, held as heldmod, meetings, now as nowmod, publish, redact as redactmod, schema as schemamod
 from . import backfill, prune as prunemod, recall_log, state as statemod, triage
 from .config import text
 from .state import append_jsonl as _append_jsonl
@@ -293,11 +293,13 @@ class Intake:
 
     # -- the Now page (Now page spec §3.4) -------------------------------
     def check_now(self) -> None:
-        """Close Now lines on checked evidence, then release or archive held stale claims; a busy run.lock skips this tick."""
+        """Close Now lines on checked evidence, release or archive held stale claims, then propose archived digests'
+        follow-ups; a busy run.lock skips this tick."""
         try:
             with self.lock("run.lock", timeout=0):
                 nowmod.check(self.vault, self.today(), self.alert)
                 heldmod.step(self.vault, self.today(), self.alert)   # held stale claims follow their line (§3.7)
+                followups.step(self.vault, self.today(), self.alert)   # #476
         except TimeoutError:
             pass
 
@@ -479,15 +481,22 @@ class Intake:
 
     def _archive_batch(self, partition: str, batch, shas: dict, solo: set) -> None:
         archive = self.vault / "raw" / partition / "archive"
-        done = set()
+        done, dests = set(), []
         for p in batch:
             try:
                 archive.mkdir(parents=True, exist_ok=True)
-                p.rename(unique(archive / p.name))
+                dest = unique(archive / p.name)
+                p.rename(dest)
                 done.add(shas[p])
+                dests.append(dest.relative_to(self.vault).as_posix())
             except OSError as exc:
                 self.alert(f"could not archive raw/{partition}/notes/{p.name}: {exc.__class__.__name__}: {exc}")
         self._save_solo(solo - done)
+        try:   # their follow-ups become Now lines at the next Now step (#476)
+            if dests:
+                followups.queue(self.vault, dests)
+        except OSError as exc:
+            self.alert(f"could not queue the follow-ups of {', '.join(dests)}: {exc.__class__.__name__}: {exc}")
 
     def _solo_failure(self, partition: str, path: Path, sha: str, rc: int) -> None:
         origin = f"raw/{partition}/notes/{path.name}"

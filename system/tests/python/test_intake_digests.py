@@ -1,13 +1,15 @@
+import fcntl
 import json
 import os
+import shutil
 import time
 from pathlib import Path
 
 import pytest
 
-from helpers import write
+from helpers import REPO, write
 from test_intake import calls, iv, ledger_month, later  # noqa: F401  (iv is a fixture)
-from vaultlib import backfill, frontmatter
+from vaultlib import backfill, followups, frontmatter, now as nowmod
 from vaultlib.intake import Intake
 
 
@@ -42,6 +44,53 @@ def test_partitions_never_mixed(iv):
     Intake(iv, now=later()).run()
     batches = [c["args"][1:] for c in calls(iv)]
     assert all(len({a.split("/")[1] for a in batch}) == 1 for batch in batches) and len(batches) == 2
+
+
+def queued(vault):
+    q = vault / followups.QUEUE
+    return q.read_text(encoding="utf-8").split() if q.exists() else []
+
+
+def test_an_archived_batch_queues_both_destinations_including_a_renamed_one(iv):
+    write(iv, "raw/work/archive/d1.md", "an earlier digest of the same name\n")
+    for n in ("d1", "d2"):
+        digest(iv, "work", n)
+    Intake(iv, now=later()).run()
+    q = queued(iv)
+    assert len(q) == 2
+    assert q[0].startswith("raw/work/archive/d1-") and (iv / q[0]).is_file()
+    assert q[1] == "raw/work/archive/d2.md"
+
+
+def test_a_failed_rename_queues_nothing(iv, monkeypatch):
+    for n in ("d1", "d2"):
+        digest(iv, "work", n)
+    real = Path.rename
+
+    def rename(self, target):
+        if self.name == "d1.md":
+            raise OSError("read-only")
+        return real(self, target)
+    monkeypatch.setattr(Path, "rename", rename)
+    Intake(iv, now=later()).run()
+    assert queued(iv) == ["raw/work/archive/d2.md"]
+
+
+def test_check_now_with_a_busy_run_lock_leaves_the_queue(iv):
+    shutil.copytree(REPO / "system/templates", iv / "system/templates", dirs_exist_ok=True)
+    rel = "raw/work/archive/d1.md"
+    write(iv, rel, '---\ntype: session_digest\npartition: work\ncreated_at: "2026-10-01T09:00:00-06:00"\n---\n'
+          "## Follow-ups\n- Write the release notes\n")
+    followups.queue(iv, [rel])
+    with open(iv / "system/run.lock", "a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        Intake(iv).check_now()
+        fcntl.flock(held, fcntl.LOCK_UN)
+    assert queued(iv) == [rel]
+    assert "[via:: digest]" not in nowmod.read(iv, "work")
+    Intake(iv).check_now()
+    assert "[via:: digest]" in nowmod.read(iv, "work")
+    assert queued(iv) == []
 
 
 def test_failed_batch_is_split_next_run(iv):

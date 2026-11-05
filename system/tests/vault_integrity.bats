@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=16770
+CORE_CAP=16920
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -580,6 +580,8 @@ sealed_problems() {
   # to approve at merge): PR A's four traps took core to 16,738; the update unit's crash_trap took it to 16,743.
   # 16,750 -> 16,770 (#436 crash alerts PR C, owner to approve at merge): crash_trap --exit-only and its use in the
   # brief and sync units took core from 16,743 to 16,759.
+  # 16,770 -> 16,920 (#476 digest follow-ups, docs/superpowers/specs/2026-11-03-digest-followups-design.md, owner to
+  # approve at merge): followups.py and the intake queue took core from 16,759 to 16,914 (the spec estimated 60 lines).
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"
