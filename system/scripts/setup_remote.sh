@@ -72,11 +72,13 @@ if [[ "$mode" != keep ]]; then
 fi
 
 if [[ "$mode" == private ]]; then
-  origin="$(remote_url origin)"
+  # The configured URL, before any insteadOf, compared literally: the https and SSH forms of one repo differ in
+  # their credentials.
+  origin="$(git config --get remote.origin.url || true)"
   if [[ -z "$origin" ]]; then
     git remote add origin "$url"
     echo "added origin: $url"
-  elif ! git_url_same "$origin" "$url"; then
+  elif [[ "$origin" != "$url" ]]; then
     git remote set-url origin "$url"
     echo "origin changed: $origin -> $url"
   else
