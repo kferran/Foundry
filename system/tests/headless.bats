@@ -151,6 +151,51 @@ EOF
   [ "$output" -eq 1 ]
 }
 
+@test "an enabled extension's command runs with its prompt, targets and model (market watch §3.3)" {
+  use_extension demo
+  STUB_MODE=demo_page run "$RH" demo
+  [ "$status" -eq 0 ]
+  grep -qx -- '--model' "$STUB_ARGS"
+  grep -qx -- 'sonnet' "$STUB_ARGS"
+  grep -q -- 'Demo command prompt' "$STUB_ARGS"
+  grep -qE -- '^Edit\(/wiki/\.staging/[0-9]{8}T[0-9]{6}-demo-[0-9a-f]{4}/\*\*\)$' "$STUB_ARGS"
+  today="$(TZ=America/Denver date +%F)"
+  [ "$(jq -c .targets system/logs/runs/*-demo-*/snapshot.json)" = "[\"briefings/demo/$today.md\"]" ]
+}
+
+@test "an extension command's staged page publishes" {
+  use_extension demo
+  STUB_MODE=demo_page run "$RH" demo
+  [ "$status" -eq 0 ]
+  [ -f "briefings/demo/$(date +%F).md" ]
+}
+
+@test "an unknown, unlisted or path-shaped extension command exits 2 with no ledger line" {
+  use_extension demo
+  run "$RH" nope; [ "$status" -eq 2 ]
+  run "$RH" ../x; [ "$status" -eq 2 ]
+  use_extension
+  run "$RH" demo; [ "$status" -eq 2 ]
+  [ ! -e "$LEDGER" ]
+}
+
+@test "an extension command refuses arguments" {
+  use_extension demo
+  run "$RH" demo extra
+  [ "$status" -eq 2 ]
+  [ ! -e "$LEDGER" ]
+}
+
+@test "an extension command's time limit is the smaller of its key and HEADLESS_TIMEOUT" {
+  use_extension demo
+  sed -i 's/^extensions:/demo_timeout_minutes: 7\nextensions:/' system/config.md
+  STUB_MODE=demo_page run "$RH" demo
+  [ "$status" -eq 0 ]
+  grep -qx 'timeout 7m' system/logs/headless/demo_*.log
+  HEADLESS_TIMEOUT=1 STUB_MODE=sleep run "$RH" demo
+  [ "$status" -eq 124 ]
+}
+
 @test "claude failure and timeout are recorded and staging is quarantined" {
   STUB_MODE=fail run "$RH" ingest raw/work/notes/d1.md
   [ "$status" -eq 1 ]

@@ -41,6 +41,9 @@ case "${STUB_MODE:-write}" in
     { awk 'NR == 1 {print; next} {print} $0 == "---" {exit}' "$in" | sed "${STUB_FM_SED:-}"
       printf '## Outcome\n%b\n' "${STUB_DIGEST:-Tidied the export job.}"; } > "$s/raw/$p/notes/${in##*/}"
     if [ "$STUB_MODE" = backfill_extra ]; then cp "$s/raw/$p/notes/${in##*/}" "$s/raw/$p/notes/other.md"; fi ;;
+  demo_page)  # the demo extension's command: one page under briefings/demo/
+    mkdir -p "$s/briefings/demo"
+    printf -- '---\ntype: demo_thing\ncolour: blue\n---\n# Demo %s\n' "$(date +%F)" > "$s/briefings/demo/$(date +%F).md" ;;
   nothing) ;;
   fail) exit 1 ;;
   fail2) exit 2 ;;

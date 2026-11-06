@@ -34,7 +34,19 @@ input_partition() {
 
 cmd="${1:-}"
 (( $# )) && shift
-case "$cmd" in ingest|brief|debrief|digest-backfill) ;; *) die 2 "unknown command: ${cmd:-<none>}" ;; esac
+ext="" ext_model="" ext_targets=()
+case "$cmd" in
+  ingest|brief|debrief|digest-backfill) ;;
+  *)  # a command an enabled extension declares in its manifest (market watch spec §3.3)
+    [[ "$cmd" =~ ^[a-z][a-z-]*[a-z]$ ]] && ext_json="$(system/scripts/extensions.py command "$cmd")" \
+      || die 2 "unknown command: ${cmd:-<none>}"
+    ext="$(jq -r .ext <<< "$ext_json")" ext_model="$(jq -r .model <<< "$ext_json")"
+    mapfile -t ext_targets < <(jq -r --arg d "$TODAY" '.targets[] | gsub("<date>"; $d)' <<< "$ext_json")
+    ext_minutes="$(jq -r '.timeout_minutes // empty' <<< "$ext_json")"
+    if [[ -n "$ext_minutes" && "$TIMEOUT" =~ ^([0-9]+)m$ ]] && (( ext_minutes < BASH_REMATCH[1] )); then
+      TIMEOUT="${ext_minutes}m"
+    fi ;;
+esac
 LOG="system/logs/headless/${cmd}_${TODAY}.log"
 
 inputs=() shas=() partition=""
@@ -115,6 +127,7 @@ if ! jq -se 'length == 1 and (.[0] | type) == "object"' system/headless.settings
 fi
 
 cmdfile=".claude/commands/$cmd.md"
+[[ -z "$ext" ]] || cmdfile="extensions/$ext/commands/$cmd.md"
 if [[ ! -f "$cmdfile" ]]; then
   alert "missing $cmdfile; $cmd not run"
   die 3 "missing $cmdfile"
@@ -162,6 +175,7 @@ case "$cmd" in
   brief) targets=("briefings/$TODAY.md" "wiki/work/Now.md" "wiki/personal/Now.md") ;;  # new objectives go to Now
   debrief) targets=("briefings/$TODAY.debrief.md") ;;
   digest-backfill) targets=("raw/$partition/notes/${inputs[0]##*/}") ;;
+  *) targets=("${ext_targets[@]}") ;;
 esac
 started="$(date -Iseconds)"
 if ! system/scripts/publish_staged.py snapshot "$run_id" --targets "${targets[@]}" >/dev/null 2>> "$LOG"; then
@@ -185,15 +199,18 @@ else
   for sub in query related show backlinks orphans issues validate field stage tags; do allow+=("Bash($vi $sub:*)"); done
 fi
 
+model=()
+[[ -z "$ext_model" ]] || model=(--model "$ext_model")
 out="system/logs/runs/$run_id/claude.json" stream="system/logs/runs/$run_id/stream.jsonl"
 printf '\n===== %s %s %s\n' "$(date -Iseconds)" "$run_id" "${inputs[*]:-}" >> "$LOG"
+[[ -z "$ext" ]] || printf 'timeout %s\n' "$TIMEOUT" >> "$LOG"
 set +e
 # 9>&-: claude's process tree must not inherit run.lock, or a leaked child holds it forever.
 # stream-json carries the 5-hour usage reading (a rate_limit_event line); claude.json keeps the final
 # result line, which every check below reads (usage ceiling spec).
 timeout -k 30s "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --append-system-prompt-file CLAUDE.md \
   --restricted --settings system/headless.settings.json --strict-mcp-config --no-session-persistence \
-  --permission-mode dontAsk --output-format stream-json --verbose --tools "$tools" \
+  --permission-mode dontAsk --output-format stream-json --verbose --tools "$tools" "${model[@]}" \
   --allowedTools "${allow[@]}" < /dev/null > "$stream" 2>> "$LOG" 9>&- &
 cpid=$!
 wait "$cpid"
