@@ -1,4 +1,5 @@
 # system/tests/python/test_extensions.py: the extension manifest loader (extensions spec §3).
+import json
 import shutil
 import subprocess
 import sys
@@ -410,3 +411,66 @@ def test_a_lint_module_that_fails_is_one_error_on_its_manifest(vault):
     write(vault, "extensions/rules/scripts/rules.py", "def issues(conn, add):\n    raise ValueError('broken')\n")
     assert ("extensions/rules/extension.md", "extension-lint",
             "lint scripts/rules.py failed: ValueError: broken") in lint_issues(vault)
+
+
+# Extension commands (market watch spec §3.3): a headless run an enabled extension declares.
+CMD = '[{name: demo, targets: ["briefings/demo/<date>.md"], model_key: demo_model, timeout_key: demo_timeout_minutes}]'
+
+
+def test_a_declared_command_resolves_with_schema_defaults(ext):
+    config(ext, "demo")
+    assert extensions.command(ext, "demo") == {"ext": "demo", "name": "demo", "targets": ["briefings/demo/<date>.md"],
+                                               "model": "sonnet", "timeout_minutes": 20}
+
+
+def test_config_values_override_the_defaults(ext):
+    write(ext, "system/config.md", '---\ntype: config\nextensions: ["demo"]\ndemo_model: haiku\ndemo_timeout_minutes: 7\n---\n')
+    got = extensions.command(ext, "demo")
+    assert (got["model"], got["timeout_minutes"]) == ("haiku", 7)
+
+
+def test_an_undeclared_or_unlisted_command_is_none(ext):
+    config(ext, "demo")
+    assert extensions.command(ext, "nope") is None
+    config(ext)
+    assert extensions.command(ext, "demo") is None
+
+
+@pytest.mark.parametrize("entry", [
+    '{name: ingest, targets: ["briefings/ingest/<date>.md"], model_key: m, timeout_key: t}',
+    '{name: digest-backfill, targets: ["briefings/digest-backfill/<date>.md"], model_key: m, timeout_key: t}',
+    '{name: Brief, targets: ["briefings/Brief/<date>.md"], model_key: m, timeout_key: t}',
+    '{name: "../x", targets: ["briefings/../x/<date>.md"], model_key: m, timeout_key: t}',
+    '{name: x, targets: ["briefings/x/<date>.md"], model_key: m, timeout_key: t}',
+    '{name: cmd, targets: ["wiki/work/**"], model_key: m, timeout_key: t}',
+    '{name: cmd, targets: ["briefings/other/<date>.md"], model_key: m, timeout_key: t}',
+    '{name: cmd, targets: ["briefings/cmd/../../CLAUDE.md"], model_key: m, timeout_key: t}',
+    '{name: cmd, targets: ["briefings/cmd/*.md"], model_key: m, timeout_key: t}',
+    '{name: cmd, targets: [], model_key: m, timeout_key: t}',
+    '{name: cmd, targets: ["briefings/cmd/<date>.md"], timeout_key: t}',
+])
+def test_bad_command_entries_are_reasons_and_not_runnable(vault, entry):
+    manifest(vault, "bad", commands=f"[{entry}]")
+    config(vault, "bad")
+    reasons = extensions.check(vault)
+    assert len(reasons) == 1 and reasons[0].startswith("bad: command"), reasons
+    for name in ("ingest", "digest-backfill", "Brief", "../x", "x", "cmd"):
+        assert extensions.command(vault, name) is None
+
+
+def test_a_name_two_extensions_declare_runs_in_neither(vault):
+    manifest(vault, "one", commands=CMD)
+    manifest(vault, "two", commands=CMD)
+    config(vault, "one", "two")
+    assert extensions.command(vault, "demo") is None
+    reasons = extensions.check(vault)
+    assert len(reasons) == 1 and "one" in reasons[0] and "two" in reasons[0], reasons
+
+
+def test_the_cli_prints_one_json_line_or_exits_1(ext):
+    config(ext, "demo")
+    r = run(ext, "command", "demo")
+    assert r.returncode == 0
+    assert json.loads(r.stdout) == extensions.command(ext, "demo")
+    r = run(ext, "command", "nope")
+    assert (r.returncode, r.stdout) == (1, "")

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """What each enabled extension gives the shared scripts, as lines bash can read (extensions spec §3).
 
-Usage: extensions.py list | check | field <name> <key> | smoke | brief | debrief | units <role> | allow [--write | --remove <name>] | ignore | link | migrate
-Exit: 0; 1 from `check` when an extension cannot load or a field of one that loads is ignored; 2 usage.
+Usage: extensions.py list | check | command <name> | field <name> <key> | smoke | brief | debrief | units <role> | allow [--write | --remove <name>] | ignore | link | migrate
+Exit: 0; 1 from `check` when an extension cannot load or a field of one that loads is ignored, or from `command` when no
+enabled extension declares the name; 2 usage.
 """
 import json
 import sys
@@ -34,6 +35,12 @@ def main(argv: list) -> int:
         for line in reasons:
             print(line)
         return 1 if reasons else 0
+    if cmd == "command" and len(args) == 1:
+        found = extensions.command(VAULT, args[0])
+        if found is None:
+            return 1
+        print(json.dumps(found))
+        return 0
     loaded = extensions.enabled(VAULT)
     if cmd == "list" and not args:
         out = [n for n, _ in loaded]
