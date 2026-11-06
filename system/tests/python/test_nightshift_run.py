@@ -1719,3 +1719,114 @@ def test_a_resumed_attempt_counts_only_its_own_stream(env, monkeypatch):
     stub(tmp, SHELL=loop_shell(FAIL))
     nr.main(["tick"], vault, NOW)
     assert only_item(vault)[1].get("reason") != "loop"
+
+
+# --- #487: the handoff ---------------------------------------------------------------------------------------
+
+GHP = "ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"
+
+
+def events(*calls, result=""):
+    """Stream lines: ("bash", command, error) a failed Bash call; a result event last when result is given."""
+    out = []
+    for i, (_, command, error) in enumerate(calls):
+        out.append(json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": f"x{i}", "name": "Bash", "input": {"command": command}}]}}))
+        out.append(json.dumps({"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": f"x{i}", "is_error": True, "content": error}]}}))
+    if result:
+        out.append(json.dumps({"type": "result", "subtype": "success", "result": result}))
+    return "".join(l + "\n" for l in out)
+
+
+def item_dir_with(tmp_path, stream, verify=None):
+    idir = tmp_path / "items" / "o1"
+    idir.mkdir(parents=True)
+    (idir / "stream.jsonl").write_text(stream)
+    (idir / "stream.last.jsonl").write_text(stream)
+    if verify is not None:
+        (idir / "verify.log").write_text(verify)
+    return idir
+
+
+FM = {"id": "o1", "kind": "plan"}
+
+
+def test_a_blocked_plan_order_leaves_a_handoff_and_names_it(env, monkeypatch):
+    vault, tmp = env
+    monkeypatch.setattr(nr, "POLL", 1)
+    stub(tmp, SHELL=loop_shell(FAIL, FAIL, FAIL))
+    write(vault, "wiki/work/Now.md", NOW_PAGE)
+    assert add(vault, "--now") == 0
+    nr.main(["tick"], vault, NOW)
+    _, fm = only_item(vault)
+    text = (rep.item_dir(vault, fm["id"]) / "handoff.md").read_text()
+    assert text.startswith(f"# Handoff: {fm['id']}, run 1\n")
+    assert "## Why it stopped\nblocked (loop): Same failure 3 times" in text
+    assert "- `pytest -q` ×3: 1 failed" in text
+    assert "## Failing check" not in text
+    assert f"(handoff in items/{fm['id']}/) ({fm['id']})" in (vault / "wiki/work/Now.md").read_text()
+    assert f"(handoff in items/{fm['id']}/)" in needs_line(vault)
+    out = json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())
+    assert out["notes"].startswith(f"handoff: {rep.item_dir(vault, fm['id']) / 'handoff.md'}")
+
+
+def test_the_handoff_has_the_verify_tail_for_a_verify_block(tmp_path):
+    idir = item_dir_with(tmp_path, events(FAIL), verify="".join(f"line {i}\n" for i in range(300)))
+    text = nr._handoff(FM, idir, {"state": "blocked", "reason": "verify", "needs": ["Fix the failing check: x"]}).read_text()
+    tail = text.split("## Failing check\n", 1)[1].split("\n## ", 1)[0].strip().splitlines()
+    assert tail[0] == "line 100" and tail[-1] == "line 299" and len(tail) == 200
+    other = nr._handoff(FM, idir, {"state": "blocked", "reason": "loop", "needs": ["x"]}).read_text()
+    assert "## Failing check" not in other
+
+
+def test_the_handoff_keeps_its_caps(tmp_path):
+    calls = [("bash", f"cmd{i}", f"Exit code 1\nerr {i}") for i in range(12)] + [("bash", "cmd3", "Exit code 1\nerr 3")]
+    calls.append(("bash", "c" * 300, "Exit code 1\n" + "e" * 300))
+    message = "m" * 4999 + "Z"
+    idir = item_dir_with(tmp_path, events(*calls, result=message))
+    text = nr._handoff(FM, idir, {"state": "failed", "reason": "no result", "needs": ["x"]}).read_text()
+    bullets = [l for l in text.split("## Failed commands\n", 1)[1].split("\n## ", 1)[0].splitlines() if l.startswith("- ")]
+    assert len(bullets) == 10 and bullets[0].startswith("- `cmd3` ×2")
+    assert all(len(b) <= 200 + 200 + 20 for b in bullets)
+    last = text.split("## Previous session's last message\n", 1)[1].strip()
+    assert len(last) <= 2000 and last.endswith("Z")
+
+
+def test_the_handoff_is_redacted(tmp_path):
+    cmd = f'curl -H "Authorization: Bearer {GHP}" https://u:p4ss@example.com/x'
+    idir = item_dir_with(tmp_path, events(("bash", cmd, "Exit code 1\n/home/u/work/src/app.py: not found")))
+    text = nr._handoff(FM, idir, {"state": "blocked", "reason": "loop", "needs": ["x"]}).read_text()
+    assert GHP not in text and "p4ss" not in text
+    assert "/home/u/work/src/app.py" in text
+
+
+def test_research_cancelled_and_pre_session_endings_leave_no_handoff(env, monkeypatch):
+    vault, tmp = env
+    monkeypatch.setattr(nr, "POLL", 1)
+    stub(tmp, SHELL=loop_shell(FAIL, FAIL, FAIL, kind="research"))
+    _, fm = add_research(vault, tmp)
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1]["reason"] == "loop"
+    assert not (rep.item_dir(vault, fm["id"]) / "handoff.md").exists()
+
+
+def test_a_cancelled_plan_order_leaves_no_handoff(env, monkeypatch):
+    vault, tmp = env
+    monkeypatch.setattr(nr, "POLL", 1)
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    stub(tmp, SHELL=loop_shell(sleep=4, before=f"sed -i 's/^state: .*/state: cancelled/' {shlex.quote(str(path))}"))
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1]["state"] == "cancelled"
+    assert not (rep.item_dir(vault, fm["id"]) / "handoff.md").exists()
+
+
+def test_a_pre_session_ending_leaves_no_handoff(env, tmp_path):
+    vault, tmp = env
+    idir = item_dir_with(tmp_path, events(FAIL))
+    ctx = nr.Ctx(vault, NOW)
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    nr._finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "workspace", "needs": ["Move it"]})
+    assert not (idir / "handoff.md").exists()
