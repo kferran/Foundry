@@ -1,7 +1,7 @@
 """marketlib.parse: feeds and newsroom pages to items (spec §3.2; M2, M6, M13)."""
 import pytest
 
-from conftest import FIXTURES
+from market_helpers import FIXTURES
 from marketlib import http, parse
 
 

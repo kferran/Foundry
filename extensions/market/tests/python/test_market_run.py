@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from conftest import FIXTURES, write_config
+from market_helpers import FIXTURES, write_config
 from marketlib import run
 
 DAY = date(2026, 11, 6)
