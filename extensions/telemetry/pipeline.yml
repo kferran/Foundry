@@ -1,0 +1,31 @@
+# The telemetry extension in the pipeline graph (factory F6 PR 2a, #477): system/tests/pipeline.bats checks it with
+# --extensions, in the shape of system/pipeline.yml.
+sources:
+  - {path: system/telemetry/, by: the owner's source notes}
+sinks:
+  - {path: raw/telemetry/, by: /rca, run by the owner}
+
+nodes:
+  telemetry:
+    unit: foundry-telemetry
+    entry: extensions/telemetry/scripts/telemetry_fetch.py
+    scripts: [extensions/telemetry/scripts/telemetry_fetch.py, extensions/telemetry/scripts/telemetrylib/telemetry_run.py]
+    reads: [system/telemetry/, system/logs/telemetry_state.json]
+    writes: [raw/telemetry/, system/logs/telemetry_state.json, system/logs/alerts_*.md]
+    locks: [telemetry.lock]
+    failure:
+      busy: retry-next-tick     # another fetch holds telemetry.lock past TELEMETRY_LOCK_WAIT: exit 4
+      source: alert:telemetry_source
+      other: alert:telemetry    # guard(..., "telemetry") in telemetry_fetch.py
+
+extends:
+  brief:    # brief_prep.sh's last fetch, bounded by TELEMETRY_PREP_TIMEOUT
+    scripts: [extensions/telemetry/scripts/brief_fetch.sh, extensions/telemetry/scripts/telemetrylib/telemetry_run.py]
+    reads: [system/telemetry/, raw/telemetry/]
+    writes: [raw/telemetry/]
+    locks: [telemetry.lock]
+  intake:   # the intake tick runs rca.py tick: file the approved drafts, at most PER_TICK
+    scripts: [extensions/telemetry/scripts/rca.py, extensions/telemetry/scripts/rca_file.sh]
+    reads: [wiki/, system/logs/rca/]
+    writes: [wiki/, wiki/*/Now.md, system/logs/rca/, system/logs/alerts_*.md]
+    locks: [run.lock]

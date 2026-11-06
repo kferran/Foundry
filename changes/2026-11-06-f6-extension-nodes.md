@@ -1,0 +1,1 @@
+- Changed: `/new-source` also writes the Source's `pipeline.yml`, which adds its fetch to the brief's node in the pipeline graph, and each extension that ships a unit declares its node there; FOUNDRY.md's factory line shows the graph. (#477)

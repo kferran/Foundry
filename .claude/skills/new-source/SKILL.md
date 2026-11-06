@@ -28,8 +28,8 @@ Spec: `docs/superpowers/specs/2026-10-23-factory-f4-line-skills-design.md` §3.2
    - The issue number (`--issue`, required in the template repository; a vault skips the change file).
 2. **Run the script** from the repository root:
    `python3 .claude/skills/new-source/new_source.py <name> --tool <mcp__server__tool> --server "<server>" (--tools <table> | --server-tool <tool>…) --description "<one line>" --credential "<what>" --renew "<how>" [--issue <n>]`
-   It writes `extensions/<name>/` (manifest, fetch, checker, brief prep, bats tests) and, in the template, one `- Added: <description>. (#<issue>)` line in its change file, `changes/<today>-source-<name>.md`. A trailing "." on the description is dropped.
-3. **Run the suites**, one `system/scripts/test.sh` call each (it takes one target): `system/tests/conformance.bats`, `system/tests/python/test_source_rule.py`, `extensions/<name>/tests/<name>.bats`, and the brief prompt word check alone (the whole prep.bats takes minutes): `system/scripts/test.sh system/tests/prep.bats --filter "brief prompt is at most"`. All must be green before any feature code. When the task is the scaffold alone, stop here.
+   It writes `extensions/<name>/` (manifest, fetch, checker, brief prep, bats tests, and `pipeline.yml`, which adds the fetch to the brief's node in the pipeline graph) and, in the template, one `- Added: <description>. (#<issue>)` line in its change file, `changes/<today>-source-<name>.md`. A trailing "." on the description is dropped.
+3. **Run the suites**, one `system/scripts/test.sh` call each (it takes one target): `system/tests/conformance.bats`, `system/tests/python/test_source_rule.py`, `system/tests/pipeline.bats`, `extensions/<name>/tests/<name>.bats`, and the brief prompt word check alone (the whole prep.bats takes minutes): `system/scripts/test.sh system/tests/prep.bats --filter "brief prompt is at most"`. All must be green before any feature code. When the task is the scaffold alone, stop here.
 4. **Write the feature.**
    - Probe the tool once in a throwaway directory under `.scratch/` and record what came back (FOUNDRY.md "Probe first").
    - Write the feature's tests red first. **REQUIRED SUB-SKILL:** `superpowers:test-driven-development`.
@@ -37,6 +37,7 @@ Spec: `docs/superpowers/specs/2026-10-23-factory-f4-line-skills-design.md` §3.2
    - Write `brief/section.md`: where the section goes, print the lines verbatim, omit it when empty. `extensions/intraday/brief/section.md` is a short one. Check the word cap above first.
    - When a result can be too large for the model, pass `persisted` to `check_stream` as the handoffs extension does, with its own test. Without it, a too-large result exits 6.
    - When you change the fetch's `<NAME>_TIMEOUT` default, change the manifest's `budget` value to match.
+   - When the feature reads or writes another vault path, or takes a lock, add it to `pipeline.yml`'s `extends: brief` entry; `pipeline.bats` checks the locks against the scripts.
 5. **Review:** run `/foundry-review` before the pull request.
 
 ## Exit 2 (nothing written)

@@ -7,6 +7,9 @@
 # caller:<node>, unavailable (system/logs/inputs/<date>/unavailable.md, which the brief reads), ledger (a run ledger
 # line on every exit, which notify posts to Slack when the run failed; P3 checks the entry's write_ledger trap), none.
 # `other` is the catch-all: an alert there needs the entry script to install crash_trap or alerts.guard (P3).
+# `locks` are listed outermost first, and no two nodes may take two locks in opposite orders (P9). A lock another node
+# also takes needs a `busy` edge, unless `waits: {<lock>: <TIMING_VALUES key>}` names a wait at least as long as the
+# other node's TimeoutStartSec (P10).
 
 sources:   # written from outside the graph
   - {path: raw/inbox/, by: the owner and the capture channel}
@@ -29,9 +32,10 @@ nodes:
               system/scripts/run_headless.sh, system/scripts/vaultlib/publish.py, system/scripts/vaultlib/now.py,
               system/scripts/vaultlib/followups.py]
     reads: [raw/inbox/, raw/*/notes/, raw/*/archive/, raw/meetings/, meetings/drop/, briefings/, wiki/*/Now.md,
-            system/logs/followups_queue.txt]
+            system/logs/followups_queue.txt, system/logs/meetings-*.jsonl]
     writes: [raw/inbox/, raw/archive/, raw/*/archive/, system/quarantine/, wiki/, wiki/*/Now.md,
-             system/logs/runs/, system/logs/inputs/, system/logs/alerts_*.md, system/logs/followups_queue.txt]
+             system/logs/runs/, system/logs/inputs/, system/logs/alerts_*.md, system/logs/followups_queue.txt,
+             system/logs/meetings-*.jsonl]
     locks: [intake.lock, run.lock, stage.lock]
     failure:
       input: quarantine
@@ -62,6 +66,7 @@ nodes:
     locks: [run.lock, stage.lock]
     failure:
       prep: unavailable
+      busy: alert:intake   # run_headless.sh: "debrief skipped: run.lock busy", exit 6
       other: ledger
 
   meetings:
@@ -105,7 +110,7 @@ nodes:
   sync:
     unit: foundry-sync
     scripts: [system/scripts/vault_sync.sh, system/scripts/lib_git.sh]
-    locks: [index.lock, run.lock]
+    locks: [run.lock, index.lock]   # git's index.lock, checked under run.lock
     failure:
       busy: retry-next-tick
       blocked: alert:sync
