@@ -17,11 +17,11 @@ VAULT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(VAULT / "system" / "scripts"))
 from vaultlib import frontmatter  # noqa: E402
 from vaultlib.config import text as config_text  # noqa: E402
+from vaultlib.publish import RUN_ID  # noqa: E402  (one run-id shape; market watch plan 1, ruling 3)
 
 LOGS = VAULT / "system" / "logs"
 RUNS = LOGS / "runs"
 SINCE = LOGS / "commit_runs.since"
-RUN_ID = re.compile(r"^(\d{8}T\d{6})-(ingest|brief|debrief|meeting|nightshift)-[0-9a-f]{4}$")
 PARTITIONS = ("work", "personal", "shared")
 CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f  ]+")  # Unicode line breaks too: one alert, one line
 SUBJECT_MAX = 72
@@ -71,7 +71,8 @@ def pending(since):
     out = []
     for rd in sorted(RUNS.iterdir()):
         match = RUN_ID.match(rd.name)
-        if not match or match.group(1) < since or (rd / "committed").exists():
+        # digest-backfill runs are not committed here, as before the run-id patterns were joined.
+        if not match or match.group(2) == "digest-backfill" or match.group(1) < since or (rd / "committed").exists():
             continue
         try:
             report = json.loads((rd / "publish.json").read_text(encoding="utf-8"))

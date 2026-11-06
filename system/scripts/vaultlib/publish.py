@@ -11,10 +11,11 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from . import frontmatter, held as heldmod, links as linkmod, now as nowmod, now_states, schema as schemamod
+from . import extensions, frontmatter, held as heldmod, links as linkmod, now as nowmod, now_states, schema as schemamod
 from .index import PRIVATE, Index, name_excluded, walled
 
-RUN_ID = re.compile(r"^\d{8}T\d{6}-(ingest|brief|debrief|meeting|nightshift|digest-backfill)-[0-9a-f]{4}$")
+# The shape of a run id; check_run_id also requires a core command or one an enabled extension declares.
+RUN_ID = re.compile(r"^(\d{8}T\d{6})-([a-z][a-z-]*[a-z])-([0-9a-f]{4})$")
 MEETINGS = re.compile(r"^wiki/[^/]+/meetings/")
 NOW_PAGE = re.compile(r"^wiki/[^/]+/Now\.md$")
 NOW_ARCHIVE = re.compile(r"^wiki/[^/]+/now-archive/")
@@ -43,11 +44,14 @@ def sha256_file(path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def check_run_id(run_id: str) -> str:
+def check_run_id(run_id: str, vault=None) -> str:
+    """The run's command: a core one, or, given the vault, one an enabled extension declares (market watch §3.3)."""
     match = RUN_ID.match(run_id or "")
-    if not match:
+    command = match.group(2) if match else ""
+    if command not in extensions.CORE_COMMANDS and not (
+            command and vault is not None and extensions.command(Path(vault), command)):
         raise PublishError(f"invalid run id: {run_id!r}")
-    return match.group(1)
+    return command
 
 
 def run_dir(vault, run_id) -> Path:
@@ -114,7 +118,7 @@ def _target_files(vault: Path, targets):
 
 def snapshot(vault, run_id, targets) -> Path:
     vault = Path(vault)
-    check_run_id(run_id)
+    check_run_id(run_id, vault)
     for t in targets:
         safe_rel(t[:-3] if t.endswith("/**") else t)
     rd = run_dir(vault, run_id)
@@ -137,7 +141,7 @@ def snapshot(vault, run_id, targets) -> Path:
 
 
 def load_snapshot(vault, run_id) -> dict:
-    check_run_id(run_id)
+    check_run_id(run_id, vault)
     path = run_dir(vault, run_id) / "snapshot.json"
     if not path.is_file():
         raise PublishError(f"unknown run: {run_id}")
@@ -155,7 +159,7 @@ def load_snapshot(vault, run_id) -> dict:
 def record_stage(vault, run_id, target) -> Path:
     vault = Path(vault)
     target = safe_rel(target)
-    check_run_id(run_id)
+    check_run_id(run_id, vault)
     rd = run_dir(vault, run_id)
     if not (rd / "snapshot.json").is_file():
         raise PublishError(f"unknown run: {run_id}")
@@ -429,7 +433,7 @@ def _tags(note) -> list:
 
 def validate_run(vault, run_id, now=None):
     vault, now = Path(vault), time.time() if now is None else now
-    command = check_run_id(run_id)
+    command = check_run_id(run_id, vault)
     snap = load_snapshot(vault, run_id)
     staged, problems = staged_targets(vault, run_id)
     decisions, decision_problems = read_decisions(vault, run_id)
@@ -580,7 +584,7 @@ def _refresh_index(vault) -> None:
 
 def commit_run(vault, run_id, now=None) -> dict:
     vault = Path(vault)
-    command = check_run_id(run_id)
+    command = check_run_id(run_id, vault)
     rd, sd = run_dir(vault, run_id), staging_dir(vault, run_id)
     staged, decisions, problems = validate_run(vault, run_id, now)
     decisions_file = sd / DECISIONS
@@ -629,7 +633,7 @@ def commit_run(vault, run_id, now=None) -> dict:
 
 def abort_run(vault, run_id) -> dict:
     vault = Path(vault)
-    check_run_id(run_id)
+    check_run_id(run_id, vault)
     _quarantine(vault, run_id)
     return _report(vault, run_id, "aborted")
 
