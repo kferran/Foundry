@@ -24,9 +24,11 @@ from . import nightshift_sched as ns
 from . import nightshift_session as ss
 from . import now as nowmod
 from .intake import Intake
+from .redact import redact_credentials
 
 LOCK = "system/nightshift.lock"
 POLL = 30            # seconds between session checks
+LOOP = 3             # the same Bash failure this many times, nothing edited between, stops a session (#486)
 MAX_PARALLEL = 3     # Work Orders one tick runs at once (#229; owner, 2026-10-16)
 TICK_HOURS = 13      # no new start that would end past this: the unit stops a tick at 14h
 SHARED = threading.RLock()   # the files more than one worker writes: report, health, ledger, alerts
@@ -419,6 +421,29 @@ def _elapsed(idir: Path) -> float:
         return 0.0
 
 
+def _new_lines(stream: Path, offset: int) -> tuple:
+    """The complete lines written since offset, and the offset after the last newline (a half-written line waits)."""
+    with open(stream, "rb") as fh:
+        fh.seek(offset)
+        data = fh.read()
+    end = data.rfind(b"\n") + 1
+    return data[:end].decode("utf-8", "replace").splitlines(), offset + end
+
+
+def _loop_hit(events: list, state: dict):
+    """(command, error line) when a failure key reaches LOOP; an edit makes each key's next failure count 1 again."""
+    counts, edited = state.setdefault("counts", {}), state.setdefault("edited", set())
+    for kind, key, command, line in events:
+        if kind == "edit":
+            edited.update(counts)
+            continue
+        counts[key] = 1 if key in edited or key not in counts else counts[key] + 1
+        edited.discard(key)
+        if counts[key] >= LOOP:
+            return command, line
+    return None
+
+
 def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Path, resume: bool) -> dict:
     kind = fm["kind"]
     cb = nc.codebase(ctx.vault, fm.get("repo")) or {}
@@ -452,7 +477,7 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
     with open(stream, "a") as out, open(idir / "run.log", "a") as err:
         proc = subprocess.Popen(cmd, cwd=cwd, stdout=out, stderr=err, start_new_session=True, env=env)
         (idir / "session.pid").write_text(str(proc.pid))
-        checked = False
+        checked, offset, ids, loop = False, size0, {}, {}
         while proc.poll() is None:
             clock.sleep(1 if not checked else POLL)
             if not checked and stream.stat().st_size > size0:
@@ -466,17 +491,22 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
                 _stop(proc, signal.SIGTERM)
                 outcome = {"outcome": "cancelled", "reason": "cancelled by user"}
                 break
+            lines, offset = _new_lines(stream, offset)   # this attempt's new complete lines only (#486)
+            hit = _loop_hit(ss.bash_events(lines, ids), loop)
+            if hit:
+                _stop(proc, signal.SIGTERM)
+                outcome = {"outcome": "loop", "command": hit[0], "error": hit[1]}
+                break
             if clock.monotonic() - started > budget:
                 _stop(proc, signal.SIGTERM)
                 outcome = {"outcome": "failed", "reason": "budget"}
                 break
     (idir / "elapsed").write_text(str(_elapsed(idir) + clock.monotonic() - started))
     (idir / "session.pid").unlink(missing_ok=True)
+    part = idir / "stream.last.jsonl"   # this attempt's stream, kept on every exit for the handoff (#487)
+    part.write_text(stream.read_bytes()[size0:].decode("utf-8", "replace"))
     if outcome:
         return outcome
-    tail = stream.read_bytes()[size0:].decode("utf-8", "replace")
-    part = idir / "stream.last.jsonl"
-    part.write_text(tail)
     s = ss.parse_stream(part)
     if s["init"] is None:
         return {"outcome": "no_start"}
@@ -725,6 +755,9 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
         return 1
     if run["outcome"] == "cancelled":
         out = {"state": "cancelled", "reason": "cancelled by user", "needs": []}
+    elif run["outcome"] == "loop":   # the owner or the plan can fix it, and requeue takes a blocked order (#486)
+        out = {"state": "blocked", "reason": "loop", "needs": [
+            redact_credentials(f"Same failure {LOOP} times: {run['command'][:80]}: {run['error'][:100]}")]}
     elif run["outcome"] == "failed":
         out = {"state": "failed", "reason": run["reason"], "notes": run.get("detail", "")}
         if run["reason"] == "profile":

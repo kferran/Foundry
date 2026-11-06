@@ -13,6 +13,7 @@ from test_nightshift_check import PLAN, resolver
 from vaultlib import nightshift_item as ni
 from vaultlib import nightshift_report as rep
 from vaultlib import nightshift_run as nr
+from vaultlib import nightshift_session as ss
 
 FX = REPO / "system" / "tests" / "fixtures" / "nightshift"
 NOW = datetime(2026, 10, 6, 18, 0, tzinfo=timezone.utc)   # 12:00 in Denver
@@ -1607,3 +1608,114 @@ def test_requeue_counts_the_run_and_the_outcome_carries_it(env):
     git(tmp / "remote.git", "branch", "-D", "feat/x")
     nr.main(["tick"], vault, NOW)
     assert json.loads((rep.item_dir(vault, fm["id"]) / "outcome.json").read_text())["run"] == 2
+
+
+# --- #486: the loop stop -----------------------------------------------------------------------------------
+
+def loop_shell(*calls, sleep=3, before="", kind="plan"):
+    """A stub SHELL printing an init event, then per call a tool_use and its result: ("bash", command, error) fails,
+    ("edit",) edits. The stub prints STREAM only after SHELL, so the session's own events come from here."""
+    init = json.loads((FX / "ok.jsonl").read_text().splitlines()[0])
+    init["tools"] = ss.TOOLS[kind]
+    init = json.dumps(init)
+    lines = [init]
+    for i, call in enumerate(calls):
+        if call[0] == "edit":
+            lines.append(json.dumps({"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": f"e{i}", "name": "Edit", "input": {"file_path": "x"}}]}}))
+            continue
+        _, command, error = call
+        lines.append(json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": f"b{i}", "name": "Bash", "input": {"command": command}}]}}))
+        lines.append(json.dumps({"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": f"b{i}", "is_error": True, "content": error}]}}))
+    return " ; ".join([before] * bool(before) + [f"printf '%s\\n' {shlex.quote(l)}" for l in lines] + [f"sleep {sleep}"])
+
+
+FAIL = ("bash", "pytest -q", "Exit code 1\n1 failed")
+
+
+def needs_line(vault):
+    return "".join(p.read_text() for p in (vault / "system/logs/nightshift").glob("2026-*.md"))
+
+
+@pytest.mark.parametrize("kind", ["plan", "research"])
+def test_three_identical_failures_stop_the_session_as_blocked_loop(env, monkeypatch, kind):
+    vault, tmp = env
+    monkeypatch.setattr(nr, "POLL", 1)
+    stub(tmp, SHELL=loop_shell(FAIL, FAIL, FAIL, kind=kind))
+    if kind == "plan":
+        assert add(vault, "--now") == 0
+    else:
+        add_research(vault, tmp)
+    nr.main(["tick"], vault, NOW)
+    _, fm = only_item(vault)
+    assert (fm["state"], fm["reason"]) == ("blocked", "loop")
+    assert "Same failure 3 times: pytest -q: 1 failed" in needs_line(vault)
+
+
+@pytest.mark.parametrize("calls", [
+    (FAIL, FAIL),
+    (FAIL, ("bash", "make", "Exit code 1\n1 failed"), ("bash", "ls x", "Exit code 1\n1 failed")),
+    (FAIL, FAIL, ("edit",), FAIL),
+])
+def test_two_failures_different_commands_or_an_edit_between_do_not_stop_it(env, monkeypatch, calls):
+    vault, tmp = env
+    monkeypatch.setattr(nr, "POLL", 1)
+    stub(tmp, SHELL=loop_shell(*calls))
+    assert add(vault, "--now") == 0
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1].get("reason") != "loop"
+
+
+def test_a_timing_in_the_error_does_not_hide_a_loop(env, monkeypatch):
+    vault, tmp = env
+    monkeypatch.setattr(nr, "POLL", 1)
+    stub(tmp, SHELL=loop_shell(*[("bash", "pytest -q", f"Exit code 1\n1 failed in 0.{n}s") for n in (42, 51, 66)]))
+    assert add(vault, "--now") == 0
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1]["reason"] == "loop"
+
+
+def test_the_loop_check_reads_only_new_complete_lines(tmp_path):
+    s = tmp_path / "s.jsonl"
+    s.write_text("a\nb\npart")
+    assert nr._new_lines(s, 0) == (["a", "b"], 4)
+    with open(s, "a") as fh:
+        fh.write("ial\n")
+    assert nr._new_lines(s, 4) == (["partial"], 12)
+    assert nr._new_lines(s, 12) == ([], 12)
+
+
+@pytest.mark.parametrize("how", ["loop", "budget", "cancelled"])
+def test_a_loop_budget_or_cancelled_exit_keeps_stream_last(env, monkeypatch, how):
+    vault, tmp = env
+    monkeypatch.setattr(nr, "POLL", 1)
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    idir = rep.item_dir(vault, fm["id"])
+    if how == "loop":
+        stub(tmp, SHELL=loop_shell(FAIL, FAIL, FAIL))
+    elif how == "budget":
+        stub(tmp, SHELL=loop_shell(sleep=4))
+        idir.mkdir(parents=True)
+        (idir / "elapsed").write_text(str(4 * 3600 - 2))
+    else:
+        stub(tmp, SHELL=loop_shell(sleep=4, before=f"sed -i 's/^state: .*/state: cancelled/' {shlex.quote(str(path))}"))
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1]["state"] == {"loop": "blocked", "budget": "failed", "cancelled": "cancelled"}[how]
+    assert '"subtype":"init"' in (idir / "stream.last.jsonl").read_text().replace(" ", "")
+
+
+def test_a_resumed_attempt_counts_only_its_own_stream(env, monkeypatch):
+    vault, tmp = env
+    monkeypatch.setattr(nr, "POLL", 1)
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+    idir = rep.item_dir(vault, fm["id"])
+    idir.mkdir(parents=True)
+    earlier = loop_shell(FAIL, FAIL)   # the same events, as an earlier attempt left them in stream.jsonl
+    (idir / "stream.jsonl").write_text("".join(shlex.split(part)[2] + "\n" for part in earlier.split(" ; ")[:-1]))
+    stub(tmp, SHELL=loop_shell(FAIL))
+    nr.main(["tick"], vault, NOW)
+    assert only_item(vault)[1].get("reason") != "loop"
