@@ -3,6 +3,7 @@ Description=The Foundry: the demo extension, daily (fixture)
 
 [Timer]
 OnCalendar=*-*-* {{PRE_BRIEF_TIME}}:00
+{{EXTRA_TIMES:demo_runs_per_day}}
 Persistent=false
 
 [Install]
