@@ -1,5 +1,5 @@
 """The market extension's manifest and config keys (market watch spec §3.1, amended M1, M2, M9, M10, M12)."""
-from conftest import EXT, write_config
+from market_helpers import EXT, write_config
 from vaultlib import extensions
 
 
