@@ -51,6 +51,34 @@ def unit_files(root, extensions):
     return {p.name[: -len(".service.in")]: p for p in sorted(found)}
 
 
+def secs(text):
+    """conformance.bats' secs(): <n>[s|m|min|h] in seconds."""
+    m = re.fullmatch(r"(\d+)(s|min|m|h)?", text.strip())
+    return int(m.group(1)) * {"min": 60, "m": 60, "h": 3600}.get(m.group(2), 1) if m else None
+
+
+def timing_values(root):
+    """{key: seconds} for each TIMING_VALUES line in conformance.bats whose ERE finds its value in its file."""
+    bats = (root / "system/tests/conformance.bats")
+    text = bats.read_text(encoding="utf-8") if bats.is_file() else ""
+    block = re.search(r"^TIMING_VALUES='\n(.*?)^'", text, re.S | re.M)
+    out = {}
+    for line in (block.group(1) if block else "").splitlines():
+        key, path, ere = (line.split(" ", 2) + ["", ""])[:3]
+        f = root / path
+        m = re.search(ere, f.read_text(encoding="utf-8", errors="replace"), re.M) if ere and f.is_file() else None
+        if m and secs(m.group(1)) is not None:
+            out[key] = secs(m.group(1))
+    return out
+
+
+def limit(unit_file):
+    """A unit's TimeoutStartSec in seconds, which bounds how long it can hold a lock; no limit is infinite."""
+    text = unit_file.read_text(encoding="utf-8", errors="replace") if unit_file else ""
+    m = re.search(r"^TimeoutStartSec=(\S+)", text, re.M)
+    return (secs(m.group(1)) if m else None) or float("inf")
+
+
 def load(root, extensions):
     """(sources, sinks, nodes, problems): core's manifest, plus each extension's with --extensions."""
     data = yaml.safe_load((root / "system/pipeline.yml").read_text(encoding="utf-8")) or {}
@@ -70,8 +98,9 @@ def load(root, extensions):
             if name not in nodes:
                 out.append((ext, "P1", f"{ext}: extends no node {name}"))
                 continue
-            for key in MERGED:
-                nodes[name][key] = list(nodes[name].get(key) or []) + list((more or {}).get(key) or [])
+            for key in MERGED:   # a lock the node already takes keeps its place in the order (P9)
+                have = list(nodes[name].get(key) or [])
+                nodes[name][key] = have + [x for x in (more or {}).get(key) or [] if key != "locks" or x not in have]
         sources += [s["path"] for s in extra.get("sources") or []]
         sinks += [s["path"] for s in extra.get("sinks") or []]
     return sources, sinks, nodes, out
@@ -159,6 +188,39 @@ def check(root, gaps, extensions=False):
                 out.append((name, "P5", f"{name}: restart on a unit with no Restart="))
             elif edge.startswith("caller:") and edge[7:] not in nodes:
                 out.append((name, "P4", f"{name}: {key} names no node {edge[7:]}"))
+
+    # P9: locks are listed outermost first; two nodes that take two locks in opposite orders can deadlock.
+    first = {}
+    for name in sorted(nodes):
+        locks = list(nodes[name].get("locks") or [])
+        for i, a in enumerate(locks):
+            for b in locks[i + 1:]:
+                first.setdefault((a, b), name)
+    for (a, b), name in sorted(first.items()):
+        if a < b and (b, a) in first:
+            out.append((f"{a}, {b}", "P9", f"{a}, {b}: {name} takes {a} first, {first[(b, a)]} takes {b} first"))
+
+    # P10: a lock another node also takes needs a busy edge, unless the node's wait (a TIMING_VALUES key in `waits`)
+    # outlasts the other node's unit limit, which bounds its hold. flock -n waits 0 s, so it always needs one.
+    values = timing_values(root)
+    for name, n in sorted(nodes.items()):
+        failure = n.get("failure") or {}
+        if failure.get("busy") not in (None, "none"):
+            continue
+        waits = n.get("waits") or {}
+        for lock in n.get("locks") or []:
+            others = sorted(m for m, o in nodes.items() if m != name and lock in (o.get("locks") or []))
+            if not others:
+                continue
+            hold, holder = max((limit(units.get(nodes[m].get("unit"))), m) for m in others)
+            if lock not in waits:
+                out.append((name, "P10", f"{name}: shares {lock} with {', '.join(others)} and has no busy edge"))
+            elif waits[lock] not in values:
+                out.append((name, "P10", f"{name}: waits names no TIMING_VALUES key {waits[lock]}"))
+            elif values[waits[lock]] < hold:
+                h = "unlimited" if hold == float("inf") else f"{int(hold)} s"
+                out.append((name, "P10", f"{name}: waits {values[waits[lock]]} s for {lock}, which {holder} can "
+                                         f"hold for {h}, and has no busy edge"))
 
     # P6, P7: every path written has a reader or a sink; every path read has a writer or a source.
     reads = [(r, name) for name, n in nodes.items() for r in n.get("reads") or []]

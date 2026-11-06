@@ -154,7 +154,7 @@ ext() {
   run python3 "$CHECK" "$R" --extensions
   [ "$output" = "$(printf '%s\n' 'e: extends no node zz' 'foundry-e: no node')" ]
   ext e 'nodes:
-  e: {unit: foundry-e, scripts: [system/scripts/a.sh], locks: [run.lock], failure: {other: alert:e}}'
+  e: {unit: foundry-e, scripts: [system/scripts/a.sh], locks: [run.lock], failure: {busy: retry-next-tick, other: alert:e}}'
   run python3 "$CHECK" "$R" --extensions
   [ -z "$output" ]
 }
@@ -163,7 +163,7 @@ ext() {
   fixture "$GOOD"
   printf 'flock 9 system/notify.lock\n' > "$R/system/scripts/b.sh"
   ext e 'nodes:
-  e: {unit: foundry-e, scripts: [system/scripts/a.sh], locks: [run.lock], failure: {other: alert:e}}
+  e: {unit: foundry-e, scripts: [system/scripts/a.sh], locks: [run.lock], failure: {busy: retry-next-tick, other: alert:e}}
 extends:
   a: {scripts: [system/scripts/b.sh]}'
   run python3 "$CHECK" "$R" --extensions
@@ -186,6 +186,45 @@ sources:
   - {path: x/, by: owner}"
   run python3 "$CHECK" "$R" --mermaid
   [ "$output" = "$(printf '%s\n' 'flowchart LR' '  outside([outside])' '  a[a]' '  p0[("x/")]' '  a --> p0' '  outside --> p0')" ]
+}
+
+# two <a's locks> <b's failure>: the fixture with a second unit foundry-b whose node b takes run.lock and notify.lock.
+two() {
+  fixture "${GOOD/locks: \[run.lock\]/locks: [$1]}
+  b:
+    unit: foundry-b
+    scripts: [system/scripts/b.sh]
+    locks: [run.lock, notify.lock]
+    failure: {$2other: alert:intake}"
+  printf '#!/bin/bash\ncrash_trap foundry-b\nflock 9 system/run.lock\nflock 8 system/logs/notify.lock\n' > "$R/system/scripts/b.sh"
+  printf 'flock 8 system/logs/notify.lock\n' >> "$R/system/scripts/a.sh"
+  printf '[Service]\nTimeoutStartSec=20min\n' > "$R/system/systemd/foundry-b.service.in"
+  : > "$R/system/systemd/foundry-b.timer.in"
+}
+
+@test "P9: two nodes that take two locks in opposite orders fail; the same order passes" {
+  two "notify.lock, run.lock" "busy: retry-next-tick, "
+  run python3 "$CHECK" "$R"
+  [ "$output" = 'notify.lock, run.lock: a takes notify.lock first, b takes run.lock first' ]
+  two "run.lock, notify.lock" "busy: retry-next-tick, "
+  run python3 "$CHECK" "$R"
+  [ -z "$output" ]
+}
+
+@test "P10: a shared lock needs a busy edge, unless a named wait outlasts the other unit's limit" {
+  two "run.lock, notify.lock" ""
+  run python3 "$CHECK" "$R"
+  [ "$output" = "$(printf '%s\n' 'b: shares notify.lock with a and has no busy edge' 'b: shares run.lock with a and has no busy edge')" ]
+  mkdir -p "$R/system/tests"
+  printf "TIMING_VALUES='\nshort system/scripts/b.sh ^SHORT=([0-9]+)\$\nlong system/scripts/b.sh ^LONG=([0-9]+h)\$\n'\n" > "$R/system/tests/conformance.bats"
+  printf 'SHORT=60\nLONG=2h\n' >> "$R/system/scripts/b.sh"
+  printf '[Service]\nTimeoutStartSec=1h\n' > "$R/system/systemd/foundry-a.service.in"
+  printf '    waits: {run.lock: short, notify.lock: nosuch}\n' >> "$R/system/pipeline.yml"
+  run python3 "$CHECK" "$R"
+  [ "$output" = "$(printf '%s\n' 'b: waits 60 s for run.lock, which a can hold for 3600 s, and has no busy edge' 'b: waits names no TIMING_VALUES key nosuch')" ]
+  sed -i 's/waits: {run.lock: short, notify.lock: nosuch}/waits: {run.lock: long, notify.lock: long}/' "$R/system/pipeline.yml"
+  run python3 "$CHECK" "$R"
+  [ -z "$output" ]
 }
 
 @test "P8: a listed gap silences its rule, and a gap that now passes must be deleted" {
