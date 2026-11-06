@@ -19,8 +19,12 @@ allow: ["Bash(extensions/market/scripts/market_fetch.py --check)"]
 deps: []
 index_ignore: ["raw/market"]
 budget:
-  values: {TIMEOUT: 30, WORKERS: 8}
-  out: "the HTTP poller: no session; 8 sources at a time, each with its own 30 s limit"
+  values: {TIMEOUT: 30, WORKERS: 8, FETCH_LIMIT: 300, NOTIFY_LIMIT: 120}
+  steps:  # market_unit.py: the fetch, then run_headless.sh market (run.lock, then the session), then after-publish
+    - "market 1 - FETCH_LIMIT"
+    - "market 1 - headless.lock"
+    - "market 1 grace.headless headless"
+    - "market 1 - NOTIFY_LIMIT"
 ---
 **Market watch.** Each morning, 30 minutes before the brief, `foundry-market` reads the newsrooms and feeds of the companies and bodies you list in `market_watch`, and the trade-press feeds in `market_press`, and writes the items it has not seen before to `raw/market/<date>/candidates.jsonl`. A press item counts only when it names one of your entries.
 

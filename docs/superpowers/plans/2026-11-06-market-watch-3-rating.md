@@ -73,7 +73,7 @@
 **Files:**
 - Create: `extensions/market/scripts/market_unit.py` (executable, `guard(…, "foundry-market", "market_source")`), `extensions/market/scripts/marketlib/unit.py`
 - Modify: `extensions/market/units/foundry-market.service.in` (`ExecStart` → `market_unit.py`, `Environment="CLAUDE_BIN={{CLAUDE_BIN}}"`, `TimeoutStartSec=50min`), `extensions/market/units/foundry-market.timer.in` (adds `{{EXTRA_TIMES:market_runs_per_day}}` after its `OnCalendar=` line)
-- Modify: `extensions/market/extension.md` `budget`: `values: {TIMEOUT: 30, WORKERS: 8, FETCH_LIMIT: 300, NOTIFY_LIMIT: 120}`, `steps: ["foundry-market 1 - FETCH_LIMIT", "foundry-market 1 - headless.lock", "foundry-market 1 grace.headless headless", "foundry-market 1 - NOTIFY_LIMIT"]`, and drop `out`
+- Modify: `extensions/market/extension.md` `budget`: `values: {TIMEOUT: 30, WORKERS: 8, FETCH_LIMIT: 300, NOTIFY_LIMIT: 120}`, `steps: ["market 1 - FETCH_LIMIT", "market 1 - headless.lock", "market 1 grace.headless headless", "market 1 - NOTIFY_LIMIT"]`, and drop `out`
 - Test: `extensions/market/tests/python/test_market_unit.py`
 
 **Interfaces:**
