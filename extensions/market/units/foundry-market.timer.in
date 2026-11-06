@@ -1,0 +1,9 @@
+[Unit]
+Description=The Foundry: market watch, 30 minutes before the brief
+
+[Timer]
+OnCalendar=*-*-* {{PRE_BRIEF_TIME}}:00 {{TZ}}
+Persistent=false
+
+[Install]
+WantedBy=timers.target
