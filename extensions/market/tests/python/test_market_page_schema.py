@@ -3,7 +3,7 @@ import shutil
 
 import pytest
 
-from conftest import EXT, FIXTURES
+from market_helpers import EXT, FIXTURES
 from vaultlib import extensions
 
 PAGE = "briefings/market/2026-11-06.md"

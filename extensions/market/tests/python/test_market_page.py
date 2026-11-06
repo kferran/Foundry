@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from conftest import FIXTURES, write_config
+from market_helpers import FIXTURES, write_config
 from marketlib import page
 
 DAY = "2026-11-06"
