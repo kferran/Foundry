@@ -4,6 +4,7 @@
 **Status:** draft, for the owner's review
 **Grill:** 2026-10-16, decisions recorded on https://github.com/kferran/Foundry/issues/236 (phase 1; phase 2 waits for its own grills)
 **Builder check:** 2026-10-31, four questions and six wrong claims. Settled as my calls: the page's partition and what the rating reads (§3.3, §3.4); the rating's tools (§3.3); the timing (§3.6); tracker proposals as a page section (§3.4, §3.5); and the corrected facts (web access, the link form, the Sources reading, the redaction export, alert keys, and what the harness needs). Where the rating runs is the owner's (question 3).
+**Amended:** 2026-11-06, the watch-list findings M1–M13 (owner, https://github.com/kferran/Foundry/issues/236#issuecomment-6689004528): §3.1, §3.2, §3.3, §3.4, §3.5, §4, §5.
 **Blueprint:** Poller (the fetch), plus a Compile run (the rating); see the Blueprint checklist.
 **Lane:** feature, an extension (`extensions/market/`) and one new headless command; about three pull requests (§7).
 
@@ -14,7 +15,7 @@ You want to know each morning what changed among the companies and bodies that s
 ## 2. Goals, non-goals, anti-goals
 
 - **Goals:** one daily page, `briefings/market/<date>.md`, written before the brief. Each item says what changed, why it matters to you, and links its source. The brief carries one line linking the page. A threat item posts one Slack line. Facts reach the entity notes through ingest.
-- **Non-goals (phase 2 on #236, each grilled first):** customer input, findings by bucket with claim states, dedupe with counts, page snapshots and diffs of pricing or changelog pages, the weekly review, decision packs.
+- **Non-goals (phase 2 on #236, each grilled first):** customer input, findings by bucket with claim states, dedupe with counts, page snapshots and diffs of pricing or changelog pages (anchor-only changelogs among them), sources that publish only JSON (M7), the weekly review, decision packs.
 - **Anti-goals:**
   - No names of companies, bodies, sites or the industry in the template: the vault supplies them.
   - No model session with network access (#416), and no new web tool in any profile.
@@ -27,20 +28,21 @@ You want to know each morning what changed among the companies and bodies that s
 ### 3.1 The watch list and the press list (vault configuration)
 
 `extensions/market/schemas/config.md` adds two keys to `system/config.md`. Both are lists of maps, like `watch_channels`:
-- `market_watch`: `{name, group, newsroom, feed}`, one per entry. `group` is the vault's own label, for example one of four groups. `newsroom` is an HTTPS page URL and `feed` an RSS or Atom URL; at least one is set.
+- `market_watch`: `{name, group, newsroom, feed, match, exclude}`, one per entry. `group` is the vault's own label, for example one of four groups. `newsroom` is an HTTPS page URL and `feed` an RSS or Atom URL. An entry with neither is name-only (M1): the fetch skips it, and it becomes a candidate only through a press feed's name match. `match` is an optional path prefix for the newsroom's release links (M2). `exclude` is an optional regex on item titles; a matching item is dropped (M12).
 - `market_press`: `{name, feed}`, the trade-press feeds to sweep.
 
-The extension also adds `market_runs_per_day` (int, default 1), `market_model` (default `sonnet`) and `market_timeout_minutes` (default 20). The template ships an example block in `extensions/market/templates/config.example.md` with placeholder entries only.
+The extension also adds `market_runs_per_day` (int, default 1), `market_model` (default `sonnet`), `market_timeout_minutes` (default 20), `market_alert_groups` (list of groups whose threats post, default all, M9) and `market_keep_groups` (list of groups whose items skip the low-impact drop, default none, M10). The template ships an example block in `extensions/market/templates/config.example.md` with placeholder entries only.
 
 ### 3.2 Fetch (Poller, no model)
 
 `extensions/market/scripts/market_fetch.py` runs from the extension's unit at `{{PRE_BRIEF_TIME}}` and again for each extra run of the day (§3.6). Per source (each watch entry's newsroom and feed, each press feed):
-- It reads the source over HTTPS with the standard library, with a 30-second timeout and a size cap. It follows the shape of telemetry's `http.py`: the same error classes (auth, transient, bad) and the same stub seam for tests.
-- **A feed** is parsed with `xml.etree` (RSS 2.0 items and Atom entries): title, link, date, summary.
-- **A newsroom page** is parsed with `html.parser`: the set of article links on it (same host, a path deeper than the page's own). A link not seen before is a new item; the title is the link text.
-- It keeps per-source state in `system/logs/market_state.json`: the item links seen in the last 30 days, the last success and the failure streak. It writes atomically, like telemetry's store.
+- It reads the source over HTTPS with the standard library, with a 30-second timeout, a 4 MB size cap (M8) and one fixed user agent, `Mozilla/5.0 (compatible; foundry-market/1.0)` (M3). It follows the shape of telemetry's `http.py`: the same error classes (auth, transient, bad) and the same kind of stub seam for tests. A 403 or a bot-check page is class `auth`; it is never retried with another user agent.
+- **A feed** is parsed with `xml.etree` (RSS 2.0 items and Atom entries): title, link, date, summary, and the item's `guid` or Atom `id`. Tags inside a title are stripped to text, and a two-digit year reads as 20YY (M6).
+- **A newsroom page** is parsed with `html.parser`: the set of article links on it (same host, a path under the entry's `match` prefix, or deeper than the page's own when `match` is unset). A link not seen before is a new item; the title is the link text.
+- It keeps per-source state in `system/logs/market_state.json`: the item keys seen in the last 30 days (the `guid` or `id`, else the link, never the position: M13), the last success and the failure streak. It writes atomically, like telemetry's store.
 - **A press feed's item** is a candidate only when its title or summary names a watch entry (`name`, matched as a whole word, case-insensitive).
-- New candidates go to `raw/market/<date>/candidates.jsonl`: one object per item with `{source, entry, group, title, link, published, summary}`. Summaries are cut to 500 characters and passed through `redact_credentials`, the extension API's redaction.
+- New candidates go to `raw/market/<date>/candidates.jsonl`: one object per item with `{source, entry, group, title, link, published, summary}`. Summaries are cut to 500 characters and passed through `redact_credentials`, the extension API's redaction. An item whose title matches its entry's `exclude` is dropped.
+- **At most 25 candidates per group per run** (M11), newest first. The rest are marked seen and counted in `raw/market/<date>/held.json` (`{<group>: <count>}`, summed over the day's runs), which the page reports.
 - One failed source never stops the others. A failure is logged and, after 3 failed runs in a row, alerted once with its class (`[market_source]`, severity `now`, like `telemetry_source`; the class maps to the Sources classes: auth, network, timeout, other).
 - The brief's Sources line shows the fetch's state: `brief/prep.sh` reads the fetch log and calls `prep_source market ok|failed <class>`, as intraday does. A smoke row runs the fetch's `--check`.
 - Only the hosts named in `market_watch` and `market_press` are fetched. The script runs no model and sends nothing.
@@ -69,14 +71,14 @@ The rating is its own headless run (owner, question 3), with no network and inge
   - one sentence on why it matters to you, grounded in those notes;
   - the source link.
 
-  It drops `watch` items rated `low`.
+  It drops `watch` items rated `low`, except items from a `market_keep_groups` group: those go under `## News`, at most 10 per group, ranked by impact (M10).
 - **It writes** `briefings/market/<date>.md` to staging, the run's only target. The gate checks it against the `market_page` schema. A later run the same day stages the existing page and rewrites it with all of the day's items: it keeps every heading and every earlier item, so the gate's shrink guard holds.
 - **It is capped** at `market_timeout_minutes` (default 15, at most `HEADLESS_TIMEOUT`) and runs on `market_model`. A run past its cap is stopped, and the brief says `Market: unavailable (timeout)`.
 
 ### 3.4 The page (`market_page`, an extension schema)
 
-- **Frontmatter:** `type: market_page`, `date`, `partition` (`market_partition`, default `work`; `shared` is refused, like intraday's fallback, since the rating grounds its sentences in one partition's notes), `provenance: [headless]`, `sources` (the item links) and `counts` (`{threat, opening, watch}`).
-- **Body:** `## Threats`, `## Openings`, `## Watch` and `## Proposed changes`, each present even when empty, the first three ranked by impact. Each item is `**<Entry>**: <what changed>. <Why it matters>. [<source title>](<link>)`. A proposed change is `- [[<project note>]]: <the change> (<link>)`, naming a project note from the index; it is never applied.
+- **Frontmatter:** `type: market_page`, `date`, `partition` (`market_partition`, default `work`; `shared` is refused, like intraday's fallback, since the rating grounds its sentences in one partition's notes), `provenance: [headless]`, `sources` (the item links) and `counts` (`{threat, opening, watch, news}`).
+- **Body:** `## Threats`, `## Openings`, `## Watch`, `## News` and `## Proposed changes`, each present even when empty, the first four ranked by impact. When `held.json` counts any items, one line under the title says `Held back: <n> items (<group> <n>, …)`. Each item is `**<Entry>**: <what changed>. <Why it matters>. [<source title>](<link>)`. A proposed change is `- [[<project note>]]: <the change> (<link>)`, naming a project note from the index; it is never applied.
 - **Folders:** `briefings/market/`. The brief's archive step moves only top-level briefings, so market pages stay where they are.
 
 ### 3.5 What the page feeds
@@ -87,7 +89,7 @@ The rating is its own headless run (owner, question 3), with no network and inge
   - or `Market: unavailable (<reason>)` when the run failed, timed out or wrote no page.
 
   `brief/section.md` tells the brief to copy the line as is.
-- **Slack:** after the page publishes, `market_notify.py` writes one `[market]` alert line per `threat` item (`Market threat: <entry>: <what changed> <link>`). The `market` tag has severity `now`. Notify redacts what it sends, so a link holding an id may arrive partly masked.
+- **Slack:** after the page publishes, `market_notify.py` writes one `[market]` alert line per `threat` item from a group in `market_alert_groups` (all groups when unset, M9) (`Market threat: <entry>: <what changed> <link>`). A threat from another group stays on the page and does not post. The `market` tag has severity `now`. Notify redacts what it sends, so a link holding an id may arrive partly masked.
 - **Once per threat:** `market_notify.py` keeps the links it has posted in `system/logs/market_state.json` for 14 days. The alert file's own once-a-day key matches only a line's start, within one day.
 - **The entity notes:** after the page publishes, a copy of it is dropped in `raw/inbox/` as `market-<date>.md`. Intake routes it to ingest like any other drop, which adds each fact to its entity note with the page as source. (Owner question 2 decides whether it waits for a tick first.)
 - **A proposed change:** each `## Proposed changes` line becomes one `owed` Now line, `Review a proposed change to <project>: <the change>`, with `--rec` and no evidence. It is added by `market_notify.py` through `now.py add`, never by the session.
@@ -102,8 +104,8 @@ The rating is its own headless run (owner, question 3), with no network and inge
 ## 4. Safety
 
 - **Pages, feeds and search results are data.** The fetch script parses them without a model. The rating session gets them only as candidate text, with no tool beyond the staging write, and the gate checks its one page.
-- **Fetching:** only listed hosts, over HTTPS, with no credentials, and redirects only to the same host.
-- **Size caps:** each fetch is size-capped, and candidates are cut and redacted.
+- **Fetching:** only listed hosts, over HTTPS only (an http-only feed is left out, M4), with no credentials, one fixed user agent that names the client, and redirects only to the same host.
+- **Size caps:** each fetch stops at 4 MB, and candidates are cut and redacted.
 - **No new network for any session:** the rating run has the headless profile as it is today.
 
 ## 5. Tests
@@ -113,12 +115,20 @@ The rating is its own headless run (owner, question 3), with no network and inge
   - A press item counts only when it names an entry.
   - A failed source does not stop the others; three failures alert once.
   - An off-list redirect is refused.
+  - A name-only entry is never fetched and still matches press items.
+  - A `match` prefix finds root-level and date-permalink release links.
+  - A two-digit-year `pubDate` and a title with tags parse.
+  - An `exclude` regex drops a release candidate.
+  - A feed out of date order gives each item once (keys by `guid`).
+  - A group over 25 candidates passes the newest 25 and counts the rest in `held.json`.
+  - A body over 4 MB is refused as `bad`.
+- **Groups:** a threat outside `market_alert_groups` posts nothing; a low `watch` item from a `market_keep_groups` group lands under `## News`.
 - **The rating:** a stub run writes a page that the gate accepts; a page outside `briefings/market/` or with a missing count is refused.
 - **The brief line:** a page gives one line; no page, a failed run or a timeout give the `unavailable` line.
 - **Notify:** a threat item gives one `[market]` line, and the same link the next run gives none.
 - **Runs per day:** 2 renders a second timer time with no code change.
 - **The cap:** a run past `market_timeout_minutes` exits with the timeout and leaves no page.
-- **Live acceptance:** in a throwaway clone, one real rating run over fixture candidates, then the brief line.
+- **Live acceptance:** in a throwaway clone, one real rating run over 70 fixture candidates (M11), timed against `HEADLESS_TIMEOUT`, then the brief line.
 
 ## 6. Docs
 
@@ -160,6 +170,8 @@ The core cap and the brief's word cap rise by their measured counts, with the re
 - C14 gate escape: holds by the rating's only write, staging, checked by the gate.
 
 ## Grill
+
+On 2026-11-06 the owner checked the watch list against this spec (two comments on #236) and took every recommendation for the findings, M1–M13, recorded at https://github.com/kferran/Foundry/issues/236#issuecomment-6689004528 and folded into §3.1 to §5.
 
 The decisions are on #236 (owner, 2026-10-16). On 2026-10-31 the owner answered the three questions below, each with the recommended option: (1) the script reads the press feeds, (2) facts reach entity notes through ingest on their own, (3) the rating is its own run, through a generic `commands` manifest field.
 1. **Gathering:** the 10-16 decision has a headless agent sweep the trade press "by web search". Since #416, no headless session has network access, and WebSearch is denied in every profile. This spec fetches the trade press's feeds by script instead, so the rating session reads only text the script gathered.
