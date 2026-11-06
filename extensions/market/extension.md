@@ -7,10 +7,14 @@ sources:
   - {name: market, credential: "", renew: ""}
 smoke:
   - {source: market, timeout: 30, connector: false, run: "scripts/market_fetch.py --check"}
+brief: true
+commands:
+  - {name: market, targets: ["briefings/market/<date>.md"], model_key: market_model, timeout_key: market_timeout_minutes}
 units:
   - {name: foundry-market, roles: [standalone, server]}
 alert_tags:
   - {tag: market_source, severity: now}
+  - {tag: market, severity: now}
 allow: ["Bash(extensions/market/scripts/market_fetch.py --check)"]
 deps: []
 index_ignore: ["raw/market"]
