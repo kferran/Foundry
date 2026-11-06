@@ -1864,3 +1864,48 @@ def test_a_requeue_with_no_earlier_handoff_gets_none_and_a_third_run_takes_the_n
     assert nr._previous_handoff(ctx, {"id": "o9", "run": "3"}, clone) is True
     assert (clone / ".nightshift/handoff.md").read_text() == "second"
     assert nr._previous_handoff(ctx, {"id": "o9", "run": "1"}, tmp_path / "other") is False
+
+
+# --- the review's fix pass (#525) ----------------------------------------------------------------------------
+
+def test_a_token_straddling_a_cut_is_masked_before_the_cut():
+    cmd = "curl -s -H 'Authorization: token " + GHP + "' https://api.example.com/x"
+    line = nr._loop_needs(cmd, "Exit code 1\nboom " + GHP)
+    assert "ghp_" not in line and GHP[4:20] not in line
+
+
+def test_a_multi_line_or_long_loop_line_is_one_short_line():
+    line = nr._loop_needs('git commit -m "$(cat <<EOF\nmsg\nEOF\n)"', "Exit code 1\nboom")
+    assert "\n" not in line
+    long = nr._loop_needs("c" * 300, "Exit code 1\n" + "e" * 300)
+    assert len(long) <= len("Same failure 3 times: ") + 60 + 2 + 60
+
+
+def test_the_handoff_masks_a_token_at_the_200_character_cut(tmp_path):
+    cmd = "x" * 180 + " " + GHP + "\nsecond line `tick`"
+    idir = item_dir_with(tmp_path, events(("bash", cmd, "Exit code 1\nboom")))
+    text = nr._handoff(FM, idir, {"state": "blocked", "reason": "loop", "needs": ["x"]}).read_text()
+    bullet = next(l for l in text.splitlines() if l.startswith("- `"))
+    assert "ghp_" not in text and GHP[4:20] not in text
+    assert bullet.count("`") == 2
+
+
+def test_odd_stream_content_never_raises():
+    lines = [json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": ["x"], "name": "Bash", "input": "ls"}]}}),
+             json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "b", "name": "Bash", "input": ["ls"]}]}}),
+             json.dumps({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": {"a": 1}, "is_error": True}]}}),
+             json.dumps(["not", "a", "dict"]), json.dumps({"type": "user", "message": "text"})]
+    assert ss.bash_events(lines, {}) == []
+
+
+def test_a_handoff_that_fails_never_stops_the_finish(env, tmp_path, monkeypatch):
+    vault, tmp = env
+    idir = item_dir_with(tmp_path, events(FAIL))
+    assert add(vault, "--now") == 0
+    path, fm = only_item(vault)
+
+    def boom(*a, **k):
+        raise ValueError("bad stream")
+    monkeypatch.setattr(nr, "_handoff", boom)
+    nr._finish(nr.Ctx(vault, NOW), path, fm, idir, None, {"state": "blocked", "reason": "loop", "needs": ["x"]}, ran=True)
+    assert only_item(vault)[1]["state"] == "blocked"

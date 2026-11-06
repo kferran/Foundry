@@ -183,12 +183,13 @@ def bash_events(lines, ids: dict) -> list:
             if not isinstance(c, dict):
                 continue
             if ev.get("type") == "assistant" and c.get("type") == "tool_use":
-                if c.get("name") == "Bash":
-                    ids[c.get("id")] = str((c.get("input") or {}).get("command") or "")
+                inp = c.get("input") if isinstance(c.get("input"), dict) else {}
+                if c.get("name") == "Bash" and isinstance(c.get("id"), str):
+                    ids[c["id"]] = str(inp.get("command") or "")
                 elif c.get("name") in EDITS:
                     out.append(("edit", "", "", ""))
             elif ev.get("type") == "user" and c.get("type") == "tool_result" and c.get("is_error") \
-                    and c.get("tool_use_id") in ids:
+                    and isinstance(c.get("tool_use_id"), str) and c["tool_use_id"] in ids:
                 command, text = ids[c["tool_use_id"]], _error_text(c.get("content"))
                 last = ([l for l in text.splitlines() if l.strip()] or [""])[-1]
                 out.append(("fail", error_key(command, text), command, last))
