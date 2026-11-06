@@ -15,5 +15,6 @@ allow: ["Bash(extensions/demo/scripts/demo_check.sh)"]
 deps: []
 index_ignore: ["raw/demo"]
 importer: {type: demo_drop}
+commands: [{name: demo, targets: ["briefings/demo/<date>.md"], model_key: demo_model, timeout_key: demo_timeout_minutes}]
 ---
 The text /setup shows when the owner turns demo on, and the questions it asks.
