@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Quirks</title>
+<item><title>Release <a href="x">4.2</a> ships</title><link>https://example.org/r/4.2</link><pubDate>Thu, 05 Nov 26 10:00:00 GMT</pubDate></item>
+<item><title>No date here</title><link>https://example.org/r/nodate</link><pubDate>sometime soon</pubDate></item>
+</channel></rss>
