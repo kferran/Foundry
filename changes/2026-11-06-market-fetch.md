@@ -1,2 +1,2 @@
-- Added: the `market` extension's fetch: each morning it reads your watch list's newsrooms and feeds and your press feeds into `raw/market/<date>/` (#236)
+- Added: the `market` extension's fetch: each morning it reads your watch list's newsrooms and feeds and your press feeds into `raw/market/<date>/` (#522)
   - Action: list your groups, entries and press feeds in `system/config.md` (see `extensions/market/templates/config.example.md`), then add `market` to `extensions`.
