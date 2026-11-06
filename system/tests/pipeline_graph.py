@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Factory F6 (#477): check system/pipeline.yml against the code.
 
-Usage: pipeline_graph.py <root> [gaps-file]
+Usage: pipeline_graph.py <root> [gaps-file] [--extensions] [--mermaid]
 Prints one `<subject>: <problem>` line per problem, sorted, and exits 0; pipeline.bats asserts on the output, as
-conformance.bats does with timing_problems. A gaps-file line is `<node> <rule> <issue>  # what is missing`; it
+conformance.bats does with timing_problems. --extensions adds every extensions/<name>/pipeline.yml in the tree and
+every unit under extensions/<name>/units/ (F6 PR 2a): an extension's `nodes` are its own units, and its `extends`
+adds the scripts, reads, writes and locks of its steps to a core node. --mermaid prints the graph as a Mermaid
+flowchart instead of the problems. A gaps-file line is `<node> <rule> <issue>  # what is missing`; it
 silences that rule for that node, and a listed gap that no longer fails prints `<node> <rule>: gap closed, delete
 its line`, so the list only shrinks. Standard library and PyYAML only; it reads files and runs nothing.
 """
@@ -15,24 +18,63 @@ from pathlib import Path
 
 import yaml
 
-LOCKS = ("run", "intake", "nightshift", "meetings", "notify", "index", "stage")
+LOCKS = ("run", "intake", "nightshift", "meetings", "notify", "index", "stage", "telemetry")
 # A lock file name as text: `intake.lock` followed by `(` is vaultlib's intake.lock() helper, not a lock file.
 LOCK_RE = re.compile(r"(?<![\w.])(" + "|".join(LOCKS) + r")\.lock(?![\w(])")
-EDGE_RE = re.compile(r"^(alert:[a-z_]+|quarantine|retry-next-tick|caller:[a-z_-]+|unavailable|ledger|none)$")
+EDGE_RE = re.compile(r"^(alert:[a-z_]+|quarantine|retry-next-tick|restart|caller:[a-z_-]+|unavailable|ledger|none)$")
+RESTART_RE = re.compile(r"^Restart=(on-failure|always)\s*$", re.M)   # restart: systemd starts the unit again
+MERGED = ("scripts", "reads", "writes", "locks")   # the fields an extension's `extends` appends to a core node
 LEDGER_TRAP = "trap write_ledger EXIT"   # run_headless.sh: each exit is a ledger line; notify posts a failed one
-HANDLER = {".sh": "crash_trap ", ".py": "alerts.guard("}
+# A crash handler per language: crash_trap (lib_fetch.sh), or alerts.guard, also as vaultlib.api's guard.
+HANDLER = {".sh": re.compile(r"crash_trap "), ".py": re.compile(r"alerts\.guard\(|^from vaultlib\.api import .*\bguard\b", re.M)}
 
 
-def known_tags(root):
+def known_tags(root, extensions):
+    """vaultlib/alerts.py TAGS, plus each extension manifest's alert_tags with --extensions."""
+    tags = set()
     tree = ast.parse((root / "system/scripts/vaultlib/alerts.py").read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "TAGS" for t in node.targets):
-            return set(ast.literal_eval(node.value))
-    return set()
+            tags = set(ast.literal_eval(node.value))
+    for m in sorted((root / "extensions").glob("*/extension.md")) if extensions else []:
+        head = m.read_text(encoding="utf-8").split("---")
+        meta = yaml.safe_load(head[1]) if len(head) > 2 else {}
+        tags |= {t["tag"] if isinstance(t, dict) else t for t in (meta or {}).get("alert_tags") or []}
+    return tags
 
 
-def unit_names(root):
-    return sorted(p.name[: -len(".service.in")] for p in (root / "system/systemd").glob("foundry-*.service.in"))
+def unit_files(root, extensions):
+    """{unit name: its .service.in path}: core's, plus each extension's units with --extensions."""
+    found = list((root / "system/systemd").glob("foundry-*.service.in"))
+    if extensions:
+        found += (root / "extensions").glob("*/units/foundry-*.service.in")
+    return {p.name[: -len(".service.in")]: p for p in sorted(found)}
+
+
+def load(root, extensions):
+    """(sources, sinks, nodes, problems): core's manifest, plus each extension's with --extensions."""
+    data = yaml.safe_load((root / "system/pipeline.yml").read_text(encoding="utf-8")) or {}
+    nodes = {k: dict(v) for k, v in (data.get("nodes") or {}).items()}
+    sources = [s["path"] for s in data.get("sources") or []]
+    sinks = [s["path"] for s in data.get("sinks") or []]
+    out = []
+    for f in sorted((root / "extensions").glob("*/pipeline.yml")) if extensions else []:
+        ext = f.parent.name
+        extra = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+        for name, n in (extra.get("nodes") or {}).items():
+            if name in nodes:
+                out.append((name, "P1", f"{ext}: node {name} is already declared"))
+            else:
+                nodes[name] = dict(n)
+        for name, more in (extra.get("extends") or {}).items():
+            if name not in nodes:
+                out.append((ext, "P1", f"{ext}: extends no node {name}"))
+                continue
+            for key in MERGED:
+                nodes[name][key] = list(nodes[name].get(key) or []) + list((more or {}).get(key) or [])
+        sources += [s["path"] for s in extra.get("sources") or []]
+        sinks += [s["path"] for s in extra.get("sinks") or []]
+    return sources, sinks, nodes, out
 
 
 def parts(path):
@@ -56,15 +98,11 @@ def meets(a, b):
     return same(a, b) or covers(a, b) or covers(b, a)
 
 
-def check(root, gaps):
-    """[(node or path, rule, problem line)] for every problem, before gaps are applied."""
-    data = yaml.safe_load((root / "system/pipeline.yml").read_text(encoding="utf-8")) or {}
-    nodes = data.get("nodes") or {}
-    sources = [s["path"] for s in data.get("sources") or []]
-    sinks = [s["path"] for s in data.get("sinks") or []]
-    tags = known_tags(root)
-    units = unit_names(root)
-    out = []
+def check(root, gaps, extensions=False):
+    """The problem lines, sorted, after gaps are applied."""
+    sources, sinks, nodes, out = load(root, extensions)
+    tags = known_tags(root, extensions)
+    units = unit_files(root, extensions)
 
     # P1: one node per unit, and no node without its unit.
     declared = {n.get("unit"): name for name, n in nodes.items()}
@@ -99,7 +137,8 @@ def check(root, gaps):
         elif other.startswith("alert:"):
             entry = n.get("entry") or (scripts[0] if scripts else "")
             text = (root / entry).read_text(encoding="utf-8", errors="replace") if (root / entry).is_file() else ""
-            if HANDLER.get(Path(entry).suffix, "\0") not in text:
+            handler = HANDLER.get(Path(entry).suffix)
+            if not (handler and handler.search(text)):
                 out.append((name, "P3", f"{name}: other is {other} but {entry} installs no crash handler"))
         elif other == "ledger":   # every exit is a run ledger line, which notify posts when it failed
             entry = n.get("entry") or (scripts[0] if scripts else "")
@@ -113,8 +152,11 @@ def check(root, gaps):
             elif edge.startswith("alert:") and edge[6:] not in tags:
                 out.append((name, "P4", f"{name}: {edge} is not a known tag"))
             elif (edge == "retry-next-tick" and n.get("unit") in units
-                  and not (root / "system/systemd" / f"{n.get('unit')}.timer.in").is_file()):
+                  and not units[n["unit"]].with_name(f"{n['unit']}.timer.in").is_file()):
                 out.append((name, "P5", f"{name}: retry-next-tick on a unit with no timer"))
+            elif (edge == "restart" and n.get("unit") in units
+                  and not RESTART_RE.search(units[n["unit"]].read_text(encoding="utf-8", errors="replace"))):
+                out.append((name, "P5", f"{name}: restart on a unit with no Restart="))
             elif edge.startswith("caller:") and edge[7:] not in nodes:
                 out.append((name, "P4", f"{name}: {key} names no node {edge[7:]}"))
 
@@ -149,11 +191,36 @@ def read_gaps(path):
     return gaps
 
 
+def mermaid(root, extensions):
+    """The graph as a Mermaid flowchart: each node a box, each declared path a folder between its writers and
+    readers, and `outside` feeding the sources and taking the sinks. Locks are left out (spec G3). Sorted, so the
+    same manifests always print the same text."""
+    sources, sinks, nodes, _ = load(root, extensions)
+    paths = sorted({p for n in nodes.values() for k in ("reads", "writes") for p in n.get(k) or []}
+                   | set(sources) | set(sinks))
+    pid = {p: f"p{i}" for i, p in enumerate(paths)}
+    lines = ["flowchart LR", "  outside([outside])"]
+    lines += [f"  {name}[{name}]" for name in sorted(nodes)]
+    lines += [f'  {pid[p]}[("{p}")]' for p in paths]
+    edges = set()
+    for name, n in nodes.items():
+        edges |= {f"  {name} --> {pid[p]}" for p in n.get("writes") or []}
+        edges |= {f"  {pid[p]} --> {name}" for p in n.get("reads") or []}
+    edges |= {f"  outside --> {pid[p]}" for p in sources} | {f"  {pid[p]} --> outside" for p in sinks}
+    return lines + sorted(edges)
+
+
 def main(argv):
-    if not argv or len(argv) > 2:
+    flags = {a for a in argv if a.startswith("--")}
+    args = [a for a in argv if not a.startswith("--")]
+    if not args or len(args) > 2 or flags - {"--extensions", "--mermaid"}:
         print(__doc__.strip().splitlines()[2], file=sys.stderr)
         return 2
-    for line in check(Path(argv[0]), read_gaps(argv[1] if len(argv) > 1 else None)):
+    root, extensions = Path(args[0]), "--extensions" in flags
+    if "--mermaid" in flags:
+        print("\n".join(mermaid(root, extensions)))
+        return 0
+    for line in check(root, read_gaps(args[1] if len(args) > 1 else None), extensions):
         print(line)
     return 0
 

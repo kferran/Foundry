@@ -1,0 +1,21 @@
+# The intraday extension in the pipeline graph (factory F6 PR 2a, #477): system/tests/pipeline.bats checks it with
+# --extensions, in the shape of system/pipeline.yml.
+nodes:
+  watch:
+    unit: foundry-watch
+    scripts: [extensions/intraday/scripts/watch_fetch.sh, extensions/intraday/scripts/watch.py,
+              extensions/intraday/scripts/watchlib/route.py]
+    reads: [system/logs/watch/, wiki/*/Now.md]
+    writes: [system/logs/watch/, wiki/*/Now.md, raw/inbox/, system/logs/alerts_*.md]   # raw/inbox/: the capture file
+    locks: [run.lock]
+    failure:
+      session: alert:intraday   # a failed session: one alert a day, the others run
+      busy: alert:intraday      # watch.py route exits 4 on a busy run.lock; watch_fetch.sh's failed route alerts
+      other: alert:intraday     # crash_trap foundry-watch
+
+extends:
+  intake:   # the intake tick runs today_log.py tick
+    scripts: [extensions/intraday/scripts/today_log.py]
+    reads: [system/logs/watch/, raw/*/notes/, raw/*/archive/, system/logs/meetings-*.jsonl, wiki/*/meetings/]
+    writes: [briefings/, system/logs/watch/]   # the day's today file, and its ledger
+    locks: [run.lock]

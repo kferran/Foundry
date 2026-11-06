@@ -1,0 +1,6 @@
+# The handoffs extension in the pipeline graph (factory F6 PR 2a, #477): system/tests/pipeline.bats checks it with
+# --extensions. Its Source runs inside the brief's prep.
+extends:
+  brief:
+    scripts: [extensions/handoffs/scripts/jira_fetch.sh]
+    writes: [system/logs/inputs/, system/logs/jira_fetch-*.jsonl]

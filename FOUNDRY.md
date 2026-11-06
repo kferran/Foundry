@@ -449,7 +449,148 @@ Every feature is built on one line, in this order. Each step names where its det
 1. **Blueprint:** the feature's shape (Source, Poller, Compile run or Work Order), named in its spec ([Architecture](#architecture)).
 2. **Standard parts:** `vaultlib/connector.py` (the stream walker and `Fail`), `lib_fetch.sh` (`logline`, `alert_once`, `fail`, `skip`), `vaultlib/config.py` (the one config reader) and `system/tests/stub_claude_connector` (the connector stub), each listed with its reason in `conformance.bats`'s `PART_HOMES`; and `vaultlib/api.py`, the one module an extension imports.
 3. **Stations:** grill, spec, plan, build, review and close, each with its skill (the table below).
-4. **Gates:** `conformance.bats` (the spec and plan header lines, the part homes, the timing budgets), `test_source_rule.py` (the Source rule), `vault_integrity.bats` (the core budget, the vendor names, this manual's inventory) and `pipeline.bats` (the pipeline graph) fail CI. Each core unit has a node in `system/pipeline.yml` (its scripts, reads, writes, locks and failure edges); `pipeline.bats` checks the node's locks against the lock files its scripts name and its catch-all alert against the entry script's `crash_trap` or `alerts.guard`, and a silent path the code still has is a `PIPELINE_GAPS` line naming its issue (factory F6, #477).
+4. **Gates:** `conformance.bats` (the spec and plan header lines, the part homes, the timing budgets), `test_source_rule.py` (the Source rule), `vault_integrity.bats` (the core budget, the vendor names, this manual's inventory) and `pipeline.bats` (the pipeline graph) fail CI. Each core unit has a node in `system/pipeline.yml` (its scripts, reads, writes, locks and failure edges); `pipeline.bats` checks the node's locks against the lock files its scripts name and its catch-all alert against the entry script's `crash_trap` or `alerts.guard`, and a silent path the code still has is a `PIPELINE_GAPS` line naming its issue (factory F6, #477). An extension declares its own units, and the steps it runs inside core units (`extends: brief`), in `extensions/<name>/pipeline.yml`; `pipeline.bats` checks core alone and with every extension. A long-running unit whose catch-all is systemd starting it again declares `restart`, which its unit's `Restart=` must back. The graph, generated from the manifests (`python3 system/tests/pipeline_graph.py . --mermaid --extensions`; `pipeline.bats` fails when this block is stale):
+
+<!-- pipeline:begin -->
+```mermaid
+flowchart LR
+  outside([outside])
+  brief[brief]
+  console[console]
+  debrief[debrief]
+  intake[intake]
+  meetings[meetings]
+  nightshift[nightshift]
+  notify[notify]
+  smoke[smoke]
+  sync[sync]
+  telemetry[telemetry]
+  triage[triage]
+  update[update]
+  watch[watch]
+  p0[("briefings/")]
+  p1[("meetings/drop/")]
+  p2[("raw/*/archive/")]
+  p3[("raw/*/nightshift/")]
+  p4[("raw/*/notes/")]
+  p5[("raw/archive/")]
+  p6[("raw/inbox/")]
+  p7[("raw/meetings/")]
+  p8[("raw/telemetry/")]
+  p9[("system/logs/")]
+  p10[("system/logs/alerts_*.md")]
+  p11[("system/logs/followups_queue.txt")]
+  p12[("system/logs/health/")]
+  p13[("system/logs/inputs/")]
+  p14[("system/logs/jira_fetch-*.jsonl")]
+  p15[("system/logs/meetings-*.jsonl")]
+  p16[("system/logs/nightshift/")]
+  p17[("system/logs/rca/")]
+  p18[("system/logs/runs/")]
+  p19[("system/logs/telemetry_state.json")]
+  p20[("system/logs/watch/")]
+  p21[("system/quarantine/")]
+  p22[("system/telemetry/")]
+  p23[("wiki/")]
+  p24[("wiki/*/Now.md")]
+  p25[("wiki/*/meetings/")]
+  brief --> p0
+  brief --> p10
+  brief --> p12
+  brief --> p13
+  brief --> p14
+  brief --> p18
+  brief --> p24
+  brief --> p8
+  debrief --> p0
+  debrief --> p10
+  debrief --> p13
+  debrief --> p18
+  intake --> p0
+  intake --> p10
+  intake --> p11
+  intake --> p13
+  intake --> p15
+  intake --> p17
+  intake --> p18
+  intake --> p2
+  intake --> p20
+  intake --> p21
+  intake --> p23
+  intake --> p24
+  intake --> p5
+  intake --> p6
+  meetings --> p10
+  meetings --> p7
+  nightshift --> p10
+  nightshift --> p16
+  nightshift --> p23
+  nightshift --> p24
+  outside --> p0
+  outside --> p1
+  outside --> p22
+  outside --> p24
+  outside --> p3
+  outside --> p4
+  outside --> p6
+  p0 --> brief
+  p0 --> console
+  p0 --> intake
+  p0 --> outside
+  p1 --> intake
+  p10 --> brief
+  p10 --> console
+  p10 --> debrief
+  p10 --> notify
+  p11 --> intake
+  p13 --> brief
+  p13 --> console
+  p13 --> debrief
+  p15 --> intake
+  p16 --> brief
+  p16 --> debrief
+  p17 --> intake
+  p18 --> debrief
+  p18 --> notify
+  p19 --> telemetry
+  p2 --> debrief
+  p2 --> intake
+  p20 --> intake
+  p20 --> watch
+  p21 --> brief
+  p21 --> debrief
+  p22 --> brief
+  p22 --> telemetry
+  p23 --> brief
+  p23 --> console
+  p23 --> intake
+  p23 --> outside
+  p24 --> intake
+  p24 --> watch
+  p25 --> intake
+  p3 --> nightshift
+  p4 --> debrief
+  p4 --> intake
+  p5 --> outside
+  p6 --> intake
+  p7 --> intake
+  p8 --> brief
+  p8 --> outside
+  p9 --> brief
+  smoke --> p10
+  telemetry --> p10
+  telemetry --> p19
+  telemetry --> p8
+  triage --> p10
+  triage --> p24
+  update --> p10
+  update --> p13
+  watch --> p10
+  watch --> p20
+  watch --> p24
+  watch --> p6
+```
+<!-- pipeline:end -->
 5. **Defect labels:** one `defect:` label per fix ([Two lanes](#development)), and what holds each class (Defect classes, below).
 
 **Add a Source.**

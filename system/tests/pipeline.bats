@@ -23,6 +23,23 @@ gaps_file() { printf '%s\n' "$PIPELINE_GAPS" > "$BATS_TEST_TMPDIR/gaps"; echo "$
   [ -z "$output" ]
 }
 
+@test "with every extension's pipeline.yml, the graph still matches the code (F6 PR 2a)" {
+  if [ -e "$VAULT_ROOT/system/config.md" ]; then skip "this checkout is a vault; the rule guards the template"; fi
+  run python3 "$CHECK" "$VAULT_ROOT" "$(gaps_file)" --extensions
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "FOUNDRY.md's diagram is the generator's output (F6 PR 2a)" {
+  want="$(python3 "$CHECK" "$VAULT_ROOT" --mermaid --extensions)"
+  have="$(sed -n '/^<!-- pipeline:begin -->$/,/^<!-- pipeline:end -->$/p' "$VAULT_ROOT/FOUNDRY.md" | sed '1,2d;$d' | sed '$d')"
+  if [ "$have" != "$want" ]; then
+    echo "FOUNDRY.md's pipeline block is stale: replace it with python3 system/tests/pipeline_graph.py . --mermaid --extensions"
+  fi
+  [ "$have" = "$want" ]
+}
+
 # fixture: a tree with one unit foundry-a (and its timer), the real alert tags, one script and the given manifest.
 fixture() {
   R="$BATS_TEST_TMPDIR/r"
@@ -117,6 +134,58 @@ sinks:
   - {path: wiki/, by: owner}"
   run python3 "$CHECK" "$R"
   [ "$output" = "$(printf '%s\n' 'x/: written by a, read by no node and not a sink' 'y/: read by a, written by no node and not a source')" ]
+}
+
+# ext <name> <pipeline.yml text>: an extension in the fixture, with one unit foundry-<name> and its timer.
+ext() {
+  mkdir -p "$R/extensions/$1/units"
+  printf -- '---\nname: %s\nalert_tags: [{tag: %s, severity: now}]\n---\n' "$1" "$1" > "$R/extensions/$1/extension.md"
+  printf '[Service]\nRestart=on-failure\n' > "$R/extensions/$1/units/foundry-$1.service.in"
+  : > "$R/extensions/$1/units/foundry-$1.timer.in"
+  printf '%s\n' "$2" > "$R/extensions/$1/pipeline.yml"
+}
+
+@test "--extensions: an extension unit needs a node; its own tag passes; extends must name a node" {
+  fixture "$GOOD"
+  ext e 'extends:
+  zz: {scripts: [system/scripts/a.sh]}'
+  run python3 "$CHECK" "$R"
+  [ -z "$output" ]
+  run python3 "$CHECK" "$R" --extensions
+  [ "$output" = "$(printf '%s\n' 'e: extends no node zz' 'foundry-e: no node')" ]
+  ext e 'nodes:
+  e: {unit: foundry-e, scripts: [system/scripts/a.sh], locks: [run.lock], failure: {other: alert:e}}'
+  run python3 "$CHECK" "$R" --extensions
+  [ -z "$output" ]
+}
+
+@test "--extensions: extends adds the step's locks, so a lock the step's script names must be declared" {
+  fixture "$GOOD"
+  printf 'flock 9 system/notify.lock\n' > "$R/system/scripts/b.sh"
+  ext e 'nodes:
+  e: {unit: foundry-e, scripts: [system/scripts/a.sh], locks: [run.lock], failure: {other: alert:e}}
+extends:
+  a: {scripts: [system/scripts/b.sh]}'
+  run python3 "$CHECK" "$R" --extensions
+  [ "$output" = 'a: locks [run.lock] but its scripts name [notify.lock, run.lock]' ]
+}
+
+@test "P5: restart needs Restart= in the unit file" {
+  fixture "${GOOD/busy: retry-next-tick, other: alert:intake/other: restart}"
+  run python3 "$CHECK" "$R"
+  [ "$output" = 'a: restart on a unit with no Restart=' ]
+  printf '[Service]\nRestart=always\n' > "$R/system/systemd/foundry-a.service.in"
+  run python3 "$CHECK" "$R"
+  [ -z "$output" ]
+}
+
+@test "--mermaid: nodes, folders between writers and readers, and outside at the sources and sinks" {
+  fixture "$GOOD
+    writes: [x/]
+sources:
+  - {path: x/, by: owner}"
+  run python3 "$CHECK" "$R" --mermaid
+  [ "$output" = "$(printf '%s\n' 'flowchart LR' '  outside([outside])' '  a[a]' '  p0[("x/")]' '  a --> p0' '  outside --> p0')" ]
 }
 
 @test "P8: a listed gap silences its rule, and a gap that now passes must be deleted" {

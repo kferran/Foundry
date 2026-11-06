@@ -1,0 +1,10 @@
+# The console's node in the pipeline graph (factory F6 PR 2a, #477): system/tests/pipeline.bats checks it with
+# --extensions, in the shape of system/pipeline.yml.
+nodes:
+  console:
+    unit: foundry-console
+    scripts: [extensions/console/scripts/serve.sh]
+    reads: [briefings/, wiki/, system/logs/alerts_*.md, system/logs/inputs/]   # today.py: the Today screen, read-only
+    locks: []
+    failure:
+      other: restart   # Restart=on-failure in its unit; it starts no session and raises no alert

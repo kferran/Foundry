@@ -96,6 +96,9 @@ def test_a_scaffold_passes_the_line(tmp_path, case, name):
     assert r.returncode == 0, r.stdout
     r = bats(root, "--filter", "brief prompt is at most", "system/tests/prep.bats")   # the brief's word cap
     assert r.returncode == 0, r.stdout
+    assert (root / f"extensions/{name}/pipeline.yml").is_file()   # the Source joins the brief's node (F6 PR 2a)
+    r = bats(root, "--filter", "extension's pipeline.yml", "system/tests/pipeline.bats")
+    assert r.returncode == 0 and "ok 1" in r.stdout, r.stdout
     enable(root, name)
     r = run(root, "system/scripts/extensions.py", "check")
     assert (r.returncode, r.stdout) == (0, "")
