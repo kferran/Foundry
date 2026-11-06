@@ -30,7 +30,7 @@ The verify also accepts a test that passes before the change. Nothing checks tha
 
 **Non-goals:** CI on the pull request (D2); proposals from issues (D3); a loop kind with a stop condition (#263); unattended conductor runs (#243); memory of failures across orders (a later phase reads the per-order records this writes); research orders.
 
-**Anti-goals:** no retry for a block that needs the owner (`session` questions, `protected`, `toolchain`, a failed `order_install`, a command missing from the sandbox, `fence`, `containment`, `profile`, `cancelled`); no step down to a cheaper model; no retry that rewrites history; no new unit or config key; the pull request still waits for the owner's merge.
+**Anti-goals:** no retry for a block that needs the owner (`session` questions, `protected`, `toolchain`, a failed `order_install`, a command missing from the sandbox, `fence`, `containment`, `profile`, `cancelled`, and `loop`, the same Bash failure 3 times, from `2026-11-06-work-order-loop-guards-design.md`); no step down to a cheaper model; no retry that rewrites history; no new unit or config key; the pull request still waits for the owner's merge.
 
 ## Grill
 
@@ -74,7 +74,7 @@ A plan order's delivery outcome climbs when its reason is one of:
 | `no commits` | the branch has no commit past the base (or, on a rung, past the last delivered commit; §4.5) |
 | `no result` | the session finished with no readable `.nightshift/result.json` |
 
-Every other ending stays as today. `--escalate off` on the note keeps every ending as today.
+Every other ending stays as today; `loop` (the loop guards spec, `2026-11-06-work-order-loop-guards-design.md` §4) never climbs (owner, 2026-11-06). `--escalate off` on the note keeps every ending as today.
 
 ### 4.2 Rungs
 
@@ -111,6 +111,8 @@ Change only these paths: <one per line>
 ## Previous session's last message
 <the result event's text from stream.last.jsonl, last 2,000 characters>
 ```
+
+The loop guards spec (`2026-11-06-work-order-loop-guards-design.md` §5) builds the handoff writer first, for a blocked or failed plan order and its requeue, with the Why it stopped, Failing check, Failed commands and Previous session's last message sections. A rung reuses that writer and adds Base, Fence and Dead ends.
 
 The diff itself is not pasted (Q25 asks for it): the session has git in its clone, and a pasted diff has no size limit. A `no result` handoff has no failing-check block and says the session ended without writing `result.json`.
 
