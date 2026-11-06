@@ -1,6 +1,6 @@
 # Factory F6, PR 2: lock order, cross-unit waits, the diagram and extension nodes (#477)
 
-**Grill:** pending. Questions G1–G6 below, each with the builder's recommendation, go to the owner in one batch.
+**Grill:** 2026-11-06, https://github.com/kferran/Foundry/issues/477#issuecomment-6685915568 (G1–G7; the owner took every recommendation).
 **Builder check:** 2026-11-04, from a read of master at `cd1d82b` (F6 PR 1 and crash-alerts PRs A–C merged; `PIPELINE_GAPS` empty). Two findings change PR 1's non-goal list:
 - **F6 spec O1 is already done.** The timing rule (`conformance.bats` `TIMING_VALUES`) already reads every lock wait in core (`headless.lock`, `ingest.lock`, `archive.lock`, `intake.lock`, `triage.lock`, `update.lock`) and sums them into each unit's limit. PR 2 does not add a second per-unit timing check.
 - **Extension nodes need no core field.** PR 1's non-goal said a `pipeline` field in `extension.md` needs a change to `vaultlib/extensions.py` `FIELDS` (core lines). A file next to the manifest, `extensions/<name>/pipeline.yml`, read only by the test, needs none: the core cap does not count `system/tests`.
@@ -15,9 +15,9 @@ PR 1 checks each node on its own: its locks, its catch-all edge, its folders. Tw
 
 Extension units (console, intraday's watch, telemetry) have no node, so P1–P8 skip them. FOUNDRY.md has no picture of the graph.
 
-## 2. Grill questions (owner to decide)
+## 2. Decisions (owner, 2026-11-06)
 
-| # | Question | Recommendation |
+| # | Question | Decision |
 |---|---|---|
 | G1 | How is lock order stated? | `locks` becomes an ordered list, outermost first. A new rule P9 fails when two nodes take any two locks in opposite orders. P2 keeps comparing the set with the code; the order is the declaration's claim, checked against the other nodes. |
 | G2 | Cross-unit waits: what does the rule check? | P10: for each lock a node waits on, if its wait (a `TIMING_VALUES` key named on the lock) is shorter than the longest hold of that lock by another node (that node's `TIMING_STEPS` sum), the waiting node must declare a `busy` edge that is not `none`. It reuses the timing tables; it does not ask for waits to cover every hold, which would push the brief past its limit. |
@@ -25,8 +25,9 @@ Extension units (console, intraday's watch, telemetry) have no node, so P1–P8 
 | G4 | Extension nodes | `extensions/<name>/pipeline.yml`, the same node shape, for every extension that ships a unit (console, intraday, telemetry today). The rules run on core alone in `gate` and on core plus every extension in `gate-all-extensions`. An extension's Sources and tick steps, which run inside core units, add their scripts to that core node through the same file (`extends: brief` or `extends: intake`). |
 | G5 | `/new-source` (F6 Q9) | The skill writes or extends the extension's `pipeline.yml` for the Source's fetch script (`extends: brief`), and the skill's checklist adds the pipeline test to the checks it runs. |
 | G6 | Delivery | Two PRs: PR 2a extension nodes, the diagram and `/new-source` (no new rule on core); PR 2b P9 and P10 with their gap lines. Either can merge first. |
+| G7 | Zero-wait callers (was O3) | P10 also covers `flock -n` callers, the zero-wait case of the same rule. They all declare `busy` today, so they pass and stay checked. |
 
-## 3. Shape (if G1–G6 go as recommended)
+## 3. Shape
 
 - `system/pipeline.yml`: `locks` lists reordered outermost first; a comment states the order rule.
 - `system/tests/pipeline_graph.py`: loads `extensions/*/pipeline.yml` when asked (`--extensions`); adds P9, P10 and `--mermaid`. P10 reads the timing tables through the same parser `conformance.bats` uses (`timing_manifests.py` for extension budgets).
@@ -36,7 +37,3 @@ Extension units (console, intraday's watch, telemetry) have no node, so P1–P8 
 - `.claude/skills/new-source/SKILL.md`: the pipeline step.
 
 Done when: every rule has a negative fixture test; `gate` and `gate-all-extensions` pass with any new gap on a `PIPELINE_GAPS` line naming its issue; the core cap and schema count are unchanged.
-
-## 4. Open questions
-
-- **O3:** whether P10 should also cover `flock -n` callers (no wait at all), which today all declare `busy`. Recommended: yes, they are the zero-wait case of the same rule.
