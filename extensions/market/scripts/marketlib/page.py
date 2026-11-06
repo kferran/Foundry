@@ -1,6 +1,7 @@
 """The market page (market watch spec §3.4, §3.5; plan 3, rulings 3-5): reading it, the brief's one Market line, and
 what happens after a rating run publishes it (Slack threats, proposed changes as owed Now lines, the inbox copy).
 Only this script posts or writes the Now page; the rating session never does."""
+import json
 import re
 import shutil
 import subprocess
@@ -94,6 +95,22 @@ def _recent(entries, day: str) -> dict:
         if isinstance(entries, dict) else {}
 
 
+def _candidate_links(vault: Path, day: str) -> list:
+    out = []
+    try:
+        with open(vault / "raw" / "market" / day / "candidates.jsonl", encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(row, dict) and isinstance(row.get("link"), str):
+                    out.append(row["link"])
+    except OSError:
+        pass
+    return out
+
+
 def after_publish(vault: Path, day: str, run=subprocess.run) -> None:
     page = read(path_for(vault, day))
     if page is None:
@@ -101,17 +118,27 @@ def after_publish(vault: Path, day: str, run=subprocess.run) -> None:
     cfg = config(vault)
     groups = {str(e.get("name")): str(e.get("group") or "") for e in cfg.get("market_watch") or [] if isinstance(e, dict)}
     alert_groups = [str(g) for g in cfg.get("market_alert_groups") or []]
+    partition = str(cfg.get("market_partition") or "work")
     state_path = vault / "system" / "logs" / "market_state.json"
     state = load(state_path, {})
     state = state if isinstance(state, dict) else {}
     posted, proposed = _recent(state.get("posted"), day), _recent(state.get("proposed"), day)
     clock = datetime.now().strftime("%H:%M:%S")
+    # The page is model output from web text: a link posts only when the day's candidates hold it.
+    known = set(_candidate_links(vault, day))
     for item in page.items["threat"]:
         group = groups.get(item.entry)
-        if group is None or item.link in posted or (alert_groups and group not in alert_groups):
+        if (group is None or item.link not in known or item.link in posted
+                or (alert_groups and group not in alert_groups)):
             continue
-        alert(vault, day, clock, "market", f"Market threat: {item.entry}: {item.headline} {item.link}", key=item.link)
+        alert(vault, day, clock, "market", f"Market threat: {item.entry}: {item.headline} {item.link}")
         posted[item.link] = day
+    state.update(posted=posted)
+    save(state_path, state)  # before the Now step, so a failure there never reposts a threat
+    if page.partition != partition:  # the partition wall holds whatever the page says
+        alert(vault, day, clock, "market_source", f"market page {day} says partition {page.partition}, not "
+              f"market_partition {partition}; its Now lines and inbox copy are skipped", key=f"partition {day}")
+        return
     deadline = time.monotonic() + NOTIFY_LIMIT
     for note, change, _link in page.proposed:
         statement = f"Review a proposed change to {note}: {change}"
@@ -119,14 +146,19 @@ def after_publish(vault: Path, day: str, run=subprocess.run) -> None:
         if statement in proposed or left <= 0:
             continue
         try:
-            done = run(["system/scripts/now.py", "add", "--partition", page.partition, "--kind", "owed",
-                        "--statement", statement, "--rec", f"{change}: proposed by the market page of {day}"],
-                       cwd=vault, timeout=left).returncode == 0
+            rc = run(["system/scripts/now.py", "add", "--partition", partition, "--kind", "owed", "--statement",
+                      statement, "--rec", f"review: proposed by the market page of {day}"],
+                     cwd=vault, timeout=left).returncode
         except subprocess.TimeoutExpired:
-            done = False
-        if done:
+            rc = "timeout"
+        except OSError as exc:
+            rc = type(exc).__name__
+        if rc == 0:
             proposed[statement] = day
-    state.update(posted=posted, proposed=proposed)
+        else:
+            alert(vault, day, clock, "market_source",
+                  f"now.py add failed ({rc}) for a proposed change to {note}; the next run tries again")
+    state.update(proposed=proposed)
     save(state_path, state)
     inbox = vault / "raw" / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)

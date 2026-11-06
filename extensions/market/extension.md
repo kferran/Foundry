@@ -19,10 +19,10 @@ allow: ["Bash(extensions/market/scripts/market_fetch.py --check)"]
 deps: []
 index_ignore: ["raw/market"]
 budget:
-  values: {TIMEOUT: 30, WORKERS: 8, FETCH_LIMIT: 300, NOTIFY_LIMIT: 120}
+  values: {TIMEOUT: 30, WORKERS: 8, FETCH_LIMIT: 300, NOTIFY_LIMIT: 120, RATE_LOCK_WAIT: 480}
   steps:  # market_unit.py: the fetch, then run_headless.sh market (run.lock, then the session), then after-publish
     - "market 1 - FETCH_LIMIT"
-    - "market 1 - headless.lock"
+    - "market 1 - RATE_LOCK_WAIT"
     - "market 1 grace.headless headless"
     - "market 1 - NOTIFY_LIMIT"
 ---

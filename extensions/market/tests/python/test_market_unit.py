@@ -83,3 +83,24 @@ def test_a_fetch_past_its_limit_still_rates_what_was_written(vault):
     unit.main(vault, DAY, run=runs, after=lambda v, d: None)
     assert runs.rated() and runs.calls[0][-1].endswith("market_fetch.py")
     assert status(vault)["status"] == "ok"
+
+
+def test_the_rating_waits_at_most_rate_lock_wait_for_run_lock(vault):
+    seen = {}
+    runs = Runs(vault)
+    orig = runs.__call__
+
+    def spy(argv, **kw):
+        if argv[-1] == "market":
+            seen["wait"] = (kw.get("env") or {}).get("HEADLESS_LOCK_WAIT")
+        return orig(argv, **kw)
+    unit.main(vault, DAY, run=spy, after=lambda v, d: None)
+    assert seen["wait"] == str(unit.RATE_LOCK_WAIT) and unit.RATE_LOCK_WAIT == 480
+
+
+def test_rated_advances_only_after_after_publish(vault):
+    def boom(v, d):
+        raise RuntimeError("after failed")
+    with pytest.raises(RuntimeError):
+        unit.main(vault, DAY, run=Runs(vault), after=boom)
+    assert rated_count(vault) == 0

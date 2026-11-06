@@ -1,5 +1,6 @@
 """marketlib.page: the page reader, the brief's Market line and the after-publish step (spec §3.5; plan 3, rulings 3-5)."""
 import json
+import re
 import shutil
 import subprocess
 
@@ -16,13 +17,19 @@ WATCH = ('market_watch:\n  - {name: "Vendor A", group: vendors, newsroom: "https
 TOP = "Vendor A launched a rival product"
 
 
-def put_page(vault, text=None):
+def put_page(vault, text=None, candidates=True):
+    """The page, and (by default) today's candidates holding every link the page names."""
     dst = vault / PAGE
     dst.parent.mkdir(parents=True, exist_ok=True)
     if text is None:
         shutil.copy(FIXTURES / "page.md", dst)
     else:
         dst.write_text(text)
+    if candidates:
+        links = re.findall(r"\]\((https://[^)\s]+)\)", dst.read_text())
+        folder = vault / "raw/market" / DAY
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "candidates.jsonl").write_text("".join(json.dumps({"link": link}) + "\n" for link in links))
 
 
 def set_status(vault, status, day=DAY):
@@ -126,3 +133,54 @@ def test_the_page_is_copied_to_the_inbox(vault):
     put_page(vault)
     page.after_publish(vault, DAY, run=NowCalls())
     assert (vault / f"raw/inbox/market-{DAY}.md").read_text() == (vault / PAGE).read_text()
+
+
+def source_alerts(vault, day=DAY):
+    path = vault / "system/logs" / f"alerts_{day}.md"
+    return [line for line in path.read_text().splitlines() if "[market_source]" in line] if path.exists() else []
+
+
+def test_a_page_partition_other_than_market_partition_skips_now_and_inbox(vault):
+    write_config(vault, WATCH + "market_partition: work\n")
+    put_page(vault, (FIXTURES / "page.md").read_text().replace("partition: work", "partition: personal"))
+    calls = NowCalls()
+    page.after_publish(vault, DAY, run=calls)
+    assert calls.calls == []
+    assert not (vault / f"raw/inbox/market-{DAY}.md").exists()
+    assert len(source_alerts(vault)) == 1 and "personal" in source_alerts(vault)[0]
+
+
+def test_a_threat_link_not_among_the_candidates_never_posts(vault):
+    write_config(vault, WATCH)
+    put_page(vault, candidates=False)
+    page.after_publish(vault, DAY, run=NowCalls())
+    assert market_alerts(vault) == []
+
+
+def test_the_rec_is_short_and_a_failed_add_alerts_and_retries(vault):
+    write_config(vault, WATCH)
+    put_page(vault)
+
+    class Refuse(NowCalls):
+        def __call__(self, argv, **kw):
+            super().__call__(argv, **kw)
+            return subprocess.CompletedProcess(argv, 2)
+    refuse = Refuse()
+    page.after_publish(vault, DAY, run=refuse)
+    [argv] = refuse.calls
+    assert argv[argv.index("--rec") + 1] == f"review: proposed by the market page of {DAY}"
+    assert len(source_alerts(vault)) == 1 and "now.py" in source_alerts(vault)[0]
+    again = NowCalls()
+    page.after_publish(vault, DAY, run=again)
+    assert len(again.calls) == 1
+
+
+def test_a_now_command_that_cannot_start_keeps_the_posted_state(vault):
+    write_config(vault, WATCH)
+    put_page(vault)
+
+    def missing(argv, **kw):
+        raise FileNotFoundError(argv[0])
+    page.after_publish(vault, DAY, run=missing)
+    page.after_publish(vault, DAY, run=NowCalls())
+    assert len(market_alerts(vault)) == 1

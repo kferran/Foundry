@@ -114,7 +114,7 @@
   - A missing or stale status gives `Market: unavailable (no run)`.
 - `after_publish`:
   - **Threats:** one `api.alert(vault, day, clock, "market", f"Market threat: {entry}: {headline} {link}", key=link)` per Threats item whose entry's group (from `market_watch`) is in `market_alert_groups` (all groups when unset), unless its link is in the 14-day posted set in `system/logs/market_state.json` under `"posted"`.
-  - **Proposed changes:** one `system/scripts/now.py add --partition <page partition> --kind owed --statement "Review a proposed change to <note>: <change>" --rec "<change>: proposed by the market page of <date>"` per line not already in `"proposed"`.
+  - **Proposed changes:** one `system/scripts/now.py add --partition <page partition> --kind owed --statement "Review a proposed change to <note>: <change>" --rec "review: proposed by the market page of <date>"` (the Now page's `market_partition`, never the page's own field; a threat posts only when its link is among the day's candidates)` per line not already in `"proposed"`.
   - **Inbox copy:** the page copied to `raw/inbox/market-<date>.md`.
 
 - [ ] **Step 1: Write the failing tests:**
