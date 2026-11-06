@@ -52,7 +52,7 @@ The rating is its own headless run (owner, question 3), with no network and inge
 **A generic headless command for extensions.** It is built first, as its own PR, since it touches the harness and the gate.
 - **The manifest field:** an extension's manifest may declare `commands: [{name, targets, model_key, timeout_key}]`.
   - `name` is a lowercase word that is not a core command.
-  - `targets` are path patterns under `briefings/<name>/` or `wiki/<partition>/`, with `<date>` and `<partition>` filled in at run time.
+  - `targets` are path patterns under `briefings/<name>/`, with `<date>` filled in at run time (a `wiki/` target waits for an extension that needs one: PR 1 plan, ruling 1).
   - `model_key` and `timeout_key` name the extension's config keys.
 - **`run_headless.sh <name>`** runs it when the extension is enabled:
   - it reads the prompt from `extensions/<ext>/commands/<name>.md`, not `.claude/commands/`, so no slash command appears;
@@ -71,7 +71,7 @@ The rating is its own headless run (owner, question 3), with no network and inge
 
   It drops `watch` items rated `low`.
 - **It writes** `briefings/market/<date>.md` to staging, the run's only target. The gate checks it against the `market_page` schema. A later run the same day stages the existing page and rewrites it with all of the day's items: it keeps every heading and every earlier item, so the gate's shrink guard holds.
-- **It is capped** at `market_timeout_minutes` (default 15, at most `HEADLESS_TIMEOUT`) and runs on `market_model`. A run past its cap is stopped, and the brief says `Market: unavailable (timeout)`.
+- **It is capped** at `market_timeout_minutes` (default 20, at most `HEADLESS_TIMEOUT`, 15 minutes today) and runs on `market_model`. A run past its cap is stopped, and the brief says `Market: unavailable (timeout)`.
 
 ### 3.4 The page (`market_page`, an extension schema)
 

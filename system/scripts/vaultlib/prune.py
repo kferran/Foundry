@@ -21,7 +21,7 @@ def _settled(rd: Path, since: str) -> bool:
         if journal.exists() and not publish._committed(journal):
             return False
         # a kind commit_runs.py never commits (digest-backfill), or no publish.json: the run ended before publish
-        if ((rd / "committed").exists() or rd.name[:15] < since or not commit_runs.RUN_ID.match(rd.name)
+        if ((rd / "committed").exists() or rd.name[:15] < since or not commit_runs.committable(rd.name)
                 or not report_file.exists()):
             return True
         report = json.loads(report_file.read_text(encoding="utf-8"))

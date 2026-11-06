@@ -209,18 +209,39 @@ for n in "${UNITS[@]}"; do
   [[ -f "$tmpl" ]] || die 1 "missing unit template $tmpl"
   templates+=("$tmpl")
 done
+# extra_times <key>: the timer lines of a unit's extra runs (market watch spec §3.6). The key (1-4, unset 1) counts the
+# day's runs; the first is the template's own, and the rest are spaced evenly from it to 18:00.
+extra_times() {
+  local key="$1" n p step i m
+  n="$(config_get "$key" 1)"
+  [[ "$n" =~ ^[1-4]$ ]] || die 1 "$key must be 1 to 4 (runs a day), not '$n'"
+  (( n > 1 )) || return 0
+  p=$(( 10#${pre_brief_time%:*} * 60 + 10#${pre_brief_time#*:} ))
+  (( p < 1080 )) || die 1 "$key: extra runs need a first run before 18:00, not $pre_brief_time"
+  step=$(( (1080 - p) / (n - 1) ))
+  for (( i = 1; i < n; i++ )); do
+    m=$(( p + i * step ))
+    printf 'OnCalendar=*-*-* %02d:%02d:00 {{TZ}}\n' $(( m / 60 )) $(( m % 60 ))
+  done
+}
 # render <template> <output> [sed args…]: header plus the template with every placeholder replaced.
 render() {
-  local t="$1" out="$2"
+  local t="$1" out="$2" src="$1" line
   shift 2
   mkdir -p -- "$(dirname -- "$out")"
+  if grep -qx '{{EXTRA_TIMES:[a-z_]*}}' "$t"; then  # a whole-line placeholder expands to zero or more lines first
+    src="$work/$(basename -- "$t").expanded"
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^\{\{EXTRA_TIMES:([a-z_]+)\}\}$ ]]; then extra_times "${BASH_REMATCH[1]}"; else printf '%s\n' "$line"; fi
+    done < "$t" > "$src"
+  fi
   {
     printf '%s\n' "$HEADER"
     sed "$@" -e "s|{{VAULT_ROOT}}|$(esc "$VAULT_ROOT")|g" -e "s|{{TZ}}|$(esc "$tz")|g" \
         -e "s|{{BRIEF_TIME}}|$(esc "$brief")|g" -e "s|{{PRE_BRIEF_TIME}}|$(esc "$pre_brief_time")|g" -e "s|{{UPDATE_TIME}}|$(esc "$update_time")|g" \
         -e "s|{{SMOKE_TIME}}|$(esc "$smoke_time")|g" -e "s|{{DEBRIEF_TIME}}|$(esc "$debrief")|g" \
         -e "s|{{SYNC_INTERVAL}}|$(esc "$sync_interval")|g" \
-        -e "s|{{CLAUDE_BIN}}|$(esc "$claude_bin")|g" -e "s|{{UNIT_PATH}}|$(esc "$unit_path")|g" "$t"
+        -e "s|{{CLAUDE_BIN}}|$(esc "$claude_bin")|g" -e "s|{{UNIT_PATH}}|$(esc "$unit_path")|g" "$src"
   } > "$out"
   if grep -q '{{' "$out"; then
     die 1 "$t: unreplaced placeholder $(grep -o '{{[^}]*}*' "$out" | head -n 1)"

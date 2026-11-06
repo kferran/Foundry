@@ -365,3 +365,12 @@ def test_a_long_meeting_title_is_cut_with_an_ellipsis_and_control_characters_go(
     subject = git(vault, "log", "-1", "--format=%s").strip()
     assert len(subject) <= 72 and subject.endswith("…")
     assert subject.startswith("meeting(work): Quarterly planning xxx")
+
+
+def test_an_extension_command_run_is_committed_and_digest_backfill_is_not(vault):
+    make_run(vault, "20261004T050000-digest-backfill-ab12", ["briefings/2026-10-03.md"])
+    make_run(vault, "20261004T053000-demo-ab12", ["briefings/demo/2026-10-04.md"])
+    p = run_commits(vault)
+    assert p.returncode == 0, p.stderr
+    assert last_message(vault).startswith("demo 2026-10-04: briefings/demo/2026-10-04.md")
+    assert not (vault / "system/logs/runs/20261004T050000-digest-backfill-ab12/committed").exists()

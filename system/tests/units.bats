@@ -447,6 +447,49 @@ set_role() { system/scripts/vault_index.py set system/config.md machine_role "$1
   grep -qx 'OnCalendar=\*-\*-\* 05:30:00' "$UD/foundry-demo.timer"
 }
 
+@test "an EXTRA_TIMES line adds nothing when its key is unset (market watch §3.6)" {
+  use_extension demo
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^OnCalendar=' "$UD/foundry-demo.timer")" -eq 1 ]
+}
+
+@test "a runs-per-day of 2 adds one run at 18:00" {
+  use_extension demo
+  system/scripts/vault_index.py set system/config.md demo_runs_per_day 2 > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^OnCalendar=' "$UD/foundry-demo.timer")" -eq 2 ]
+  grep -qx 'OnCalendar=\*-\*-\* 18:00:00 America/Denver' "$UD/foundry-demo.timer"
+}
+
+@test "a runs-per-day of 4 spaces the extra runs evenly until 18:00" {
+  use_extension demo
+  system/scripts/vault_index.py set system/config.md demo_runs_per_day 4 > /dev/null
+  run "$IU"
+  [ "$status" -eq 0 ]
+  [ "$(grep '^OnCalendar=' "$UD/foundry-demo.timer" | tail -n 3 | tr '\n' ' ')" = 'OnCalendar=*-*-* 09:40:00 America/Denver OnCalendar=*-*-* 13:50:00 America/Denver OnCalendar=*-*-* 18:00:00 America/Denver ' ]
+}
+
+@test "a runs-per-day outside 1-4 or not a number refuses the install" {
+  use_extension demo
+  for v in 0 5 two; do
+    sed -i '/^demo_runs_per_day:/d; s/^extensions:/demo_runs_per_day: "'"$v"'"\nextensions:/' system/config.md
+    run "$IU"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *demo_runs_per_day* ]]
+  done
+}
+
+@test "extra runs need a first run before 18:00" {
+  use_extension demo
+  system/scripts/vault_index.py set system/config.md brief_time 18:30 > /dev/null
+  system/scripts/vault_index.py set system/config.md demo_runs_per_day 2 > /dev/null
+  run "$IU"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *demo_runs_per_day* ]]
+}
+
 @test "the update time follows brief_time and wraps past midnight (#117)" {
   system/scripts/vault_index.py set system/config.md brief_time 08:00 > /dev/null
   run "$IU"

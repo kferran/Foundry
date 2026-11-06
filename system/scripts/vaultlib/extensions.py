@@ -5,13 +5,19 @@ import re
 import subprocess
 from pathlib import Path
 
-from . import frontmatter
+from . import frontmatter, schema
 from .config import config
 
 CONTRACT = 1
 NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
 FIELDS = {"name", "contract", "description", "requires", "config_keys", "sources", "smoke", "brief", "debrief",
-          "units", "alert_tags", "allow", "deps", "index_ignore", "importer", "tick", "lint", "budget"}
+          "units", "alert_tags", "allow", "deps", "index_ignore", "importer", "tick", "lint", "budget", "commands"}
+# The headless commands core runs itself; an extension's `commands` entry may not take one (market watch spec §3.3).
+CORE_COMMANDS = frozenset({"ingest", "brief", "debrief", "meeting", "nightshift", "digest-backfill"})
+COMMAND = re.compile(r"[a-z][a-z-]*[a-z]")
+RESERVED_FOLDERS = frozenset({"archive"})  # briefings/archive/ is the brief's own archive
+# One target path segment (`<date>.md`, `notes-<date>`): no leading dot, glob, newline or other placeholder.
+SEGMENT = re.compile(r"(?:<date>|[A-Za-z0-9_-])(?:<date>|[A-Za-z0-9._-])*")
 
 
 def _strs(value) -> list:
@@ -95,9 +101,34 @@ def unit_kind(unit: dict) -> str:
     return "service" if str(unit.get("timer")).lower() == "false" else "timer"
 
 
+def _command_reason(entry) -> str:
+    """Why a `commands` entry cannot run, or "". Targets sit under briefings/<command>/, with <date> the only
+    placeholder (market watch plan 1, ruling 1)."""
+    if not isinstance(entry, dict):
+        return "is not a map"
+    cmd = str(entry.get("name") or "")
+    if not COMMAND.fullmatch(cmd) or cmd in CORE_COMMANDS or cmd in RESERVED_FOLDERS:
+        return "needs a lower-case name that is not a core command or folder"
+    targets = entry.get("targets")
+    if not isinstance(targets, list) or not targets:
+        return "needs a list of targets"
+    for t in map(str, targets):
+        rest = t.removeprefix(f"briefings/{cmd}/")
+        if rest == t or not all(SEGMENT.fullmatch(seg) for seg in rest.split("/")):
+            return f"target {t!r} is not a path under briefings/{cmd}/"
+    if not all(isinstance(entry.get(k), str) and entry[k] for k in ("model_key", "timeout_key")):
+        return "needs model_key and timeout_key"
+    return ""
+
+
 def _field_reasons(name: str, data: dict) -> list:
     """Reasons for a field the loader ignores while the extension still loads (factory F2 §3.1)."""
     out = []
+    for entry in data.get("commands") or []:
+        why = _command_reason(entry)
+        if why:
+            label = entry.get("name") if isinstance(entry, dict) else entry
+            out.append(f"{name}: command {label}: {why}; it does not run")
     for t in data.get("alert_tags") or []:
         if isinstance(t, dict) and t.get("now_when"):
             try:
@@ -123,7 +154,43 @@ def check(vault: Path) -> list:
     """One reason per listed extension that cannot load (missing folder, bad manifest, missing requires), then one per
     field of a loaded extension that is ignored."""
     loaded, reasons = _resolve(vault)
-    return reasons + [r for name, data in loaded.items() for r in _field_reasons(name, data)]
+    reasons += [r for name, data in loaded.items() for r in _field_reasons(name, data)]
+    return reasons + [f"{', '.join(exts)}: each declares command {cmd}; it runs in neither"
+                      for cmd, exts in _declared(loaded.items()).items() if len(exts) > 1]
+
+
+def _declared(loaded) -> dict:
+    """{command name: [extensions declaring a valid entry for it]}."""
+    out: dict = {}
+    for name, data in loaded:
+        for entry in data.get("commands") or []:
+            if not _command_reason(entry):
+                out.setdefault(entry["name"], []).append(name)
+    return out
+
+
+def command(vault: Path, name: str):
+    """The command `name` that exactly one enabled extension declares, with its model and time limit read from config
+    or, when unset there, from the key's default in the extension's config schema; else None."""
+    loaded = enabled(vault)
+    exts = _declared(loaded).get(name) or []
+    if len(exts) != 1:
+        return None
+    ext = exts[0]
+    entry = next(e for e in dict(loaded)[ext]["commands"] if isinstance(e, dict) and e.get("name") == name)
+    cfg, defaults = config(vault), {}
+    try:
+        defaults = {k: s.default for k, s in schema.load_schemas(vault)["config"].fields.items()}
+    except (schema.SchemaError, KeyError, OSError):
+        pass
+
+    def value(key):
+        v = cfg.get(key)
+        return str(v) if v not in (None, "") else (defaults.get(key) or "")
+
+    minutes = value(entry["timeout_key"])
+    return {"ext": ext, "name": name, "targets": [str(t) for t in entry["targets"]], "model": value(entry["model_key"]),
+            "timeout_minutes": int(minutes) if minutes.isdigit() and int(minutes) > 0 else None}
 
 
 def enabled(vault: Path) -> list:

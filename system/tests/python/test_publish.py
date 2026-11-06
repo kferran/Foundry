@@ -1,10 +1,11 @@
 import json
 import os
+import shutil
 import time
 
 import pytest
 
-from helpers import concept, meeting, transcript, write
+from helpers import REPO, concept, meeting, transcript, write
 from vaultlib import publish
 
 RID = "20261001T120000-ingest-ab12"
@@ -757,3 +758,39 @@ def test_a_backfill_run_rejects_a_file_outside_its_target(vault):
     assert sorted(p["path"] for p in report["problems"]) == ["raw/work/notes/other.md", "wiki/work/concepts/Extra.md"]
     assert set(report_reasons(report)) == {"not a publishable target"}
     assert not (vault / BACKFILLED).exists() and not (vault / "raw/work/notes/other.md").exists()
+
+
+# Extension commands (market watch spec §3.3): the gate takes a run id whose command an enabled extension declares.
+EXT_RID = "20261106T053000-demo-ab12"
+
+
+def demo_ext(vault, listed=True):
+    shutil.copytree(REPO / "system/tests/fixtures/extensions/demo", vault / "extensions/demo")
+    write(vault, "system/config.md", f"---\ntype: config\nextensions: [{'demo' if listed else ''}]\n---\n")
+
+
+def test_an_extension_command_run_id_needs_the_vault_to_declare_it(vault):
+    with pytest.raises(publish.PublishError):
+        publish.check_run_id(EXT_RID)
+    for bad in ("20261106T053000-Demo-ab12", "20261106T053000--ab12", "20261106T053000-../x-ab12"):
+        with pytest.raises(publish.PublishError):
+            publish.check_run_id(bad, vault)
+    with pytest.raises(publish.PublishError):
+        publish.check_run_id(EXT_RID, vault)
+    demo_ext(vault)
+    assert publish.check_run_id(EXT_RID, vault) == "demo"
+    assert publish.check_run_id(RID, vault) == "ingest"
+
+
+def test_an_unlisted_extensions_command_cannot_snapshot(vault):
+    demo_ext(vault, listed=False)
+    with pytest.raises(publish.PublishError):
+        publish.snapshot(vault, EXT_RID, ["briefings/demo/2026-11-06.md"])
+
+
+def test_a_declared_extension_commands_page_validates(vault):
+    demo_ext(vault)
+    publish.snapshot(vault, EXT_RID, ["briefings/demo/2026-11-06.md"])
+    stage_new(vault, "briefings/demo/2026-11-06.md", "---\ntype: demo_thing\ncolour: blue\n---\n# Demo\n", run_id=EXT_RID)
+    staged, _, problems = publish.validate_run(vault, EXT_RID, now=LATER)
+    assert staged == ["briefings/demo/2026-11-06.md"] and problems == []
