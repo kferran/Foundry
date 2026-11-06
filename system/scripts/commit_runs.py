@@ -65,14 +65,19 @@ def json_lines(path):
     return out
 
 
+def committable(name):
+    """A run folder this script commits: any run id but digest-backfill's, as before the run-id patterns were joined."""
+    match = RUN_ID.match(name)
+    return bool(match) and match.group(2) != "digest-backfill"
+
+
 def pending(since):
     if not RUNS.is_dir():
         return []
     out = []
     for rd in sorted(RUNS.iterdir()):
         match = RUN_ID.match(rd.name)
-        # digest-backfill runs are not committed here, as before the run-id patterns were joined.
-        if not match or match.group(2) == "digest-backfill" or match.group(1) < since or (rd / "committed").exists():
+        if not committable(rd.name) or match.group(1) < since or (rd / "committed").exists():
             continue
         try:
             report = json.loads((rd / "publish.json").read_text(encoding="utf-8"))

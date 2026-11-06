@@ -15,6 +15,9 @@ FIELDS = {"name", "contract", "description", "requires", "config_keys", "sources
 # The headless commands core runs itself; an extension's `commands` entry may not take one (market watch spec §3.3).
 CORE_COMMANDS = frozenset({"ingest", "brief", "debrief", "meeting", "nightshift", "digest-backfill"})
 COMMAND = re.compile(r"[a-z][a-z-]*[a-z]")
+RESERVED_FOLDERS = frozenset({"archive"})  # briefings/archive/ is the brief's own archive
+# One target path segment (`<date>.md`, `notes-<date>`): no leading dot, glob, newline or other placeholder.
+SEGMENT = re.compile(r"(?:<date>|[A-Za-z0-9_-])(?:<date>|[A-Za-z0-9._-])*")
 
 
 def _strs(value) -> list:
@@ -104,15 +107,15 @@ def _command_reason(entry) -> str:
     if not isinstance(entry, dict):
         return "is not a map"
     cmd = str(entry.get("name") or "")
-    if not COMMAND.fullmatch(cmd) or cmd in CORE_COMMANDS:
-        return "needs a lower-case name that is not a core command"
+    if not COMMAND.fullmatch(cmd) or cmd in CORE_COMMANDS or cmd in RESERVED_FOLDERS:
+        return "needs a lower-case name that is not a core command or folder"
     targets = entry.get("targets")
     if not isinstance(targets, list) or not targets:
         return "needs a list of targets"
     for t in map(str, targets):
         rest = t.removeprefix(f"briefings/{cmd}/")
-        if rest == t or not rest or ".." in rest.split("/") or "*" in t or "<" in rest.replace("<date>", ""):
-            return f"target {t} is not a path under briefings/{cmd}/"
+        if rest == t or not all(SEGMENT.fullmatch(seg) for seg in rest.split("/")):
+            return f"target {t!r} is not a path under briefings/{cmd}/"
     if not all(isinstance(entry.get(k), str) and entry[k] for k in ("model_key", "timeout_key")):
         return "needs model_key and timeout_key"
     return ""

@@ -206,7 +206,7 @@ def test_extension_note_schemas_load_from_present_extensions(ext, cli):
     config_with(ext)
     schemas = schema.load_schemas(ext)
     assert "demo_thing" in schemas
-    assert schemas["demo_thing"].folders == ["wiki/work/things/"]
+    assert schemas["demo_thing"].folders == ["wiki/work/things/", "briefings/demo/"]
     assert "demo_site" in schemas["config"].fields
     assert list(schemas).count("config") == 1
     write(ext, "wiki/work/things/Blue.md", "---\ntype: demo_thing\ncolour: blue\n---\n# Blue\n")
@@ -447,6 +447,9 @@ def test_an_undeclared_or_unlisted_command_is_none(ext):
     '{name: cmd, targets: ["briefings/cmd/../../CLAUDE.md"], model_key: m, timeout_key: t}',
     '{name: cmd, targets: ["briefings/cmd/*.md"], model_key: m, timeout_key: t}',
     '{name: cmd, targets: [], model_key: m, timeout_key: t}',
+    '{name: cmd, targets: ["briefings/cmd/x\\nwiki/work/Now.md"], model_key: m, timeout_key: t}',
+    '{name: cmd, targets: ["briefings/cmd/./x.md"], model_key: m, timeout_key: t}',
+    '{name: archive, targets: ["briefings/archive/2026-10/2026-10-01.md"], model_key: m, timeout_key: t}',
     '{name: cmd, targets: ["briefings/cmd/<date>.md"], timeout_key: t}',
 ])
 def test_bad_command_entries_are_reasons_and_not_runnable(vault, entry):
@@ -454,7 +457,7 @@ def test_bad_command_entries_are_reasons_and_not_runnable(vault, entry):
     config(vault, "bad")
     reasons = extensions.check(vault)
     assert len(reasons) == 1 and reasons[0].startswith("bad: command"), reasons
-    for name in ("ingest", "digest-backfill", "Brief", "../x", "x", "cmd"):
+    for name in ("ingest", "digest-backfill", "Brief", "../x", "x", "cmd", "archive"):
         assert extensions.command(vault, name) is None
 
 
