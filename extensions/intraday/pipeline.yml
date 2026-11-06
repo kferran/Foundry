@@ -17,5 +17,5 @@ extends:
   intake:   # the intake tick runs today_log.py tick
     scripts: [extensions/intraday/scripts/today_log.py]
     reads: [system/logs/watch/, raw/*/notes/, raw/*/archive/, system/logs/meetings-*.jsonl, wiki/*/meetings/]
-    writes: [briefings/, system/logs/watch/]   # briefings/<date>.today.md and its ledger
+    writes: [briefings/, system/logs/watch/]   # the day's today file, and its ledger
     locks: [run.lock]
