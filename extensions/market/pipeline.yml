@@ -1,0 +1,16 @@
+# The market extension in the pipeline graph (factory F6 PR 2a, #477): system/tests/pipeline.bats checks it with
+# --extensions, in the shape of system/pipeline.yml.
+sinks:
+  - {path: raw/market/, by: the owner in Obsidian, until the market page step reads it (#236)}
+
+nodes:
+  market:
+    unit: foundry-market
+    entry: extensions/market/scripts/market_fetch.py
+    scripts: [extensions/market/scripts/market_fetch.py, extensions/market/scripts/marketlib/run.py]
+    reads: [system/logs/market_state.json]
+    writes: [raw/market/, system/logs/market_state.json, system/logs/alerts_*.md]
+    locks: []
+    failure:
+      source: alert:market_source   # a source failing STREAK_ALERT runs in a row
+      other: alert:market_source    # guard(..., "market_source") in market_fetch.py

@@ -463,6 +463,7 @@ flowchart LR
   console[console]
   debrief[debrief]
   intake[intake]
+  market[market]
   meetings[meetings]
   nightshift[nightshift]
   notify[notify]
@@ -479,61 +480,66 @@ flowchart LR
   p4[("raw/*/notes/")]
   p5[("raw/archive/")]
   p6[("raw/inbox/")]
-  p7[("raw/meetings/")]
-  p8[("raw/telemetry/")]
-  p9[("system/logs/")]
-  p10[("system/logs/alerts_*.md")]
-  p11[("system/logs/followups_queue.txt")]
-  p12[("system/logs/health/")]
-  p13[("system/logs/inputs/")]
-  p14[("system/logs/jira_fetch-*.jsonl")]
-  p15[("system/logs/meetings-*.jsonl")]
-  p16[("system/logs/nightshift/")]
-  p17[("system/logs/rca/")]
-  p18[("system/logs/runs/")]
-  p19[("system/logs/telemetry_state.json")]
-  p20[("system/logs/watch/")]
-  p21[("system/quarantine/")]
-  p22[("system/telemetry/")]
-  p23[("wiki/")]
-  p24[("wiki/*/Now.md")]
-  p25[("wiki/*/meetings/")]
+  p7[("raw/market/")]
+  p8[("raw/meetings/")]
+  p9[("raw/telemetry/")]
+  p10[("system/logs/")]
+  p11[("system/logs/alerts_*.md")]
+  p12[("system/logs/followups_queue.txt")]
+  p13[("system/logs/health/")]
+  p14[("system/logs/inputs/")]
+  p15[("system/logs/jira_fetch-*.jsonl")]
+  p16[("system/logs/market_state.json")]
+  p17[("system/logs/meetings-*.jsonl")]
+  p18[("system/logs/nightshift/")]
+  p19[("system/logs/rca/")]
+  p20[("system/logs/runs/")]
+  p21[("system/logs/telemetry_state.json")]
+  p22[("system/logs/watch/")]
+  p23[("system/quarantine/")]
+  p24[("system/telemetry/")]
+  p25[("wiki/")]
+  p26[("wiki/*/Now.md")]
+  p27[("wiki/*/meetings/")]
   brief --> p0
-  brief --> p10
-  brief --> p12
+  brief --> p11
   brief --> p13
   brief --> p14
-  brief --> p18
-  brief --> p24
-  brief --> p8
+  brief --> p15
+  brief --> p20
+  brief --> p26
+  brief --> p9
   debrief --> p0
-  debrief --> p10
-  debrief --> p13
-  debrief --> p18
+  debrief --> p11
+  debrief --> p14
+  debrief --> p20
   intake --> p0
-  intake --> p10
   intake --> p11
-  intake --> p13
-  intake --> p15
+  intake --> p12
+  intake --> p14
   intake --> p17
-  intake --> p18
+  intake --> p19
   intake --> p2
   intake --> p20
-  intake --> p21
+  intake --> p22
   intake --> p23
-  intake --> p24
+  intake --> p25
+  intake --> p26
   intake --> p5
   intake --> p6
-  meetings --> p10
-  meetings --> p7
-  nightshift --> p10
-  nightshift --> p16
-  nightshift --> p23
-  nightshift --> p24
+  market --> p11
+  market --> p16
+  market --> p7
+  meetings --> p11
+  meetings --> p8
+  nightshift --> p11
+  nightshift --> p18
+  nightshift --> p25
+  nightshift --> p26
   outside --> p0
   outside --> p1
-  outside --> p22
   outside --> p24
+  outside --> p26
   outside --> p3
   outside --> p4
   outside --> p6
@@ -543,55 +549,57 @@ flowchart LR
   p0 --> outside
   p1 --> intake
   p10 --> brief
-  p10 --> console
-  p10 --> debrief
-  p10 --> notify
-  p11 --> intake
-  p13 --> brief
-  p13 --> console
-  p13 --> debrief
-  p15 --> intake
-  p16 --> brief
-  p16 --> debrief
+  p11 --> brief
+  p11 --> console
+  p11 --> debrief
+  p11 --> notify
+  p12 --> intake
+  p14 --> brief
+  p14 --> console
+  p14 --> debrief
+  p16 --> market
   p17 --> intake
+  p18 --> brief
   p18 --> debrief
-  p18 --> notify
-  p19 --> telemetry
+  p19 --> intake
   p2 --> debrief
   p2 --> intake
-  p20 --> intake
-  p20 --> watch
-  p21 --> brief
-  p21 --> debrief
-  p22 --> brief
-  p22 --> telemetry
+  p20 --> debrief
+  p20 --> notify
+  p21 --> telemetry
+  p22 --> intake
+  p22 --> watch
   p23 --> brief
-  p23 --> console
-  p23 --> intake
-  p23 --> outside
-  p24 --> intake
-  p24 --> watch
+  p23 --> debrief
+  p24 --> brief
+  p24 --> telemetry
+  p25 --> brief
+  p25 --> console
   p25 --> intake
+  p25 --> outside
+  p26 --> intake
+  p26 --> watch
+  p27 --> intake
   p3 --> nightshift
   p4 --> debrief
   p4 --> intake
   p5 --> outside
   p6 --> intake
-  p7 --> intake
-  p8 --> brief
-  p8 --> outside
+  p7 --> outside
+  p8 --> intake
   p9 --> brief
-  smoke --> p10
-  telemetry --> p10
-  telemetry --> p19
-  telemetry --> p8
-  triage --> p10
-  triage --> p24
-  update --> p10
-  update --> p13
-  watch --> p10
-  watch --> p20
-  watch --> p24
+  p9 --> outside
+  smoke --> p11
+  telemetry --> p11
+  telemetry --> p21
+  telemetry --> p9
+  triage --> p11
+  triage --> p26
+  update --> p11
+  update --> p14
+  watch --> p11
+  watch --> p22
+  watch --> p26
   watch --> p6
 ```
 <!-- pipeline:end -->
