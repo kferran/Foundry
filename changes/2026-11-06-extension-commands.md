@@ -1,0 +1,1 @@
+- Added: an extension can declare a headless command (`commands` in its manifest) that `run_headless.sh <name>` runs and the publish gate accepts, and a unit template's `{{EXTRA_TIMES:<key>}}` adds extra timer runs from a config key (#236)
