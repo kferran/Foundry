@@ -1,6 +1,7 @@
 """One capped HTTPS GET for the market fetch (market watch spec §3.2, §4): a fixed user agent that names the client,
 a 30-second timeout, a 4 MB cap, and redirects only to the same host over HTTPS. Tests set FOUNDRY_MARKET_STUB to a
 folder holding routes.json ({url: {status, file, location}}); each requested URL is appended to its requests.log."""
+import http.client
 import json
 import os
 import socket
@@ -26,7 +27,11 @@ def _host(url: str) -> str:
 
 
 def _check_url(url: str, origin: str = "") -> None:
-    parts = urllib.parse.urlsplit(url)
+    try:
+        parts = urllib.parse.urlsplit(url)
+        parts.hostname  # noqa: B018 - raises ValueError on a malformed host such as "[bad"
+    except ValueError:
+        raise MarketError("bad", f"malformed URL: {url[:200]}") from None
     if parts.scheme != "https" or not parts.hostname:
         raise MarketError("bad", f"not an https URL: {url}" if not origin else f"redirect to {url} is not https")
     if origin and parts.hostname != origin:
@@ -66,7 +71,10 @@ def _stub(folder: str, url: str) -> bytes:
             log.write(url + "\n")
         r = routes.get(url) or {"status": 404, "file": "", "location": ""}
         if r["status"] in REDIRECTS:
-            url = urllib.parse.urljoin(url, r["location"])
+            try:
+                url = urllib.parse.urljoin(url, r["location"])
+            except ValueError:
+                raise MarketError("bad", f"malformed redirect: {r['location'][:200]}") from None
             _check_url(url, origin)
             continue
         if r["status"] != 200:
@@ -95,6 +103,10 @@ def get(url: str) -> bytes:
         raise _status(exc.code, url) from None
     except (socket.timeout, TimeoutError):
         raise MarketError("timeout", f"{_host(url)}: no answer in {TIMEOUT} s") from None
+    except http.client.HTTPException as exc:  # a truncated body, an overlong line, too many headers
+        raise MarketError("network", f"{_host(url)}: {type(exc).__name__}") from None
+    except ValueError as exc:  # a malformed redirect target urllib could not split
+        raise MarketError("bad", f"{_host(url)}: {exc}") from None
     except (urllib.error.URLError, OSError) as exc:
         reason = getattr(exc, "reason", exc)
         if isinstance(reason, (socket.timeout, TimeoutError)):

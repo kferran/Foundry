@@ -15,7 +15,7 @@ def stub(tmp_path, monkeypatch):
     routes = {}
 
     def route(url, status=200, body=b"", location=""):
-        name = f"r{len(routes)}"
+        name = f"r{len(list(folder.iterdir()))}"  # unique per call: a URL served again gets a new file
         (folder / name).write_bytes(body)
         routes[url] = {"status": status, "file": name, "location": location}
         (folder / "routes.json").write_text(json.dumps(routes))
@@ -95,3 +95,20 @@ def test_the_request_sends_the_fixed_user_agent(monkeypatch):
     assert http.get("https://example.com/feed") == b"ok"
     assert seen == {"ua": http.UA, "timeout": http.TIMEOUT}
     assert http.UA == "Mozilla/5.0 (compatible; foundry-market/1.0)"
+
+
+def test_a_malformed_redirect_location_is_bad(stub):
+    stub("https://example.com/m", status=302, location="https://[bad/x")
+    assert kind_of("https://example.com/m").kind == "bad"
+
+
+def test_a_truncated_response_is_network(monkeypatch):
+    import http.client
+    monkeypatch.delenv("FOUNDRY_MARKET_STUB", raising=False)
+
+    class Opener:
+        def open(self, req, timeout=None):
+            raise http.client.IncompleteRead(b"partial")
+
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *handlers: Opener())
+    assert kind_of("https://example.com/feed").kind == "network"

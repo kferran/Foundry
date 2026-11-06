@@ -29,7 +29,7 @@ def web(tmp_path, monkeypatch):
     routes = {}
 
     def serve(url, body=b"", status=200):
-        name = f"r{len(routes)}"
+        name = f"r{len(list(folder.iterdir()))}"  # unique per call: a URL served again gets a new file
         (folder / name).write_bytes(body)
         routes[url] = {"status": status, "file": name, "location": ""}
         (folder / "routes.json").write_text(json.dumps(routes))
@@ -229,3 +229,60 @@ def test_a_source_that_fails_before_its_first_success_still_takes_a_baseline(vau
     web(FEED, rss(("a1", "A", "2026-11-06", "")))
     fetch(vault)
     assert candidates(vault) == []
+
+
+NEWS = "https://example.com/news/"
+NEWSROOM = '  - {name: "Vendor N", group: vendors, newsroom: "https://example.com/news/"}\n'
+
+
+def test_a_hostile_href_fails_its_source_and_the_others_still_write(vault, web):
+    other = "https://example.org/feed"
+    setup_watch(vault, NEWSROOM + f'  - {{name: "Vendor C", group: vendors, feed: "{other}"}}\n')
+    web(NEWS, b'<a href="/news/a">A</a>')
+    web(other, rss())
+    fetch(vault)
+    web(NEWS, b'<a href="https://[bad/news/x">X</a>')
+    web(other, rss(("c1", "Fresh", "2026-11-06", "")))
+    assert fetch(vault) == 1
+    assert [c["title"] for c in candidates(vault)] == ["Fresh"]
+    state = json.loads((vault / "system/logs/market_state.json").read_text())
+    assert state["sources"]["Vendor N:newsroom"]["class"] == "other"
+
+
+def test_a_malformed_config_url_fails_its_source_only(vault, web):
+    setup_watch(vault, ONE + '  - {name: "Bad U", group: g, feed: "https://[x"}\n')
+    web(FEED, rss())
+    assert fetch(vault) == 1
+    state = json.loads((vault / "system/logs/market_state.json").read_text())
+    assert state["sources"]["Bad U:feed"]["class"] == "other"
+
+
+def test_a_bad_exclude_on_a_press_matched_entry_does_not_crash(vault, web):
+    press_url = "https://press.example.org/rss"
+    setup_watch(vault, ONE + '  - {name: "Vendor B", group: partners, exclude: "("}\n',
+                f'  - {{name: "Trade News", feed: "{press_url}"}}\n')
+    web(FEED, rss())
+    web(press_url, rss())
+    fetch(vault)
+    web(press_url, rss(("p1", "Vendor B buys a rival", "2026-11-06", "")))
+    fetch(vault)
+    assert [c["entry"] for c in candidates(vault)] == ["Vendor B"]
+
+
+def test_an_item_still_listed_after_30_days_is_not_new_again(vault, web):
+    setup_watch(vault, ONE)
+    web(FEED, rss(("old", "Old", "2026-09-30", "")))
+    fetch(vault, day=date(2026, 10, 1))
+    for d in (date(2026, 10, 20), DAY):
+        fetch(vault, day=d)
+        assert candidates(vault, day=d) == []
+
+
+def test_titles_are_cut_and_redacted(vault, web):
+    setup_watch(vault, ONE)
+    web(FEED, rss())
+    fetch(vault)
+    web(FEED, rss(("t1", f"Leak {GHP} " + "y" * 900, "2026-11-06", "")))
+    fetch(vault)
+    [c] = candidates(vault)
+    assert len(c["title"]) <= 300 and GHP not in c["title"]

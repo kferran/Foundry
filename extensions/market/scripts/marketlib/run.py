@@ -16,6 +16,7 @@ from . import http, parse
 WORKERS = 8
 GROUP_CAP = 25
 SUMMARY_MAX = 500
+TITLE_MAX = 300
 SEEN_DAYS = 30
 STREAK_ALERT = 3
 CLASSES = {"auth": "auth", "network": "network", "timeout": "timeout"}  # anything else is "other"
@@ -38,7 +39,12 @@ def sources(cfg: dict) -> list:
 
 
 def _problem(kind: str, url: str, entry: dict) -> str:
-    if urllib.parse.urlsplit(url).scheme != "https":
+    try:
+        parts = urllib.parse.urlsplit(url)
+        host = parts.hostname
+    except ValueError:
+        return f"{entry.get('name')}: {url[:200]} is not a valid URL"
+    if parts.scheme != "https" or not host:
         return f"{entry.get('name')}: {url} is not an https URL"
     match = str(entry.get("match") or "")
     if kind == "newsroom" and match and not match.startswith("/"):
@@ -62,6 +68,21 @@ def _fetch(src):
         return sid, items, None
     except http.MarketError as exc:
         return sid, None, (CLASSES.get(exc.kind, "other"), exc.reason)
+    except Exception as exc:  # noqa: BLE001 - hostile input must fail its own source, never the run
+        return sid, None, ("other", f"{type(exc).__name__}: {str(exc)[:200]}")
+
+
+def _excludes(watch: list) -> dict:
+    """{entry name: compiled exclude}; an invalid one is skipped with a line on stderr (its fetched sources fail)."""
+    out = {}
+    for e in watch:
+        if e.get("exclude"):
+            try:
+                out[str(e.get("name"))] = re.compile(str(e["exclude"]))
+            except re.error as exc:
+                print(f"market_fetch: {e.get('name')}: exclude is not a valid regex ({exc}); not applied",
+                      file=sys.stderr)
+    return out
 
 
 def _matcher(watch: list):
@@ -86,7 +107,7 @@ def main(argv: list, vault: Path, today: date | None = None) -> int:
         return check(state, day)
     cfg = config(vault)
     watch = _maps(cfg.get("market_watch"))
-    named = _matcher(watch)
+    named, excludes = _matcher(watch), _excludes(watch)
     known = state.get("sources") if isinstance(state.get("sources"), dict) else {}
     cutoff = (today - timedelta(days=SEEN_DAYS)).isoformat()
     srcs = sources(cfg)
@@ -109,16 +130,15 @@ def main(argv: list, vault: Path, today: date | None = None) -> int:
             _, kind, _, entry = by_id[sid]
             baseline = not prev.get("last_ok")  # no success yet: this fetch only records what is there
             for item in items:
-                if item.key in seen:
-                    continue
-                seen[item.key] = day
-                if baseline:
+                fresh = item.key not in seen
+                seen[item.key] = day  # last seen: a key is dropped only after 30 days off the source
+                if not fresh or baseline:
                     continue
                 target = named(item) if kind == "press" else entry
                 if target is None:
                     continue
-                exclude = str(target.get("exclude") or "")
-                if exclude and re.search(exclude, item.title):
+                exclude = excludes.get(str(target.get("name")))
+                if exclude and exclude.search(item.title):
                     continue
                 new.append((item, sid, target))
             rec["last_ok"] = day
@@ -146,7 +166,8 @@ def _write(vault: Path, today: date, new: list) -> None:
     with open(folder / "candidates.jsonl", "a", encoding="utf-8") as fh:
         for item, sid, entry in lines:
             fh.write(json.dumps({"source": sid, "entry": entry.get("name"), "group": entry.get("group"),
-                                 "title": item.title, "link": item.link, "published": item.published,
+                                 "title": redact_credentials(item.title)[:TITLE_MAX], "link": item.link,
+                                 "published": item.published,
                                  "summary": redact_credentials(item.summary)[:SUMMARY_MAX]}) + "\n")
     if held:
         path = folder / "held.json"

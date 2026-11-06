@@ -118,7 +118,7 @@
 **Interfaces:**
 - Consumes: `http.get`, `http.MarketError`, `parse.feed_items`, `parse.newsroom_items`, `parse.Item`.
 - Produces: `main(argv: list[str], vault: Path, today: date | None = None) -> int` (0 all sources ok, 1 any failed, 2 usage); `--check` prints `market_fetch: ok: <n> sources` (exit 0) or `market_fetch: <class>: <n> of <m> sources failed; first <source>: <reason>` (exit 1), or `market_fetch: other: no fetch today` (exit 1), from state alone, with no network.
-- State, `system/logs/market_state.json` through `api.load`/`api.save`: `{"sources": {<source id>: {"seen": {<key>: "YYYY-MM-DD"}, "streak": int, "class": str, "reason": str, "last_ok": "YYYY-MM-DD"}}, "last_run": "YYYY-MM-DD"}`. A source id is `<entry name>:newsroom`, `<entry name>:feed` or `press:<name>`. Seen keys older than 30 days are dropped.
+- State, `system/logs/market_state.json` through `api.load`/`api.save`: `{"sources": {<source id>: {"seen": {<key>: "YYYY-MM-DD"}, "streak": int, "class": str, "reason": str, "last_ok": "YYYY-MM-DD"}}, "last_run": "YYYY-MM-DD"}`. A source id is `<entry name>:newsroom`, `<entry name>:feed` or `press:<name>`. Each key holds the day it was last seen on its source; a key not seen for 30 days is dropped.
 - Candidates: one JSON line per item in `raw/market/<date>/candidates.jsonl`, `{source, entry, group, title, link, published, summary}`; `raw/market/<date>/held.json` `{<group>: <count>}` summed over the day's runs.
 
 - [ ] **Step 1: Write the failing tests** (stub seam from Task 2, fixtures from Task 3, `today=date(2026, 11, 6)`):
