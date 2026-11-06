@@ -1,0 +1,2 @@
+- Added: the market page `briefings/market/<date>.md`, rated in its own headless run, with a Market line in the brief, a Slack line per threat, and proposed tracker changes as owed Now lines; `market_runs_per_day` adds afternoon runs (#523)
+  - Action: run `system/scripts/install_units.sh` after the update so `foundry-market` picks up the rating step and any extra runs.
