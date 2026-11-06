@@ -1,0 +1,1 @@
+- Changed: a Work Order that fails the same command 3 times stops as blocked, and a stopped plan order leaves a handoff its requeue reads (#486)
