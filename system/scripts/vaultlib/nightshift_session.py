@@ -146,6 +146,50 @@ def parse_stream(path) -> dict:
     return out
 
 
+EDITS = ("Edit", "Write", "MultiEdit")
+
+
+def _error_text(content) -> str:
+    if isinstance(content, list):
+        return "\n".join(str(b.get("text") or "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+    return content if isinstance(content, str) else ""
+
+
+def error_key(command: str, error: str) -> str:
+    """The loop stop's key (loop guards spec §4.1, Q12): the command, and the error's first and last non-empty lines
+    with every digit run masked, so a test runner's timing does not make each failure look new."""
+    lines = [l for l in error.splitlines() if l.strip()] or [""]
+    return "\n".join([command] + [re.sub(r"\d+", "N", l) for l in (lines[0], lines[-1])])
+
+
+def bash_events(lines, ids: dict) -> list:
+    """("edit", "", "", "") per Edit/Write/MultiEdit call and ("fail", key, command, last error line) per failed Bash
+    call, in stream order. ids (tool_use id -> Bash command) is kept by the caller, so a result pairs with a call an
+    earlier batch of lines held."""
+    out = []
+    for line in lines:
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        msg = ev.get("message") if isinstance(ev, dict) else None
+        content = msg.get("content") if isinstance(msg, dict) else None
+        for c in content if isinstance(content, list) else []:
+            if not isinstance(c, dict):
+                continue
+            if ev.get("type") == "assistant" and c.get("type") == "tool_use":
+                if c.get("name") == "Bash":
+                    ids[c.get("id")] = str((c.get("input") or {}).get("command") or "")
+                elif c.get("name") in EDITS:
+                    out.append(("edit", "", "", ""))
+            elif ev.get("type") == "user" and c.get("type") == "tool_result" and c.get("is_error") \
+                    and c.get("tool_use_id") in ids:
+                command, text = ids[c["tool_use_id"]], _error_text(c.get("content"))
+                last = ([l for l in text.splitlines() if l.strip()] or [""])[-1]
+                out.append(("fail", error_key(command, text), command, last))
+    return out
+
+
 def init_problem(init, kind) -> str | None:
     if init is None:
         return "no init event"
