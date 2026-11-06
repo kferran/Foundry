@@ -1,0 +1,1 @@
+- Fixed: the market extension declares its unit's node in the pipeline graph, which CI requires of every extension unit. (#477)
