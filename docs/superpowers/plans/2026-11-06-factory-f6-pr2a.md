@@ -40,7 +40,7 @@ No script, unit or hook changes.
   - `<node>: restart on a unit with no Restart=` (P5).
 - **Bats ruling R1:** no mid-test `!`, no `&&` assertion chains, and no wall-clock assertions.
 - **Template rule:** no hostname, user path, employer or people name in the manifests or the fixtures.
-- **Change file:** none (no vault user sees a change); FOUNDRY.md's factory line names the extension file and the diagram.
+- **Change file:** one line: `/new-source` writes a new file, which a vault user sees. FOUNDRY.md's factory line names the extension file and the diagram.
 - **Delivery:** branch `feat/f6-pr2a`; the owner merges.
 
 ## Review Focus
