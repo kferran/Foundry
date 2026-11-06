@@ -12,7 +12,7 @@ debrief: true
 units:
   - {name: foundry-watch, roles: [standalone, server]}
 tick: {run: "scripts/today_log.py tick", timeout: 120}
-alert_tags: [{tag: watch, severity: now}, intraday]
+alert_tags: [watch, intraday]   # both wait for the brief (owner, 2026-11-06)
 allow: ["Bash(extensions/intraday/scripts/watch_fetch.sh --check)"]
 deps: []
 index_ignore: []
