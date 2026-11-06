@@ -1830,3 +1830,37 @@ def test_a_pre_session_ending_leaves_no_handoff(env, tmp_path):
     path, fm = only_item(vault)
     nr._finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "workspace", "needs": ["Move it"]})
     assert not (idir / "handoff.md").exists()
+
+
+def test_a_requeued_order_gets_the_previous_handoff_in_its_clone(env, monkeypatch):
+    vault, tmp = env
+    monkeypatch.setattr(nr, "POLL", 1)
+    stub(tmp, SHELL=loop_shell(FAIL, FAIL, FAIL))
+    assert add(vault, "--now") == 0
+    nr.main(["tick"], vault, NOW)
+    _, fm = only_item(vault)
+    assert nr.main(["requeue", fm["id"]], vault, NOW) == 0
+    stub(tmp, SHELL=loop_shell(sleep=0))
+    nr.main(["tick"], vault, NOW)
+    idir = rep.item_dir(vault, fm["id"])
+    assert "handoff.md records why and what it tried" in (idir / "prompt.md").read_text()
+    clone = tmp / "ws" / f"nightshift-{fm['id']}"
+    previous = idir.with_name(f"{fm['id']}.1") / "handoff.md"
+    if clone.is_dir():   # a run that delivered removes its clone; one that stopped keeps it
+        assert (clone / ".nightshift/handoff.md").read_text() == previous.read_text()
+        assert ".nightshift" not in git(clone, "status", "--porcelain")
+
+
+def test_a_requeue_with_no_earlier_handoff_gets_none_and_a_third_run_takes_the_newest(env, tmp_path):
+    vault, tmp = env
+    ctx = nr.Ctx(vault, NOW)
+    idir = rep.item_dir(vault, "o9")
+    (idir.with_name("o9.1")).mkdir(parents=True)
+    clone = tmp_path / "clone"
+    (clone / ".nightshift").mkdir(parents=True)
+    assert nr._previous_handoff(ctx, {"id": "o9", "run": "2"}, clone) is False
+    (idir.with_name("o9.2")).mkdir()
+    (idir.with_name("o9.2") / "handoff.md").write_text("second")
+    assert nr._previous_handoff(ctx, {"id": "o9", "run": "3"}, clone) is True
+    assert (clone / ".nightshift/handoff.md").read_text() == "second"
+    assert nr._previous_handoff(ctx, {"id": "o9", "run": "1"}, tmp_path / "other") is False

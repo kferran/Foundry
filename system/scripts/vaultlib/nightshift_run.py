@@ -444,6 +444,21 @@ def _loop_hit(events: list, state: dict):
     return None
 
 
+def _previous_handoff(ctx: Ctx, fm: dict, clone: Path) -> bool:
+    """A requeued plan order's clone gets the newest earlier run's handoff as .nightshift/handoff.md (loop guards spec
+    §5.4): the session cannot read the items folder, and .nightshift/ is in the clone's info/exclude. True when the
+    clone has one."""
+    dest = clone / ".nightshift" / "handoff.md"
+    if int(fm.get("run") or 1) > 1 and not dest.exists():
+        idir = rep.item_dir(ctx.vault, fm["id"])
+        earlier = sorted((int(p.parent.name.rsplit(".", 1)[1]), p) for p in idir.parent.glob(f"{fm['id']}.*/handoff.md")
+                         if p.parent.name.rsplit(".", 1)[1].isdigit())
+        if earlier:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(earlier[-1][1], dest)
+    return dest.is_file()
+
+
 def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Path, resume: bool) -> dict:
     kind = fm["kind"]
     cb = nc.codebase(ctx.vault, fm.get("repo")) or {}
@@ -455,7 +470,7 @@ def _run_session(ctx: Ctx, path: Path, fm: dict, body: str, cwd: Path, idir: Pat
                                               fence=ctx.workspace, reopen=[own] if own else [])))
     plugins = [p for p in [ss.superpowers_dir()] if p] + [Path(str(p)).expanduser() for p in nc.setting(cb, "order_plugins", "nightshift_plugins") or []]
     code = nc.git(cwd / "code", "log", "-1", "--format=%h (%cs)").stdout.strip() if kind == "research" and fm.get("repo") else ""
-    prompt = (ss.plan_prompt(fm) if kind == "plan" else
+    prompt = (ss.plan_prompt(fm, handoff=(cwd / ".nightshift" / "handoff.md").is_file()) if kind == "plan" else
               ss.research_prompt(fm, body, code=f"{fm['repo']} at {code}" if code else None))
     if resume:
         prompt = "Continue where you stopped; read .nightshift/progress.md (or out/) first. " + prompt
@@ -776,6 +791,7 @@ def run_item(ctx: Ctx, path: Path, fm: dict, body: str) -> int:
         except CloneError as exc:   # ends now, with a report row and a Needs-you line, and frees the queue
             return _finish(ctx, path, fm, idir, None, {"state": "failed", "reason": "base", "needs": [
                 f"Push {fm['base']} to the template remote, then run nightshift.py requeue {fm['id']} ({exc})"]})
+        _previous_handoff(ctx, fm, cwd)   # a requeued run reads what the last one tried (#487)
         before = _before(ctx, fm, idir)
         gone = nc.toolchain_errors(fm["repo"], nc.codebase(ctx.vault, fm["repo"]) or {})
         if gone:   # a directory that passed readiness is gone: block now, before the session spends its budget
