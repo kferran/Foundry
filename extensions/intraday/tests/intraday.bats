@@ -50,14 +50,14 @@ EOF
   [[ "$output" == *"missing required key label"* ]]
 }
 
-@test "a [watch] line reaches Slack at once; an [intraday] line waits for the brief" {
+@test "[watch] and [intraday] lines wait for the brief (owner, 2026-11-06: watch alerts go to the brief, not Slack)" {
   run python3 -c 'import sys; sys.path.insert(0, "system/scripts")
 from pathlib import Path
 from vaultlib import alerts
 ext = alerts.extension_tags(Path("."))
 print(alerts.severity("- 09:00:00 [watch] Weekly huddle cancelled", ext), alerts.severity("- 09:00:00 [intraday] x", ext))'
   [ "$status" -eq 0 ]
-  [ "$output" = "now brief" ]
+  [ "$output" = "brief brief" ]
 }
 
 @test "the watch timer installs on a server, at :15 and :45 on workdays, and never on a client" {

@@ -1,0 +1,1 @@
+- Changed: intraday's `[watch]` alerts (cancelled or moved meetings, incidents and production alert mail the watch finds) wait for the brief instead of posting to Slack at once (#526)
