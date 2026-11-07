@@ -1,0 +1,17 @@
+# The market extension in the pipeline graph (factory F6 PR 2a, #477): system/tests/pipeline.bats checks it with
+# --extensions, in the shape of system/pipeline.yml.
+nodes:
+  market:
+    unit: foundry-market
+    entry: extensions/market/scripts/market_unit.py
+    scripts: [extensions/market/scripts/market_unit.py, extensions/market/scripts/marketlib/unit.py,
+              extensions/market/scripts/market_fetch.py, extensions/market/scripts/marketlib/run.py,
+              extensions/market/scripts/marketlib/page.py]
+    reads: [raw/market/, system/logs/market_state.json, system/logs/market_run.json, briefings/market/]
+    writes: [raw/market/, system/logs/market_state.json, system/logs/market_run.json, system/logs/alerts_*.md,
+             raw/inbox/, wiki/*/Now.md]   # raw/inbox/: the page's copy for ingest; Now.md through now.py add
+    locks: [run.lock]   # run_headless.sh market and now.py add take it; the rating waits RATE_LOCK_WAIT
+    failure:
+      busy: retry-next-tick       # run.lock busy past RATE_LOCK_WAIT: status busy, the next run rates
+      source: alert:market_source # a source failing 3 runs in a row
+      other: alert:market_source  # guard(..., "market_source") in market_unit.py

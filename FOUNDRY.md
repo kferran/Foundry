@@ -76,7 +76,7 @@ Every feature, what turns it on, the unit that runs it, its smoke row and where 
 | [handoffs](#daily-use) (extension) | Stalled handoffs you reported that someone else holds | `extensions: [handoffs]` | none: the brief prep fetches it | `handoffs` | its brief section; `[handoffs]` alerts |
 | [health](#daily-use) (extension) | A scorecard of the platform and the factory | `extensions: [health]` | none: the brief prep scores it | none | 🩺 Health on Mondays, Pipeline lines on other days |
 | [intraday](#daily-use) (extension) | What changed since the brief | `extensions: [intraday]` | `foundry-watch` | `watch` | Now lines, `[watch]` alerts to Slack, 🕑 Today so far, a debrief section |
-| [market](#daily-use) (extension) | What changed among the companies and bodies you watch, from their newsrooms and feeds | `extensions: [market]`, with `market_watch` and `market_press` | `foundry-market` | `market` | `raw/market/<date>/` candidates; `[market_source]` alerts |
+| [market](#daily-use) (extension) | What changed among the companies and bodies you watch, from their newsrooms and feeds | `extensions: [market]`, with `market_watch` and `market_press` | `foundry-market` | `market` | `briefings/market/<date>.md`, a Market line in the brief; `[market]` threat and `[market_source]` alerts; proposed changes as `owed` Now lines |
 | [telemetry](#daily-use) (extension) | Production error groups, and `/rca` with ticket filing | `extensions: [telemetry]`, with handoffs | `foundry-telemetry` | `telemetry/<name>` | `raw/telemetry/` notes, Blockers in the brief; `[incident]`, `[rca]`, `[telemetry]` alerts |
 
 What each extension needs (its `extension.md` and `schemas/config.md` hold the detail):
@@ -87,7 +87,7 @@ What each extension needs (its `extension.md` and `schemas/config.md` hold the d
 | `handoffs` | nothing else | the one its manifest names | `handoffs_site`, `handoffs_projects` | none |
 | `health` | `gh` and a GitHub `template_remote` for the factory metrics | none | `health_thresholds`, `health_defect_gates` | none |
 | `intraday` | nothing else | Slack, Gmail and Google Calendar | `watch_channels`, `watch_group_dms`, `watch_user_id`, `watch_partition`, `watch_commitments_mail`, `watch_inbound_mail`, `watch_inbound_skip`, `watch_inbound_rules`, `capture_channel`, `capture_partition` | none |
-| `market` | your watch list and press feeds | none | `market_watch`, `market_press`, `market_runs_per_day`, `market_model`, `market_timeout_minutes`, `market_alert_groups`, `market_keep_groups`, `market_partition` | none yet |
+| `market` | your watch list and press feeds | none | `market_watch`, `market_press`, `market_runs_per_day`, `market_model`, `market_timeout_minutes`, `market_alert_groups`, `market_keep_groups`, `market_partition` | the `market` headless command (`run_headless.sh market`) |
 | `telemetry` | the `handoffs` extension; `az`; a source note per source in `system/telemetry/` | none for the fetch; the handoffs connector files tickets | `rca_project`, `rca_issue_type`, `rca_labels`, `rca_assignee`, `rca_extra_fields` | `/rca` |
 
 The commands and skills are under [Daily use](#daily-use).
@@ -120,7 +120,7 @@ The commands and skills are under [Daily use](#daily-use).
 
 **Intraday.** The `intraday` extension (`extensions/intraday/extension.md` describes it) answers what changed since the brief. Every 30 minutes on workdays, `foundry-watch.timer` reads the Slack channels you list in full, your group DMs, your own messages, sent mail, incoming mail and today's calendar, each source in its own confined session. A deadline, a commitment, a review request or a task assigned to you becomes an `owed` Now line, a block that names you a `waiting` line, and a cancelled or moved meeting, an incident or a production alert mail a `[watch]` alert, which waits for the brief (owner, 2026-11-06: not Slack). Everything it finds, with the day's session digests and imported meetings, is appended to `briefings/<date>.today.md`, which the briefing embeds under 🕑 Today so far and only the server writes. A capture channel you post to becomes `raw/inbox/` drops the intake compiles. An extension's alert tag can reach Slack at once when its manifest gives it `severity: now` (`alert_tags: [{tag: incident, severity: now}]`); a bare tag waits for the brief, and an entry with `now_when: '<regex>'` goes at once when the regex matches the text after the tag (otherwise it keeps its severity). Other parts an extension plugs in: `importer: {type: <note type>}` moves an inbox note of that type to `raw/<extension>/` instead of compiling it; `system/<extension>/` holds its config notes, indexed but never a bare-name link target; its `lint` module's `CITED = {<type>: [<open statuses>]}` puts those notes' `file:NN` citations under the live citation check; `reserved_tag: true` in one of its schemas keeps that type's name, as a tag, to its own notes; and its config keys are stated once, in its `schemas/config.md`. An extension's manifest `budget` states its timing: `values` gives the scripts' defaults by name, `steps` the time each unit's sessions can wait (a step's unit is a template unit, `smoke/<row>` or `tick`, limited by the tick's timeout; each tick and smoke row is summed without a step line), and `out` why a unit runs no session; `conformance.bats` checks the values against the scripts' defaults and sums the steps against each unit's limit. An extension's `commands: [{name, targets, model_key, timeout_key}]` declares a headless run that `system/scripts/run_headless.sh <name>` starts while the extension is enabled: its prompt is `extensions/<extension>/commands/<name>.md`, its targets sit under `briefings/<name>/` (`<date>` is today), the publish gate takes its run id, and the two config keys give its model and its time limit (never more than the harness's own). A unit template's `{{EXTRA_TIMES:<key>}}` line adds that unit's extra runs: the key (1 to 4 a day) spaces them evenly from the first run to 18:00. An extension can add a debrief section the same way as a brief section, from its `debrief/` folder.
 
-**Market watch.** The `market` extension (`extensions/market/extension.md` describes it) watches the companies and bodies you list. Each morning, 30 minutes before the brief, `foundry-market` reads each `market_watch` entry's newsroom page and RSS or Atom feed, and each `market_press` feed, and writes the items it has not seen before to `raw/market/<date>/candidates.jsonl`; a source's first fetch only records what is there. A press item counts only when it names an entry as a whole word, and an entry with no newsroom or feed is matched that way only. It fetches over HTTPS only, with one user agent that names it, follows redirects only on the same host, stops a response at 4 MB, and passes at most 25 items per group per run (the rest are counted in `held.json`). A source that fails three runs in a row raises one `[market_source]` alert, and the smoke row reports the morning's fetch on the Sources line. The rating run, the daily page `briefings/market/<date>.md` and its line in the brief come with market watch PR 3 (#236).
+**Market watch.** The `market` extension (`extensions/market/extension.md` describes it) watches the companies and bodies you list. Each morning, 30 minutes before the brief, `foundry-market` reads each `market_watch` entry's newsroom page and RSS or Atom feed, and each `market_press` feed, and writes the items it has not seen before to `raw/market/<date>/candidates.jsonl`; a source's first fetch only records what is there. A press item counts only when it names an entry as a whole word, and an entry with no newsroom or feed is matched that way only. It fetches over HTTPS only, with one user agent that names it, follows redirects only on the same host, stops a response at 4 MB, and passes at most 25 items per group per run (the rest are counted in `held.json`). A source that fails three runs in a row raises one `[market_source]` alert, and the smoke row reports the morning's fetch on the Sources line. When there are new candidates, the same unit runs `run_headless.sh market`, a headless session that reads them with your entity and project notes of `market_partition` and writes the day's page, `briefings/market/<date>.md`: Threats, Openings, Watch, News (items of `market_keep_groups` kept even when minor, at most 10 per group) and Proposed changes. The session has no network and writes only its staged page. After the gate publishes the page, `market_unit.py` posts one `[market]` Slack line per threat from a `market_alert_groups` group (once per link for 14 days), adds an `owed` Now line per proposed change, and drops a copy in `raw/inbox/` so ingest adds the facts to your entity notes. The brief carries one Market line linking the page, `No market changes`, or `Market: unavailable (<reason>)` when the run failed, timed out or is still running. `market_runs_per_day` (1 to 4) adds runs spaced evenly until 18:00.
 
 **Health.** The `health` extension (`extensions/health/extension.md` describes it) scores the platform and the factory every brief from the logs the vault already writes and, with `gh` and a GitHub `template_remote`, from merged pull requests: source tick success, headless runs published, the brief's time and size, the Now pages' size, open lines and closures, the dismissed share per writer (each Now line's `[via::]`; a line with none counts as the session's, or as a guess from its mail or Slack evidence link for an old line `tag-writers` has not tagged), Claude cost per day, sync blocks, the headroom of the core budgets, defect recurrences after a gate, first-push CI and review-fix commits. Monday's brief carries the whole scorecard under 🩺 Health; other days show one Pipeline line per metric past its threshold. History is in `system/logs/health/<YYYY-MM>.jsonl`; thresholds and gate dates are config keys (`health_thresholds`, `health_defect_gates`).
 
@@ -463,6 +463,7 @@ flowchart LR
   console[console]
   debrief[debrief]
   intake[intake]
+  market[market]
   meetings[meetings]
   nightshift[nightshift]
   notify[notify]
@@ -473,126 +474,140 @@ flowchart LR
   update[update]
   watch[watch]
   p0[("briefings/")]
-  p1[("meetings/drop/")]
-  p2[("raw/*/archive/")]
-  p3[("raw/*/nightshift/")]
-  p4[("raw/*/notes/")]
-  p5[("raw/archive/")]
-  p6[("raw/inbox/")]
-  p7[("raw/meetings/")]
-  p8[("raw/telemetry/")]
-  p9[("system/logs/")]
-  p10[("system/logs/alerts_*.md")]
-  p11[("system/logs/followups_queue.txt")]
-  p12[("system/logs/health/")]
-  p13[("system/logs/inputs/")]
-  p14[("system/logs/jira_fetch-*.jsonl")]
-  p15[("system/logs/meetings-*.jsonl")]
-  p16[("system/logs/nightshift/")]
-  p17[("system/logs/rca/")]
-  p18[("system/logs/runs/")]
-  p19[("system/logs/telemetry_state.json")]
-  p20[("system/logs/watch/")]
-  p21[("system/quarantine/")]
-  p22[("system/telemetry/")]
-  p23[("wiki/")]
-  p24[("wiki/*/Now.md")]
-  p25[("wiki/*/meetings/")]
+  p1[("briefings/market/")]
+  p2[("meetings/drop/")]
+  p3[("raw/*/archive/")]
+  p4[("raw/*/nightshift/")]
+  p5[("raw/*/notes/")]
+  p6[("raw/archive/")]
+  p7[("raw/inbox/")]
+  p8[("raw/market/")]
+  p9[("raw/meetings/")]
+  p10[("raw/telemetry/")]
+  p11[("system/logs/")]
+  p12[("system/logs/alerts_*.md")]
+  p13[("system/logs/followups_queue.txt")]
+  p14[("system/logs/health/")]
+  p15[("system/logs/inputs/")]
+  p16[("system/logs/jira_fetch-*.jsonl")]
+  p17[("system/logs/market_run.json")]
+  p18[("system/logs/market_state.json")]
+  p19[("system/logs/meetings-*.jsonl")]
+  p20[("system/logs/nightshift/")]
+  p21[("system/logs/rca/")]
+  p22[("system/logs/runs/")]
+  p23[("system/logs/telemetry_state.json")]
+  p24[("system/logs/watch/")]
+  p25[("system/quarantine/")]
+  p26[("system/telemetry/")]
+  p27[("wiki/")]
+  p28[("wiki/*/Now.md")]
+  p29[("wiki/*/meetings/")]
   brief --> p0
   brief --> p10
   brief --> p12
-  brief --> p13
   brief --> p14
-  brief --> p18
-  brief --> p24
-  brief --> p8
+  brief --> p15
+  brief --> p16
+  brief --> p22
+  brief --> p28
   debrief --> p0
-  debrief --> p10
-  debrief --> p13
-  debrief --> p18
+  debrief --> p12
+  debrief --> p15
+  debrief --> p22
   intake --> p0
-  intake --> p10
-  intake --> p11
+  intake --> p12
   intake --> p13
   intake --> p15
-  intake --> p17
-  intake --> p18
-  intake --> p2
-  intake --> p20
+  intake --> p19
   intake --> p21
-  intake --> p23
+  intake --> p22
   intake --> p24
-  intake --> p5
+  intake --> p25
+  intake --> p27
+  intake --> p28
+  intake --> p3
   intake --> p6
-  meetings --> p10
-  meetings --> p7
-  nightshift --> p10
-  nightshift --> p16
-  nightshift --> p23
-  nightshift --> p24
+  intake --> p7
+  market --> p12
+  market --> p17
+  market --> p18
+  market --> p28
+  market --> p7
+  market --> p8
+  meetings --> p12
+  meetings --> p9
+  nightshift --> p12
+  nightshift --> p20
+  nightshift --> p27
+  nightshift --> p28
   outside --> p0
-  outside --> p1
-  outside --> p22
-  outside --> p24
-  outside --> p3
+  outside --> p2
+  outside --> p26
+  outside --> p28
   outside --> p4
-  outside --> p6
+  outside --> p5
+  outside --> p7
   p0 --> brief
   p0 --> console
   p0 --> intake
   p0 --> outside
-  p1 --> intake
+  p1 --> market
   p10 --> brief
-  p10 --> console
-  p10 --> debrief
-  p10 --> notify
-  p11 --> intake
-  p13 --> brief
-  p13 --> console
-  p13 --> debrief
-  p15 --> intake
-  p16 --> brief
-  p16 --> debrief
-  p17 --> intake
-  p18 --> debrief
-  p18 --> notify
-  p19 --> telemetry
-  p2 --> debrief
+  p10 --> outside
+  p11 --> brief
+  p12 --> brief
+  p12 --> console
+  p12 --> debrief
+  p12 --> notify
+  p13 --> intake
+  p15 --> brief
+  p15 --> console
+  p15 --> debrief
+  p17 --> market
+  p18 --> market
+  p19 --> intake
   p2 --> intake
-  p20 --> intake
-  p20 --> watch
-  p21 --> brief
-  p21 --> debrief
-  p22 --> brief
-  p22 --> telemetry
-  p23 --> brief
-  p23 --> console
-  p23 --> intake
-  p23 --> outside
+  p20 --> brief
+  p20 --> debrief
+  p21 --> intake
+  p22 --> debrief
+  p22 --> notify
+  p23 --> telemetry
   p24 --> intake
   p24 --> watch
-  p25 --> intake
-  p3 --> nightshift
-  p4 --> debrief
-  p4 --> intake
-  p5 --> outside
-  p6 --> intake
+  p25 --> brief
+  p25 --> debrief
+  p26 --> brief
+  p26 --> telemetry
+  p27 --> brief
+  p27 --> console
+  p27 --> intake
+  p27 --> outside
+  p28 --> intake
+  p28 --> watch
+  p29 --> intake
+  p3 --> debrief
+  p3 --> intake
+  p4 --> nightshift
+  p5 --> debrief
+  p5 --> intake
+  p6 --> outside
   p7 --> intake
-  p8 --> brief
-  p8 --> outside
-  p9 --> brief
-  smoke --> p10
+  p8 --> market
+  p9 --> intake
+  smoke --> p12
   telemetry --> p10
-  telemetry --> p19
-  telemetry --> p8
-  triage --> p10
-  triage --> p24
-  update --> p10
-  update --> p13
-  watch --> p10
-  watch --> p20
+  telemetry --> p12
+  telemetry --> p23
+  triage --> p12
+  triage --> p28
+  update --> p12
+  update --> p15
+  watch --> p12
   watch --> p24
-  watch --> p6
+  watch --> p28
+  watch --> p7
 ```
 <!-- pipeline:end -->
 5. **Defect labels:** one `defect:` label per fix ([Two lanes](#development)), and what holds each class (Defect classes, below).
