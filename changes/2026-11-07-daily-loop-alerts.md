@@ -1,0 +1,2 @@
+- Fixed: the console's smoke check sends your `console_login`, so it no longer fails every morning on the console's own login check, and an HTTP refusal is named as one (#527)
+- Changed: inbox triage logs a busy run.lock and reads the same mail next tick, without an alert; a sync fetch or push failure alerts only after 30 minutes (`SYNC_ALERT_AFTER`), and its recovery only after such an alert (#527)
