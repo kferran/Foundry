@@ -113,8 +113,7 @@ if (( check )); then
 fi
 wrc=0
 system/scripts/triage.py record "${srcarg[@]}" "$started" < "$work/found.json" > "$work/added.txt" 2> "$work/record.err" || wrc=$?
-# A busy run.lock (a brief, debrief or ingest holds it) writes nothing and moves no cursor: the next tick reads the same
-# mail, so it is logged, not alerted (#527: 10 of 19 triage alerts in 30 days were this).
+# A busy run.lock writes nothing and moves no cursor: the next tick reads the same mail, so no alert (#527).
 if (( wrc == 4 )) && grep -q 'run.lock busy' "$work/record.err"; then skip "run.lock busy; the next tick reads the same mail"; fi
 (( wrc == 0 )) || fail "$wrc" "$(sed 's/^triage: //' "$work/record.err" | head -n 1)"
 added="$(wc -l < "$work/added.txt")"

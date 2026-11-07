@@ -45,9 +45,7 @@ finish() {
   exit "$rc"
 }
 
-# fail <kind> <reason>: alert once a day per failure kind while it persists (§5.3), then exit 1. A fetch or push
-# failure (the network, or the other machine pushing first) alerts only once it has lasted SYNC_ALERT_AFTER seconds:
-# most clear by the next tick (#527: 15 failed and 11 recovered alerts in 30 days).
+# fail <kind> <reason>: alert once a day per kind while it persists (§5.3), a fetch or push one only after SYNC_ALERT_AFTER s (#527).
 fail() {
   local first="" last="" since
   if [[ -f "$STATE" ]]; then
@@ -57,8 +55,7 @@ fail() {
   first="${first:-$(date -Iseconds)}"
   since=$(( $(date +%s) - $(date -d "$first" +%s 2>/dev/null || date +%s) ))
   if [[ "$last" != "$(date +%F)" ]] && { [[ "$1" != fetch && "$1" != push ]] || (( since >= ${SYNC_ALERT_AFTER:-1800} )); }; then
-    alert "sync failed ($1): $2"
-    last="$(date +%F)"
+    alert "sync failed ($1): $2"; last="$(date +%F)"
   fi
   jq -cn --arg k "$1" --arg f "$first" --arg l "$last" \
     '{kind: $k, first_seen: $f, last_alerted: $l}' > "$STATE.tmp" && mv -f "$STATE.tmp" "$STATE"
