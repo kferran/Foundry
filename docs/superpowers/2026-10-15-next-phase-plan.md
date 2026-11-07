@@ -88,8 +88,8 @@ Trackers and docs that lag behind merged work, so the next reader is not misled.
 
 **Short specs** (features, because they touch the publish gate or alerting):
 
-9. **Connector health (L1).** Spec: `specs/2026-10-15-connector-health-design.md`. #184 is merged (timer liveness and unit drift). Then each fetch reports an auth failure as its own reason (expired token or key), separate from a network error, and the smoke check sends one `now` alert per expired credential, naming the command that renews it. The brief shows one "Sources" line listing what was skipped and why, in place of a skipped line per section. Confirm #176 on the live calendar.
-10. **Quarantine you can recover from (L6).** Spec: `specs/2026-10-15-quarantine-in-brief-design.md`. `intake.py --retry` exists; the brief's Blockers section lists each poisoned input with that command, and the brief and debrief read quarantine from one function, so they always agree.
+9. **Connector health (L1).** Spec: `archive/specs/2026-10-15-connector-health-design.md`. #184 is merged (timer liveness and unit drift). Then each fetch reports an auth failure as its own reason (expired token or key), separate from a network error, and the smoke check sends one `now` alert per expired credential, naming the command that renews it. The brief shows one "Sources" line listing what was skipped and why, in place of a skipped line per section. Confirm #176 on the live calendar.
+10. **Quarantine you can recover from (L6).** Spec: `archive/specs/2026-10-15-quarantine-in-brief-design.md`. `intake.py --retry` exists; the brief's Blockers section lists each poisoned input with that command, and the brief and debrief read quarantine from one function, so they always agree.
 11. **Telemetry escalation (#171).** Build the merged spec. A source with zero activity for 7 days gets one alert asking whether to turn it off (L7).
 
 **Done when:** 5 weekdays of live briefs with no manual connector recovery that went unalerted, and no Work Order blocked at `verify` on an install step.
@@ -113,7 +113,7 @@ The roadmap puts this before step 3 because step 3 moves ingest's neighbours and
 
 ### Phase 4: simplify step 3, extensions
 
-**Grilled 2026-10-15.** Decisions and the contract are in `specs/2026-10-15-extensions-design.md`. In short:
+**Grilled 2026-10-15.** Decisions and the contract are in `archive/specs/2026-10-15-extensions-design.md`. In short:
 - Three vendor-specific extensions move to tracked `extensions/<name>/` folders in the template: Jira handoffs, clearing-house (vault-only, in the owner's vault), and telemetry with RCA (owner, 2026-10-16, spec §7 and §8). Meetings, inbox triage, Slack notices, two-machine sync and Work Orders stay in core.
 - Jira handoffs move first. The loader merged as #226.
 - One `extensions:` list turns them on.

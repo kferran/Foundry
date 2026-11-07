@@ -1,6 +1,6 @@
 # Probe: how `claude -p` fails logged out and offline (2026-11-02, #436 S1)
 
-**Why:** spec `docs/superpowers/specs/2026-11-01-run-time-resilience-design.md` §3.1 rests on a short `claude -p` check telling an outage apart from a bad input; plan Task 2 confirms how claude behaves before the code depends on it.
+**Why:** spec `docs/superpowers/archive/specs/2026-11-01-run-time-resilience-design.md` §3.1 rests on a short `claude -p` check telling an outage apart from a bad input; plan Task 2 confirms how claude behaves before the code depends on it.
 
 **Setup:** a throwaway folder under `.scratch/`, real `claude`, the sandbox off. The check is `timeout -k 10s 60s claude -p "Reply with the word ok." --tools "" --strict-mcp-config --no-session-persistence --output-format json </dev/null`. Logged out is an empty `CLAUDE_CONFIG_DIR`; offline is `HTTPS_PROXY` and `HTTP_PROXY` set to `http://127.0.0.1:9`. Re-run 2026-11-03 with the run's own `--restricted --settings system/headless.settings.json` added (PR review): working and logged out gave the same results.
 

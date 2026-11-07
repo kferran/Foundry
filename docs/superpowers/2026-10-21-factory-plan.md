@@ -3,7 +3,7 @@
 **Date:** 2026-10-21. **Status:** grilled (2026-10-21, below); the owner's merge of the pull request that carries this plan and its F0 and F1 specs approves them.
 **Decisions (owner, 2026-10-21):** move existing features onto the shared parts; enforce the line with CI conformance tests, with a review skill for what a test cannot check; development skills ship in the template's `.claude/skills/`. Every principle departure (D1–D5) gets a fix on the roadmap.
 **Inputs:** `docs/reviews/2026-10-21-architecture.md` (architecture, principles P1–P10, departures D1–D5), `docs/reviews/2026-10-21-development-pattern-survey.md` (feature matrix, defect classes C1–C13), `docs/reviews/2026-10-21-live-usage-survey.md`, the 2026-10-20 audit (#298–#302).
-**Specs:** F0 `specs/2026-10-21-factory-f0-records-ratchet-design.md`; F1 `specs/2026-10-21-factory-f1-standard-parts-design.md` with plan `plans/2026-10-21-factory-f1-standard-parts.md`. F2–F5 get theirs when the phase before them is done, because each phase's results feed the next.
+**Specs:** F0 `archive/specs/2026-10-21-factory-f0-records-ratchet-design.md`; F1 `archive/specs/2026-10-21-factory-f1-standard-parts-design.md` with plan `archive/plans/2026-10-21-factory-f1-standard-parts.md`. F2–F5 get theirs when the phase before them is done, because each phase's results feed the next.
 
 ## Grill
 

@@ -45,6 +45,7 @@ headless_contract() {
   grep -qF 'When an action is blocked (permission, missing tool, missing input), state in one line what was blocked and what is needed.' "$f"
   grep -qF 'Codebases are defined in `system/codebases/`. Read the relevant file before touching code.' "$f"
   grep -qF 'a spec from `superpowers:brainstorming` and a plan from `superpowers:writing-plans`, before the first build commit.' "$f"   # owner, 2026-11-01
+  grep -qF 'In the Foundry template, only a safety-surface change needs them' "$f"   # owner, 2026-11-06
   run grep -nE 'Anti-Refusal|Intent Gate Audit|Kusto Intake|Strategic Intent Shaper|Friction Identification|Production Telemetry Routing' "$f"
   [ "$status" -eq 1 ]
   [ "$(wc -l < "$f")" -le 50 ]   # phase C spec §3: the next imported block has to displace something
@@ -1176,24 +1177,23 @@ self_edit_contract() {
   [ "$status" -eq 1 ]
 }
 
-@test "FOUNDRY.md keeps the speed rules: probe first, CI gate, small features without a plan, safe auto-merge" {
+@test "FOUNDRY.md keeps the speed rules: probe first, CI gate, fast-lane auto-merge" {
   grep -qF '**Keeping it quick.**' FOUNDRY.md
   grep -qF '**Probe first:**' FOUNDRY.md
   grep -qF '**CI is the gate:**' FOUNDRY.md
-  grep -qF '**Safe features merge themselves:**' FOUNDRY.md
+  grep -qF '**Fast-lane changes merge themselves:**' FOUNDRY.md
 }
 
 @test "FOUNDRY.md Development carries the working rules block (#166)" {
   grep -qF '**Working rules.**' FOUNDRY.md
 }
 
-@test "FOUNDRY.md defines the fix lane, its safety surfaces and the promotion rule (fast lane spec §2)" {
-  grep -qF '**Two lanes.**' FOUNDRY.md
-  grep -qF 'clear from one sentence' FOUNDRY.md
+@test "FOUNDRY.md defines the two lanes, the safety surfaces and the promotion rule (owner, 2026-11-06)" {
+  grep -qF '**Two lanes** (owner, 2026-11-06).' FOUNDRY.md
+  grep -qF 'the Work Order runner, the publish gate, the headless harness (`run_headless.sh` and its sandbox), redaction, and the settings files and their profiles' FOUNDRY.md
   grep -qF 'one failing test that passes after the change' FOUNDRY.md
-  grep -qF 'permissions and settings files, the sandbox, the publish gate, redaction, and new note types' FOUNDRY.md
   grep -qF 'also re-runs the live acceptance steps' FOUNDRY.md
-  grep -qF 'the default when in doubt is the feature lane' FOUNDRY.md
+  grep -qF 'stops and takes the safety lane' FOUNDRY.md
 }
 
 @test "FOUNDRY.md fast lane: a fix PR carries one defect: label, one per class C1 to C14 (factory F0 §3.4)" {

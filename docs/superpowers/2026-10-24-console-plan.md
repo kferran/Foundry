@@ -14,7 +14,7 @@ A web app over the vault, shipped as the extension `extensions/console/`. Vue wi
 
 | Phase | Issue milestone | What ships | Depends on | Spec and plan | State |
 |---|---|---|---|---|---|
-| C0 | M0 | `--json` on `now.py list`, `active_projects.py`, `nightshift.py list` and `report` | none | `specs/2026-10-24-json-output-design.md` (task list in the spec) | Complete (2026-10-24): spec #378, build #383 |
+| C0 | M0 | `--json` on `now.py list`, `active_projects.py`, `nightshift.py list` and `report` | none | `archive/specs/2026-10-24-json-output-design.md` (task list in the spec) | Complete (2026-10-24): spec #378, build #383 |
 | C1 | M1 | The Today screen, read-only, and the "Talk to the Foreman" link | C0 merged; F2 closed (#307) | `specs/2026-10-24-console-today-design.md`, `plans/2026-10-24-console-today.md` | Built: C1.1 #389, C1.2 #391, C1.3 #392 (merged 2026-10-30). C1.4 waits on the owner's live checks on the server and Omarchy (tracked in the owner's vault) |
 | C1.5 | M1 | Read-only screens: the style system (first PR, retrofitting Today), project drill-down, brief reader, ops panel, people view, meeting prep (§6) | C1 live; the proof-before-features count (roadmap) at 3 or fewer | to write when C1 is live | Grilled 2026-11-03 |
 | C2 | M2 | `ask`: a read-only headless command over the compiled wiki, answered in the app (and in the notify thread, #333) | C1.5 | to write when C1.5 is live: it adds a `run_headless.sh` command, a confinement surface the owner merges | Not started |

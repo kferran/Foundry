@@ -1,6 +1,6 @@
 # Probe: SessionEnd on a killed terminal, and the kept transcript's fields (#438)
 
-Plan `docs/superpowers/plans/2026-11-03-recall-r0-r1.md` Task 6. Run 2026-11-03 by the controller: real interactive `claude` in `tmux`, in a `.scratch/` clone of master at the R0 merge, hooks passed by `--settings` (no `install_hooks.sh`): `memory_recall.sh` on `SessionStart`, `memory_activity.sh` on `PostToolUse`, and on `SessionEnd` a `cat` of the hook input to a file followed by `memory_keep.sh`. `transcript_keep_dir` pointed at a scratch folder outside the clone.
+Plan `docs/superpowers/archive/plans/2026-11-03-recall-r0-r1.md` Task 6. Run 2026-11-03 by the controller: real interactive `claude` in `tmux`, in a `.scratch/` clone of master at the R0 merge, hooks passed by `--settings` (no `install_hooks.sh`): `memory_recall.sh` on `SessionStart`, `memory_activity.sh` on `PostToolUse`, and on `SessionEnd` a `cat` of the hook input to a file followed by `memory_keep.sh`. `transcript_keep_dir` pointed at a scratch folder outside the clone.
 
 ## SessionEnd
 

@@ -573,16 +573,16 @@ sealed_problems() {
   # 16,406, the plan aimed at 130), S2 37 and S6 8, which left 29; the raise covers the 30-day prune (S7), the
   # calendar check (S8) and recall R2.
   # S7 took 114 lines (16,451 to 16,565): vaultlib/prune.py and the intake tick's once-a-day step.
-  # 16,700 -> 16,740 (factory F7 PR 1, docs/superpowers/specs/2026-11-03-factory-f7-now-line-states-design.md, owner
+  # 16,700 -> 16,740 (factory F7 PR 1, docs/superpowers/archive/specs/2026-11-03-factory-f7-now-line-states-design.md, owner
   # to approve at merge): the Now line's state table (vaultlib/now_states.py), the brief's state screen in the publish
   # gate, review's unknown marks and the reopened-expired fix took core from 16,630 to 16,734 lines.
-  # 16,740 -> 16,750 (#436 crash alerts PR B, docs/superpowers/specs/2026-11-03-crash-alerts-core-units-design.md, owner
+  # 16,740 -> 16,750 (#436 crash alerts PR B, docs/superpowers/archive/specs/2026-11-03-crash-alerts-core-units-design.md, owner
   # to approve at merge): PR A's four traps took core to 16,738; the update unit's crash_trap took it to 16,743.
   # 16,750 -> 16,770 (#436 crash alerts PR C, owner to approve at merge): crash_trap --exit-only and its use in the
   # brief and sync units took core from 16,743 to 16,759.
   # 16,770 -> 16,920 (#476 digest follow-ups, docs/superpowers/specs/2026-11-03-digest-followups-design.md, owner to
   # approve at merge): followups.py and the intake queue took core from 16,759 to 16,914 (the spec estimated 60 lines).
-  # 16,920 -> 17,040 (#236 market watch PR 1, docs/superpowers/specs/2026-10-31-market-watch-design.md §3.3 and §3.6,
+  # 16,920 -> 17,040 (#236 market watch PR 1, docs/superpowers/archive/specs/2026-10-31-market-watch-design.md §3.3 and §3.6,
   # owner to approve at merge): extension commands in run_headless.sh, publish.py, commit_runs.py, extensions.py and
   # install_units.sh took core from 16,916 to 17,038.
   # A vault (system/config.md exists) prints its count and skips the cap.

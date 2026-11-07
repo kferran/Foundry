@@ -2,7 +2,7 @@
 
 **Date:** run 2026-10-03 (local clock rolled past midnight; file named for the plan) · **claude:** 2.1.288 (Claude Code) · **Branch:** `feat/plan-6` at 938efd5 · **Vaults:** throwaway clones in `~/.cache/jarvis-accept/`: `base` (master at 412ee91, for the cost baseline) and `vault` (the branch), each with `system/config.example.md` as its config (no `gcalcli`, no focus log). Every headless run went through `system/scripts/run_headless.sh` (directly, or via `intake_daemon.sh`) with the real `claude` binary.
 
-This re-runs Plan 4a's acceptance (Task 9, steps 1–7, of `docs/superpowers/plans/2026-10-02-plan-4a-commands-setup.md`) after Plan 6 added the humanizer self-edit step to `ingest`, `brief` and `debrief`.
+This re-runs Plan 4a's acceptance (Task 9, steps 1–7, of `docs/superpowers/archive/plans/2026-10-02-plan-4a-commands-setup.md`) after Plan 6 added the humanizer self-edit step to `ingest`, `brief` and `debrief`.
 
 ## Runs
 
