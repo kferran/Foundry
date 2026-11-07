@@ -23,6 +23,7 @@ sinks:     # read outside the graph
   - {path: wiki/, by: the owner in Obsidian}
   - {path: briefings/, by: the owner}
   - {path: raw/archive/, by: the audit layer}
+  - {path: system/logs/*_fetch-*.jsonl, by: the audit layer}   # every Source's fetch log; the health extension read them, removed (#527)
 
 nodes:
   intake:

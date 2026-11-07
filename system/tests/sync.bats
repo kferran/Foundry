@@ -162,8 +162,23 @@ refused_run() {  # a published run whose note the hook refuses
   [ -n "$(git status --porcelain)" ]
 }
 
+@test "an unreachable origin that recovers within SYNC_ALERT_AFTER raises no alert at all (#527)" {
+  need_non_root
+  chmod 000 "$O"
+  run "$VS"
+  [ "$status" -eq 1 ]
+  run "$VS"
+  [ "$status" -eq 1 ]
+  chmod 755 "$O"
+  run "$VS"
+  [ "$status" -eq 0 ]
+  [ "$(alerts | grep -c 'sync failed\|sync recovered')" -eq 0 ]
+  [ ! -e system/logs/sync-state.json ]
+}
+
 @test "an unreachable origin is alerted once a day and its recovery once" {
   need_non_root
+  export SYNC_ALERT_AFTER=0   # past the grace at once
   chmod 000 "$O"
   run "$VS"
   [ "$status" -eq 1 ]

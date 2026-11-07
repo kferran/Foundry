@@ -1,7 +1,0 @@
-# The health extension in the pipeline graph (factory F6 PR 2a, #477): system/tests/pipeline.bats checks it with
-# --extensions. Its scorecard runs inside the brief's prep.
-extends:
-  brief:
-    scripts: [extensions/health/scripts/health.py]
-    reads: [system/logs/]   # every month log, the run ledger and its own history
-    writes: [system/logs/health/]

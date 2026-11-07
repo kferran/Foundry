@@ -74,7 +74,6 @@ Every feature, what turns it on, the unit that runs it, its smoke row and where 
 | [Smoke check](#daily-use) | Checks every source and timer before the brief | `machine_role`: standalone or server | `foundry-smoke` | all of them | the brief's Sources line; `[smoke]` alerts |
 | [console](#daily-use) (extension) | A web app over the vault: the Today screen, read-only | `extensions: [console]`, then `extensions/console/scripts/build.sh` | `foundry-console` (always on, `127.0.0.1`; a client too) | `console` | a page on `127.0.0.1:<console_port>`, on the tailnet through `tailscale serve` |
 | [handoffs](#daily-use) (extension) | Stalled handoffs you reported that someone else holds | `extensions: [handoffs]` | none: the brief prep fetches it | `handoffs` | its brief section; `[handoffs]` alerts |
-| [health](#daily-use) (extension) | A scorecard of the platform and the factory | `extensions: [health]` | none: the brief prep scores it | none | 🩺 Health on Mondays, Pipeline lines on other days |
 | [intraday](#daily-use) (extension) | What changed since the brief | `extensions: [intraday]` | `foundry-watch` | `watch` | Now lines, `[watch]` alerts to Slack, 🕑 Today so far, a debrief section |
 | [market](#daily-use) (extension) | What changed among the companies and bodies you watch, from their newsrooms and feeds | `extensions: [market]`, with `market_watch` and `market_press` | `foundry-market` | `market` | `briefings/market/<date>.md`, a Market line in the brief; `[market]` threat and `[market_source]` alerts; proposed changes as `owed` Now lines |
 | [telemetry](#daily-use) (extension) | Production error groups, and `/rca` with ticket filing | `extensions: [telemetry]`, with handoffs | `foundry-telemetry` | `telemetry/<name>` | `raw/telemetry/` notes, Blockers in the brief; `[incident]`, `[rca]`, `[telemetry]` alerts |
@@ -85,7 +84,6 @@ What each extension needs (its `extension.md` and `schemas/config.md` hold the d
 |---|---|---|---|---|
 | `console` | `mise` (it pins Node), `rsync`, `curl`; `tailscale` on the server | none | `console_port`, `console_auth`, `console_login`, `console_foreman_url`, `console_build_dir` | none |
 | `handoffs` | nothing else | the one its manifest names | `handoffs_site`, `handoffs_projects` | none |
-| `health` | `gh` and a GitHub `template_remote` for the factory metrics | none | `health_thresholds`, `health_defect_gates` | none |
 | `intraday` | nothing else | Slack, Gmail and Google Calendar | `watch_channels`, `watch_group_dms`, `watch_user_id`, `watch_partition`, `watch_commitments_mail`, `watch_inbound_mail`, `watch_inbound_skip`, `watch_inbound_rules`, `capture_channel`, `capture_partition` | none |
 | `market` | your watch list and press feeds | none | `market_watch`, `market_press`, `market_runs_per_day`, `market_model`, `market_timeout_minutes`, `market_alert_groups`, `market_keep_groups`, `market_partition` | the `market` headless command (`run_headless.sh market`) |
 | `telemetry` | the `handoffs` extension; `az`; a source note per source in `system/telemetry/` | none for the fetch; the handoffs connector files tickets | `rca_project`, `rca_issue_type`, `rca_labels`, `rca_assignee`, `rca_extra_fields` | `/rca` |
@@ -122,9 +120,7 @@ The commands and skills are under [Daily use](#daily-use).
 
 **Market watch.** The `market` extension (`extensions/market/extension.md` describes it) watches the companies and bodies you list. Each morning, 30 minutes before the brief, `foundry-market` reads each `market_watch` entry's newsroom page and RSS or Atom feed, and each `market_press` feed, and writes the items it has not seen before to `raw/market/<date>/candidates.jsonl`; a source's first fetch only records what is there. A press item counts only when it names an entry as a whole word, and an entry with no newsroom or feed is matched that way only. It fetches over HTTPS only, with one user agent that names it, follows redirects only on the same host, stops a response at 4 MB, and passes at most 25 items per group per run (the rest are counted in `held.json`). A source that fails three runs in a row raises one `[market_source]` alert, and the smoke row reports the morning's fetch on the Sources line. When there are new candidates, the same unit runs `run_headless.sh market`, a headless session that reads them with your entity and project notes of `market_partition` and writes the day's page, `briefings/market/<date>.md`: Threats, Openings, Watch, News (items of `market_keep_groups` kept even when minor, at most 10 per group) and Proposed changes. The session has no network and writes only its staged page. After the gate publishes the page, `market_unit.py` posts one `[market]` Slack line per threat from a `market_alert_groups` group (once per link for 14 days), adds an `owed` Now line per proposed change, and drops a copy in `raw/inbox/` so ingest adds the facts to your entity notes. The brief carries one Market line linking the page, `No market changes`, or `Market: unavailable (<reason>)` when the run failed, timed out or is still running. `market_runs_per_day` (1 to 4) adds runs spaced evenly until 18:00.
 
-**Health.** The `health` extension (`extensions/health/extension.md` describes it) scores the platform and the factory every brief from the logs the vault already writes and, with `gh` and a GitHub `template_remote`, from merged pull requests: source tick success, headless runs published, the brief's time and size, the Now pages' size, open lines and closures, the dismissed share per writer (each Now line's `[via::]`; a line with none counts as the session's, or as a guess from its mail or Slack evidence link for an old line `tag-writers` has not tagged), Claude cost per day, sync blocks, the headroom of the core budgets, defect recurrences after a gate, first-push CI and review-fix commits. Monday's brief carries the whole scorecard under 🩺 Health; other days show one Pipeline line per metric past its threshold. History is in `system/logs/health/<YYYY-MM>.jsonl`; thresholds and gate dates are config keys (`health_thresholds`, `health_defect_gates`).
-
-**Work Orders.** `/order` queues refined work for an unattended run: an approved plan, or a task range of one, or a research brief written with you. Queuing is your approval, and a readiness check refuses items that are not refined enough. `foundry-nightshift.timer` ticks every 15 minutes on a standalone machine or a server (never a client). Up to 3 Work Orders run at once: the tick starts another as one finishes and stays running until none is left to start. Two plan orders on the same repo and base run one after the other. A Work Order starts now unless it was queued for a set time (`--at`) or for the run window (`--window`, the `run_window` setting). By default `run_window` is empty and the window is always open; a vault that sets one, such as `22:00-05:00`, keeps it. Before this update the window defaulted to `22:00-05:00`: if you relied on that, set `run_window: "22:00-05:00"` before updating, or Work Orders already queued for the window start at the next tick. No new Work Order starts while the last session's 5-hour usage is at or above `order_max_five_hour` (default `0.6`) and that reading is under 5 hours old, checked again before each start; a running one carries on, and `/order status` shows the hold. Design sessions (brainstorm, spec, plan) hand an approved plan to the Foreman session, which queues it with `/order add`. Run the Foreman session and your design sessions in the same permission mode, so a handoff is not held for approval. A plan item runs in a private clone under `order_workspace`, is verified, pushed to a branch and ends in a pull request; it never merges or deploys. The sealed verify sees only `/usr/local/bin:/usr/bin:/bin` and nothing under `$HOME`, so a toolchain installed per user (nvm, volta, asdf, `~/.local/bin`) is not found and its command ends with `exit 127 (command not found in the sealed verify sandbox)`. Two optional keys in `system/codebases/<name>.md` open that up: `order_toolchain`, a list of directories (`~` allowed) that hold the toolchain's executables, which the sandbox binds read-only and puts first on its PATH (the rest of `$HOME` stays empty), and which lead the plan session's own PATH too; and `order_install`, one command (such as `pnpm install --frozen-lockfile --ignore-scripts`) that runs once, first, in the same private checkout with the network open, before the verify commands run offline. The install is the only sandboxed step with network, and the branch's lockfile decides what it fetches. Each sandboxed step starts with a fresh, empty `$HOME`, so the install must leave what verify needs inside the checkout: anything it puts under `$HOME` (browser binaries, a package store) is gone by verify. Corepack's downloads are the exception: every sandboxed step of the item gets one `COREPACK_HOME`, writable during the install and read-only during verify, in the item's verify directory outside the checkout, so a pnpm or yarn version pinned in `packageManager` that the install's corepack shim downloads is the one verify runs offline. The install runs from an empty cache every run, under the 30-minute step timeout, and without `--ignore-scripts` the branch's install scripts run with the network open. A failing install blocks the item like a failing check, as `Fix the failing check: order_install: <command>: exit <code>`. A listed directory that is gone when the item starts (an nvm upgrade, an item queued on a client with other paths) blocks it before the session runs, with the same wording queuing uses. List the directories the tools really live in; only those show through the empty `$HOME`, so a symlink into an unlisted directory dangles. For nvm that is `~/.nvm/versions/node/<version>/bin` and its `lib` sibling, since `npm`, `npx` and a globally installed `pnpm` there are symlinks into `../lib`. A shim directory that needs its manager's environment does not work in the sealed sandbox. Queuing refuses a listed directory that does not exist. A research item reads its sources and writes one findings note, a new path under `wiki/<partition>/concepts/`, `entities/` or `summaries/`. When its sources contradict a vault note, its `## Stale claims` wait in `raw/<partition>/held/<id>.stale-claims.md` with one `owed` Now line naming that file (on `work` for a `shared` order); nothing indexes or ingests them there. Tick the line (`[x]`) and the next intake tick hands the claims to ingest, which patches the notes; cross it out (`[-]`) and they move to `raw/<partition>/held/rejected/` unread, where nothing indexes or recalls them. Only the line the runner wrote decides: another line that mentions the file, closed by a merge, an expiry or your hand, changes nothing. The line never expires, and a headless run (the brief included) cannot change it. Its `context/` copy holds those three folders of its partition and nothing else: no `private/`, `Now.md`, `meetings/` or `preferences/`, and no file reached through a link. A web host must be a name (an IP address is refused), and a `repo` must be a codebase in the order's partition or `shared`. Each tick checks every note that can still run against the same rules `/order add` uses, so a note edited after queuing fails with an alert that names the field (`<note> refused: <reason>`); queue it again with `/order add`. A queue note you write by hand still runs once it passes those rules. In a Claude session, the Edit and Write tools ask before they write a queue note, a codebase note or a session profile (`raw/<partition>/nightshift/`, `system/codebases/`, `system/nightshift/`). A sandboxed Bash command can still write one: the sandbox cannot let only the CLI through, since an excluded command runs whatever code a session wrote under its name (probe note `docs/superpowers/spikes/2026-10-31-excluded-command-and-deny-write-probe.md`). Such a research order's session still reads only its context copy, and its hosts are resolved before it starts. The same holds for the runner's own code (Security model, Vault code). A research order is queued with `nightshift.py research` (`/order ask`), which asks you first, since it sends what it reads to its hosts; `nightshift.py add` takes plan orders only, and neither accepts an abbreviated flag. A plan order records its base's commit (`base_sha`) when it is queued; if the base points at another commit when the order first runs, the order is blocked with a Needs-you line naming both commits. `nightshift.py requeue <id>` (`/order requeue`, which also asks first) starts a blocked or failed order fresh: its clone goes, the failed run's files stay in `<order_workspace>/state/items/<id>.<n>/`, its partial commits are lost, and a plan order records its base's current commit, which requeueing approves. Each item runs in a fresh, confined `claude -p` session that reads nothing of the vault, gets eight named environment variables and holds no credential. The session's sandbox and its Read tool deny the vault root, every other registered codebase and the common credential paths (`~/.ssh`, `~/.config/gh`, `~/.gitconfig`, the Claude transcripts under `~/.claude/projects` and its `settings*.json` among them). They also deny every `.env` and `.env.*` file under the home directory, under a registered codebase and under `order_workspace`, a file made during the session included. The sandbox denies the rest of `order_workspace` (other orders' folders, `nightshift-runner.git` and `state/`) and keeps the session's own folder readable; the Read tool is kept in that folder by `--restricted`. A research host is resolved when the order is queued and again before its session starts: a name that resolves to a loopback, private, link-local, multicast or cloud metadata address is refused at queuing and fails the order at start with a Needs-you line, and a name that does not resolve is refused at queuing and, at start, leaves the order queued for the next tick. A codebase's `order_hosts` are your configuration and are not resolved. DNS can still change between the check and the fetch. Its environment is `PATH`, `HOME`, `USER`, `LANG`, `TZ`, `TMPDIR`, `FOUNDRY_CLAUDE_BIN` and `CLAUDE_CONFIG_DIR`, each when set, and nothing else: an agent socket or a token in the unit's environment (`SSH_AUTH_SOCK`, `GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`) never reaches it, and the daily sandbox self-test fails when one of its probes (`SSH_AUTH_SOCK`, `GH_TOKEN`, `GITHUB_TOKEN`, `DBUS_SESSION_BUS_ADDRESS`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`) does. Everything else is dropped, `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `SSL_CERT_FILE` and `NODE_EXTRA_CA_CERTS` included, so a vault behind a proxy or TLS inspection stops starting sessions, and the self-test's reason carries the session's result text and its last stderr line. A vault whose `claude` is logged in only through `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` therefore starts no Work Order session; the sandbox alert says so, and `claude login` (the credentials file the health check tests) is the login a session can use. After `claude login`, the self-test reruns on the next report day's first tick, or at once with `system/scripts/nightshift.py selftest`. `order_workspace` must sit outside the vault: the clone, a research item's context copy and its `out/` live there, and the session denies the vault root, so `/order add` answers `not ready: order_workspace is inside the vault` and an item already queued fails with a Needs-you line until the workspace moves. What the runner reads back (each order's `items/<id>/` folder, `alerts.json` and the daily `health-<date>.json`) lives in `<order_workspace>/state/`, outside the vault, so no session edits it without a prompt; the first tick after the update moves the old files there from `system/logs/nightshift/`. The report, `system/logs/nightshift/<date>.md` (heading `# Work Orders: <date>`), starts with a health banner, then "Needs you" (decisions only), which the brief adds to the Now page. An order that ends needing you also adds its first "Needs you" line to its partition's Now page as it finishes, so the brief skips it as already open: a merged pull request closes it, a blocked order's line closes when the order moves on, and you tick a failed one. Queue notes live in `raw/<partition>/nightshift/`, tracked in your vault so an item queued on a client reaches the server. A plan item for this template is read from `template_remote`: push its branch there before queuing it, and queuing checks the remote, which needs the network and the remote's credentials. Settings renamed with Work Orders: `run_window` was `nightshift_window`, `order_workspace` was `nightshift_workspace`, and a codebase's `order_pr`, `order_hosts` and `order_plugins` were `nightshift_pr`, `nightshift_hosts` and `nightshift_plugins`. The old names still work; rename them when convenient. The command, the skill and printed text say Work Orders; files, units, the queue folders and `nightshift.py` keep their names.
+**Work Orders.** `/order` queues refined work for an unattended run: an approved plan, or a task range of one, or a research brief written with you. Queuing is your approval, and a readiness check refuses items that are not refined enough. `foundry-nightshift.timer` ticks every 15 minutes on a standalone machine or a server (never a client). Up to 3 Work Orders run at once: the tick starts another as one finishes and stays running until none is left to start. Two plan orders on the same repo and base run one after the other. A Work Order starts now unless it was queued for a set time (`--at`) or for the run window (`--window`, the `run_window` setting). By default `run_window` is empty and the window is always open; a vault that sets one, such as `22:00-05:00`, keeps it. Before this update the window defaulted to `22:00-05:00`: if you relied on that, set `run_window: "22:00-05:00"` before updating, or Work Orders already queued for the window start at the next tick. No new Work Order starts while the last session's 5-hour usage is at or above `order_max_five_hour` (default `0.6`) and that reading is under 5 hours old, checked again before each start; a running one carries on, and `/order status` shows the hold. Design sessions (brainstorm, spec, plan) hand an approved plan to the Foreman session, which queues it with `/order add`. Run the Foreman session and your design sessions in the same permission mode, so a handoff is not held for approval. A plan item runs in a private clone under `order_workspace`, is verified, pushed to a branch and ends in a pull request; it never merges or deploys. The sealed verify sees only `/usr/local/bin:/usr/bin:/bin` and nothing under `$HOME`, so a toolchain installed per user (nvm, volta, asdf, `~/.local/bin`) is not found and its command ends with `exit 127 (command not found in the sealed verify sandbox)`. Two optional keys in `system/codebases/<name>.md` open that up: `order_toolchain`, a list of directories (`~` allowed) that hold the toolchain's executables, which the sandbox binds read-only and puts first on its PATH (the rest of `$HOME` stays empty), and which lead the plan session's own PATH too; and `order_install`, one command (such as `pnpm install --frozen-lockfile --ignore-scripts`) that runs once, first, in the same private checkout with the network open, before the verify commands run offline. The install is the only sandboxed step with network, and the branch's lockfile decides what it fetches. Each sandboxed step starts with a fresh, empty `$HOME`, so the install must leave what verify needs inside the checkout: anything it puts under `$HOME` (browser binaries, a package store) is gone by verify. Corepack's downloads are the exception: every sandboxed step of the item gets one `COREPACK_HOME`, writable during the install and read-only during verify, in the item's verify directory outside the checkout, so a pnpm or yarn version pinned in `packageManager` that the install's corepack shim downloads is the one verify runs offline. The install runs from an empty cache every run, under the 30-minute step timeout, and without `--ignore-scripts` the branch's install scripts run with the network open. A failing install blocks the item like a failing check, as `Fix the failing check: order_install: <command>: exit <code>`. A listed directory that is gone when the item starts (an nvm upgrade, an item queued on a client with other paths) blocks it before the session runs, with the same wording queuing uses. List the directories the tools really live in; only those show through the empty `$HOME`, so a symlink into an unlisted directory dangles. For nvm that is `~/.nvm/versions/node/<version>/bin` and its `lib` sibling, since `npm`, `npx` and a globally installed `pnpm` there are symlinks into `../lib`. A shim directory that needs its manager's environment does not work in the sealed sandbox. Queuing refuses a listed directory that does not exist. A research item reads its sources and writes one findings note, a new path under `wiki/<partition>/concepts/`, `entities/` or `summaries/`. When its sources contradict a vault note, its `## Stale claims` wait in `raw/<partition>/held/<id>.stale-claims.md` with one `owed` Now line naming that file (on `work` for a `shared` order); nothing indexes or ingests them there. Tick the line (`[x]`) and the next intake tick hands the claims to ingest, which patches the notes; cross it out (`[-]`) and they move to `raw/<partition>/held/rejected/` unread, where nothing indexes or recalls them. Only the line the runner wrote decides: another line that mentions the file, closed by a merge, an expiry or your hand, changes nothing. The line never expires, and a headless run (the brief included) cannot change it. Its `context/` copy holds those three folders of its partition and nothing else: no `private/`, `Now.md`, `meetings/` or `preferences/`, and no file reached through a link. A web host must be a name (an IP address is refused), and a `repo` must be a codebase in the order's partition or `shared`. Each tick checks every note that can still run against the same rules `/order add` uses, so a note edited after queuing fails with an alert that names the field (`<note> refused: <reason>`); queue it again with `/order add`. A queue note you write by hand still runs once it passes those rules. In a Claude session, the Edit and Write tools ask before they write a queue note, a codebase note or a session profile (`raw/<partition>/nightshift/`, `system/codebases/`, `system/nightshift/`). A sandboxed Bash command can still write one: the sandbox cannot let only the CLI through, since an excluded command runs whatever code a session wrote under its name (probe note `docs/superpowers/spikes/2026-10-31-excluded-command-and-deny-write-probe.md`). Such a research order's session still reads only its context copy, and its hosts are resolved before it starts. The same holds for the runner's own code (Security model, Vault code). A research order is queued with `nightshift.py research` (`/order ask`), which asks you first, since it sends what it reads to its hosts; `nightshift.py add` takes plan orders only, and neither accepts an abbreviated flag. A plan order records its base's commit (`base_sha`) when it is queued; if the base points at another commit when the order first runs, the order is blocked with a Needs-you line naming both commits. `nightshift.py requeue <id>` (`/order requeue`, which also asks first) starts a blocked or failed order fresh: its clone goes, the failed run's files stay in `<order_workspace>/state/items/<id>.<n>/`, its partial commits are lost, and a plan order records its base's current commit, which requeueing approves. Each item runs in a fresh, confined `claude -p` session that reads nothing of the vault, gets eight named environment variables and holds no credential. The session's sandbox and its Read tool deny the vault root, every other registered codebase and the common credential paths (`~/.ssh`, `~/.config/gh`, `~/.gitconfig`, the Claude transcripts under `~/.claude/projects` and its `settings*.json` among them). They also deny every `.env` and `.env.*` file under the home directory, under a registered codebase and under `order_workspace`, a file made during the session included. The sandbox denies the rest of `order_workspace` (other orders' folders, `nightshift-runner.git` and `state/`) and keeps the session's own folder readable; the Read tool is kept in that folder by `--restricted`. A research host is resolved when the order is queued and again before its session starts: a name that resolves to a loopback, private, link-local, multicast or cloud metadata address is refused at queuing and fails the order at start with a Needs-you line, and a name that does not resolve is refused at queuing and, at start, leaves the order queued for the next tick. A codebase's `order_hosts` are your configuration and are not resolved. DNS can still change between the check and the fetch. Its environment is `PATH`, `HOME`, `USER`, `LANG`, `TZ`, `TMPDIR`, `FOUNDRY_CLAUDE_BIN` and `CLAUDE_CONFIG_DIR`, each when set, and nothing else: an agent socket or a token in the unit's environment (`SSH_AUTH_SOCK`, `GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`) never reaches it, and the daily sandbox self-test fails when one of its probes (`SSH_AUTH_SOCK`, `GH_TOKEN`, `GITHUB_TOKEN`, `DBUS_SESSION_BUS_ADDRESS`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`) does. Everything else is dropped, `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `SSL_CERT_FILE` and `NODE_EXTRA_CA_CERTS` included, so a vault behind a proxy or TLS inspection stops starting sessions, and the self-test's reason carries the session's result text and its last stderr line. A vault whose `claude` is logged in only through `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` therefore starts no Work Order session; the sandbox alert says so, and `claude login` (the credentials file the health check tests) is the login a session can use. After `claude login`, the self-test reruns on the next report day's first tick, or at once with `system/scripts/nightshift.py selftest`. `order_workspace` must sit outside the vault: the clone, a research item's context copy and its `out/` live there, and the session denies the vault root, so `/order add` answers `not ready: order_workspace is inside the vault` and an item already queued fails with a Needs-you line until the workspace moves. What the runner reads back (each order's `items/<id>/` folder, `alerts.json` and the daily `health-<date>.json`) lives in `<order_workspace>/state/`, outside the vault, so no session edits it without a prompt; the first tick after the update moves the old files there from `system/logs/nightshift/`. The report, `system/logs/nightshift/<date>.md` (heading `# Work Orders: <date>`), starts with a health banner, then "Needs you" (decisions only), which the brief adds to the Now page. An order that ends needing you also adds its first "Needs you" line to its partition's Now page as it finishes, so the brief skips it as already open: a merged pull request closes it, a blocked order's line closes when the order moves on, and you tick a failed one. Queue notes live in `raw/<partition>/nightshift/`, tracked in your vault so an item queued on a client reaches the server. A plan item for this template is read from `template_remote`: push its branch there before queuing it, and queuing checks the remote, which needs the network and the remote's credentials. Settings renamed with Work Orders: `run_window` was `nightshift_window`, `order_workspace` was `nightshift_workspace`, and a codebase's `order_pr`, `order_hosts` and `order_plugins` were `nightshift_pr`, `nightshift_hosts` and `nightshift_plugins`. The old names still work; rename them when convenient. The command, the skill and printed text say Work Orders; files, units, the queue folders and `nightshift.py` keep their names. A session that fails the same Bash command the same way 3 times, with nothing edited between, is stopped and the order ends `blocked` (`loop`). A plan order that ends blocked or failed after its session ran leaves `items/<id>/handoff.md` in the order workspace's `state/` (why it stopped, the failing check, the failed commands and the last message, redacted), named on its Needs-you line; `requeue` hands it to the next run's session as `.nightshift/handoff.md`, as data.
 
 **Session tasks.** A recurring task the Foreman schedules inside its session (an inbound sweep, work for a quiet hour) ends when the session does. The Foreman recreates the tasks listed under `## Session tasks` in `system/agents/foreman.md` at the start of each session, one `- every <interval>: <prompt>` line each. The template ships the list empty; your vault keeps its own lines there, and the daily template update merges around them.
 
@@ -484,67 +480,65 @@ flowchart LR
   p8[("raw/market/")]
   p9[("raw/meetings/")]
   p10[("raw/telemetry/")]
-  p11[("system/logs/")]
+  p11[("system/logs/*_fetch-*.jsonl")]
   p12[("system/logs/alerts_*.md")]
   p13[("system/logs/followups_queue.txt")]
-  p14[("system/logs/health/")]
-  p15[("system/logs/inputs/")]
-  p16[("system/logs/jira_fetch-*.jsonl")]
-  p17[("system/logs/market_run.json")]
-  p18[("system/logs/market_state.json")]
-  p19[("system/logs/meetings-*.jsonl")]
-  p20[("system/logs/nightshift/")]
-  p21[("system/logs/rca/")]
-  p22[("system/logs/runs/")]
-  p23[("system/logs/telemetry_state.json")]
-  p24[("system/logs/watch/")]
-  p25[("system/quarantine/")]
-  p26[("system/telemetry/")]
-  p27[("wiki/")]
-  p28[("wiki/*/Now.md")]
-  p29[("wiki/*/meetings/")]
+  p14[("system/logs/inputs/")]
+  p15[("system/logs/jira_fetch-*.jsonl")]
+  p16[("system/logs/market_run.json")]
+  p17[("system/logs/market_state.json")]
+  p18[("system/logs/meetings-*.jsonl")]
+  p19[("system/logs/nightshift/")]
+  p20[("system/logs/rca/")]
+  p21[("system/logs/runs/")]
+  p22[("system/logs/telemetry_state.json")]
+  p23[("system/logs/watch/")]
+  p24[("system/quarantine/")]
+  p25[("system/telemetry/")]
+  p26[("wiki/")]
+  p27[("wiki/*/Now.md")]
+  p28[("wiki/*/meetings/")]
   brief --> p0
   brief --> p10
   brief --> p12
   brief --> p14
   brief --> p15
-  brief --> p16
-  brief --> p22
-  brief --> p28
+  brief --> p21
+  brief --> p27
   debrief --> p0
   debrief --> p12
-  debrief --> p15
-  debrief --> p22
+  debrief --> p14
+  debrief --> p21
   intake --> p0
   intake --> p12
   intake --> p13
-  intake --> p15
-  intake --> p19
+  intake --> p14
+  intake --> p18
+  intake --> p20
   intake --> p21
-  intake --> p22
+  intake --> p23
   intake --> p24
-  intake --> p25
+  intake --> p26
   intake --> p27
-  intake --> p28
   intake --> p3
   intake --> p6
   intake --> p7
   market --> p12
+  market --> p16
   market --> p17
-  market --> p18
-  market --> p28
+  market --> p27
   market --> p7
   market --> p8
   meetings --> p12
   meetings --> p9
   nightshift --> p12
-  nightshift --> p20
+  nightshift --> p19
+  nightshift --> p26
   nightshift --> p27
-  nightshift --> p28
   outside --> p0
   outside --> p2
-  outside --> p26
-  outside --> p28
+  outside --> p25
+  outside --> p27
   outside --> p4
   outside --> p5
   outside --> p7
@@ -555,38 +549,38 @@ flowchart LR
   p1 --> market
   p10 --> brief
   p10 --> outside
-  p11 --> brief
+  p11 --> outside
   p12 --> brief
   p12 --> console
   p12 --> debrief
   p12 --> notify
   p13 --> intake
-  p15 --> brief
-  p15 --> console
-  p15 --> debrief
+  p14 --> brief
+  p14 --> console
+  p14 --> debrief
+  p16 --> market
   p17 --> market
-  p18 --> market
-  p19 --> intake
+  p18 --> intake
+  p19 --> brief
+  p19 --> debrief
   p2 --> intake
-  p20 --> brief
-  p20 --> debrief
-  p21 --> intake
-  p22 --> debrief
-  p22 --> notify
-  p23 --> telemetry
-  p24 --> intake
-  p24 --> watch
+  p20 --> intake
+  p21 --> debrief
+  p21 --> notify
+  p22 --> telemetry
+  p23 --> intake
+  p23 --> watch
+  p24 --> brief
+  p24 --> debrief
   p25 --> brief
-  p25 --> debrief
+  p25 --> telemetry
   p26 --> brief
-  p26 --> telemetry
-  p27 --> brief
-  p27 --> console
+  p26 --> console
+  p26 --> intake
+  p26 --> outside
   p27 --> intake
-  p27 --> outside
+  p27 --> watch
   p28 --> intake
-  p28 --> watch
-  p29 --> intake
   p3 --> debrief
   p3 --> intake
   p4 --> nightshift
@@ -599,14 +593,14 @@ flowchart LR
   smoke --> p12
   telemetry --> p10
   telemetry --> p12
-  telemetry --> p23
+  telemetry --> p22
   triage --> p12
-  triage --> p28
+  triage --> p27
   update --> p12
-  update --> p15
+  update --> p14
   watch --> p12
-  watch --> p24
-  watch --> p28
+  watch --> p23
+  watch --> p27
   watch --> p7
 ```
 <!-- pipeline:end -->
