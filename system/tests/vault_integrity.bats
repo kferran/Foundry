@@ -6,7 +6,7 @@ setup() {
   cd "$VAULT_ROOT"
 }
 
-CORE_CAP=17040
+CORE_CAP=17050
 
 core_lines() {
   ( cd "$1" && git ls-files -z system/scripts system/hooks .claude/commands | xargs -0 cat | wc -l )
@@ -585,6 +585,8 @@ sealed_problems() {
   # 16,920 -> 17,040 (#236 market watch PR 1, docs/superpowers/specs/2026-10-31-market-watch-design.md §3.3 and §3.6,
   # owner to approve at merge): extension commands in run_headless.sh, publish.py, commit_runs.py, extensions.py and
   # install_units.sh took core from 16,916 to 17,038.
+  # 17,040 -> 17,050 (#527 step 1, owner to approve at merge): the sync alert grace and the quiet busy triage took core
+  # from 17,038 to 17,045.
   # A vault (system/config.md exists) prints its count and skips the cap.
   # Schemas (phase C spec §2): core holds at 14; a new note type ships as an extension schema, never in core.
   echo "core lines: $(core_lines "$VAULT_ROOT") (cap $CORE_CAP)"

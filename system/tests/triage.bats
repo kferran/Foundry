@@ -267,8 +267,8 @@ triage_fetch: 1 chat messages need the owner (1 returned)" ]
   chmod +x system/scripts/triage.py
   run "$TF"
   [ "$status" -eq 0 ]
-  run grep -c 'Inbox triage failed' "$ALERTS"
-  [ "$output" = 0 ]
+  run grep -qs 'Inbox triage failed' "$ALERTS"   # no match, or no alerts file at all
+  [ "$status" -ne 0 ]
   [ "$(jq -sr '.[-1].reason' "$LOG")" = "skipped: run.lock busy; the next tick reads the same mail" ]
   [ "$(system/scripts/triage_real.py query)" = "$Q" ]   # the cursor did not move
 }
