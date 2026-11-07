@@ -1,8 +1,9 @@
 [Unit]
-Description=The Foundry: market watch, 30 minutes before the brief
+Description=The Foundry: market watch, 30 minutes before the brief and on any extra runs of the day
 
 [Timer]
 OnCalendar=*-*-* {{PRE_BRIEF_TIME}}:00 {{TZ}}
+{{EXTRA_TIMES:market_runs_per_day}}
 Persistent=false
 
 [Install]

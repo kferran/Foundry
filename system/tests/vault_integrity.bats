@@ -352,10 +352,10 @@ readme_anchors() {
   run manual_drift "$m"
   [ "$status" -eq 1 ]
   [[ "$output" == *".claude/commands/brief.md"* ]]
-  sed -E '/^\| `health` \|/d' FOUNDRY.md > "$m"
+  sed -E '/^\| `intraday` \|/d' FOUNDRY.md > "$m"
   run manual_drift "$m"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"extensions/health/extension.md"* ]]
+  [[ "$output" == *"extensions/intraday/extension.md"* ]]
   sed -E 's#`/rca#`/rcx#g' FOUNDRY.md > "$m"
   run manual_drift "$m"
   [ "$status" -eq 1 ]

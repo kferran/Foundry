@@ -805,8 +805,9 @@ away_vault() {
   [ "$(grep -c '^- \[x\] ' wiki/work/now-archive/2026-09.md)" -eq 200 ]
 }
 
-@test "brief size: the brief prompt is at most 2,500 words with every extension's section" {
+@test "brief size: the brief prompt is at most 2,511 words with every extension's section" {
+  # 2,500 -> 2,511 (#236 market watch PR 3): the market section's one-line instruction (12 words).
   words="$(cat "$REPO/.claude/commands/brief.md" "$REPO"/extensions/*/brief/section.md | wc -w)"
   echo "words $words"
-  [ "$words" -le 2500 ]
+  [ "$words" -le 2511 ]
 }

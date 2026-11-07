@@ -1,0 +1,2 @@
+- Removed: the `health` extension (the Monday 🩺 Health scorecard); no vault had it enabled (#527)
+  - Action: if `extensions` in `system/config.md` lists `health`, remove it, along with `health_thresholds` and `health_defect_gates`.
