@@ -166,10 +166,17 @@ def build() -> dict:
 
 def check() -> int:
     data = build()
-    port = str(config(VAULT).get("console_port") or "3110")
+    cfg = config(VAULT)
+    port = str(cfg.get("console_port") or "3110")
+    # The auth middleware answers only console_login (as tailscale serve sets the header), /api/health included.
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/health",
+                                 headers={"Tailscale-User-Login": str(cfg.get("console_login") or "")})
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             health = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:   # it answered: say what, not "not answering"
+        print(f"failed: {'auth' if exc.code in (401, 403) else 'other'}: /api/health answered HTTP {exc.code}")
+        return 1
     except (urllib.error.URLError, OSError, ValueError) as exc:
         print(f"failed: network: the console is not answering on 127.0.0.1:{port} ({exc.__class__.__name__})")
         return 1

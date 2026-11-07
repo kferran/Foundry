@@ -104,3 +104,46 @@ def test_imports_only_vaultlib_api():
     tree = ast.parse((EXT / "scripts" / "today.py").read_text())
     mods = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
     assert {m for m in mods if m.startswith("vaultlib")} == {"vaultlib.api"}
+
+
+def console_stub(login):
+    """A local /api/health that answers like the console's auth middleware: 403 unless the login header matches."""
+    import http.server
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            ok = self.headers.get("Tailscale-User-Login") == login and self.path == "/api/health"
+            self.send_response(200 if ok else 403)
+            self.end_headers()
+            self.wfile.write(b'{"ok": true}' if ok else b"Forbidden")
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def with_console(vault, port, login):
+    text = (vault / "system/config.md").read_text()
+    write(vault, "system/config.md", text.replace("---\n", f"---\nconsole_port: \"{port}\"\nconsole_login: \"{login}\"\n", 1))
+
+
+def test_check_sends_the_owner_login_the_console_requires(vault, day):
+    fixture(vault, day)
+    srv = console_stub("owner@example.com")
+    with_console(vault, srv.server_address[1], "owner@example.com")
+    r = run(vault, "--check")
+    srv.shutdown()
+    assert (r.returncode, r.stdout.strip()) == (0, "ok"), r.stdout
+
+
+def test_check_names_an_http_refusal_as_auth(vault, day):
+    fixture(vault, day)
+    srv = console_stub("someone-else@example.com")
+    with_console(vault, srv.server_address[1], "owner@example.com")
+    r = run(vault, "--check")
+    srv.shutdown()
+    assert r.returncode == 1
+    assert r.stdout.startswith("failed: auth: /api/health answered HTTP 403")
