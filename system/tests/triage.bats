@@ -259,3 +259,16 @@ triage_fetch: 1 chat messages need the owner (1 returned)" ]
   [ "$status" -eq 70 ]
   [ "$(grep -c '\[triage\] foundry-triage crashed: ' "$ALERTS")" -eq 1 ]
 }
+
+@test "a busy run.lock at record is logged and skipped, not alerted: the next tick reads the same mail (#527)" {
+  gmail_says "$G" "$Q" "$ITEM"
+  mv system/scripts/triage.py system/scripts/triage_real.py
+  printf '#!/bin/bash\nif [[ "$1" == record ]]; then echo "triage: run.lock busy; nothing written" >&2; exit 4; fi\nexec python3 "%s/system/scripts/triage_real.py" "$@"\n' "$V" > system/scripts/triage.py
+  chmod +x system/scripts/triage.py
+  run "$TF"
+  [ "$status" -eq 0 ]
+  run grep -c 'Inbox triage failed' "$ALERTS"
+  [ "$output" = 0 ]
+  [ "$(jq -sr '.[-1].reason' "$LOG")" = "skipped: run.lock busy; the next tick reads the same mail" ]
+  [ "$(system/scripts/triage_real.py query)" = "$Q" ]   # the cursor did not move
+}

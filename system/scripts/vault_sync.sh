@@ -45,15 +45,22 @@ finish() {
   exit "$rc"
 }
 
-# fail <kind> <reason>: alert once a day per failure kind while it persists (§5.3), then exit 1.
+# fail <kind> <reason>: alert once a day per failure kind while it persists (§5.3), then exit 1. A fetch or push
+# failure (the network, or the other machine pushing first) alerts only once it has lasted SYNC_ALERT_AFTER seconds:
+# most clear by the next tick (#527: 15 failed and 11 recovered alerts in 30 days).
 fail() {
-  local first="" last=""
+  local first="" last="" since
   if [[ -f "$STATE" ]]; then
     first="$(jq -r --arg k "$1" 'select(.kind == $k) | .first_seen // empty' "$STATE" 2>/dev/null)"
     last="$(jq -r --arg k "$1" 'select(.kind == $k) | .last_alerted // empty' "$STATE" 2>/dev/null)"
   fi
-  [[ "$last" == "$(date +%F)" ]] || alert "sync failed ($1): $2"
-  jq -cn --arg k "$1" --arg f "${first:-$(date -Iseconds)}" --arg l "$(date +%F)" \
+  first="${first:-$(date -Iseconds)}"
+  since=$(( $(date +%s) - $(date -d "$first" +%s 2>/dev/null || date +%s) ))
+  if [[ "$last" != "$(date +%F)" ]] && { [[ "$1" != fetch && "$1" != push ]] || (( since >= ${SYNC_ALERT_AFTER:-1800} )); }; then
+    alert "sync failed ($1): $2"
+    last="$(date +%F)"
+  fi
+  jq -cn --arg k "$1" --arg f "$first" --arg l "$last" \
     '{kind: $k, first_seen: $f, last_alerted: $l}' > "$STATE.tmp" && mv -f "$STATE.tmp" "$STATE"
   echo "vault_sync: $2" >&2
   finish 1
@@ -196,8 +203,9 @@ if [[ -e "$BLOCKED" ]]; then
   alert "sync unblocked"
   [[ "$role" != server ]] || start_missed
 fi
-if [[ -f "$STATE" ]]; then
-  alert "sync recovered (was failing: $(jq -r '.kind // "unknown"' "$STATE" 2>/dev/null))"
+if [[ -f "$STATE" ]]; then   # a recovery is news only after a failure was
+  [[ -z "$(jq -r '.last_alerted // empty' "$STATE" 2>/dev/null)" ]] \
+    || alert "sync recovered (was failing: $(jq -r '.kind // "unknown"' "$STATE" 2>/dev/null))"
   rm -f "$STATE"
 fi
 finish 0
