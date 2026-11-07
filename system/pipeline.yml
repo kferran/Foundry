@@ -23,6 +23,7 @@ sinks:     # read outside the graph
   - {path: wiki/, by: the owner in Obsidian}
   - {path: briefings/, by: the owner}
   - {path: raw/archive/, by: the audit layer}
+  - {path: system/logs/jira_fetch-*.jsonl, by: the audit layer}   # its reader was the health extension, removed (#527)
 
 nodes:
   intake:
