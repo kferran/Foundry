@@ -167,7 +167,7 @@ EOF
   use_extension demo
   STUB_MODE=demo_page run "$RH" demo
   [ "$status" -eq 0 ]
-  [ -f "briefings/demo/$(date +%F).md" ]
+  [ -f "briefings/demo/$(TZ=America/Denver date +%F).md" ]   # the vault's timezone; a bare date failed 00:00-07:00 UTC
 }
 
 @test "an unknown, unlisted or path-shaped extension command exits 2 with no ledger line" {
