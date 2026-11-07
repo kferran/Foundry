@@ -1,6 +1,6 @@
 # Probe: anchored `.env` globs and a workspace-wide read deny
 
-**Date:** 2026-10-30. **Binary:** Claude Code 2.1.311 on Linux (bwrap sandbox). **For:** the Work Order confinement spec (`docs/superpowers/specs/2026-10-30-work-order-confinement-design.md` §3.3, #326, #319).
+**Date:** 2026-10-30. **Binary:** Claude Code 2.1.311 on Linux (bwrap sandbox). **For:** the Work Order confinement spec (`docs/superpowers/archive/specs/2026-10-30-work-order-confinement-design.md` §3.3, #326, #319).
 
 **Setup:** a throwaway folder under `.scratch/`, with `claude -p … --restricted --strict-mcp-config --settings <file> --permission-mode dontAsk --tools Bash --model haiku`, launched from `<P>/s`. The settings file allowed Bash, enabled the sandbox with no network, and set:
 

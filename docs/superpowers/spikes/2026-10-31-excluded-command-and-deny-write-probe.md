@@ -1,6 +1,6 @@
 # Probe: an excluded command's permission rules, and the denyWrite path forms
 
-**Date:** 2026-10-31. **Binary:** Claude Code 2.1.311 on Linux (bwrap sandbox). **For:** the Work Order confinement spec §3.1a (`docs/superpowers/specs/2026-10-30-work-order-confinement-design.md`), PR B.
+**Date:** 2026-10-31. **Binary:** Claude Code 2.1.311 on Linux (bwrap sandbox). **For:** the Work Order confinement spec §3.1a (`docs/superpowers/archive/specs/2026-10-30-work-order-confinement-design.md`), PR B.
 
 **Setup:** a throwaway folder `<P>` under `.scratch/` with a stub `system/scripts/ns.sh` that writes `raw/work/nightshift/<arg1>-<arg2>.md`. `claude -p … --strict-mcp-config --settings <file> --tools Bash --model haiku`, launched from `<P>`. The settings allowed `Bash(system/scripts/ns.sh add:*)` and `Bash(bash:*)`, asked for `Bash(system/scripts/ns.sh research:*)`, enabled the sandbox with no network and set `filesystem.denyWrite` to `<P>/raw/work/nightshift`.
 

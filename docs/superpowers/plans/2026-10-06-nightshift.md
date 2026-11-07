@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3 stdlib (`subprocess`, `json`, `zoneinfo`, `fcntl`), `vaultlib` (frontmatter, schema, publish), git, `gh`, `bwrap` (bubblewrap), Claude Code 2.1.291+ (`claude -p`), bash, systemd user units, pytest, bats.
 
-**Spec:** `docs/superpowers/specs/2026-10-06-nightshift-design.md`
+**Spec:** `docs/superpowers/archive/specs/2026-10-06-nightshift-design.md`
 
 ## Global Constraints
 
@@ -2122,7 +2122,7 @@ description: |
 ---
 # Nightshift
 
-Spec: `docs/superpowers/specs/2026-10-06-nightshift-design.md`. Everything runs through `system/scripts/nightshift.py` from the vault root.
+Spec: `docs/superpowers/archive/specs/2026-10-06-nightshift-design.md`. Everything runs through `system/scripts/nightshift.py` from the vault root.
 
 **`/nightshift add <plan> [--tasks N-M] [--at HH:MM | --now] [--budget 4h] [--model opus]`**
 1. Find the plan's repository: a registered codebase (`system/codebases/*.md`) or `template` (this repository's template remote). Ask if unclear.
@@ -2234,7 +2234,7 @@ Expected: `sandbox ok`. If it prints `profile: unexpected tools: …`, read the 
 ```bash
 git push -u template feat/nightshift
 gh pr create --repo kferran/jarvis --base master --head feat/nightshift --title "The Nightshift (unattended plan and research runs)" \
-  --body "Spec: docs/superpowers/specs/2026-10-06-nightshift-design.md. Plan: docs/superpowers/plans/2026-10-06-nightshift.md.
+  --body "Spec: docs/superpowers/archive/specs/2026-10-06-nightshift-design.md. Plan: docs/superpowers/plans/2026-10-06-nightshift.md.
 
 https://claude.ai/code/session_01UN5uVRJuDkUDmqcXGSx4XM"
 ```

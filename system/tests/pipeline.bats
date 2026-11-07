@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# The pipeline graph (factory F6, #477; spec docs/superpowers/specs/2026-11-03-factory-f6-pipeline-graph-design.md):
+# The pipeline graph (factory F6, #477; spec docs/superpowers/archive/specs/2026-11-03-factory-f6-pipeline-graph-design.md):
 # system/pipeline.yml declares one node per core unit, and pipeline_graph.py checks it against the code (P1 to P8).
 # PIPELINE_GAPS lists what the code lacks today, one line per node and rule with the issue that closes it; the list
 # only shrinks: a gap that passes prints "gap closed, delete its line", as TIMING_OVERRUNS does in conformance.bats.

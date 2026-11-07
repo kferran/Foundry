@@ -1,6 +1,6 @@
 # Probe: the shape of a list_events page (#436 S8)
 
-Plan `docs/superpowers/plans/2026-11-03-run-time-resilience-2.md` Task 9. Run 2026-11-03 by the controller with the owner's OK: `calendar_fetch.sh` for one day, real `claude`, in a `.scratch/` clone of master, with one added line (scratch copy only) that kept the session's stream. The day had 13 events on 5 pages of 3; `calendar_tsv.py` wrote 13 rows. The raw stream was read for its shape only and deleted; nothing from it is committed.
+Plan `docs/superpowers/archive/plans/2026-11-03-run-time-resilience-2.md` Task 9. Run 2026-11-03 by the controller with the owner's OK: `calendar_fetch.sh` for one day, real `claude`, in a `.scratch/` clone of master, with one added line (scratch copy only) that kept the session's stream. The day had 13 events on 5 pages of 3; `calendar_tsv.py` wrote 13 rows. The raw stream was read for its shape only and deleted; nothing from it is committed.
 
 ## Where the page is
 
